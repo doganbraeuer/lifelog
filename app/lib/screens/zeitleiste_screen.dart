@@ -79,10 +79,12 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     neuLaden();
   }
 
-  Future<void> _oeffnen(EintragKurz eintrag) async {
+  /// Öffnet einen Eintrag. Öffentlich, damit der Upload nach dem Hochladen
+  /// (oder bei einem Duplikat) direkt den Eintrag zeigen kann.
+  Future<void> eintragOeffnen(String eintragId) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => EintragScreen(api: widget.api, eintragId: eintrag.id),
+        builder: (_) => EintragScreen(api: widget.api, eintragId: eintragId),
       ),
     );
     // Nach einer Korrektur kann sich z. B. das Datum geändert haben.
@@ -180,7 +182,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
               itemBuilder: (_, i) => _EintragKachel(
                 eintrag: eintraege[i],
                 zeigeImport: _sortierung == Sortierung.importdatum,
-                onTap: () => _oeffnen(eintraege[i]),
+                onTap: () => eintragOeffnen(eintraege[i].id),
               ),
             ),
     );

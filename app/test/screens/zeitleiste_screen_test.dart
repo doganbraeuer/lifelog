@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
-import 'package:lifelog/main.dart';
 
 import '../hilfen.dart';
 
@@ -19,7 +18,7 @@ void main() {
   testWidgets('zeigt die Einträge in der Reihenfolge des Backends', (
     tester,
   ) async {
-    await tester.pumpWidget(LifelogApp(api: schnellerMock()));
+    await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
 
     expect(find.text('Mock'), findsOneWidget);
@@ -33,7 +32,7 @@ void main() {
   });
 
   testWidgets('Richtung umschalten: ohne Datum bleibt am Ende', (tester) async {
-    await tester.pumpWidget(LifelogApp(api: schnellerMock()));
+    await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.arrow_downward));
@@ -45,7 +44,7 @@ void main() {
   });
 
   testWidgets('nach Importdatum sortieren', (tester) async {
-    await tester.pumpWidget(LifelogApp(api: schnellerMock()));
+    await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.sort));
@@ -64,7 +63,7 @@ void main() {
 
   testWidgets('Fehler anzeigen und erneut versuchen', (tester) async {
     final mock = schnellerMock()..simulierterFehler = true;
-    await tester.pumpWidget(LifelogApp(api: mock));
+    await tester.pumpWidget(testApp(mock));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
@@ -78,16 +77,14 @@ void main() {
   });
 
   testWidgets('leere Zeitleiste', (tester) async {
-    await tester.pumpWidget(
-      LifelogApp(api: schnellerMock(mitBeispieldaten: false)),
-    );
+    await tester.pumpWidget(testApp(schnellerMock(mitBeispieldaten: false)));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Noch keine Dokumente'), findsOneWidget);
   });
 
   testWidgets('Tippen öffnet den Eintrag', (tester) async {
-    await tester.pumpWidget(LifelogApp(api: schnellerMock()));
+    await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text(labor));
