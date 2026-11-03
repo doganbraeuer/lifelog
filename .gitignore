@@ -1,0 +1,95 @@
+# ============================================
+# Betriebssystem & Editoren
+# ============================================
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ============================================
+# Secrets & lokale Konfiguration
+# ============================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ============================================
+# Go-Backend
+# ============================================
+# Kompilierte Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test- und Profiling-Ausgaben
+*.test
+*.out
+coverage.*
+*.prof
+
+# Vendor-Verzeichnis (nur nötig, wenn man nicht "go mod vendor" nutzt)
+vendor/
+
+# Lokale Workspace-Datei
+go.work
+go.work.sum
+
+# ============================================
+# Flutter / Dart
+# ============================================
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+*.g.dart.bak
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/key.properties
+*.jks
+*.keystore
+
+# iOS / macOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/macos/Flutter/ephemeral/
+**/macos/Pods/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Web / Desktop
+**/linux/flutter/ephemeral/
+**/windows/flutter/ephemeral/
+
+# ============================================
+# Logs & Temporäres
+# ============================================
+*.log
+tmp/
