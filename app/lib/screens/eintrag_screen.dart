@@ -10,6 +10,7 @@ import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
 import 'korrektur_dialoge.dart';
+import 'originaldatei_screen.dart';
 
 /// Zeigt einen Eintrag und erlaubt, falsch erkannte Werte zu korrigieren.
 ///
@@ -122,6 +123,19 @@ class _EintragScreenState extends State<EintragScreen> {
     }
   }
 
+  void _originalOeffnen(Eintrag eintrag, DateiInhalt? vorhanden) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OriginaldateiScreen(
+          api: widget.api,
+          eintragId: eintrag.id,
+          dateiname: eintrag.datei.dateiname,
+          vorhanden: vorhanden,
+        ),
+      ),
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Anzeige
   // -------------------------------------------------------------------------
@@ -160,7 +174,11 @@ class _EintragScreenState extends State<EintragScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        _Originaldatei(datei: eintrag.datei, bild: _bild),
+        _Originaldatei(
+          datei: eintrag.datei,
+          bild: _bild,
+          oeffnen: (vorhanden) => _originalOeffnen(eintrag, vorhanden),
+        ),
         const _Abschnitt('Angaben'),
         _FeldZeile(
           label: 'Typ',
@@ -338,13 +356,20 @@ class _FeldZeile extends StatelessWidget {
   }
 }
 
-/// Originaldatei: Bilder werden direkt angezeigt, bei PDFs Name und Größe.
-/// Das Öffnen (auch von PDFs) kommt in Etappe g.
+/// Originaldatei: Bilder als Vorschau, bei PDFs Name und Größe. Darunter
+/// der Knopf zum Öffnen; ein Tipp auf das Vorschaubild öffnet ebenfalls.
 class _Originaldatei extends StatelessWidget {
-  const _Originaldatei({required this.datei, required this.bild});
+  const _Originaldatei({
+    required this.datei,
+    required this.bild,
+    required this.oeffnen,
+  });
 
   final Datei datei;
   final Future<DateiInhalt>? bild;
+
+  /// Öffnet die Datei; [vorhanden] ist das schon geladene Bild, falls da.
+  final void Function(DateiInhalt? vorhanden) oeffnen;
 
   @override
   Widget build(BuildContext context) {
@@ -369,12 +394,18 @@ class _Originaldatei extends StatelessWidget {
                     kind: CircularProgressIndicator(),
                   );
                 }
-                return Image.memory(
-                  inhalt.bytes,
-                  height: 220,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const _BildPlatzhalter(
-                    kind: Icon(Icons.broken_image_outlined, size: 48),
+                return InkWell(
+                  onTap: () => oeffnen(inhalt),
+                  child: Image.memory(
+                    inhalt.bytes,
+                    // Volle Breite: Die ganze Fläche ist antippbar, auch
+                    // bevor das Bild dekodiert ist.
+                    width: double.infinity,
+                    height: 220,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const _BildPlatzhalter(
+                      kind: Icon(Icons.broken_image_outlined, size: 48),
+                    ),
                   ),
                 );
               },
@@ -389,6 +420,17 @@ class _Originaldatei extends StatelessWidget {
             subtitle: Text(
               '${formatGroesse(datei.groesse)} · '
               '${datei.istPdf ? 'PDF' : 'Bild'}',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () => oeffnen(null),
+                icon: const Icon(Icons.open_in_full),
+                label: const Text('Originaldatei öffnen'),
+              ),
             ),
           ),
         ],

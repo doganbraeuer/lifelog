@@ -14,6 +14,7 @@ Future<void> zumUpload(
   MockApiClient mock,
   FakeDateiAuswahl auswahl,
 ) async {
+  grosserBildschirm(tester);
   await tester.pumpWidget(testApp(mock, auswahl: auswahl));
   await tester.pumpAndSettle();
   await tester.tap(
