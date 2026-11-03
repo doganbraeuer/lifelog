@@ -25,7 +25,8 @@ Dokumenttyp funktionieren.
   ruft nie direkt ein Modell auf.
 
 ## Datenmodell: Eintrag
-- `typ` (z. B. arztbrief, laborbefund, rezept)
+- `modul` (Pflichtfeld, z. B. gesundheit; im Prototyp immer gesundheit)
+- `typ` (z. B. arztbrief, laborbefund, rezept; gilt innerhalb des Moduls)
 - `dokumentdatum` und `importdatum` (beide speichern)
 - `quelle` (ausstellende Stelle)
 - `volltext` (der Text des Dokuments)
