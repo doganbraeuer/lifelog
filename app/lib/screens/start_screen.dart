@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../model/eintrag.dart';
 import '../plattform/datei_auswahl.dart';
-import 'platzhalter_screen.dart';
+import 'eintrag_screen.dart';
+import 'frage_screen.dart';
 import 'upload_screen.dart';
 import 'zeitleiste_screen.dart';
 
@@ -39,6 +40,18 @@ class _StartScreenState extends State<StartScreen> {
     _eintragOeffnen(eintrag.id);
   }
 
+  /// Öffnet einen Eintrag über dem aktuellen Bereich, ohne zur Zeitleiste
+  /// zu wechseln. So führt „Zurück“ z. B. wieder zur Antwort auf die Frage.
+  Future<void> _eintragDarueberOeffnen(String eintragId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EintragScreen(api: widget.api, eintragId: eintragId),
+      ),
+    );
+    // Falls dort etwas korrigiert wurde.
+    _zeitleiste.currentState?.neuLaden();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -52,7 +65,7 @@ class _StartScreenState extends State<StartScreen> {
             hochgeladen: _hochgeladen,
             eintragOeffnen: _eintragOeffnen,
           ),
-          const PlatzhalterScreen(titel: 'Fragen'),
+          FrageScreen(api: widget.api, eintragOeffnen: _eintragDarueberOeffnen),
         ],
       ),
       bottomNavigationBar: NavigationBar(
