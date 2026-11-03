@@ -1,11 +1,27 @@
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_fehler.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/main.dart';
 import 'package:lifelog/plattform/datei_auswahl.dart';
+
+/// Hoher Test-Bildschirm, damit lange Listen ganz gebaut werden
+/// (eine ListView baut nur, was sichtbar ist).
+void grosserBildschirm(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
+/// Tippt auf den Zurück-Pfeil. `tester.pageBack()` sucht den englischen
+/// Tooltip „Back“, die App ist aber deutsch („Zurück“).
+Future<void> zurueck(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+}
 
 /// Die App mit Mock-Backend und Fake-Dateiauswahl.
 LifelogApp testApp(ApiClient api, {DateiAuswahl? auswahl}) =>

@@ -80,8 +80,7 @@ void main() {
     expect(find.text('Blutdruck'), findsOneWidget);
 
     // ... und nach „Zurück“ steht er in der Zeitleiste.
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    await zurueck(tester);
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
     expect(await mock.eintraege(), hasLength(4));
   });

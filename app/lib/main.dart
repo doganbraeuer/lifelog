@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
 import 'api/api_client_auswahl.dart';
@@ -25,6 +26,11 @@ class LifelogApp extends StatelessWidget {
     return MaterialApp(
       title: 'Lifelog',
       theme: ThemeData(colorSchemeSeed: Colors.teal),
+      // Die App ist deutsch. Damit sind auch eingebaute Texte wie in der
+      // Datumsauswahl („Abbrechen“, Monatsnamen) deutsch.
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('de')],
+      locale: const Locale('de'),
       home: StartScreen(api: api, dateiAuswahl: dateiAuswahl),
     );
   }

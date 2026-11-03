@@ -84,6 +84,7 @@ void main() {
   });
 
   testWidgets('Tippen öffnet den Eintrag', (tester) async {
+    grosserBildschirm(tester);
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
 
