@@ -9,25 +9,36 @@ import 'package:flutter/material.dart';
 import '../model/datum.dart';
 import '../model/eintrag.dart';
 import '../model/eintrag_aenderung.dart';
-import '../model/typ.dart';
+import '../module/modul_katalog.dart';
 
 // ---------------------------------------------------------------------------
 // Typ
 // ---------------------------------------------------------------------------
 
-/// Typ über ein Dropdown wählen.
+/// Typ über ein Dropdown wählen. Zur Auswahl stehen die Typen des Moduls
+/// [modulId] aus dem Modul-Katalog.
 Future<String?> zeigeTypDialog(
   BuildContext context, {
+  required String modulId,
   required String aktuell,
   required Korrektur? korrektur,
 }) => showDialog<String>(
   context: context,
-  builder: (_) => _TypDialog(aktuell: aktuell, erkannt: korrektur?.erkannt),
+  builder: (_) => _TypDialog(
+    modulId: modulId,
+    aktuell: aktuell,
+    erkannt: korrektur?.erkannt,
+  ),
 );
 
 class _TypDialog extends StatefulWidget {
-  const _TypDialog({required this.aktuell, required this.erkannt});
+  const _TypDialog({
+    required this.modulId,
+    required this.aktuell,
+    required this.erkannt,
+  });
 
+  final String modulId;
   final String aktuell;
 
   /// Ursprünglich erkannter Typ, nur gesetzt, wenn der Typ korrigiert wurde.
@@ -42,8 +53,14 @@ class _TypDialogState extends State<_TypDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Ein unbekannter Typ (z. B. aus einem späteren Modul) bleibt wählbar.
-    final typen = {...gesundheitTypen, widget.aktuell};
+    final katalog = ModulKatalog.von(context);
+    // Der aktuelle Typ bleibt wählbar, auch wenn das Modul ihn nicht (mehr)
+    // kennt, z. B. bei Daten von einem neueren Backend.
+    final typen = {
+      for (final t in katalog.typen(widget.modulId)) t.id,
+      widget.aktuell,
+    };
+    String name(String typ) => katalog.typName(widget.modulId, typ);
     return AlertDialog(
       title: const Text('Typ korrigieren'),
       content: DropdownButtonFormField<String>(
@@ -54,9 +71,7 @@ class _TypDialogState extends State<_TypDialog> {
             DropdownMenuItem(
               value: typ,
               child: Text(
-                typ == widget.erkannt
-                    ? '${typAnzeige(typ)} (erkannt)'
-                    : typAnzeige(typ),
+                typ == widget.erkannt ? '${name(typ)} (erkannt)' : name(typ),
               ),
             ),
         ],

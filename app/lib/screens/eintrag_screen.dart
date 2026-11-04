@@ -5,7 +5,7 @@ import '../api/api_fehler.dart';
 import '../model/datum.dart';
 import '../model/eintrag.dart';
 import '../model/eintrag_aenderung.dart';
-import '../model/typ.dart';
+import '../module/modul_katalog.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
@@ -81,6 +81,8 @@ class _EintragScreenState extends State<EintragScreen> {
   Future<void> _typKorrigieren(Eintrag eintrag) async {
     final typ = await zeigeTypDialog(
       context,
+      // Erlaubt sind die Typen des Moduls, zu dem der Eintrag gehört.
+      modulId: eintrag.modul,
       aktuell: eintrag.typ,
       korrektur: eintrag.korrektur('typ'),
     );
@@ -145,7 +147,11 @@ class _EintragScreenState extends State<EintragScreen> {
     final eintrag = _eintrag;
     return Scaffold(
       appBar: AppBar(
-        title: Text(eintrag == null ? 'Eintrag' : typAnzeige(eintrag.typ)),
+        title: Text(
+          eintrag == null
+              ? 'Eintrag'
+              : ModulKatalog.von(context).typName(eintrag.modul, eintrag.typ),
+        ),
         actions: [MockHinweis(sichtbar: widget.api.istMock)],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
@@ -171,6 +177,10 @@ class _EintragScreenState extends State<EintragScreen> {
     VoidCallback? bearbeiten(Future<void> Function() aktion) =>
         _speichert ? null : aktion;
 
+    // Typnamen kommen aus dem Modul, zu dem der Eintrag gehört.
+    final katalog = ModulKatalog.von(context);
+    String typName(String typ) => katalog.typName(eintrag.modul, typ);
+
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
@@ -182,8 +192,8 @@ class _EintragScreenState extends State<EintragScreen> {
         const _Abschnitt('Angaben'),
         _FeldZeile(
           label: 'Typ',
-          wert: typAnzeige(eintrag.typ),
-          korrektur: _hinweis(eintrag.korrektur('typ'), typAnzeige),
+          wert: typName(eintrag.typ),
+          korrektur: _hinweis(eintrag.korrektur('typ'), typName),
           bearbeiten: bearbeiten(() => _typKorrigieren(eintrag)),
         ),
         _FeldZeile(

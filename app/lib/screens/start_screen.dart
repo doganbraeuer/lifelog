@@ -65,7 +65,12 @@ class _StartScreenState extends State<StartScreen> {
             hochgeladen: _hochgeladen,
             eintragOeffnen: _eintragOeffnen,
           ),
-          FrageScreen(api: widget.api, eintragOeffnen: _eintragDarueberOeffnen),
+          FrageScreen(
+            api: widget.api,
+            // Bis Etappe h2 gibt es nur den Bereich Gesundheit.
+            modulId: 'gesundheit',
+            eintragOeffnen: _eintragDarueberOeffnen,
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(

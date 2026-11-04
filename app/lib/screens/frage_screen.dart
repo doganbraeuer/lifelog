@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/api_fehler.dart';
 import '../model/antwort.dart';
-import '../model/typ.dart';
+import '../module/modul_katalog.dart';
 import '../widgets/mock_hinweis.dart';
-import '../widgets/typ_icon.dart';
 
 /// Höchstlänge einer Frage laut docs/API.md.
 const maxFrageLaenge = 500;
@@ -17,10 +16,15 @@ class FrageScreen extends StatefulWidget {
   const FrageScreen({
     super.key,
     required this.api,
+    required this.modulId,
     required this.eintragOeffnen,
   });
 
   final ApiClient api;
+
+  /// Modul, in dem gefragt wird. Die Quellen einer Antwort nennen laut API
+  /// kein Modul, nur den `typ`; dessen Name kommt deshalb aus diesem Modul.
+  final String modulId;
 
   /// Öffnet den Eintrag einer Quelle. „Zurück“ führt wieder hierher.
   final Future<void> Function(String eintragId) eintragOeffnen;
@@ -184,6 +188,7 @@ class _FrageScreenState extends State<FrageScreen> {
           for (final quelle in antwort.quellen)
             _QuellenKarte(
               quelle: quelle,
+              modulId: widget.modulId,
               oeffnen: () => widget.eintragOeffnen(quelle.eintragId),
             ),
         ],
@@ -194,16 +199,22 @@ class _FrageScreenState extends State<FrageScreen> {
 
 /// Eine Quelle: Nummer wie im Antworttext, Dokument und Auszug.
 class _QuellenKarte extends StatelessWidget {
-  const _QuellenKarte({required this.quelle, required this.oeffnen});
+  const _QuellenKarte({
+    required this.quelle,
+    required this.modulId,
+    required this.oeffnen,
+  });
 
   final Quelle quelle;
+  final String modulId;
   final VoidCallback oeffnen;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final katalog = ModulKatalog.von(context);
     final kopf = [
-      typAnzeige(quelle.typ),
+      katalog.typName(modulId, quelle.typ),
       quelle.dokumentdatum?.anzeige ?? 'ohne Datum',
     ].join(' · ');
     return Card(
@@ -222,7 +233,7 @@ class _QuellenKarte extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Icon(typIcon(quelle.typ), size: 16),
+                        Icon(katalog.typSymbol(modulId, quelle.typ), size: 16),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(kopf, style: theme.textTheme.labelLarge),

@@ -6,6 +6,7 @@ import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_fehler.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/main.dart';
+import 'package:lifelog/module/modul_katalog.dart';
 import 'package:lifelog/plattform/datei_auswahl.dart';
 
 /// Hoher Test-Bildschirm, damit lange Listen ganz gebaut werden
@@ -23,9 +24,17 @@ Future<void> zurueck(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Die App mit Mock-Backend und Fake-Dateiauswahl.
-LifelogApp testApp(ApiClient api, {DateiAuswahl? auswahl}) =>
-    LifelogApp(api: api, dateiAuswahl: auswahl ?? FakeDateiAuswahl());
+/// Die App mit Mock-Backend und Fake-Dateiauswahl. Ohne [katalog] gelten
+/// die Standard-Module.
+LifelogApp testApp(
+  ApiClient api, {
+  DateiAuswahl? auswahl,
+  ModulKatalog? katalog,
+}) => LifelogApp(
+  api: api,
+  dateiAuswahl: auswahl ?? FakeDateiAuswahl(),
+  katalog: katalog ?? ModulKatalog.standard(),
+);
 
 /// Liefert vorgegebene Dateien statt Kamera und Dateiauswahl zu öffnen.
 /// `null` steht für „Nutzer bricht ab“.
@@ -66,11 +75,13 @@ Matcher wirftApiFehler(String code, {int? status}) => throwsA(
 MockApiClient schnellerMock({
   bool mitBeispieldaten = true,
   DateTime Function()? uhr,
+  ModulKatalog? katalog,
 }) => MockApiClient(
   mitBeispieldaten: mitBeispieldaten,
   verzoegerung: Duration.zero,
   uploadVerzoegerung: Duration.zero,
   uhr: uhr ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
+  katalog: katalog,
 );
 
 const laborId = '6727a1f3c2b4e5d6f7a8b9c0';

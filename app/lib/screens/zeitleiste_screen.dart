@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/api_fehler.dart';
 import '../model/eintrag.dart';
-import '../model/typ.dart';
+import '../module/modul_katalog.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
-import '../widgets/typ_icon.dart';
 import 'eintrag_screen.dart';
 
 /// Alle Einträge als Liste. Sortierung und Richtung sind wählbar; sortiert
@@ -208,9 +207,10 @@ class _EintragKachel extends StatelessWidget {
     final datum = eintrag.dokumentdatum;
     final quelle = eintrag.quelle;
     final grau = Theme.of(context).colorScheme.onSurfaceVariant;
+    final katalog = ModulKatalog.von(context);
     return ListTile(
-      leading: Icon(typIcon(eintrag.typ)),
-      title: Text(typAnzeige(eintrag.typ)),
+      leading: Icon(katalog.typSymbol(eintrag.modul, eintrag.typ)),
+      title: Text(katalog.typName(eintrag.modul, eintrag.typ)),
       subtitle: Text(
         [
           quelle ?? 'Quelle unbekannt',

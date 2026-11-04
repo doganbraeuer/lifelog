@@ -8,7 +8,7 @@ import '../model/datum.dart';
 import '../model/eintrag.dart';
 import '../model/eintrag_aenderung.dart';
 import '../model/json_hilfen.dart';
-import '../model/typ.dart';
+import '../module/modul_katalog.dart';
 import 'api_client.dart';
 import 'api_fehler.dart';
 import 'mime_typ.dart';
@@ -36,7 +36,9 @@ class MockApiClient implements ApiClient {
     this.verzoegerung = const Duration(milliseconds: 300),
     this.uploadVerzoegerung = const Duration(seconds: 2),
     DateTime Function()? uhr,
-  }) : _uhr = uhr ?? (() => DateTime.now().toUtc()) {
+    ModulKatalog? katalog,
+  }) : _uhr = uhr ?? (() => DateTime.now().toUtc()),
+       _katalog = katalog ?? ModulKatalog.standard() {
     if (mitBeispieldaten) {
       for (final e in beispieldaten()) {
         final id = e.json['id'] as String;
@@ -56,6 +58,9 @@ class MockApiClient implements ApiClient {
   bool simulierterFehler = false;
 
   final DateTime Function() _uhr;
+
+  /// Erlaubte Typen pro Modul, wie sie auch das Backend prüft.
+  final ModulKatalog _katalog;
   final _eintraege = <String, Map<String, dynamic>>{};
   final _dateien = <String, Uint8List>{};
   final _zufall = Random();
@@ -361,9 +366,13 @@ class MockApiClient implements ApiClient {
 
     if (body.containsKey('typ')) {
       final typ = body['typ'];
-      if (typ is! String || !gesundheitTypen.contains(typ)) {
+      // Ein Typ gilt nur innerhalb des Moduls, zu dem der Eintrag gehört.
+      final erlaubt = [
+        for (final t in _katalog.typen(json['modul'] as String)) t.id,
+      ];
+      if (typ is! String || !erlaubt.contains(typ)) {
         throw _ungueltig(
-          'Unbekannter Typ. Erlaubt sind ${gesundheitTypen.join(', ')}.',
+          'Unbekannter Typ. Erlaubt sind ${erlaubt.join(', ')}.',
           {'feld': 'typ', 'wert': typ},
         );
       }
@@ -626,7 +635,8 @@ class MockApiClient implements ApiClient {
           ? ''
           : ' vom ${kurz.dokumentdatum!.anzeige}';
       saetze.add(
-        'Im Dokument „${typAnzeige(kurz.typ)}“$von$vom steht: '
+        'Im Dokument „${_katalog.typName(kurz.modul, kurz.typ)}“$von$vom '
+        'steht: '
         '$auszug [$nr].',
       );
     }
