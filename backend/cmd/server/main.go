@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"lifelog/backend/internal/api"
+	"lifelog/backend/internal/dienst"
 	"lifelog/backend/internal/konfig"
+	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
 )
 
@@ -48,11 +50,25 @@ func starten() error {
 		return err
 	}
 
+	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
+	// anderes Paket unter internal/modell, das Leser und Einbetter umsetzt.
+	g, err := gemini.Neu(ctx, gemini.Einstellungen{
+		Schluessel:      k.GeminiKey,
+		Modell:          k.GeminiModell,
+		ErsatzModell:    k.GeminiModellErsatz,
+		EmbeddingModell: k.GeminiEmbeddingModell,
+	})
+	if err != nil {
+		return err
+	}
+	slog.Info("Modelle", "lesen", k.GeminiModell, "ersatz", k.GeminiModellErsatz, "embedding", k.GeminiEmbeddingModell)
+
 	server := &http.Server{
 		Addr: k.Lauschadresse(),
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:        db,
 			Eintraege: db,
+			Hochladen: dienst.NeuHochladen(db, g, g, speicher.NeueID),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz

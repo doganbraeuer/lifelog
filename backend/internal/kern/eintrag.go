@@ -3,7 +3,15 @@
 // deterministisch und wird mit Unit-Tests abgedeckt.
 package kern
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrDuplikat: Es gibt schon einen Eintrag mit genau dieser Datei (gleicher
+// SHA-256-Hash). Der Speicher meldet ihn, wenn der eindeutige Index
+// anschlägt.
+var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
 
 // Eintrag ist ein vollständiger Eintrag nach docs/API.md, Abschnitt 2.
 type Eintrag struct {

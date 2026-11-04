@@ -186,7 +186,7 @@ func TestIntegration_DuplikatUeberIndex(t *testing.T) {
 	// Zweiter Eintrag mit anderer ID, aber gleichem Hash: Der eindeutige
 	// Index muss das ablehnen, auch ohne vorherige Prüfung.
 	err := s.EintragSpeichern(ctx, testEintrag(NeueID(), NeueID(), hash))
-	if !errors.Is(err, ErrDuplikat) {
+	if !errors.Is(err, kern.ErrDuplikat) {
 		t.Fatalf("erwartet ErrDuplikat, bekommen %v", err)
 	}
 

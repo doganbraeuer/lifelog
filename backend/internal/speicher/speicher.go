@@ -26,9 +26,6 @@ const (
 	bucketDateien  = "dateien"
 )
 
-// ErrDuplikat: Es gibt schon einen Eintrag mit diesem datei.sha256.
-var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
-
 // Speicher ist die Verbindung zu einer Lifelog-Datenbank.
 type Speicher struct {
 	client     *mongo.Client
@@ -142,7 +139,7 @@ func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]kern.EintragK
 // gültige ObjectIds sein.
 //
 // Gibt es schon einen Eintrag mit demselben datei.sha256, meldet der
-// eindeutige Index einen Fehler, und EintragSpeichern liefert ErrDuplikat.
+// eindeutige Index einen Fehler, und EintragSpeichern liefert kern.ErrDuplikat.
 // Das fängt den Fall ab, dass zwei gleiche Uploads gleichzeitig an der
 // Duplikat-Prüfung vorbeikommen.
 func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
@@ -152,7 +149,7 @@ func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
 	}
 	if _, err := s.eintraege.InsertOne(ctx, dok); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return ErrDuplikat
+			return kern.ErrDuplikat
 		}
 		return fmt.Errorf("Eintrag speichern: %w", err)
 	}
