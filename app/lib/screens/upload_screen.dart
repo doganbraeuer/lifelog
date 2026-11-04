@@ -155,6 +155,7 @@ class _UploadScreenState extends State<UploadScreen> {
       });
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Dokument gespeichert.')));
+      HapticFeedback.lightImpact(); // Erfolg spürbar machen
       widget.hochgeladen(eintrag);
     } on ApiFehler catch (fehler) {
       if (!mounted) return;
@@ -209,6 +210,7 @@ class _UploadScreenState extends State<UploadScreen> {
       });
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Text gespeichert.')));
+      HapticFeedback.lightImpact(); // Erfolg spürbar machen
       widget.hochgeladen(eintrag);
     } on ApiFehler catch (fehler) {
       if (!mounted) return;

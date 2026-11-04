@@ -43,6 +43,7 @@ dependencies:
   crypto: ^3.0.8
   http_parser: ^4.1.2
   pdfx: ^2.11.0
+  animations: 2.2.0
 
 dev_dependencies:
   flutter_test:

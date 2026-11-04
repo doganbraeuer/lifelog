@@ -5,6 +5,7 @@ import '../module/modul_definition.dart';
 import '../module/modul_katalog.dart';
 import '../plattform/datei_auswahl.dart';
 import '../widgets/bewegung.dart';
+import '../widgets/container_transform.dart';
 import '../widgets/mock_hinweis.dart';
 import '../widgets/navigation.dart';
 import 'modul_rahmen.dart';
@@ -56,16 +57,23 @@ class _BereicheScreenState extends State<BereicheScreen>
     super.dispose();
   }
 
-  void _oeffnen(BuildContext context, ModulDefinition modul) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => Theme(
-          data: modulTheme(modul),
-          child: ModulRahmen(
-            modul: modul,
-            api: widget.api,
-            dateiAuswahl: widget.dateiAuswahl,
-          ),
+  /// Aktive Kachel: Container Transform von der Kachel zum Modul (auf iOS
+  /// der normale Übergang). Inaktive Kachel: nur die Kachel.
+  Widget _kachel(ModulDefinition modul) {
+    if (!modul.aktiv) return _ModulKachel(modul: modul, oeffnen: null);
+    final theme = modulTheme(modul);
+    return ContainerTransform(
+      form: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      offenFarbe: theme.colorScheme.surface,
+      geschlossen: (context, oeffnen) =>
+          _ModulKachel(modul: modul, oeffnen: oeffnen),
+      // Die Seite hängt am obersten Navigator: Farbschema mitgeben.
+      offen: (_) => Theme(
+        data: theme,
+        child: ModulRahmen(
+          modul: modul,
+          api: widget.api,
+          dateiAuswahl: widget.dateiAuswahl,
         ),
       ),
     );
@@ -110,12 +118,7 @@ class _BereicheScreenState extends State<BereicheScreen>
                 begin: const Offset(0, 0.08),
                 end: Offset.zero,
               ).animate(verlauf),
-              child: _ModulKachel(
-                modul: module[i],
-                oeffnen: module[i].aktiv
-                    ? () => _oeffnen(context, module[i])
-                    : null,
-              ),
+              child: _kachel(module[i]),
             ),
           );
         },

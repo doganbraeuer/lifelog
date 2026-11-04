@@ -6,6 +6,7 @@ import '../model/eintrag.dart';
 import '../model/zeitleisten_gruppen.dart';
 import '../module/modul_katalog.dart';
 import '../widgets/bewegung.dart';
+import '../widgets/container_transform.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
@@ -201,20 +202,45 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
   /// einem Punkt pro Eintrag.
   Widget _zeitachse(List<EintragKurz> eintraege) {
     final gruppen = gruppiereZeitleiste(eintraege, _sortierung);
+    // Die Eintrag-Ansicht hängt am obersten Navigator; sie bekommt das
+    // Farbschema des Moduls mit (wie bei oeffneSeite).
+    final themes = InheritedTheme.capture(
+      from: context,
+      to: Navigator.of(context).context,
+    );
     final zeilen = <Widget>[];
     for (var g = 0; g < gruppen.length; g++) {
       final gruppe = gruppen[g];
-      zeilen.add(_MonatsUeberschrift(titel: gruppe.titel, linieOben: g > 0));
+      zeilen.add(
+        _MonatsUeberschrift(
+          key: ValueKey('monat-${gruppe.titel}'),
+          titel: gruppe.titel,
+          linieOben: g > 0,
+        ),
+      );
       for (var i = 0; i < gruppe.eintraege.length; i++) {
         final eintrag = gruppe.eintraege[i];
         final letzter =
             g == gruppen.length - 1 && i == gruppe.eintraege.length - 1;
         zeilen.add(
-          _EintragZeile(
-            eintrag: eintrag,
-            zeigeImport: _sortierung == Sortierung.importdatum,
-            linieUnten: !letzter,
-            onTap: () => eintragOeffnen(eintrag.id),
+          // Key nach Eintrag: Nach Löschen oder Umsortieren bleibt jede
+          // Zeile mit ihrem Eintrag verbunden (auch der Rücklauf des
+          // Container Transform landet am richtigen Platz).
+          ContainerTransform(
+            key: ValueKey('eintrag-${eintrag.id}'),
+            geschlossen: (context, oeffnen) => _EintragZeile(
+              eintrag: eintrag,
+              zeigeImport: _sortierung == Sortierung.importdatum,
+              linieUnten: !letzter,
+              onTap: oeffnen,
+            ),
+            offen: (_) => themes.wrap(
+              EintragScreen(api: widget.api, eintragId: eintrag.id),
+            ),
+            // Nach einer Korrektur oder dem Löschen neu laden.
+            beimSchliessen: () {
+              if (mounted) neuLaden();
+            },
           ),
         );
       }
@@ -256,7 +282,11 @@ class _AchsenMaler extends CustomPainter {
 }
 
 class _MonatsUeberschrift extends StatelessWidget {
-  const _MonatsUeberschrift({required this.titel, required this.linieOben});
+  const _MonatsUeberschrift({
+    super.key,
+    required this.titel,
+    required this.linieOben,
+  });
 
   final String titel;
   final bool linieOben;

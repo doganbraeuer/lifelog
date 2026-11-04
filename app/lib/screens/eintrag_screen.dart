@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
 import '../api/api_fehler.dart';
@@ -68,6 +69,7 @@ class _EintragScreenState extends State<EintragScreen> {
       final eintrag = await widget.api.korrigieren(widget.eintragId, aenderung);
       if (!mounted) return;
       setState(() => _eintrag = eintrag);
+      HapticFeedback.lightImpact(); // Erfolg spürbar machen
       nachricht.showSnackBar(
         const SnackBar(content: Text('Korrektur gespeichert.')),
       );
@@ -180,6 +182,7 @@ class _EintragScreenState extends State<EintragScreen> {
     try {
       await widget.api.loeschen(widget.eintragId);
       navigator.pop();
+      HapticFeedback.lightImpact();
       nachricht.showSnackBar(
         const SnackBar(content: Text('Eintrag gelöscht.')),
       );

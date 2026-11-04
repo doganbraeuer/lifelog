@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
 import '../model/eintrag.dart';
 import '../module/modul_definition.dart';
 import '../plattform/datei_auswahl.dart';
+import '../widgets/bewegung.dart';
 import '../widgets/navigation.dart';
 import 'eintrag_screen.dart';
 import 'frage_screen.dart';
@@ -55,15 +57,23 @@ class _ModulRahmenState extends State<ModulRahmen> {
   }
 
   /// Tipp in der Navigationsleiste: Leiste sofort umstellen, Seite animiert
-  /// hinterher.
-  Future<void> _zeigeSeite(int index) async {
+  /// hinterher. [haptik]: kurzes Tippgefühl, nur wenn der Nutzer selbst
+  /// wechselt (nicht beim automatischen Wechsel nach einem Upload).
+  Future<void> _zeigeSeite(int index, {bool haptik = true}) async {
     if (index == _index && _animiertZu == null) return;
+    if (haptik && index != _index) HapticFeedback.selectionClick();
     setState(() => _index = index);
+    if (bewegungAus(context)) {
+      // Ohne Animation direkt springen (Dauer 0 ist beim Scrollen nicht
+      // erlaubt).
+      _seiten.jumpToPage(index);
+      return;
+    }
     _animiertZu = index;
     await _seiten.animateToPage(
       index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      duration: Durations.medium2,
+      curve: Easing.emphasizedDecelerate,
     );
     if (_animiertZu == index) _animiertZu = null;
   }
@@ -71,13 +81,16 @@ class _ModulRahmenState extends State<ModulRahmen> {
   /// Seitenwechsel durch Wischen (oder am Ende einer Animation).
   void _seiteGewechselt(int index) {
     if (_animiertZu != null && index != _animiertZu) return;
-    if (index != _index) setState(() => _index = index);
+    if (index != _index) {
+      HapticFeedback.selectionClick();
+      setState(() => _index = index);
+    }
   }
 
   /// Wechselt zur Zeitleiste und öffnet dort den Eintrag. So führt „Zurück“
   /// aus dem Eintrag in die (neu geladene) Zeitleiste.
   void _eintragOeffnen(String eintragId) {
-    _zeigeSeite(0);
+    _zeigeSeite(0, haptik: false);
     _zeitleiste.currentState?.eintragOeffnen(eintragId);
   }
 
