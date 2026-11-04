@@ -1,0 +1,46 @@
+# Lifelog-Backend (Go)
+
+REST-API nach [docs/API.md](../docs/API.md).
+
+## Starten
+
+1. `.env` im Repo-Wurzelverzeichnis anlegen (Vorlage: `.env.example`).
+2. Im Ordner `backend/`:
+
+   ```sh
+   go run ./cmd/server
+   curl localhost:8080/api/v1/status
+   ```
+
+Standardmäßig lauscht der Server nur auf `127.0.0.1:8080`. Der
+Android-Emulator erreicht ihn über `http://10.0.2.2:8080`. Für ein echtes Handy
+im WLAN: `ADRESSE=0.0.0.0 go run ./cmd/server` und die IP des Rechners
+verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
+
+## Testen
+
+```sh
+go vet ./... && go test ./...
+```
+
+## Synthetische Testdaten
+
+Damit die Zeitleiste ohne Upload und ohne Gemini etwas zeigt:
+
+```sh
+go run ./cmd/testdaten              # 4 erfundene Einträge einfügen (mehrfach ausführbar)
+go run ./cmd/testdaten -entfernen   # wieder löschen
+```
+
+Die Testeinträge haben feste IDs. Andere Einträge bleiben unberührt.
+
+## Aufbau
+
+| Paket | Aufgabe |
+|---|---|
+| `cmd/server` | Start: Konfiguration, MongoDB, HTTP-Server, sauberes Beenden |
+| `cmd/testdaten` | Synthetische Einträge einfügen oder entfernen |
+| `internal/konfig` | Umgebungsvariablen lesen und prüfen |
+| `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung |
+| `internal/speicher` | MongoDB: Einträge, Indexe |
+| `internal/api` | Router, Handler, Fehlerformat, JSON-Typen |
