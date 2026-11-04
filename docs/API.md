@@ -157,7 +157,7 @@ So liefern `POST /eintraege`, `GET /eintraege/{id}` und
 
 | Feld | Typ | Bemerkung |
 |---|---|---|
-| `id` | String | Stabile ID innerhalb des Eintrags (`i1`, `i2`, …). Vergibt das Backend beim Upload. Darüber werden Infos korrigiert. |
+| `id` | String | Stabile ID innerhalb des Eintrags (`i1`, `i2`, …). Vergibt das Backend beim Upload, lückenlos auch dann, wenn es unvollständige Infos weglässt (siehe 3.1). Darüber werden Infos korrigiert. |
 | `name` | String | Bezeichnung, z. B. `"Hämoglobin"` |
 | `wert` | String | Immer ein String, genau wie auf dem Dokument (`"14,2"`, `"<0,5"`, `"positiv"`). So geht nichts durch Umwandeln in Zahlen verloren. |
 | `einheit` | String, optional | Fehlt, wenn das Dokument keine Einheit nennt |
@@ -299,7 +299,10 @@ Hausarztpraxis Beispiel
    Sprachmodell den Text und liefert dieselben Felder außer `volltext`;
    `volltext` ist der eingegebene Text.
 4. Das JSON prüfen (Pflichtfelder, Datumsformat, erlaubter `typ` des
-   Moduls) und `modul` setzen.
+   Moduls) und `modul` setzen. Eine einzelne Info ohne `name` oder ohne
+   `wert` lässt das Backend **weg**, statt den ganzen Upload abzulehnen. Ins
+   Log schreibt es nur, welches Feld fehlte (z. B. `infos[2].wert`), **nie**
+   einen Wert. Die übrigen Infos werden lückenlos nummeriert (`i1`, `i2`, …).
 5. Volltext in Abschnitte zerlegen und Embeddings berechnen.
 6. Eintrag, Abschnitte mit Embeddings und Originaldatei speichern.
 
@@ -846,3 +849,6 @@ vorhandene Fehlercodes.
    nie `null`.
 5. **Status** ([3.8](#38-status-health-check)): `GET /status` als
    Health-Check, `200` oder `503`.
+6. **Unvollständige Infos** ([3.1](#31-datei-oder-text-hochladen-und-auslesen),
+   Schritt 4): Infos ohne `name` oder `wert` werden beim Upload weggelassen,
+   nicht abgelehnt. Im Log steht nur das Feld, nie der Wert.
