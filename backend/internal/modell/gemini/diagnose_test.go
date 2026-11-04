@@ -11,11 +11,20 @@ package gemini
 //	ohne-schema  ohne JSON-Schema und ohne JSON-Modus ("ohne Structured Output")
 //	ohne-system  zusätzlich ohne Systemanweisung (wie der Playground-Test)
 //
-// Schickt nur das synthetische testdaten/laborbefund.pdf.
+// Weitere Schalter, um andere Modelle zu vergleichen:
+//
+//	LIFELOG_DIAGNOSE_MODELL=gemini-3.6-flash   statt GEMINI_MODELL
+//	LIFELOG_DIAGNOSE_DATEI=laborbefund.png     statt laborbefund.pdf (oder ein
+//	                                           absoluter Pfad, nur synthetisch!)
+//	LIFELOG_DIAGNOSE_THINKING=aus              ohne ThinkingConfig (für Modelle
+//	                                           ohne thinkingLevel)
+//
+// Schickt nur synthetische Dateien aus testdaten/.
 
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -50,8 +59,34 @@ func TestDiagnose_Lesen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	daten := testdatei(t, "laborbefund.pdf")
-	inhalte, cfg := leseAnfrage(daten, kern.MimePDF, kern.ErlaubteTypen("gesundheit"))
+	modellName := k.GeminiModell
+	if m := os.Getenv("LIFELOG_DIAGNOSE_MODELL"); m != "" {
+		modellName = m
+	}
+	dateiname := os.Getenv("LIFELOG_DIAGNOSE_DATEI")
+	if dateiname == "" {
+		dateiname = "laborbefund.pdf"
+	}
+	// Ein absoluter Pfad erlaubt umgewandelte Varianten außerhalb des Repos
+	// (z. B. dieselbe Seite als JPEG); sonst eine Datei aus testdaten/.
+	var daten []byte
+	if filepath.IsAbs(dateiname) {
+		if daten, err = os.ReadFile(dateiname); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		daten = testdatei(t, dateiname)
+	}
+	mimeTyp, err := kern.ErkenneDateityp(daten)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inhalte, cfg := leseAnfrage(daten, mimeTyp, kern.ErlaubteTypen("gesundheit"))
+	thinking := string(cfg.ThinkingConfig.ThinkingLevel)
+	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "aus" {
+		cfg.ThinkingConfig, thinking = nil, "aus"
+	}
 	switch variante {
 	case "voll":
 	case "ohne-schema":
@@ -62,14 +97,14 @@ func TestDiagnose_Lesen(t *testing.T) {
 	default:
 		t.Fatalf("unbekannte Variante %q", variante)
 	}
-	t.Logf("Modell %s, Variante %s, Thinking %s, Limit %v, PDF %d Bytes",
-		k.GeminiModell, variante, cfg.ThinkingConfig.ThinkingLevel, diagnoseLimit, len(daten))
+	t.Logf("Modell %s, Variante %s, Thinking %s, Limit %v, %s (%s, %d Bytes)",
+		modellName, variante, thinking, diagnoseLimit, dateiname, mimeTyp, len(daten))
 
 	ctx, abbrechen := context.WithTimeout(context.Background(), diagnoseLimit)
 	defer abbrechen()
 
 	start := time.Now()
-	resp, err := g.erzeugen(ctx, k.GeminiModell, inhalte, cfg)
+	resp, err := g.erzeugen(ctx, modellName, inhalte, cfg)
 	dauer := time.Since(start).Round(time.Millisecond)
 
 	if err != nil {
@@ -109,6 +144,10 @@ func TestDiagnose_Lesen(t *testing.T) {
 		}
 		t.Logf("Geprüft: typ=%s datum=%s quelle=%s, %d Infos, ausgelassen %v",
 			eintrag.Typ, deref(eintrag.Dokumentdatum), deref(eintrag.Quelle), len(eintrag.Infos), ausgelassen)
+		// Die Werte sind synthetisch (testdaten/), dürfen also ins Testlog.
+		for _, i := range eintrag.Infos {
+			t.Logf("  %s = %q %s", i.Name, i.Wert, deref(i.Einheit))
+		}
 	}
 }
 
