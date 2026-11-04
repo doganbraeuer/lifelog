@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -78,9 +79,11 @@ class MockApiClient implements ApiClient {
 
   @override
   Future<List<EintragKurz>> eintraege({
+    required String modul,
     Sortierung sortierung = Sortierung.dokumentdatum,
     Richtung richtung = Richtung.absteigend,
   }) => eintraegeMitParametern({
+    'modul': modul,
     'sortierung': sortierung.name,
     'richtung': richtung.name,
   });
@@ -92,6 +95,15 @@ class MockApiClient implements ApiClient {
     Map<String, String> parameter,
   ) async {
     await _warte(verzoegerung);
+    final modul = parameter['modul'] ?? '';
+    if (!_modulBekannt(modul)) {
+      throw ApiFehler(
+        httpStatus: 400,
+        code: FehlerCode.ungueltigerParameter,
+        nachricht: _unbekanntesModul,
+        details: {'parameter': 'modul', 'wert': modul},
+      );
+    }
     final sortierung = _enumParameter(
       parameter,
       'sortierung',
@@ -106,11 +118,65 @@ class MockApiClient implements ApiClient {
       Richtung.absteigend,
       'Unbekannte Richtung. Erlaubt sind absteigend und aufsteigend.',
     );
+    final gewaehlt = _modulOderStandard(modul);
     return sortiereZeitleiste(
-      _eintraege.values.map(EintragKurz.fromJson),
+      _eintraege.values
+          .where((json) => json['modul'] == gewaehlt)
+          .map(EintragKurz.fromJson),
       sortierung,
       richtung,
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Module (docs/API.md, Abschnitt 1 „Module“)
+  // ---------------------------------------------------------------------
+
+  static const _unbekanntesModul = 'Unbekanntes Modul.';
+
+  /// Fehlt `modul` oder ist es leer, gilt `gesundheit`.
+  static String _modulOderStandard(String modul) =>
+      modul.isEmpty ? 'gesundheit' : modul;
+
+  /// Bekannt ist jedes Modul aus dem Katalog. (Das echte Backend kennt im
+  /// Prototyp nur `gesundheit`; die App fragt andere Module aber gar nicht
+  /// an, solange sie inaktiv sind.)
+  bool _modulBekannt(String modul) =>
+      _katalog.nachId(_modulOderStandard(modul)) != null;
+
+  /// Prüft das Modul für Upload, Text-Import und Frage: unbekannt ergibt
+  /// `400 UNGUELTIGE_ANFRAGE`. Gibt die gültige Modul-ID zurück.
+  String _pruefeModul(String modul) {
+    if (!_modulBekannt(modul)) {
+      throw ApiFehler(
+        httpStatus: 400,
+        code: FehlerCode.ungueltigeAnfrage,
+        nachricht: _unbekanntesModul,
+        details: {'feld': 'modul', 'wert': modul},
+      );
+    }
+    return _modulOderStandard(modul);
+  }
+
+  /// Wie [_pruefeModul], dazu: In ein Modul ohne Typen kann nichts
+  /// importiert werden, weil es keinen erlaubten `typ` gibt.
+  String _pruefeImportModul(String modul) {
+    final id = _pruefeModul(modul);
+    if (_katalog.typen(id).isEmpty) {
+      throw ApiFehler(
+        httpStatus: 400,
+        code: FehlerCode.ungueltigeAnfrage,
+        nachricht: 'In diesem Modul ist noch kein Import möglich.',
+        details: {'feld': 'modul', 'wert': modul},
+      );
+    }
+    return id;
+  }
+
+  /// Bevorzugter Typ, falls das Modul ihn kennt, sonst der erste.
+  String _typFuer(String modul, String bevorzugt) {
+    final typen = _katalog.typen(modul).map((t) => t.id).toList();
+    return typen.contains(bevorzugt) ? bevorzugt : typen.first;
   }
 
   T _enumParameter<T extends Enum>(
@@ -181,10 +247,15 @@ class MockApiClient implements ApiClient {
   // ---------------------------------------------------------------------
 
   @override
-  Future<Eintrag> hochladen(Uint8List bytes, String dateiname) async {
+  Future<Eintrag> hochladen(
+    Uint8List bytes,
+    String dateiname, {
+    required String modul,
+  }) async {
     await _warte(uploadVerzoegerung);
 
-    // 1. Größe und Typ prüfen.
+    // 1. Modul, Größe und Typ prüfen.
+    final modulId = _pruefeImportModul(modul);
     if (bytes.isEmpty) {
       throw const ApiFehler(
         httpStatus: 400,
@@ -212,21 +283,124 @@ class MockApiClient implements ApiClient {
     }
 
     // 2. Duplikat-Prüfung über den SHA-256-Hash, vor dem Modellaufruf.
+    final hash = _pruefeDuplikat(
+      bytes,
+      'Diese Datei hast du schon hochgeladen.',
+    );
+
+    // 3. "Vision-LLM": Fehler lassen sich über den Dateinamen auslösen.
+    _pruefeAusloeser(dateiname);
+
+    // 4.–6. Eintrag anlegen und speichern.
+    return _speichern(
+      modul: modulId,
+      typ: _typFuer(modulId, 'arztbrief'),
+      dokumentdatum: Datum.aus(_uhr().toLocal()),
+      quelle: 'Mock-Praxis Beispiel',
+      volltext:
+          'Mock-Praxis Beispiel\n'
+          'Dieser Eintrag stammt aus dem Mock, nicht aus einer echten '
+          'Auswertung.\n'
+          'Dateiname: $dateiname\n'
+          'Blutdruck 120/80 mmHg',
+      infos: [
+        {'id': 'i1', 'name': 'Blutdruck', 'wert': '120/80', 'einheit': 'mmHg'},
+      ],
+      dateiname: dateiname,
+      mimeTyp: mimeTyp,
+      bytes: bytes,
+      hash: hash,
+    );
+  }
+
+  /// Datum `TT.MM.JJJJ` im Text (z. B. „vom 21.10.2026“).
+  static final _datumImText = RegExp(r'\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b');
+
+  @override
+  Future<Eintrag> textImportieren(String text, {required String modul}) async {
+    await _warte(uploadVerzoegerung);
+
+    // 1. Modul und Text prüfen.
+    final modulId = _pruefeImportModul(modul);
+    if (text.trim().isEmpty) {
+      throw const ApiFehler(
+        httpStatus: 400,
+        code: FehlerCode.dateiFehlt,
+        nachricht: 'Bitte einen Text eingeben.',
+      );
+    }
+    if (text.runes.length > maxTextLaenge) {
+      throw const ApiFehler(
+        httpStatus: 413,
+        code: FehlerCode.dateiZuGross,
+        nachricht: 'Der Text ist länger als 100 000 Zeichen.',
+        details: {'maxZeichen': maxTextLaenge},
+      );
+    }
+
+    // 2. Der Text wird als text.txt gespeichert; Duplikat über diese Bytes.
+    final bytes = Uint8List.fromList(utf8.encode(text));
+    final hash = _pruefeDuplikat(
+      bytes,
+      'Diesen Text hast du schon importiert.',
+    );
+
+    // 3. "Sprachmodell": Auslöser wie beim Dateinamen, hier im Text.
+    _pruefeAusloeser(text);
+
+    // Statt eines Modells: erstes Datum im Text, erste Zeile als Quelle.
+    // volltext ist der eingegebene Text, unverändert (docs/API.md 3.1).
+    Datum? datum;
+    for (final treffer in _datumImText.allMatches(text)) {
+      final tag = int.parse(treffer[1]!);
+      final monat = int.parse(treffer[2]!);
+      final jahr = int.parse(treffer[3]!);
+      if (Datum.istGueltig(jahr, monat, tag)) {
+        datum = Datum(jahr, monat, tag);
+        break;
+      }
+    }
+    final ersteZeile = text
+        .split('\n')
+        .map((z) => z.trim())
+        .firstWhere((z) => z.isNotEmpty);
+
+    return _speichern(
+      modul: modulId,
+      typ: _typFuer(modulId, 'sonstiges'),
+      dokumentdatum: datum,
+      quelle: ersteZeile,
+      volltext: text,
+      infos: const [],
+      dateiname: 'text.txt',
+      mimeTyp: 'text/plain; charset=utf-8',
+      bytes: bytes,
+      hash: hash,
+    );
+  }
+
+  /// Wirft `409 DUPLIKAT`, wenn es den Hash schon gibt (über alle Module).
+  /// Gibt sonst den Hash zurück.
+  String _pruefeDuplikat(Uint8List bytes, String nachricht) {
     final hash = sha256.convert(bytes).toString();
     for (final json in _eintraege.values) {
       if (objekt(json['datei'], 'datei')['sha256'] == hash) {
         throw ApiFehler(
           httpStatus: 409,
           code: FehlerCode.duplikat,
-          nachricht: 'Diese Datei hast du schon hochgeladen.',
+          nachricht: nachricht,
           details: {'eintragId': json['id']},
         );
       }
     }
+    return hash;
+  }
 
-    // 3. "Vision-LLM": Fehler lassen sich über den Dateinamen auslösen.
-    final name = dateiname.toLowerCase();
-    if (name.contains('unlesbar')) {
+  /// Fehler des Modells zum Ausprobieren: `unlesbar`, `auslesefehler`
+  /// oder `modellfehler` im Dateinamen bzw. im Text.
+  void _pruefeAusloeser(String inhalt) {
+    final klein = inhalt.toLowerCase();
+    if (klein.contains('unlesbar')) {
       throw const ApiFehler(
         httpStatus: 422,
         code: FehlerCode.nichtLesbar,
@@ -235,7 +409,7 @@ class MockApiClient implements ApiClient {
             'Versuche es mit einem schärferen Foto.',
       );
     }
-    if (name.contains('auslesefehler')) {
+    if (klein.contains('auslesefehler')) {
       throw const ApiFehler(
         httpStatus: 502,
         code: FehlerCode.auslesenFehlgeschlagen,
@@ -244,33 +418,35 @@ class MockApiClient implements ApiClient {
             'Bitte später noch einmal versuchen.',
       );
     }
-    if (name.contains('modellfehler')) {
+    if (klein.contains('modellfehler')) {
       throw _modellNichtErreichbar;
     }
+  }
 
-    // 4.–6. Eintrag anlegen und speichern.
-    final jetzt = _uhr();
+  /// Legt einen neuen Eintrag samt Originaldatei an.
+  Eintrag _speichern({
+    required String modul,
+    required String typ,
+    required Datum? dokumentdatum,
+    required String? quelle,
+    required String volltext,
+    required List<Map<String, dynamic>> infos,
+    required String dateiname,
+    required String mimeTyp,
+    required Uint8List bytes,
+    required String hash,
+  }) {
     final id = _neueId();
     final json = <String, dynamic>{
       'id': id,
-      'modul': 'gesundheit',
-      'typ': 'arztbrief',
-      'dokumentdatum': Datum.aus(jetzt.toLocal()).iso,
-      'importdatum': formatZeitpunkt(jetzt),
-      'quelle': 'Mock-Praxis Beispiel',
-      'volltext':
-          'Mock-Praxis Beispiel\n'
-          'Dieser Eintrag stammt aus dem Mock, nicht aus einer echten '
-          'Auswertung.\n'
-          'Dateiname: $dateiname\n'
-          'Blutdruck 120/80 mmHg',
+      'modul': modul,
+      'typ': typ,
+      'dokumentdatum': dokumentdatum?.iso,
+      'importdatum': formatZeitpunkt(_uhr()),
+      'quelle': quelle,
+      'volltext': volltext,
       'infos': <dynamic>[
-        <String, dynamic>{
-          'id': 'i1',
-          'name': 'Blutdruck',
-          'wert': '120/80',
-          'einheit': 'mmHg',
-        },
+        for (final info in infos) <String, dynamic>{...info},
       ],
       'datei': <String, dynamic>{
         'id': _neueId(),
@@ -284,6 +460,20 @@ class MockApiClient implements ApiClient {
     _eintraege[id] = json;
     _dateien[id] = Uint8List.fromList(bytes);
     return Eintrag.fromJson(json);
+  }
+
+  // ---------------------------------------------------------------------
+  // DELETE /eintraege/{id}
+  // ---------------------------------------------------------------------
+
+  @override
+  Future<void> loeschen(String id) async {
+    await _warte(verzoegerung);
+    final json = _finde(id); // 400 UNGUELTIGE_ID oder 404
+    // Im Mock gibt es keine Abschnitte; Datei und Eintrag verschwinden.
+    // Danach ist der Hash frei, dieselbe Datei lässt sich neu hochladen.
+    _dateien.remove(json['id']);
+    _eintraege.remove(json['id']);
   }
 
   /// ID im Stil einer MongoDB-ObjectId: 24 Hex-Zeichen.
@@ -406,7 +596,8 @@ class MockApiClient implements ApiClient {
           'wert': wert,
         });
       }
-      ergebnis.add(('quelle', wert as String?));
+      // Leerraum entfernen; bleibt nichts übrig, gilt das wie null (3.5).
+      ergebnis.add(('quelle', _ohneLeerraum(wert as String?)));
     }
 
     if (body.containsKey('infos')) {
@@ -460,7 +651,14 @@ class MockApiClient implements ApiClient {
               'wert': wert,
             });
           }
-          ergebnis.add(('infos.$id.wert', wert));
+          // Eine Info hat immer einen Wert: leer ist ein Fehler (3.5).
+          if (wert.trim().isEmpty) {
+            throw _ungueltig('Der Wert darf nicht leer sein.', {
+              'feld': 'infos.$id.wert',
+              'wert': wert,
+            });
+          }
+          ergebnis.add(('infos.$id.wert', wert.trim()));
         }
         if (element.containsKey('einheit')) {
           final einheit = element['einheit'];
@@ -470,11 +668,20 @@ class MockApiClient implements ApiClient {
               'wert': einheit,
             });
           }
-          ergebnis.add(('infos.$id.einheit', einheit as String?));
+          ergebnis.add((
+            'infos.$id.einheit',
+            _ohneLeerraum(einheit as String?),
+          ));
         }
       }
     }
     return ergebnis;
+  }
+
+  /// Entfernt Leerraum am Anfang und Ende; ein leerer Text wird zu `null`.
+  static String? _ohneLeerraum(String? text) {
+    final ohne = text?.trim();
+    return (ohne == null || ohne.isEmpty) ? null : ohne;
   }
 
   /// Setzt ein Feld und pflegt `korrekturen` nach den Regeln aus
@@ -563,8 +770,9 @@ class MockApiClient implements ApiClient {
   static const maxFrageLaenge = 500;
 
   @override
-  Future<FrageAntwort> fragen(String frage) async {
+  Future<FrageAntwort> fragen(String frage, {required String modul}) async {
     await _warte(verzoegerung);
+    // Wie im Backend: erst die Frage prüfen, dann das Modul.
     if (frage.trim().isEmpty) {
       throw const ApiFehler(
         httpStatus: 400,
@@ -583,6 +791,7 @@ class MockApiClient implements ApiClient {
         details: {'maxZeichen': maxFrageLaenge, 'laenge': laenge},
       );
     }
+    final modulId = _pruefeModul(modul);
     final woerter = _woerter(frage).where((w) => !_stoppwoerter.contains(w));
     if (woerter.contains('modellfehler')) throw _modellNichtErreichbar;
 
@@ -591,7 +800,8 @@ class MockApiClient implements ApiClient {
     // (oder umgekehrt, damit "Hämoglobinwert" auch "Hämoglobin" findet).
     final suchwoerter = woerter.where((w) => w.length >= 4).toSet();
     final treffer = <(int, Map<String, dynamic>, String)>[];
-    for (final json in _eintraege.values) {
+    // Nur Dokumente des gewählten Moduls durchsuchen.
+    for (final json in _eintraege.values.where((j) => j['modul'] == modulId)) {
       for (final zeile in (json['volltext'] as String).split('\n')) {
         final zeilenWoerter = _woerter(zeile)
             .where((w) => w.length >= 4)
@@ -624,6 +834,7 @@ class MockApiClient implements ApiClient {
         Quelle(
           nr: nr,
           eintragId: kurz.id,
+          modul: kurz.modul,
           typ: kurz.typ,
           quelle: kurz.quelle,
           dokumentdatum: kurz.dokumentdatum,

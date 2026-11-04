@@ -53,6 +53,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     });
     try {
       final eintraege = await widget.api.eintraege(
+        modul: widget.modulId,
         sortierung: _sortierung,
         richtung: _richtung,
       );

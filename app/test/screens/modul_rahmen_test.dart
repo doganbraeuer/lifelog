@@ -144,6 +144,7 @@ void main() {
         await mock.hochladen(
           Uint8List.fromList(utf8.encode('%PDF-1.4 Nr. $i')),
           'dokument_$i.pdf',
+          modul: 'gesundheit',
         );
       }
       await starten(tester, mock);
@@ -253,7 +254,11 @@ void main() {
   testWidgets('Duplikat: „Vorhandenen Eintrag öffnen“ wechselt zur '
       'Zeitleiste', (tester) async {
     final mock = schnellerMock();
-    await mock.hochladen(testPdf('doppelt.pdf').bytes, 'doppelt.pdf');
+    await mock.hochladen(
+      testPdf('doppelt.pdf').bytes,
+      'doppelt.pdf',
+      modul: 'gesundheit',
+    );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
     await starten(tester, mock, auswahl: auswahl);
     await tester.tap(navigation('Hochladen'));

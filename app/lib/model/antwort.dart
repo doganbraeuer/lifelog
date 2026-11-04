@@ -28,6 +28,7 @@ class Quelle {
   const Quelle({
     required this.nr,
     required this.eintragId,
+    required this.modul,
     required this.typ,
     required this.quelle,
     required this.dokumentdatum,
@@ -37,14 +38,20 @@ class Quelle {
   factory Quelle.fromJson(Map<String, dynamic> json) => Quelle(
     nr: ganzzahl(json, 'nr'),
     eintragId: text(json, 'eintragId'),
+    modul: text(json, 'modul'),
     typ: text(json, 'typ'),
     quelle: textOderNull(json, 'quelle'),
     dokumentdatum: datumOderNull(json, 'dokumentdatum'),
     auszug: text(json, 'auszug'),
   );
 
+  /// Passt zum Verweis `[nr]` im Antworttext. Nicht unbedingt lückenlos
+  /// (z. B. nur 1 und 3), weil nur zitierte Abschnitte geliefert werden.
   final int nr;
   final String eintragId;
+
+  /// Modul des Eintrags. Ein `typ` ist nur zusammen damit eindeutig.
+  final String modul;
   final String typ;
   final String? quelle;
   final Datum? dokumentdatum;

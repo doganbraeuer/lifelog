@@ -82,7 +82,7 @@ void main() {
       expect(eintrag.korrektur('dokumentdatum')?.korrigiert, isNull);
 
       // Ein Eintrag ohne Datum steht jetzt am Ende der Zeitleiste.
-      final liste = await mock.eintraege();
+      final liste = await mock.eintraege(modul: 'gesundheit');
       expect(liste.last.id, laborId);
 
       eintrag = await mock.korrigieren(

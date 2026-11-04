@@ -46,11 +46,13 @@ class HttpApiClient implements ApiClient {
 
   @override
   Future<List<EintragKurz>> eintraege({
+    required String modul,
     Sortierung sortierung = Sortierung.dokumentdatum,
     Richtung richtung = Richtung.absteigend,
   }) async {
     final uri = _uri('/eintraege').replace(
       queryParameters: {
+        'modul': modul,
         'sortierung': sortierung.name,
         'richtung': richtung.name,
       },
@@ -88,9 +90,14 @@ class HttpApiClient implements ApiClient {
   }
 
   @override
-  Future<Eintrag> hochladen(Uint8List bytes, String dateiname) async {
+  Future<Eintrag> hochladen(
+    Uint8List bytes,
+    String dateiname, {
+    required String modul,
+  }) async {
     final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
       ..headers['Accept'] = 'application/json'
+      ..fields['modul'] = modul
       ..files.add(
         http.MultipartFile.fromBytes(
           'datei',
@@ -101,6 +108,22 @@ class HttpApiClient implements ApiClient {
           ),
         ),
       );
+    return _formularSenden(anfrage);
+  }
+
+  @override
+  Future<Eintrag> textImportieren(String text, {required String modul}) {
+    // Gleicher Endpunkt wie der Upload, nur Feld `text` statt `datei`.
+    // MultipartRequest schickt Formularfelder als UTF-8.
+    final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
+      ..headers['Accept'] = 'application/json'
+      ..fields['text'] = text
+      ..fields['modul'] = modul;
+    return _formularSenden(anfrage);
+  }
+
+  /// Schickt Upload oder Text-Import. Das Backend braucht bis zu ca. 60 s.
+  Future<Eintrag> _formularSenden(http.MultipartRequest anfrage) async {
     final antwort = await _senden(
       () async => http.Response.fromStream(await _client.send(anfrage)),
       uploadTimeout,
@@ -122,12 +145,21 @@ class HttpApiClient implements ApiClient {
   }
 
   @override
-  Future<FrageAntwort> fragen(String frage) async {
+  Future<void> loeschen(String id) async {
+    // Erfolg ist 204 ohne Body; Fehler kommen wie immer als JSON.
+    await _senden(
+      () => _client.delete(_uri(_eintragPfad(id)), headers: _jsonHeader),
+      standardTimeout,
+    );
+  }
+
+  @override
+  Future<FrageAntwort> fragen(String frage, {required String modul}) async {
     final antwort = await _senden(
       () => _client.post(
         _uri('/fragen'),
         headers: _jsonHeader,
-        body: jsonEncode({'frage': frage}),
+        body: jsonEncode({'frage': frage, 'modul': modul}),
       ),
       langerTimeout,
     );

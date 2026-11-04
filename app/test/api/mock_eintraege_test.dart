@@ -10,7 +10,7 @@ void main() {
     test(
       'Standard: Reihenfolge wie im Beispiel aus docs/API.md, 3.2',
       () async {
-        final liste = await schnellerMock().eintraege();
+        final liste = await schnellerMock().eintraege(modul: 'gesundheit');
         expect(liste.map((e) => e.id), [laborId, arztbriefId, sonstigesId]);
         expect(liste.last.dokumentdatum, isNull);
         expect(liste.last.quelle, isNull);
@@ -21,6 +21,7 @@ void main() {
       final liste = await schnellerMock().eintraege(
         sortierung: Sortierung.importdatum,
         richtung: Richtung.aufsteigend,
+        modul: 'gesundheit',
       );
       expect(liste.map((e) => e.id), [laborId, arztbriefId, sonstigesId]);
     });
@@ -28,6 +29,7 @@ void main() {
     test('dokumentdatum aufsteigend: ohne Datum am Ende', () async {
       final liste = await schnellerMock().eintraege(
         richtung: Richtung.aufsteigend,
+        modul: 'gesundheit',
       );
       expect(liste.map((e) => e.id), [arztbriefId, laborId, sonstigesId]);
     });
@@ -58,7 +60,11 @@ void main() {
     });
 
     test('ohne Einträge eine leere Liste', () async {
-      expect(await schnellerMock(mitBeispieldaten: false).eintraege(), isEmpty);
+      expect(
+        await schnellerMock(mitBeispieldaten: false)
+            .eintraege(modul: 'gesundheit'),
+        isEmpty,
+      );
     });
   });
 
@@ -122,7 +128,7 @@ void main() {
   test('simulierterFehler: 500 INTERNER_FEHLER', () async {
     final mock = schnellerMock()..simulierterFehler = true;
     await expectLater(
-      mock.eintraege(),
+      mock.eintraege(modul: 'gesundheit'),
       wirftApiFehler(FehlerCode.internerFehler, status: 500),
     );
   });

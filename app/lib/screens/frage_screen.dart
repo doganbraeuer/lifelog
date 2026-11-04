@@ -69,7 +69,7 @@ class _FrageScreenState extends State<FrageScreen> {
       _sucht = true;
     });
     try {
-      final antwort = await widget.api.fragen(text);
+      final antwort = await widget.api.fragen(text, modul: widget.modulId);
       if (!mounted) return;
       setState(() => _antwort = antwort);
     } on ApiFehler catch (fehler) {

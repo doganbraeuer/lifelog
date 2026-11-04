@@ -10,6 +10,7 @@ void main() {
   test('Frage mit Treffer: Antwort mit [1] und Quelle', () async {
     final antwort = await schnellerMock().fragen(
       'Welchen Hämoglobinwert hatte ich im Oktober?',
+      modul: 'gesundheit',
     );
 
     expect(antwort.gefunden, isTrue);
@@ -30,13 +31,14 @@ void main() {
       laborId,
       EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 15))),
     );
-    final antwort = await mock.fragen('Hämoglobin');
+    final antwort = await mock.fragen('Hämoglobin', modul: 'gesundheit');
     expect(antwort.quellen.single.dokumentdatum, Datum(2026, 10, 15));
   });
 
   test('ohne Treffer: fester Satz, keine Quellen', () async {
     final antwort = await schnellerMock().fragen(
       'Wie war das Wetter in Paris?',
+      modul: 'gesundheit',
     );
     expect(antwort.gefunden, isFalse);
     expect(antwort.antwort, 'Dazu finde ich nichts in deinen Dokumenten.');
@@ -47,7 +49,7 @@ void main() {
   test('leere Frage: 400 FRAGE_FEHLT', () async {
     for (final frage in ['', '   ', '\n\t']) {
       await expectLater(
-        schnellerMock().fragen(frage),
+        schnellerMock().fragen(frage, modul: 'gesundheit'),
         wirftApiFehler(FehlerCode.frageFehlt, status: 400),
       );
     }
@@ -55,16 +57,19 @@ void main() {
 
   test('über 500 Zeichen: 400 FRAGE_ZU_LANG, genau 500 ist erlaubt', () async {
     await expectLater(
-      schnellerMock().fragen('a' * 501),
+      schnellerMock().fragen('a' * 501, modul: 'gesundheit'),
       wirftApiFehler(FehlerCode.frageZuLang, status: 400),
     );
-    final antwort = await schnellerMock().fragen('a' * 500);
+    final antwort = await schnellerMock().fragen(
+      'a' * 500,
+      modul: 'gesundheit',
+    );
     expect(antwort.gefunden, isFalse);
   });
 
   test('"modellfehler": 503 MODELL_NICHT_ERREICHBAR', () async {
     await expectLater(
-      schnellerMock().fragen('Test modellfehler'),
+      schnellerMock().fragen('Test modellfehler', modul: 'gesundheit'),
       wirftApiFehler(FehlerCode.modellNichtErreichbar, status: 503),
     );
   });

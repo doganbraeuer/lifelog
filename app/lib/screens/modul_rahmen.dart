@@ -116,6 +116,7 @@ class _ModulRahmenState extends State<ModulRahmen> {
             child: UploadScreen(
               api: widget.api,
               dateiAuswahl: widget.dateiAuswahl,
+              modulId: widget.modul.id,
               hochgeladen: _hochgeladen,
               eintragOeffnen: _eintragOeffnen,
             ),

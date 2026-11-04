@@ -24,12 +24,16 @@ class UploadScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.dateiAuswahl,
+    required this.modulId,
     required this.hochgeladen,
     required this.eintragOeffnen,
   });
 
   final ApiClient api;
   final DateiAuswahl dateiAuswahl;
+
+  /// Modul, in das hochgeladen wird (Feld `modul` beim Upload).
+  final String modulId;
 
   /// Nach erfolgreichem Upload mit dem neuen Eintrag.
   final void Function(Eintrag eintrag) hochgeladen;
@@ -123,7 +127,11 @@ class _UploadScreenState extends State<UploadScreen> {
       _fehler = null;
     });
     try {
-      final eintrag = await widget.api.hochladen(datei.bytes, datei.name);
+      final eintrag = await widget.api.hochladen(
+        datei.bytes,
+        datei.name,
+        modul: widget.modulId,
+      );
       if (!mounted) return;
       setState(() {
         _laedtHoch = false;
