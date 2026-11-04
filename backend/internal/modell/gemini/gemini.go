@@ -116,18 +116,7 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 		defer hauptAbbrechen()
 	}
 
-	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
-		genai.NewPartFromBytes(daten, mimeTyp),
-		genai.NewPartFromText("Übertrage dieses Dokument nach den Regeln in JSON."),
-	}, genai.RoleUser)}
-	cfg := &genai.GenerateContentConfig{
-		SystemInstruction:  genai.NewContentFromText(leseAnweisung(erlaubteTypen), genai.RoleUser),
-		ResponseMIMEType:   "application/json",
-		ResponseJsonSchema: leseSchema(erlaubteTypen),
-		// Abschreiben braucht wenig „Nachdenken“; LOW hält die Antwortzeit
-		// im Budget.
-		ThinkingConfig: &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
-	}
+	inhalte, cfg := leseAnfrage(daten, mimeTyp, erlaubteTypen)
 
 	var resp *genai.GenerateContentResponse
 	err := g.neuWiederholer("Lesen "+g.e.Modell).ausfuehren(hauptCtx, func(ctx context.Context) error {
@@ -154,6 +143,25 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 		return kern.Erkennung{}, err
 	}
 	return erkennungAusAntwort(resp)
+}
+
+// leseAnfrage baut Inhalt und Konfiguration für das Lesen eines Dokuments.
+// Eigene Funktion, damit der Diagnose-Test (diagnose_test.go) genau
+// dieselbe Anfrage schickt wie der Server.
+func leseAnfrage(daten []byte, mimeTyp string, erlaubteTypen []string) ([]*genai.Content, *genai.GenerateContentConfig) {
+	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
+		genai.NewPartFromBytes(daten, mimeTyp),
+		genai.NewPartFromText("Übertrage dieses Dokument nach den Regeln in JSON."),
+	}, genai.RoleUser)}
+	cfg := &genai.GenerateContentConfig{
+		SystemInstruction:  genai.NewContentFromText(leseAnweisung(erlaubteTypen), genai.RoleUser),
+		ResponseMIMEType:   "application/json",
+		ResponseJsonSchema: leseSchema(erlaubteTypen),
+		// Abschreiben braucht wenig „Nachdenken“. Im AI Studio Playground
+		// (04.11.2026, gleiches PDF): LOW 3,4 s, MEDIUM 5,9 s.
+		ThinkingConfig: &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
+	}
+	return inhalte, cfg
 }
 
 // AbschnitteEinbetten berechnet einen Vektor pro Abschnitt, in Stapeln.
