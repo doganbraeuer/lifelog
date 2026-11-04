@@ -14,8 +14,8 @@ import 'zeitleiste_screen.dart';
 /// Hochladen, Fragen). Alle Module nutzen diesen Rahmen; das Farbschema
 /// setzt der Screen „Bereiche“ beim Öffnen.
 ///
-/// `IndexedStack` hält alle drei Bereiche am Leben. Wechselt man den
-/// Bereich, bleiben Scroll-Position und Sortierung der Zeitleiste erhalten.
+/// Die drei Seiten liegen in einer `PageView` (Wischen oder Navigationsleiste)
+/// und bleiben dabei am Leben, damit ihr Zustand erhalten bleibt.
 class ModulRahmen extends StatefulWidget {
   const ModulRahmen({
     super.key,
@@ -33,15 +33,51 @@ class ModulRahmen extends StatefulWidget {
 }
 
 class _ModulRahmenState extends State<ModulRahmen> {
+  /// Seite, die in der Navigationsleiste markiert ist.
   var _index = 0;
 
+  final _seiten = PageController();
+
+  /// Ziel, solange nach einem Tipp in der Navigationsleiste animiert wird.
+  /// Beim Sprung von Seite 0 zu 2 meldet die PageView unterwegs auch
+  /// Seite 1; ohne diese Sperre würde die Leiste kurz „Hochladen“ zeigen.
+  int? _animiertZu;
+
   /// Zugriff auf die Zeitleiste, um sie neu zu laden und Einträge zu öffnen.
+  /// Funktioniert auch, wenn gerade eine andere Seite sichtbar ist, weil
+  /// alle Seiten am Leben bleiben (siehe [_AmLeben]).
   final _zeitleiste = GlobalKey<ZeitleisteScreenState>();
+
+  @override
+  void dispose() {
+    _seiten.dispose();
+    super.dispose();
+  }
+
+  /// Tipp in der Navigationsleiste: Leiste sofort umstellen, Seite animiert
+  /// hinterher.
+  Future<void> _zeigeSeite(int index) async {
+    if (index == _index && _animiertZu == null) return;
+    setState(() => _index = index);
+    _animiertZu = index;
+    await _seiten.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+    if (_animiertZu == index) _animiertZu = null;
+  }
+
+  /// Seitenwechsel durch Wischen (oder am Ende einer Animation).
+  void _seiteGewechselt(int index) {
+    if (_animiertZu != null && index != _animiertZu) return;
+    if (index != _index) setState(() => _index = index);
+  }
 
   /// Wechselt zur Zeitleiste und öffnet dort den Eintrag. So führt „Zurück“
   /// aus dem Eintrag in die (neu geladene) Zeitleiste.
   void _eintragOeffnen(String eintragId) {
-    setState(() => _index = 0);
+    _zeigeSeite(0);
     _zeitleiste.currentState?.eintragOeffnen(eintragId);
   }
 
@@ -64,30 +100,38 @@ class _ModulRahmenState extends State<ModulRahmen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
+      // Wischen nach links/rechts wechselt die Seite.
+      body: PageView(
+        controller: _seiten,
+        onPageChanged: _seiteGewechselt,
         children: [
-          ZeitleisteScreen(
-            key: _zeitleiste,
-            api: widget.api,
-            modulId: widget.modul.id,
+          _AmLeben(
+            child: ZeitleisteScreen(
+              key: _zeitleiste,
+              api: widget.api,
+              modulId: widget.modul.id,
+            ),
           ),
-          UploadScreen(
-            api: widget.api,
-            dateiAuswahl: widget.dateiAuswahl,
-            hochgeladen: _hochgeladen,
-            eintragOeffnen: _eintragOeffnen,
+          _AmLeben(
+            child: UploadScreen(
+              api: widget.api,
+              dateiAuswahl: widget.dateiAuswahl,
+              hochgeladen: _hochgeladen,
+              eintragOeffnen: _eintragOeffnen,
+            ),
           ),
-          FrageScreen(
-            api: widget.api,
-            modulId: widget.modul.id,
-            eintragOeffnen: _eintragDarueberOeffnen,
+          _AmLeben(
+            child: FrageScreen(
+              api: widget.api,
+              modulId: widget.modul.id,
+              eintragOeffnen: _eintragDarueberOeffnen,
+            ),
           ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: _zeigeSeite,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.timeline_outlined),
@@ -107,5 +151,30 @@ class _ModulRahmenState extends State<ModulRahmen> {
         ],
       ),
     );
+  }
+}
+
+/// Hält eine Seite der PageView am Leben, auch wenn sie nicht sichtbar ist.
+///
+/// Ohne das würde die PageView unsichtbare Seiten abbauen: Sortierung,
+/// Scroll-Position, gewählte Datei, laufender Upload und letzte Antwort
+/// gingen verloren, und `_zeitleiste.currentState` wäre `null`.
+class _AmLeben extends StatefulWidget {
+  const _AmLeben({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_AmLeben> createState() => _AmLebenState();
+}
+
+class _AmLebenState extends State<_AmLeben> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Pflicht beim Mixin: meldet „am Leben halten“.
+    return widget.child;
   }
 }
