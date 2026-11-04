@@ -229,6 +229,7 @@ Die Liste liefert nur, was die Zeitleiste braucht. `volltext`, `infos`,
 | `PATCH` | `/api/v1/eintraege/{id}` | Erkannte Werte korrigieren |
 | `DELETE` | `/api/v1/eintraege/{id}` | Eintrag mit Originaldatei und Abschnitten löschen |
 | `POST` | `/api/v1/fragen` | Frage stellen, Antwort mit Quellenangabe |
+| `GET` | `/api/v1/status` | Health-Check: läuft das Backend, ist die Datenbank erreichbar? |
 
 ### 3.1 Datei oder Text hochladen und auslesen
 
@@ -739,6 +740,37 @@ Kein Body.
 | 404 | `EINTRAG_NICHT_GEFUNDEN` | Auch bei einem zweiten Löschen desselben Eintrags |
 | 500 | `INTERNER_FEHLER` | |
 
+### 3.8 Status (Health-Check)
+
+```http
+GET /api/v1/status
+```
+
+Prüft, ob das Backend läuft und MongoDB erreichbar ist. Ruft kein Modell auf
+und kostet deshalb nichts. Der Pfad heißt bewusst nicht `/gesundheit`, damit
+er nicht mit dem Modul `gesundheit` verwechselt wird.
+
+**Antwort `200 OK`**
+
+```json
+{
+  "status": "ok",
+  "datenbank": "ok"
+}
+```
+
+**Antwort `503 Service Unavailable`**, wenn MongoDB nicht antwortet:
+
+```json
+{
+  "status": "fehler",
+  "datenbank": "nicht erreichbar"
+}
+```
+
+Dieser Endpunkt nutzt bewusst nicht das Fehlerformat aus Abschnitt 1, damit
+Überwachungs-Tools beide Fälle gleich lesen können.
+
 ---
 
 ## 4. Offene Punkte
@@ -812,3 +844,5 @@ vorhandene Fehlercodes.
    den Eintrag.
 4. **Regel** ([Wichtige Regeln](#wichtige-regeln)): Listen sind immer `[]`,
    nie `null`.
+5. **Status** ([3.8](#38-status-health-check)): `GET /status` als
+   Health-Check, `200` oder `503`.
