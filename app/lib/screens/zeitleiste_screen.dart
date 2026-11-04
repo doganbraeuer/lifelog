@@ -5,10 +5,12 @@ import '../api/api_fehler.dart';
 import '../model/eintrag.dart';
 import '../model/zeitleisten_gruppen.dart';
 import '../module/modul_katalog.dart';
+import '../widgets/bewegung.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
 import '../widgets/navigation.dart';
+import '../widgets/platzhalter.dart';
 import 'eintrag_screen.dart';
 
 /// Alle Einträge eines Moduls als Zeitachse mit Monatsabschnitten.
@@ -166,16 +168,25 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     );
   }
 
-  Widget _inhalt() {
+  /// Weicher Wechsel zwischen Platzhalter, Liste, leerem Zustand und Fehler.
+  Widget _inhalt() => Uebergang(child: _zustand());
+
+  Widget _zustand() {
     final fehler = _fehler;
     if (fehler != null) {
-      return FehlerAnzeige(fehler: fehler, erneut: neuLaden);
+      return FehlerAnzeige(
+        key: const ValueKey('fehler'),
+        fehler: fehler,
+        erneut: neuLaden,
+      );
     }
     final eintraege = _eintraege;
     if (eintraege == null) {
-      return const Center(child: CircularProgressIndicator());
+      // Erstes Laden: Platzhalter in der Form der Zeitachse.
+      return const ZeitachsenPlatzhalter(key: ValueKey('laedt'));
     }
     return RefreshIndicator(
+      key: ValueKey(eintraege.isEmpty ? 'leer' : 'liste'),
       onRefresh: neuLaden,
       child: eintraege.isEmpty
           ? _LeereZeitleiste(

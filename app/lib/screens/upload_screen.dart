@@ -6,9 +6,11 @@ import '../api/api_fehler.dart';
 import '../api/mime_typ.dart';
 import '../model/eintrag.dart';
 import '../plattform/datei_auswahl.dart';
+import '../widgets/bewegung.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
 import '../widgets/navigation.dart';
+import '../widgets/scan_animation.dart';
 
 /// Hinweis zum Datenschutz, steht immer oben im Screen.
 const cloudHinweis =
@@ -235,19 +237,43 @@ class _UploadScreenState extends State<UploadScreen> {
               children: [
                 const _Hinweis(),
                 const SizedBox(height: 16),
-                if (_fehler case final fehler?) ...[
-                  _FehlerKarte(
-                    fehler: fehler,
-                    eintragOeffnen: widget.eintragOeffnen,
+                // Fehlerkarte erscheint und verschwindet weich; die Höhe
+                // gleitet mit, statt dass der Inhalt darunter springt.
+                AnimatedSize(
+                  duration: bewegungsDauer(context, Durations.medium2),
+                  curve: Easing.emphasizedDecelerate,
+                  alignment: Alignment.topCenter,
+                  child: Uebergang(
+                    child: switch (_fehler) {
+                      final fehler? => Padding(
+                        key: ObjectKey(fehler),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _FehlerKarte(
+                          fehler: fehler,
+                          eintragOeffnen: widget.eintragOeffnen,
+                        ),
+                      ),
+                      null => const SizedBox.shrink(key: ValueKey('ok')),
+                    },
                   ),
-                  const SizedBox(height: 16),
-                ],
-                if (_datei case final datei?)
-                  _vorschau(datei)
-                else if (_textModus)
-                  _texteingabe()
-                else
-                  _auswahlKnoepfe(),
+                ),
+                // Weicher Wechsel zwischen Auswahl, Vorschau und Textfeld.
+                Uebergang(
+                  child: switch ((_datei, _textModus)) {
+                    (final datei?, _) => KeyedSubtree(
+                      key: const ValueKey('vorschau'),
+                      child: _vorschau(datei),
+                    ),
+                    (null, true) => KeyedSubtree(
+                      key: const ValueKey('text'),
+                      child: _texteingabe(),
+                    ),
+                    (null, false) => KeyedSubtree(
+                      key: const ValueKey('auswahl'),
+                      child: _auswahlKnoepfe(),
+                    ),
+                  },
+                ),
               ],
             ),
           ),
@@ -363,7 +389,15 @@ class _UploadScreenState extends State<UploadScreen> {
             border: OutlineInputBorder(),
           ),
         ),
-        if (_laedtHoch) ...[const SizedBox(height: 16), const _Auswertung()],
+        Uebergang(
+          child: _laedtHoch
+              ? const Padding(
+                  key: ValueKey('laedt'),
+                  padding: EdgeInsets.only(top: 16),
+                  child: _Auswertung(),
+                )
+              : const SizedBox.shrink(key: ValueKey('bereit')),
+        ),
       ],
     );
   }
@@ -415,33 +449,44 @@ class _UploadScreenState extends State<UploadScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        if (_laedtHoch)
-          const _Auswertung()
-        else ...[
-          FilledButton.icon(
-            onPressed: _hochladen,
-            icon: Icon(wiederholen ? Icons.refresh : Icons.cloud_upload),
-            label: Text(wiederholen ? 'Erneut versuchen' : 'Hochladen'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _verwerfen,
-            child: const Text('Andere Datei wählen'),
-          ),
-        ],
+        Uebergang(
+          child: _laedtHoch
+              ? const _Auswertung(key: ValueKey('laedt'))
+              : Column(
+                  key: const ValueKey('knoepfe'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _hochladen,
+                      icon: Icon(
+                        wiederholen ? Icons.refresh : Icons.cloud_upload,
+                      ),
+                      label: Text(
+                        wiederholen ? 'Erneut versuchen' : 'Hochladen',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _verwerfen,
+                      child: const Text('Andere Datei wählen'),
+                    ),
+                  ],
+                ),
+        ),
       ],
     );
   }
 }
 
-/// Ladeanzeige, solange das Backend auswertet (bis zu einer Minute).
+/// Anzeige, solange das Backend auswertet (bis zu einer Minute): ruhige
+/// Scan-Animation ohne erfundenen Fortschritt.
 class _Auswertung extends StatelessWidget {
-  const _Auswertung();
+  const _Auswertung({super.key});
 
   @override
   Widget build(BuildContext context) => const Column(
     children: [
-      CircularProgressIndicator(),
+      ScanAnimation(),
       SizedBox(height: 12),
       Text(
         'Das Dokument wird ausgewertet.\n'

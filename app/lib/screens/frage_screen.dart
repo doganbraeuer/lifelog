@@ -4,8 +4,10 @@ import '../api/api_client.dart';
 import '../api/api_fehler.dart';
 import '../model/antwort.dart';
 import '../module/modul_katalog.dart';
+import '../widgets/bewegung.dart';
 import '../widgets/mock_hinweis.dart';
 import '../widgets/navigation.dart';
+import '../widgets/platzhalter.dart';
 
 /// Höchstlänge einer Frage laut docs/API.md.
 const maxFrageLaenge = 500;
@@ -132,17 +134,17 @@ class _FrageScreenState extends State<FrageScreen> {
     return [
       Text('„$gestellt“', style: theme.textTheme.titleMedium),
       const SizedBox(height: 12),
-      if (_sucht)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: Column(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('Suche in deinen Dokumenten …'),
-            ],
+      if (_sucht) ...[
+        Text(
+          'Suche in deinen Dokumenten …',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        const SizedBox(height: 12),
+        // Platzhalter in der Form von Antwort und Quellen.
+        const AntwortPlatzhalter(),
+      ],
       if (fehler != null)
         Card(
           color: theme.colorScheme.errorContainer,
@@ -166,33 +168,38 @@ class _FrageScreenState extends State<FrageScreen> {
             ),
           ),
         ),
-      if (antwort != null) ...[
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SelectableText(
-              antwort.antwort,
-              style: theme.textTheme.bodyLarge,
-            ),
-          ),
-        ),
-        if (antwort.quellen.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-            child: Text(
-              'Quellen',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary,
+      // Antwort und Quellen blenden nacheinander ein; der Text ist sofort
+      // vollständig da (kein Tipp-Effekt). Neue Antwort, neuer Durchlauf.
+      if (antwort != null)
+        GestaffeltEinblenden(
+          key: ObjectKey(antwort),
+          kinder: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  antwort.antwort,
+                  style: theme.textTheme.bodyLarge,
+                ),
               ),
             ),
-          ),
-          for (final quelle in antwort.quellen)
-            _QuellenKarte(
-              quelle: quelle,
-              oeffnen: () => widget.eintragOeffnen(quelle.eintragId),
-            ),
-        ],
-      ],
+            if (antwort.quellen.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+                child: Text(
+                  'Quellen',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            for (final quelle in antwort.quellen)
+              _QuellenKarte(
+                quelle: quelle,
+                oeffnen: () => widget.eintragOeffnen(quelle.eintragId),
+              ),
+          ],
+        ),
     ];
   }
 }
