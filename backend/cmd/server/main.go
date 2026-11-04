@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,12 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
-	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
-
 	"lifelog/backend/internal/api"
 	"lifelog/backend/internal/konfig"
+	"lifelog/backend/internal/speicher"
 )
 
 func main() {
@@ -41,30 +37,23 @@ func starten() error {
 	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopp()
 
-	// MongoDB verbinden. Connect baut nur den Client auf, erst Ping prüft die
-	// Verbindung wirklich. Die URI wird nie geloggt, weil sie das Passwort enthält.
-	client, err := mongo.Connect(options.Client().ApplyURI(k.MongoURI))
+	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
-		return errors.New("MongoDB-Client konnte nicht erstellt werden (MONGODB_URI prüfen)")
+		return err
 	}
-	defer func() {
-		trennCtx, abbrechen := context.WithTimeout(context.Background(), 5*time.Second)
-		defer abbrechen()
-		_ = client.Disconnect(trennCtx)
-	}()
-
-	db := mongoPinger{client}
-	pingCtx, abbrechen := context.WithTimeout(ctx, 10*time.Second)
-	err = db.Ping(pingCtx)
-	abbrechen()
-	if err != nil {
-		return errors.New("MongoDB nicht erreichbar: Zugangsdaten und Network Access in Atlas prüfen")
-	}
+	defer db.Trennen(context.Background())
 	slog.Info("MongoDB verbunden", "datenbank", k.MongoDB)
 
+	if err := db.IndexeAnlegen(ctx); err != nil {
+		return err
+	}
+
 	server := &http.Server{
-		Addr:              k.Lauschadresse(),
-		Handler:           api.NeuerRouter(api.Abhaengigkeiten{DB: db}),
+		Addr: k.Lauschadresse(),
+		Handler: api.NeuerRouter(api.Abhaengigkeiten{
+			DB:        db,
+			Eintraege: db,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz
 		WriteTimeout:      120 * time.Second, // Upload mit Vision-LLM dauert bis ~60 s
@@ -93,15 +82,5 @@ func starten() error {
 	// Laufende Anfragen dürfen noch bis zu 10 s fertig werden.
 	shutdownCtx, abbrechen := context.WithTimeout(context.Background(), 10*time.Second)
 	defer abbrechen()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		return err
-	}
-	return nil
-}
-
-// mongoPinger passt den MongoDB-Client an die Schnittstelle api.Pinger an.
-type mongoPinger struct{ client *mongo.Client }
-
-func (m mongoPinger) Ping(ctx context.Context) error {
-	return m.client.Ping(ctx, readpref.Primary())
+	return server.Shutdown(shutdownCtx)
 }

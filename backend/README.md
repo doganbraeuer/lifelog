@@ -23,10 +23,24 @@ verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
 go vet ./... && go test ./...
 ```
 
+## Synthetische Testdaten
+
+Damit die Zeitleiste ohne Upload und ohne Gemini etwas zeigt:
+
+```sh
+go run ./cmd/testdaten              # 4 erfundene Einträge einfügen (mehrfach ausführbar)
+go run ./cmd/testdaten -entfernen   # wieder löschen
+```
+
+Die Testeinträge haben feste IDs. Andere Einträge bleiben unberührt.
+
 ## Aufbau
 
 | Paket | Aufgabe |
 |---|---|
 | `cmd/server` | Start: Konfiguration, MongoDB, HTTP-Server, sauberes Beenden |
+| `cmd/testdaten` | Synthetische Einträge einfügen oder entfernen |
 | `internal/konfig` | Umgebungsvariablen lesen und prüfen |
-| `internal/api` | Router, Handler, Fehlerformat |
+| `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung |
+| `internal/speicher` | MongoDB: Einträge, Indexe |
+| `internal/api` | Router, Handler, Fehlerformat, JSON-Typen |

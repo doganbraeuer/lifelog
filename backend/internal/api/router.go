@@ -6,7 +6,8 @@ import "net/http"
 // Schritt kommen Felder dazu (Speicher, Dienste). Über Schnittstellen statt
 // konkreter Typen lassen sich die Handler ohne Datenbank testen.
 type Abhaengigkeiten struct {
-	DB Pinger
+	DB        Pinger
+	Eintraege EintragSpeicher
 }
 
 // NeuerRouter verbindet die Pfade aus docs/API.md mit den Handlern.
@@ -16,6 +17,7 @@ type Abhaengigkeiten struct {
 func NeuerRouter(abh Abhaengigkeiten) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/status", statusHandler(abh.DB))
+	mux.HandleFunc("GET /api/v1/eintraege", eintraegeListeHandler(abh.Eintraege))
 
 	// Reihenfolge: Log ganz außen, damit auch abgefangene panics mit
 	// Status 500 im Log erscheinen.
