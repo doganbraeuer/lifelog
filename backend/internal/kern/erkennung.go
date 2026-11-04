@@ -51,18 +51,42 @@ func (f *ErkennungFehler) Is(ziel error) bool { return ziel == ErrErkennungUngue
 // echtes Kalenderdatum.
 var ErrDatumUngueltig = errors.New("Datum muss im Format JJJJ-MM-TT ein gültiges Kalenderdatum sein")
 
+// ErrKeinKalendertag: Das Format stimmt, aber den Tag gibt es nicht (z. B.
+// 2026-02-31). Ein Sonderfall von ErrDatumUngueltig; PATCH meldet ihn mit
+// eigener Nachricht (API.md 3.5).
+var ErrKeinKalendertag = fmt.Errorf("%w: diesen Tag gibt es nicht", ErrDatumUngueltig)
+
 // PruefeDatum prüft ein Dokumentdatum: genau "YYYY-MM-DD" mit führenden
-// Nullen, und das Datum muss es geben (kein 31.02.). Wird auch für PATCH
-// gebraucht (API.md 3.5).
+// Nullen, und das Datum muss es geben (kein 31.02.). Falsches Format ergibt
+// ErrDatumUngueltig, ein unmöglicher Tag ErrKeinKalendertag.
 func PruefeDatum(datum string) error {
-	if len(datum) != len("2006-01-02") {
+	if !datumsFormat(datum) {
 		return ErrDatumUngueltig
 	}
-	// time.Parse lehnt Tage außerhalb des Monats ab, z. B. 2026-02-30.
+	// time.Parse lehnt Monate und Tage außerhalb des Bereichs ab, z. B.
+	// 2026-02-30 oder 2026-13-01.
 	if _, err := time.Parse("2006-01-02", datum); err != nil {
-		return ErrDatumUngueltig
+		return ErrKeinKalendertag
 	}
 	return nil
+}
+
+// datumsFormat: genau zehn Zeichen, Ziffern mit Bindestrichen an Stelle 5
+// und 8.
+func datumsFormat(s string) bool {
+	if len(s) != len("2006-01-02") {
+		return false
+	}
+	for i, c := range []byte(s) {
+		if i == 4 || i == 7 {
+			if c != '-' {
+				return false
+			}
+		} else if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // PruefeErkennung prüft die Antwort des Modells und macht daraus einen
