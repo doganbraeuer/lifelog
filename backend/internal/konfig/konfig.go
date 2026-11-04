@@ -19,15 +19,36 @@ import (
 const (
 	StandardAdresse = "127.0.0.1"
 	StandardPort    = "8080"
+
+	// Modelle, geprüft am 04.11.2026 mit go run ./cmd/modelle und der
+	// Preisseite (aistudio.google.com/docs/pricing). Beide sind in der
+	// kostenlosen Stufe nutzbar; dort dürfen Eingaben zur Verbesserung der
+	// Produkte verwendet werden, daher nur synthetische Dokumente.
+	// Die genauen Free-Tier-Limits (Anfragen pro Minute/Tag) zeigt nur AI
+	// Studio im eigenen Projekt an.
+	//
+	// gemini-3.8-flash: stabil, Bild (inkl. HEIC) und PDF als Eingabe,
+	// JSON-Ausgabe nach Schema. (gemini-2.5-flash ist veraltet und wird ab
+	// 01.12.2026 umgeleitet.)
+	StandardGeminiModell = "gemini-3.8-flash"
+
+	// gemini-embedding-2: bis 8192 Tokens pro Text, 768 Dimensionen werden
+	// automatisch normalisiert. ACHTUNG: Embeddings verschiedener Modelle
+	// sind nicht vergleichbar. Wer das Modell wechselt, muss alle Abschnitte
+	// neu einbetten, sonst findet die Suche nichts Sinnvolles mehr.
+	StandardGeminiEmbeddingModell = "gemini-embedding-2"
 )
 
 // Konfig enthält alle Einstellungen, die das Backend beim Start braucht.
 type Konfig struct {
-	MongoURI  string
-	MongoDB   string
-	GeminiKey string
-	Adresse   string
-	Port      string
+	MongoURI              string
+	MongoDB               string
+	GeminiKey             string
+	GeminiModell          string
+	GeminiModellErsatz    string // optional, leer = kein Ersatzmodell
+	GeminiEmbeddingModell string
+	Adresse               string
+	Port                  string
 }
 
 // Lauschadresse ergibt z. B. "127.0.0.1:8080". net.JoinHostPort setzt
@@ -66,11 +87,17 @@ func DotenvLaden() error {
 // fehlenden Namen auf einmal.
 func Laden(getenv func(string) string) (Konfig, error) {
 	k := Konfig{
-		MongoURI:  strings.TrimSpace(getenv("MONGODB_URI")),
-		MongoDB:   strings.TrimSpace(getenv("MONGODB_DB")),
-		GeminiKey: strings.TrimSpace(getenv("GEMINI_API_KEY")),
-		Adresse:   mitStandard(getenv("ADRESSE"), StandardAdresse),
-		Port:      mitStandard(getenv("PORT"), StandardPort),
+		MongoURI:     strings.TrimSpace(getenv("MONGODB_URI")),
+		MongoDB:      strings.TrimSpace(getenv("MONGODB_DB")),
+		GeminiKey:    strings.TrimSpace(getenv("GEMINI_API_KEY")),
+		GeminiModell: mitStandard(getenv("GEMINI_MODELL"), StandardGeminiModell),
+		// Ersatz nur fürs Lesen. Für Embeddings gibt es bewusst keinen: Vektoren
+		// zweier Modelle sind nicht vergleichbar.
+		GeminiModellErsatz: strings.TrimSpace(getenv("GEMINI_MODELL_ERSATZ")),
+		GeminiEmbeddingModell: mitStandard(getenv("GEMINI_EMBEDDING_MODELL"),
+			StandardGeminiEmbeddingModell),
+		Adresse: mitStandard(getenv("ADRESSE"), StandardAdresse),
+		Port:    mitStandard(getenv("PORT"), StandardPort),
 	}
 
 	var fehlend []string

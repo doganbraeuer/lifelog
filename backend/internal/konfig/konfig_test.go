@@ -30,6 +30,29 @@ func TestLaden_Standardwerte(t *testing.T) {
 	if !k.NurLokal() {
 		t.Error("Standard muss nur lokal erreichbar sein")
 	}
+	if k.GeminiModell != StandardGeminiModell || k.GeminiEmbeddingModell != StandardGeminiEmbeddingModell {
+		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	}
+	if k.GeminiModellErsatz != "" {
+		t.Errorf("Ersatzmodell ist optional und standardmäßig leer, nicht %q", k.GeminiModellErsatz)
+	}
+}
+
+func TestLaden_ModelleUeberschreiben(t *testing.T) {
+	w := vollstaendig()
+	w["GEMINI_MODELL"] = " anderes-modell "
+	w["GEMINI_EMBEDDING_MODELL"] = "anderes-embedding"
+	w["GEMINI_MODELL_ERSATZ"] = " ersatz-modell "
+	k, err := Laden(umgebung(w))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.GeminiModell != "anderes-modell" || k.GeminiEmbeddingModell != "anderes-embedding" {
+		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	}
+	if k.GeminiModellErsatz != "ersatz-modell" {
+		t.Errorf("Ersatz = %q", k.GeminiModellErsatz)
+	}
 }
 
 func TestLaden_AdresseUndPortUeberschreiben(t *testing.T) {

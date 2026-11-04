@@ -1,0 +1,19 @@
+Labor Muster GmbH
+Musterstraße 1, 5020 Salzburg
+Tel. 0662 000000
+
+LABORBEFUND
+
+Befunddatum: 14.10.2026
+Patient: Max Mustermann, geb. 01.01.1990
+Einsender: Dr. Erika Beispiel, Allgemeinmedizin
+
+Parameter            Ergebnis   Einheit   Referenz
+Hämoglobin           14,2       g/dl      13,5 - 17,5
+Leukozyten           6,8        G/l       4,0 - 10,0
+Thrombozyten         245        G/l       150 - 400
+CRP                  <0,5       mg/dl     <0,5
+
+Befundart: Blutbild klein
+
+TESTDOKUMENT - alle Angaben sind erfunden (synthetische Daten).

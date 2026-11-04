@@ -1,0 +1,50 @@
+// Package modell ist die einzige Stelle, über die das Backend Sprach-,
+// Vision- und Embedding-Modelle aufruft (CLAUDE.md: „Anbieter austauschbar“).
+//
+// Der Rest des Backends kennt nur diese Schnittstellen. Ein anderer Anbieter
+// bedeutet: ein neues Unterpaket neben gemini/, das sie umsetzt, und eine
+// Zeile in cmd/server/main.go.
+package modell
+
+import (
+	"context"
+	"errors"
+
+	"lifelog/backend/internal/kern"
+)
+
+// EmbeddingDimensionen ist die Länge jedes Embedding-Vektors. Der
+// Vektorindex in Atlas (Schritt 5) ist auf genau diese Zahl festgelegt.
+// Ändert sie sich, müssen alle Abschnitte neu eingebettet werden.
+const EmbeddingDimensionen = 768
+
+// Leser liest ein Dokument (Bild oder PDF) und liefert, was darin steht.
+// Das Ergebnis ist ungeprüft, prüfen muss kern.PruefeErkennung.
+type Leser interface {
+	DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error)
+}
+
+// Einbetter berechnet Embeddings: Vektoren, deren Abstand zueinander
+// ausdrückt, wie ähnlich sich zwei Texte inhaltlich sind.
+//
+// Abschnitte und Fragen werden getrennt eingebettet, weil manche Modelle
+// beide unterschiedlich behandeln („Dokument“ vs. „Suchanfrage“). Beide
+// Methoden liefern Vektoren mit EmbeddingDimensionen Einträgen.
+type Einbetter interface {
+	// AbschnitteEinbetten liefert genau einen Vektor pro Text, in derselben
+	// Reihenfolge.
+	AbschnitteEinbetten(ctx context.Context, texte []string) ([][]float32, error)
+	FrageEinbetten(ctx context.Context, frage string) ([]float32, error)
+}
+
+// Fehlerarten. Jede Umsetzung übersetzt ihre eigenen Fehler in diese, damit
+// die HTTP-Schicht den richtigen Code wählen kann, egal welcher Anbieter.
+var (
+	// ErrNichtErreichbar: Netzwerk, Zeitüberschreitung, Limit (429) oder
+	// Serverfehler des Anbieters (→ 503 MODELL_NICHT_ERREICHBAR).
+	ErrNichtErreichbar = errors.New("Modell nicht erreichbar")
+
+	// ErrAntwortUngueltig: Das Modell hat geantwortet, aber nicht in der
+	// erwarteten Form (→ 502 AUSLESEN_FEHLGESCHLAGEN).
+	ErrAntwortUngueltig = errors.New("Antwort des Modells ungültig")
+)
