@@ -15,17 +15,24 @@ import (
 	"lifelog/backend/internal/modell"
 )
 
-// Gesamtlimits je Vorgang, inklusive Wiederholungen und Ersatzmodell. Der
-// Upload darf laut API.md bis ~60 s dauern; das Lesen bekommt den Großteil
-// davon, die Embeddings den Rest.
+// Gesamtlimits je Vorgang, inklusive Wiederholungen und Ersatzmodell.
+//
+//	Upload (App wartet 90 s): Lesen 50 s + Abschnitte einbetten 20 s
+//	Frage  (App wartet 60 s): Frage einbetten 10 s + Antworten 45 s
 const (
-	leseTimeout      = 50 * time.Second
-	einbettenTimeout = 20 * time.Second
+	leseTimeout           = 50 * time.Second
+	einbettenTimeout      = 20 * time.Second
+	frageEinbettenTimeout = 10 * time.Second
+	antwortTimeout        = 45 * time.Second
 
 	// mindestHauptzeit: So viel Zeit bleibt dem Hauptmodell mindestens,
 	// egal wie groß die Reserve für den Ersatz eingestellt ist.
 	mindestHauptzeit = 10 * time.Second
 )
+
+// maxErsatzReserve: Die Reserve gilt fürs Lesen und fürs Antworten; sie muss
+// zum kürzeren der beiden Limits passen.
+const maxErsatzReserve = min(leseTimeout, antwortTimeout) - mindestHauptzeit
 
 // Einstellungen für Neu.
 type Einstellungen struct {
@@ -34,9 +41,9 @@ type Einstellungen struct {
 	ErsatzModell    string // optional: wird einmal versucht, wenn Modell nicht erreichbar bleibt
 	EmbeddingModell string // ohne Ersatz: Embeddings verschiedener Modelle passen nicht zusammen
 
-	// ErsatzReserve: Dieser Teil des Lese-Limits ist dem Ersatzmodell
-	// vorbehalten. Das Hauptmodell muss samt Wiederholungen vorher fertig
-	// sein. Gilt nur, wenn ErsatzModell gesetzt ist.
+	// ErsatzReserve: Dieser Teil des Limits (Lesen und Antworten) ist dem
+	// Ersatzmodell vorbehalten. Das Hauptmodell muss samt Wiederholungen
+	// vorher fertig sein. Gilt nur, wenn ErsatzModell gesetzt ist.
 	ErsatzReserve time.Duration
 }
 
@@ -54,12 +61,14 @@ type Gemini struct {
 	erzeugen       erzeugenFunk
 	einbettenAPI   einbettenFunk
 	neuWiederholer func(beschreibung string) wiederholer
-	leseTimeout    time.Duration // Feld statt Konstante, damit Tests nicht 50 s warten
+	leseTimeout    time.Duration // Felder statt Konstanten, damit Tests nicht 50 s warten
+	antwortTimeout time.Duration
 }
 
 var (
 	_ modell.Leser     = (*Gemini)(nil)
 	_ modell.Einbetter = (*Gemini)(nil)
+	_ modell.Antworter = (*Gemini)(nil)
 )
 
 // Neu erstellt den Client. Es findet noch kein Netzwerkaufruf statt.
@@ -77,9 +86,9 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 	if e.ErsatzModell == e.Modell {
 		e.ErsatzModell = "" // derselbe Name wäre nur ein vierter Versuch
 	}
-	if e.ErsatzReserve < 0 || e.ErsatzReserve > leseTimeout-mindestHauptzeit {
-		return nil, fmt.Errorf("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss zwischen 0 und %d liegen (Lese-Limit %v, Hauptmodell braucht mindestens %v)",
-			int((leseTimeout - mindestHauptzeit).Seconds()), leseTimeout, mindestHauptzeit)
+	if e.ErsatzReserve < 0 || e.ErsatzReserve > maxErsatzReserve {
+		return nil, fmt.Errorf("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss zwischen 0 und %d liegen (Limits: Lesen %v, Antworten %v; Hauptmodell braucht mindestens %v)",
+			int(maxErsatzReserve.Seconds()), leseTimeout, antwortTimeout, mindestHauptzeit)
 	}
 	return &Gemini{
 		e:              e,
@@ -87,25 +96,47 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 		einbettenAPI:   client.Models.EmbedContent,
 		neuWiederholer: standardWiederholer,
 		leseTimeout:    leseTimeout,
+		antwortTimeout: antwortTimeout,
 	}, nil
 }
 
 // DokumentLesen schickt das Dokument an das Vision-LLM und liefert die
-// ungeprüfte Erkennung.
+// ungeprüfte Erkennung. Wiederholung und Ersatz: siehe erzeugenMitErsatz.
+func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error) {
+	inhalte, cfg := leseAnfrage(daten, mimeTyp, erlaubteTypen)
+	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Lesen", inhalte, cfg)
+	if err != nil {
+		return kern.Erkennung{}, err
+	}
+	return erkennungAusAntwort(resp)
+}
+
+// Antworten beantwortet eine Frage nur aus den Fundstellen (Schritt 5).
+// Gleiche Wiederholung und gleicher Ersatz wie beim Lesen.
+func (g *Gemini) Antworten(ctx context.Context, frage string, fundstellen []kern.Fundstelle) (string, error) {
+	inhalte, cfg := antwortAnfrage(frage, fundstellen)
+	resp, err := g.erzeugenMitErsatz(ctx, g.antwortTimeout, "Antworten", inhalte, cfg)
+	if err != nil {
+		return "", err
+	}
+	return textAusAntwort(resp)
+}
+
+// erzeugenMitErsatz ist der gemeinsame Ablauf fürs Lesen und Antworten:
+// Hauptmodell, bei 429/503 bis zu zwei Wiederholungen. Bleibt es nicht
+// erreichbar und ist ein Ersatzmodell eingestellt, wird dieses einmal
+// versucht. Alles innerhalb von limit.
 //
-// Ablauf: Hauptmodell, bei 429/503 bis zu zwei Wiederholungen. Bleibt es
-// nicht erreichbar und ist ein Ersatzmodell eingestellt, wird dieses einmal
-// versucht. Alles innerhalb von leseTimeout.
-//
-// Zeitaufteilung mit Ersatzmodell (Standard 30 s + 20 s):
+// Zeitaufteilung mit Ersatzmodell (Lesen, Standard 30 s + 20 s):
 //
 //	|---- Hauptmodell + Wiederholungen ----|---- Reserve: Ersatz ----|
 //	0                                     30 s                     50 s
 //
 // Ohne diese Aufteilung könnte ein hängendes Hauptmodell das ganze Limit
 // verbrauchen, und der Ersatz käme nie zum Zug.
-func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, g.leseTimeout)
+func (g *Gemini) erzeugenMitErsatz(ctx context.Context, limit time.Duration, aufgabe string,
+	inhalte []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+	ctx, abbrechen := context.WithTimeout(ctx, limit)
 	defer abbrechen()
 
 	hauptCtx := ctx
@@ -116,10 +147,8 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 		defer hauptAbbrechen()
 	}
 
-	inhalte, cfg := leseAnfrage(daten, mimeTyp, erlaubteTypen)
-
 	var resp *genai.GenerateContentResponse
-	err := g.neuWiederholer("Lesen "+g.e.Modell).ausfuehren(hauptCtx, func(ctx context.Context) error {
+	err := g.neuWiederholer(aufgabe+" "+g.e.Modell).ausfuehren(hauptCtx, func(ctx context.Context) error {
 		var err error
 		resp, err = g.erzeugen(ctx, g.e.Modell, inhalte, cfg)
 		return err
@@ -135,14 +164,11 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 		}
 		// Der Fehler des Hauptmodells ist schon übersetzt und maskiert.
 		slog.Warn("Hauptmodell nicht erreichbar, Ersatzmodell wird einmal versucht",
-			"modell", g.e.Modell, "fehler", err, "ersatz", g.e.ErsatzModell, "restzeit", rest)
+			"aufgabe", aufgabe, "modell", g.e.Modell, "fehler", err, "ersatz", g.e.ErsatzModell, "restzeit", rest)
 		resp, err = g.erzeugen(ctx, g.e.ErsatzModell, inhalte, cfg)
 		err = uebersetzeFehler(err, g.e.Schluessel)
 	}
-	if err != nil {
-		return kern.Erkennung{}, err
-	}
-	return erkennungAusAntwort(resp)
+	return resp, err
 }
 
 // leseAnfrage baut Inhalt und Konfiguration für das Lesen eines Dokuments.
@@ -185,9 +211,11 @@ func (g *Gemini) AbschnitteEinbetten(ctx context.Context, texte []string) ([][]f
 	return vektoren, nil
 }
 
-// FrageEinbetten berechnet den Vektor für eine Suchfrage.
+// FrageEinbetten berechnet den Vektor für eine Suchfrage. Wiederholung bei
+// 429/503 ja, Ersatzmodell nie (Vektorräume verschiedener Modelle passen
+// nicht zusammen).
 func (g *Gemini) FrageEinbetten(ctx context.Context, frage string) ([]float32, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, einbettenTimeout)
+	ctx, abbrechen := context.WithTimeout(ctx, frageEinbettenTimeout)
 	defer abbrechen()
 
 	v, err := g.einbetten(ctx, []string{frageEingabe(frage)})

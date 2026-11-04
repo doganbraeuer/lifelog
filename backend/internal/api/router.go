@@ -9,6 +9,7 @@ type Abhaengigkeiten struct {
 	DB        Pinger
 	Eintraege EintragSpeicher
 	Hochladen Hochlader
+	Fragen    Frager
 }
 
 // NeuerRouter verbindet die Pfade aus docs/API.md mit den Handlern.
@@ -22,6 +23,7 @@ func NeuerRouter(abh Abhaengigkeiten) http.Handler {
 	mux.HandleFunc("POST /api/v1/eintraege", hochladenHandler(abh.Hochladen))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}", eintragHandler(abh.Eintraege))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", dateiHandler(abh.Eintraege))
+	mux.HandleFunc("POST /api/v1/fragen", fragenHandler(abh.Fragen))
 
 	// Reihenfolge: Log ganz außen, damit auch abgefangene panics mit
 	// Status 500 im Log erscheinen.

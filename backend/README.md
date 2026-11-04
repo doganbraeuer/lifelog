@@ -50,6 +50,31 @@ erneut; mit `GEMINI_MODELL_ERSATZ` danach einmal ein anderes Modell zum Lesen.
 Dafür sind vom Lese-Limit (50 s) standardmäßig 20 s reserviert
 (`GEMINI_ERSATZ_RESERVE_SEKUNDEN`), das Hauptmodell bekommt 30 s.
 
+## Vektorindex
+
+Die Suche (`POST /api/v1/fragen`) braucht in Atlas den Vector-Search-Index
+`abschnitte_vektor` auf der Collection `abschnitte`. Die Definition steht in
+[`internal/speicher/abschnitte_vektor.json`](internal/speicher/abschnitte_vektor.json):
+`embedding` als Vektor (768 Dimensionen, cosine), `modul` als Filterfeld.
+
+**Weg A (automatisch):** Der Server legt den Index beim Start an, wenn er
+fehlt, und loggt den Status. Atlas baut ihn im Hintergrund (im Test ~30 s);
+bis er `READY` ist, findet die Suche nichts. Auf dem Free Tier (M0) getestet
+am 04.11.2026.
+
+**Weg B (Atlas-Oberfläche),** falls Weg A scheitert (Warnung beim Start):
+
+1. In Atlas den Cluster öffnen, Reiter „Atlas Search“ (je nach Oberfläche
+   „Search & Vector Search“), „Create Search Index“.
+2. „Atlas Vector Search“ und „JSON Editor“ wählen.
+3. Datenbank = Wert von `MONGODB_DB`, Collection `abschnitte`, Name
+   `abschnitte_vektor`.
+4. Inhalt von `internal/speicher/abschnitte_vektor.json` einfügen, speichern.
+5. Warten, bis der Status „Active“/`READY` ist.
+
+Wird `modell.EmbeddingDimensionen` geändert, muss der Index neu angelegt und
+jeder Abschnitt neu eingebettet werden.
+
 ## Synthetische Testdaten
 
 Damit die Zeitleiste ohne Upload und ohne Gemini etwas zeigt:

@@ -80,6 +80,41 @@ func (e *Einbetter) Aufrufe() int {
 	return e.aufrufe
 }
 
+// Antworter liefert immer Text bzw. Err und merkt sich die letzte Anfrage.
+type Antworter struct {
+	Text string
+	Err  error
+
+	mu          sync.Mutex
+	aufrufe     int
+	frage       string
+	fundstellen []kern.Fundstelle
+}
+
+var _ modell.Antworter = (*Antworter)(nil)
+
+func (a *Antworter) Antworten(_ context.Context, frage string, f []kern.Fundstelle) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.aufrufe++
+	a.frage, a.fundstellen = frage, f
+	return a.Text, a.Err
+}
+
+// Aufrufe: wie oft Antworten aufgerufen wurde.
+func (a *Antworter) Aufrufe() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.aufrufe
+}
+
+// LetzteAnfrage: Frage und Fundstellen des letzten Aufrufs.
+func (a *Antworter) LetzteAnfrage() (string, []kern.Fundstelle) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.frage, a.fundstellen
+}
+
 // Vektor erzeugt aus einem Text einen festen Pseudo-Vektor mit
 // modell.EmbeddingDimensionen Einträgen. Er hat keine Bedeutung, ist aber
 // deterministisch, das reicht für Tests.

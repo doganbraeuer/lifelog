@@ -149,12 +149,13 @@ func TestNeu_ReserveGrenzen(t *testing.T) {
 		})
 		return err
 	}
-	for _, ok := range []time.Duration{0, 20 * time.Second, 40 * time.Second} {
+	// Grenze: kürzeres Limit (Antworten 45 s) minus 10 s Mindestzeit = 35 s.
+	for _, ok := range []time.Duration{0, 20 * time.Second, 35 * time.Second} {
 		if err := neu(ok); err != nil {
 			t.Errorf("Reserve %v: %v", ok, err)
 		}
 	}
-	for _, falsch := range []time.Duration{-time.Second, 41 * time.Second, 50 * time.Second} {
+	for _, falsch := range []time.Duration{-time.Second, 36 * time.Second, 50 * time.Second} {
 		if err := neu(falsch); err == nil {
 			t.Errorf("Reserve %v: erwartet Fehler", falsch)
 		}

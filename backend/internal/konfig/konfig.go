@@ -40,11 +40,12 @@ const (
 	// neu einbetten, sonst findet die Suche nichts Sinnvolles mehr.
 	StandardGeminiEmbeddingModell = "gemini-embedding-2"
 
-	// StandardErsatzReserveSekunden: So viele Sekunden des Lese-Limits (50 s)
-	// bleiben für das Ersatzmodell reserviert. Das Hauptmodell bekommt samt
-	// Wiederholungen den Rest, also 30 s. Ohne Ersatzmodell gibt es keine
-	// Reserve. Grund: Hängt das Hauptmodell bis zur Frist, bliebe für den
-	// Ersatz sonst keine Zeit (beobachtet am 04.11.2026).
+	// StandardErsatzReserveSekunden: So viele Sekunden des Limits bleiben für
+	// das Ersatzmodell reserviert, beim Lesen (50 s → Hauptmodell 30 s) und
+	// beim Antworten (45 s → Hauptmodell 25 s). Erlaubt sind 0 bis 35 (prüft
+	// gemini.Neu). Ohne Ersatzmodell gibt es keine Reserve. Grund: Hängt das
+	// Hauptmodell bis zur Frist, bliebe für den Ersatz sonst keine Zeit
+	// (beobachtet am 04.11.2026).
 	StandardErsatzReserveSekunden = 20
 )
 

@@ -37,6 +37,14 @@ type Einbetter interface {
 	FrageEinbetten(ctx context.Context, frage string) ([]float32, error)
 }
 
+// Antworter beantwortet eine Frage nur aus den übergebenen Fundstellen. Er
+// setzt Verweise wie [1], die sich auf Fundstelle.Nr beziehen, und antwortet
+// mit kern.FesterSatz, wenn die Fundstellen die Frage nicht beantworten.
+// Ob die Antwort wirklich Verweise enthält, prüft danach kern.BaueAntwort.
+type Antworter interface {
+	Antworten(ctx context.Context, frage string, fundstellen []kern.Fundstelle) (string, error)
+}
+
 // Fehlerarten. Jede Umsetzung übersetzt ihre eigenen Fehler in diese, damit
 // die HTTP-Schicht den richtigen Code wählen kann, egal welcher Anbieter.
 var (

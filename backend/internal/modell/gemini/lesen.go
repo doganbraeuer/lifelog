@@ -99,24 +99,39 @@ type erkennungJSON struct {
 // erkennungAusAntwort holt den JSON-Text aus der Gemini-Antwort und prüft,
 // ob die Antwort überhaupt vollständig ist.
 func erkennungAusAntwort(resp *genai.GenerateContentResponse) (kern.Erkennung, error) {
+	text, err := textAusAntwort(resp)
+	if err != nil {
+		return kern.Erkennung{}, err
+	}
+	return erkennungAusText(text)
+}
+
+// textAusAntwort holt den Text aus einer Gemini-Antwort und prüft, ob sie
+// vollständig ist (nicht blockiert, nicht abgeschnitten, nicht leer).
+// Gemeinsam für Lesen und Antworten.
+func textAusAntwort(resp *genai.GenerateContentResponse) (string, error) {
 	if resp == nil {
-		return kern.Erkennung{}, fmt.Errorf("leere Antwort: %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("leere Antwort: %w", modell.ErrAntwortUngueltig)
 	}
 	if fb := resp.PromptFeedback; fb != nil && fb.BlockReason != "" {
-		return kern.Erkennung{}, fmt.Errorf("Anfrage blockiert (%s): %w", fb.BlockReason, modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Anfrage blockiert (%s): %w", fb.BlockReason, modell.ErrAntwortUngueltig)
 	}
 	if len(resp.Candidates) == 0 || resp.Candidates[0] == nil {
-		return kern.Erkennung{}, fmt.Errorf("keine Antwort-Kandidaten: %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("keine Antwort-Kandidaten: %w", modell.ErrAntwortUngueltig)
 	}
 	switch grund := resp.Candidates[0].FinishReason; grund {
 	case "", genai.FinishReasonStop:
 		// vollständig
 	case genai.FinishReasonMaxTokens:
-		return kern.Erkennung{}, fmt.Errorf("Antwort abgeschnitten (Token-Grenze): %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Antwort abgeschnitten (Token-Grenze): %w", modell.ErrAntwortUngueltig)
 	default:
-		return kern.Erkennung{}, fmt.Errorf("Antwort beendet mit %s: %w", grund, modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Antwort beendet mit %s: %w", grund, modell.ErrAntwortUngueltig)
 	}
-	return erkennungAusText(resp.Text())
+	text := strings.TrimSpace(resp.Text())
+	if text == "" {
+		return "", fmt.Errorf("leerer Antworttext: %w", modell.ErrAntwortUngueltig)
+	}
+	return text, nil
 }
 
 // erkennungAusText liest den JSON-Text. Fehlermeldungen enthalten nie

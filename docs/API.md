@@ -658,11 +658,23 @@ Content-Type: application/json
 **Ablauf im Backend**
 
 1. Embedding der Frage berechnen.
-2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden.
-3. Gibt es keinen passenden Abschnitt, antwortet das Backend ohne Aufruf des
-   Sprachmodells mit dem festen Satz (siehe unten).
+2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden
+   (höchstens 5).
+3. Erste Schicht: Abschnitte mit einem Score unter 0,80 fallen weg (grober
+   Filter, wird mit mehr Fragen kalibriert), ebenso Abschnitte, deren Eintrag
+   es nicht mehr gibt. Bleibt keiner übrig, antwortet das Backend ohne Aufruf
+   des Sprachmodells mit dem festen Satz (siehe unten).
 4. Sonst bekommt das Sprachmodell die Frage und nur diese Abschnitte. Es
    antwortet nur aus diesen Abschnitten und setzt Verweise wie `[1]`.
+   Beantworten die Abschnitte die Frage nicht, antwortet es mit dem festen
+   Satz.
+5. Zweite Schicht: Enthält die Antwort keinen gültigen Verweis, gilt sie als
+   „nichts gefunden“ (fester Satz, `gefunden: false`). Eine Antwort ohne
+   Quellenangabe erreicht die App nie.
+
+`quellen` enthält nur die Abschnitte, auf die die Antwort tatsächlich
+verweist. Die Nummern `nr` sind nicht unbedingt lückenlos (z. B. nur `1`
+und `3`); sie passen immer zu den Verweisen im Text.
 
 Die Antwort stützt sich auf den `volltext`. Korrekturen an `infos` ändern sie
 nicht.
@@ -714,10 +726,10 @@ Kein Treffer ist kein Fehler. Die Antwort lautet immer wörtlich:
 
 | HTTP | Code | Bemerkung |
 |---|---|---|
-| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON, oder unbekanntes `modul` |
+| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON, unbekanntes Feld, oder unbekanntes `modul` (`details.feld`, `details.wert`) |
 | 400 | `FRAGE_FEHLT` | Feld fehlt, ist leer oder nur Leerzeichen |
 | 400 | `FRAGE_ZU_LANG` | Über 500 Zeichen |
-| 503 | `MODELL_NICHT_ERREICHBAR` | Embedding- oder Sprachmodell nicht erreichbar |
+| 503 | `MODELL_NICHT_ERREICHBAR` | Embedding- oder Sprachmodell nicht erreichbar, oder das Sprachmodell liefert keine verwertbare Antwort (z. B. leer oder blockiert) |
 | 500 | `INTERNER_FEHLER` | |
 
 ### 3.7 Eintrag löschen
@@ -868,3 +880,6 @@ vorhandene Fehlercodes.
    `X-Content-Type-Options: nosniff` und `Cache-Control: private, no-store`;
    `Content-Disposition` nach RFC 6266 (Anführungszeichen nur bei Bedarf,
    Umlaute als `filename*`).
+8. **Fragen** ([3.6](#36-frage-stellen)): Schwelle 0,80 als erster Filter;
+   Antworten ohne gültigen Verweis werden zum festen Satz; `quellen` nur mit
+   den zitierten Abschnitten; 503 auch bei unverwertbarer Modellantwort.
