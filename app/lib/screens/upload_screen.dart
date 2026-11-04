@@ -227,22 +227,80 @@ class _UploadScreenState extends State<UploadScreen> {
         title: const Text('Hochladen'),
         actions: [MockHinweis(sichtbar: widget.api.istMock)],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          const _Hinweis(),
-          const SizedBox(height: 16),
-          if (_fehler case final fehler?) ...[
-            _FehlerKarte(fehler: fehler, eintragOeffnen: widget.eintragOeffnen),
-            const SizedBox(height: 16),
-          ],
-          if (_datei case final datei?)
-            _vorschau(datei)
-          else if (_textModus)
-            _texteingabe()
-          else
-            _auswahlKnoepfe(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const _Hinweis(),
+                const SizedBox(height: 16),
+                if (_fehler case final fehler?) ...[
+                  _FehlerKarte(
+                    fehler: fehler,
+                    eintragOeffnen: widget.eintragOeffnen,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_datei case final datei?)
+                  _vorschau(datei)
+                else if (_textModus)
+                  _texteingabe()
+                else
+                  _auswahlKnoepfe(),
+              ],
+            ),
+          ),
+          // Feste Leiste unter der Liste: Sie scrollt nicht mit und sitzt
+          // bei offener Tastatur direkt darüber (der Rahmen verkleinert den
+          // Screen). So bleiben die Knöpfe auch bei langem Text erreichbar.
+          if (_textModus && _datei == null && !_laedtHoch) _textAktionen(),
         ],
+      ),
+    );
+  }
+
+  Widget _textAktionen() {
+    final fehler = _fehler;
+    final wiederholen = fehler != null && _wiederholbar.contains(fehler.code);
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          // Beide Knöpfe teilen sich die Breite; zu lange Beschriftungen
+          // werden gekürzt statt überzulaufen (schmale Handys, große Schrift).
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: _textAbbrechen,
+                  child: const Text(
+                    'Abbrechen',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: _text.text.trim().isEmpty
+                      ? null
+                      : _textImportieren,
+                  icon: Icon(wiederholen ? Icons.refresh : Icons.cloud_upload),
+                  label: Text(
+                    wiederholen ? 'Erneut versuchen' : 'Importieren',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -286,9 +344,8 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
+  /// Textfeld; die Knöpfe stehen in der festen Leiste ([_textAktionen]).
   Widget _texteingabe() {
-    final fehler = _fehler;
-    final wiederholen = fehler != null && _wiederholbar.contains(fehler.code);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -306,18 +363,7 @@ class _UploadScreenState extends State<UploadScreen> {
             border: OutlineInputBorder(),
           ),
         ),
-        const SizedBox(height: 16),
-        if (_laedtHoch)
-          const _Auswertung()
-        else ...[
-          FilledButton.icon(
-            onPressed: _text.text.trim().isEmpty ? null : _textImportieren,
-            icon: Icon(wiederholen ? Icons.refresh : Icons.cloud_upload),
-            label: Text(wiederholen ? 'Erneut versuchen' : 'Importieren'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(onPressed: _textAbbrechen, child: const Text('Abbrechen')),
-        ],
+        if (_laedtHoch) ...[const SizedBox(height: 16), const _Auswertung()],
       ],
     );
   }

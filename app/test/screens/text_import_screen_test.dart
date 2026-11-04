@@ -137,6 +137,59 @@ void main() {
     expect(find.textContaining(vorhanden.datei.dateiname), findsWidgets);
   });
 
+  testWidgets('Handygröße, Tastatur offen, langer Text: Knöpfe erreichbar', (
+    tester,
+  ) async {
+    final mock = schnellerMock();
+    await tester.pumpWidget(testApp(mock));
+    await tester.pumpAndSettle();
+    await zuGesundheit(tester);
+
+    // Wie das OnePlus 8T: 1080 × 2400 px bei Faktor 3, also 360 × 800.
+    // Gboard ist dort 897 px hoch (gemessen per Screenshot), also 299.
+    // Erst nach „Bereiche“ umstellen: Die Kacheln dort laufen in der
+    // Testschrift bei 360 px Breite über (eigenes Thema).
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Hochladen'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Text eingeben'));
+    await tester.pumpAndSettle();
+
+    // Feld antippen, Tastatur geht auf, langer Text wird eingegeben.
+    await tester.tap(textFeld());
+    tester.view.viewInsets = const FakeViewPadding(bottom: 897);
+    await tester.enterText(
+      textFeld(),
+      [for (var i = 1; i <= 20; i++) 'Zeile $i Laborwert Beispiel'].join('\n'),
+    );
+    await tester.pumpAndSettle();
+
+    // Sichtbar ist nur der Bereich zwischen AppBar und Tastatur.
+    final oben = tester
+        .getRect(find.widgetWithText(AppBar, 'Hochladen'))
+        .bottom;
+    const unten = (2400 - 897) / 3;
+    for (final knopf in [importieren(), find.text('Abbrechen')]) {
+      final rect = tester.getRect(knopf);
+      expect(rect.top, greaterThanOrEqualTo(oben), reason: '$knopf oben');
+      expect(rect.bottom, lessThanOrEqualTo(unten), reason: '$knopf unten');
+    }
+
+    // Und der Knopf tut, was er soll.
+    await tester.tap(importieren());
+    await tester.pumpAndSettle();
+    expect(find.byType(EintragScreen), findsOneWidget);
+  });
+
   testWidgets('wiederholbarer Fehler: „Erneut versuchen“, Text bleibt', (
     tester,
   ) async {
