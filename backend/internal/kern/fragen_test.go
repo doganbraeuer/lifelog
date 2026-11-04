@@ -40,14 +40,17 @@ func TestScoreUmrechnung(t *testing.T) {
 			t.Errorf("KosinusAusScore(%v) = %v, erwartet %v", score, got, cos)
 		}
 	}
-	// Die Schwelle 0,80 entspricht cos 0,60.
-	if got := KosinusAusScore(MinScore); math.Abs(got-0.6) > 1e-12 {
+	// Die Schwelle 0,82 entspricht cos 0,64 (Kommentar an MinScore).
+	if got := KosinusAusScore(MinScore); math.Abs(got-0.64) > 1e-12 {
 		t.Errorf("MinScore entspricht cos %v", got)
 	}
 }
 
 func TestUeberSchwelle(t *testing.T) {
-	treffer := []Treffer{{Nr: 1, Score: 0.90}, {Nr: 2, Score: 0.80}, {Nr: 3, Score: 0.7999}, {Nr: 4, Score: 0.85}}
+	// Relativ zu MinScore, damit eine neue Kalibrierung den Test nicht bricht.
+	treffer := []Treffer{
+		{Nr: 1, Score: 0.95}, {Nr: 2, Score: MinScore}, {Nr: 3, Score: MinScore - 0.0001}, {Nr: 4, Score: MinScore + 0.03},
+	}
 	got := UeberSchwelle(treffer, MinScore)
 	var nrs []int
 	for _, t := range got {

@@ -660,8 +660,9 @@ Content-Type: application/json
 1. Embedding der Frage berechnen.
 2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden
    (höchstens 5).
-3. Erste Schicht: Abschnitte mit einem Score unter 0,80 fallen weg (grober
-   Filter, wird mit mehr Fragen kalibriert), ebenso Abschnitte, deren Eintrag
+3. Erste Schicht: Abschnitte mit einem Score unter 0,82 fallen weg (grober
+   Filter, kalibriert am 04.11.2026 mit `backend/cmd/kalibrieren`, siehe
+   Kommentar an `kern.MinScore`), ebenso Abschnitte, deren Eintrag
    es nicht mehr gibt. Bleibt keiner übrig, antwortet das Backend ohne Aufruf
    des Sprachmodells mit dem festen Satz (siehe unten).
 4. Sonst bekommt das Sprachmodell die Frage und nur diese Abschnitte. Es
@@ -850,6 +851,17 @@ Geplantes Verhalten:
 - **Duplikate nur bei exakt gleichen Bytes:** Ein neues Foto desselben
   Dokuments hat einen anderen Hash und wird nicht als Duplikat erkannt. Beim
   Text-Import genügt ein zusätzliches Leerzeichen für einen neuen Hash.
+- **Schwelle neu kalibrieren:** Die Schwelle 0,82 beruht auf 4 kurzen
+  Testeinträgen mit je einem Abschnitt. Nach den ersten echten
+  (synthetischen) Uploads `go run ./cmd/kalibrieren` erneut laufen lassen,
+  am besten mit Fragen zu den hochgeladenen Dokumenten. Längere Dokumente
+  mit mehreren Abschnitten können niedriger liegen.
+- **Briefköpfe und Adressen vor dem Einbetten herausfiltern:** Fachfremde
+  Fragen mit „Salzburg“ (Wetter, Zugfahrt) lagen mit 0,79–0,80 nahe an der
+  Schwelle, weil die Adresse im Briefkopf steht. Werden Briefkopf und Adressen
+  nicht mit eingebettet, sinken solche Scores. `volltext` und die Auszüge in
+  `quellen` bleiben dabei unverändert; es ändert sich nur, was ins Embedding
+  geht. Danach neu kalibrieren.
 
 ---
 
@@ -880,6 +892,6 @@ vorhandene Fehlercodes.
    `X-Content-Type-Options: nosniff` und `Cache-Control: private, no-store`;
    `Content-Disposition` nach RFC 6266 (Anführungszeichen nur bei Bedarf,
    Umlaute als `filename*`).
-8. **Fragen** ([3.6](#36-frage-stellen)): Schwelle 0,80 als erster Filter;
+8. **Fragen** ([3.6](#36-frage-stellen)): Schwelle 0,82 als erster Filter;
    Antworten ohne gültigen Verweis werden zum festen Satz; `quellen` nur mit
    den zitierten Abschnitten; 503 auch bei unverwertbarer Modellantwort.

@@ -22,14 +22,31 @@ const AnzahlTreffer = 5
 //
 // Atlas meldet bei similarity "cosine" nicht die Kosinus-Ähnlichkeit selbst,
 // sondern score = (1 + cos) / 2, also einen Wert zwischen 0 und 1.
-// 0,80 entspricht cos = 0,60 (siehe ScoreAusKosinus/KosinusAusScore).
+// 0,82 entspricht cos = 0,64 (siehe ScoreAusKosinus/KosinusAusScore).
 //
 // Die Schwelle ist bewusst nur ein grober Filter. Die zweite Schicht ist das
 // Sprachmodell: Beantworten die Abschnitte die Frage nicht, antwortet es mit
-// dem FesterSatz. Messwerte vom 04.11.2026 (gemini-embedding-2, 768 Dim.):
-// passender Abschnitt 0,88–0,90, andere Gesundheitsabschnitte 0,81–0,84,
-// fachfremde Frage („Wetter“) ~0,77. Wird mit mehr Fragen kalibriert.
-const MinScore = 0.80
+// dem FesterSatz.
+//
+// Kalibrierung vom 04.11.2026 (go run ./cmd/kalibrieren; gemini-embedding-2,
+// 768 Dim.; 4 Testeinträge mit je einem Abschnitt; 18 feste Fragen):
+//
+//	passend    (10)  0,857 … 0,902  richtiger Eintrag immer an erster Stelle
+//	nah        (3)   0,823 … 0,856  Gesundheit, steht aber nirgends drin
+//	fachfremd  (5)   0,763 … 0,798  höchste: Wetter in Salzburg 0,798,
+//	                                Zug Salzburg–Wien 0,791 („Salzburg“ steht
+//	                                in den Briefköpfen)
+//
+// Trennend wäre jeder Wert über 0,798 bis 0,857. 0,82 lässt 0,022 Abstand
+// nach unten und 0,037 nach oben. Der Abstand nach oben ist bewusst größer:
+// Eine verworfene passende Frage kostet eine Antwort, eine durchgelassene
+// fachfremde nur einen Aufruf des Sprachmodells, das dann den festen Satz
+// liefert. "nah" lässt sich per Schwelle nicht abtrennen (0,856 gegenüber
+// 0,857); dafür ist die zweite Schicht da.
+//
+// Offen: nach den ersten echten (synthetischen) Uploads neu kalibrieren,
+// weil längere Dokumente mit mehreren Abschnitten niedriger liegen können.
+const MinScore = 0.82
 
 var (
 	ErrFrageFehlt  = errors.New("Frage fehlt")

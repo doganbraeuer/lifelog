@@ -47,8 +47,8 @@ func suchBestand() *suchAttrappe {
 		treffer: []kern.Treffer{
 			{EintragID: idLabor, Nr: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
 			{EintragID: idWeg, Nr: 1, Text: "verwaist", Score: 0.86},
-			{EintragID: idBrief, Nr: 1, Text: "Blutdruck 128/82", Score: 0.82},
-			{EintragID: idBrief, Nr: 2, Text: "Kontrolle in 6 Monaten", Score: 0.79}, // unter 0,80
+			{EintragID: idBrief, Nr: 1, Text: "Blutdruck 128/82", Score: kern.MinScore},              // genau auf der Schwelle
+			{EintragID: idBrief, Nr: 2, Text: "Kontrolle in 6 Monaten", Score: kern.MinScore - 0.01}, // darunter
 		},
 		eintraege: map[string]kern.EintragKurz{
 			idLabor: {ID: idLabor, Modul: "gesundheit", Typ: "laborbefund", Dokumentdatum: zeiger("2026-10-14"), Quelle: zeiger("Labor Muster GmbH")},
@@ -70,7 +70,7 @@ func TestFragen_Treffer(t *testing.T) {
 		t.Errorf("Suche mit Modul %q, k %d", s.gefragtModul, s.gefragtK)
 	}
 
-	// Ans Modell gingen nur Treffer ≥ 0,80 mit vorhandenem Eintrag, neu nummeriert.
+	// Ans Modell gingen nur Treffer ≥ MinScore mit vorhandenem Eintrag, neu nummeriert.
 	frage, fs := a.LetzteAnfrage()
 	if frage != "Wie hoch war mein Hb?" {
 		t.Errorf("Frage = %q, erwartet ohne Leerraum", frage)

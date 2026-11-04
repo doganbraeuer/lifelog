@@ -77,14 +77,31 @@ jeder Abschnitt neu eingebettet werden.
 
 ## Synthetische Testdaten
 
-Damit die Zeitleiste ohne Upload und ohne Gemini etwas zeigt:
+Damit Zeitleiste und Suche ohne Upload und ohne Vision-LLM etwas zeigen:
 
 ```sh
-go run ./cmd/testdaten              # 4 erfundene Einträge einfügen (mehrfach ausführbar)
-go run ./cmd/testdaten -entfernen   # wieder löschen
+go run ./cmd/testdaten                   # 4 erfundene Einträge mit Abschnitten und Embeddings (mehrfach ausführbar)
+go run ./cmd/testdaten -ohne-abschnitte  # dasselbe ohne Gemini; die Suche findet sie dann nicht
+go run ./cmd/testdaten -entfernen        # wieder löschen, samt Abschnitten
 ```
 
-Die Testeinträge haben feste IDs. Andere Einträge bleiben unberührt.
+Die Testeinträge (`internal/beispieldaten`) haben feste IDs. Andere Einträge
+bleiben unberührt. Die Abschnitte entstehen wie beim Upload: gleiches
+Zerlegen, gleiches Embedding-Modell.
+
+## Schwelle kalibrieren
+
+```sh
+go run ./cmd/testdaten       # einmal, mit Abschnitten
+go run ./cmd/kalibrieren     # wertet mit kern.MinScore aus
+go run ./cmd/kalibrieren -schwelle 0.82
+```
+
+Stellt 18 feste Fragen (`cmd/kalibrieren/fragen.go`): 10, die die Testdaten
+beantworten, 3 zu Gesundheit, die nicht drinstehen, und 5 fachfremde. Pro
+Frage zeigt es den besten Score der Vektorsuche und ob der richtige Eintrag
+oben steht. Danach folgt, welche Schwellen passend von fachfremd trennen.
+Kosten: ein Embedding pro Frage. Das Sprachmodell wird nicht aufgerufen.
 
 `testdaten/laborbefund.{txt,pdf,png}` ist ein erfundener Befund für Uploads
 und Live-Tests. PDF und PNG sind aus der `.txt` erzeugt:
@@ -100,6 +117,8 @@ sips -s format png laborbefund.pdf --out laborbefund.png
 |---|---|
 | `cmd/server` | Start: Konfiguration, MongoDB, HTTP-Server, sauberes Beenden |
 | `cmd/testdaten` | Synthetische Einträge einfügen oder entfernen |
+| `cmd/kalibrieren` | Scores der Vektorsuche für feste Fragen messen (Schwelle) |
+| `internal/beispieldaten` | Die erfundenen Testeinträge, gemeinsam für beide Programme |
 | `cmd/modelle` | Verfügbare Gemini-Modelle auflisten |
 | `internal/konfig` | Umgebungsvariablen lesen und prüfen, Geheimnisse maskieren |
 | `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung, Dateityp, Abschnitte, Prüfung der Erkennung |
