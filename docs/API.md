@@ -1,6 +1,7 @@
 # Lifelog REST-API (Prototyp)
 
-Stand: 03.11.2026 · Version `v1` · Entwurf
+Stand: 04.11.2026 · Version `v1` · Entwurf
+(Änderungen gegenüber 03.11.: siehe [Abschnitt 5](#5-änderungen-seit-03112026))
 
 Dieses Dokument legt die Schnittstelle zwischen der Flutter-App (`app/`) und
 dem Go-Backend (`backend/`) fest. Beide Seiten bauen gegen diesen Vertrag.
@@ -17,12 +18,24 @@ Alle Beispiele enthalten nur synthetische Daten.
 - Basis-Pfad: `/api/v1`
 - Anfragen und Antworten sind JSON in UTF-8
   (`Content-Type: application/json; charset=utf-8`). Ausnahmen sind der Upload
-  (`multipart/form-data`) und der Abruf der Originaldatei (Binärdaten).
+  (`multipart/form-data`), der Abruf der Originaldatei (Binärdaten) und das
+  Löschen (Antwort ohne Body).
 - Feldnamen sind deutsch und folgen dem Datenmodell aus `CLAUDE.md`.
 - IDs von Einträgen sind MongoDB-ObjectIds als Hex-String mit 24 Zeichen,
   z. B. `"6727a1f3c2b4e5d6f7a8b9c0"`.
 - Im Prototyp gibt es keine Anmeldung. Das Backend kennt genau einen Nutzer
   (siehe [Offene Punkte](#4-offene-punkte)).
+
+### Module
+
+Jeder Eintrag gehört zu genau einem Modul (Feld `modul`), z. B.
+`gesundheit`. Upload, Liste und Frage nehmen ein optionales `modul` an.
+Fehlt es, gilt `gesundheit`.
+
+Im Prototyp kennt das Backend nur `gesundheit`. Ein anderer Wert ist ein
+Fehler (`400`, siehe die einzelnen Endpunkte). Weitere Module (in der App
+vorgesehen: `ernaehrung`, `rezepte`, `sport`) werden erst gültig, wenn ihre
+Typen festgelegt sind.
 
 ### Datum und Zeit
 
@@ -56,17 +69,17 @@ und hängt vom Code ab.
 
 | HTTP | Code | Wann |
 |---|---|---|
-| 400 | `UNGUELTIGE_ANFRAGE` | JSON nicht lesbar, Pflichtfeld fehlt, falsches Format, unbekanntes Feld |
+| 400 | `UNGUELTIGE_ANFRAGE` | JSON nicht lesbar, Pflichtfeld fehlt, falsches Format, unbekanntes Feld, unbekanntes `modul`, Upload mit `datei` und `text` zugleich |
 | 400 | `UNGUELTIGER_PARAMETER` | Unbekannter Wert für einen Query-Parameter |
 | 400 | `UNGUELTIGE_ID` | ID ist keine gültige ObjectId |
-| 400 | `DATEI_FEHLT` | Upload ohne Feld `datei` oder mit leerer Datei |
+| 400 | `DATEI_FEHLT` | Upload ohne `datei` und ohne `text`, oder der Inhalt ist leer |
 | 400 | `FELD_NICHT_KORRIGIERBAR` | Korrektur eines Felds, das (noch) nicht korrigierbar ist, z. B. `volltext` |
 | 400 | `FRAGE_FEHLT` | Frage fehlt oder besteht nur aus Leerzeichen |
 | 400 | `FRAGE_ZU_LANG` | Frage länger als 500 Zeichen |
 | 404 | `EINTRAG_NICHT_GEFUNDEN` | Kein Eintrag mit dieser ID |
 | 404 | `INFO_NICHT_GEFUNDEN` | Korrektur verweist auf eine unbekannte Info-ID |
-| 409 | `DUPLIKAT` | Genau diese Datei wurde schon hochgeladen |
-| 413 | `DATEI_ZU_GROSS` | Datei größer als 10 MB |
+| 409 | `DUPLIKAT` | Genau diese Datei (bzw. genau dieser Text) wurde schon hochgeladen |
+| 413 | `DATEI_ZU_GROSS` | Datei größer als 10 MB oder Text länger als 100 000 Zeichen |
 | 415 | `DATEITYP_NICHT_UNTERSTUETZT` | Kein JPEG, PNG, HEIC oder PDF |
 | 422 | `NICHT_LESBAR` | Das Vision-LLM erkennt in der Datei kein Dokument |
 | 500 | `INTERNER_FEHLER` | Unerwarteter Fehler im Backend, z. B. Datenbank nicht erreichbar |
@@ -79,6 +92,9 @@ und hängt vom Code ab.
   Sprachmodell und Embedding-Modell laufen über das Backend.
 - Die API liefert keine medizinischen Bewertungen oder Empfehlungen. Sie gibt
   nur wieder, was in den Dokumenten steht.
+- Listen sind immer ein Array. Eine leere Liste ist `[]`, nie `null` und nie
+  ein fehlendes Feld. Das gilt für `eintraege`, `infos`, `korrekturen` und
+  `quellen`.
 
 ---
 
@@ -127,12 +143,12 @@ So liefern `POST /eintraege`, `GET /eintraege/{id}` und
 | Feld | Typ | Bemerkung |
 |---|---|---|
 | `id` | String | ObjectId des Eintrags |
-| `modul` | String | Pflichtfeld. Bereich, zu dem der Eintrag gehört. Im Prototyp hat jeder Eintrag den Wert `gesundheit`. Setzt das Backend beim Upload, nicht das Vision-LLM. Weitere Werte kommen mit neuen Modulen dazu (z. B. Ernährung, Sport). |
+| `modul` | String | Pflichtfeld. Bereich, zu dem der Eintrag gehört, siehe [Module](#module). Kommt aus dem Upload (Feld `modul`, Standard `gesundheit`), nicht vom Vision-LLM. |
 | `typ` | String | Dokumenttyp innerhalb des Moduls. Für `gesundheit` einer von `arztbrief`, `laborbefund`, `rezept`, `sonstiges` |
 | `dokumentdatum` | String oder `null` | Datum auf dem Dokument, siehe Abschnitt 1 |
 | `importdatum` | String | Zeitpunkt des Uploads |
 | `quelle` | String oder `null` | Ausstellende Stelle. `null`, wenn nicht erkannt |
-| `volltext` | String | Text des Dokuments, wie ihn das Vision-LLM gelesen hat |
+| `volltext` | String | Text des Dokuments, wie ihn das Vision-LLM gelesen hat. Beim Text-Import der eingegebene Text, unverändert. |
 | `infos` | Liste | Extrahierte Angaben, siehe unten |
 | `datei` | Objekt | Referenz auf die Originaldatei |
 | `korrekturen` | Liste | Korrigierte Felder mit ursprünglich erkanntem Wert |
@@ -151,8 +167,8 @@ So liefern `POST /eintraege`, `GET /eintraege/{id}` und
 | Feld | Typ | Bemerkung |
 |---|---|---|
 | `id` | String | ID der gespeicherten Originaldatei |
-| `dateiname` | String | Name beim Upload |
-| `mimeTyp` | String | Vom Backend anhand des Inhalts erkannt, nicht aus der Dateiendung |
+| `dateiname` | String | Name beim Upload. Beim Text-Import `text.txt`. |
+| `mimeTyp` | String | Vom Backend anhand des Inhalts erkannt, nicht aus der Dateiendung. Beim Text-Import `text/plain; charset=utf-8`. |
 | `groesse` | Zahl | Größe in Bytes |
 | `sha256` | String | SHA-256-Hash des Dateiinhalts als Hex-String (64 Zeichen). Dient der Duplikat-Erkennung. |
 
@@ -206,14 +222,15 @@ Die Liste liefert nur, was die Zeitleiste braucht. `volltext`, `infos`,
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| `POST` | `/api/v1/eintraege` | Datei hochladen und auslesen lassen |
-| `GET` | `/api/v1/eintraege` | Alle Einträge für die Zeitleiste |
+| `POST` | `/api/v1/eintraege` | Datei oder Text hochladen und auslesen lassen |
+| `GET` | `/api/v1/eintraege` | Alle Einträge eines Moduls für die Zeitleiste |
 | `GET` | `/api/v1/eintraege/{id}` | Einen Eintrag ansehen |
 | `GET` | `/api/v1/eintraege/{id}/datei` | Originaldatei abrufen |
 | `PATCH` | `/api/v1/eintraege/{id}` | Erkannte Werte korrigieren |
+| `DELETE` | `/api/v1/eintraege/{id}` | Eintrag mit Originaldatei und Abschnitten löschen |
 | `POST` | `/api/v1/fragen` | Frage stellen, Antwort mit Quellenangabe |
 
-### 3.1 Datei hochladen und auslesen
+### 3.1 Datei oder Text hochladen und auslesen
 
 ```http
 POST /api/v1/eintraege
@@ -222,7 +239,13 @@ Content-Type: multipart/form-data; boundary=----lifelog
 
 **Anfrage**
 
-Ein Formularfeld `datei` mit genau einer Datei.
+| Formularfeld | Bemerkung |
+|---|---|
+| `datei` | Genau eine Datei. Entweder `datei` oder `text`, nicht beides. |
+| `text` | Dokumentinhalt als Text (UTF-8), z. B. aus einem Textfeld der App. Entweder `datei` oder `text`, nicht beides. |
+| `modul` | Optional, Standard `gesundheit`. Siehe [Module](#module). |
+
+Für `datei`:
 
 - Erlaubte Typen: `image/jpeg`, `image/png`, `image/heic`, `application/pdf`.
   Das Backend prüft den Typ am Inhalt der Datei, nicht nur an der Endung.
@@ -234,22 +257,48 @@ Content-Disposition: form-data; name="datei"; filename="befund_oktober.pdf"
 Content-Type: application/pdf
 
 <Binärdaten>
+------lifelog
+Content-Disposition: form-data; name="modul"
+
+gesundheit
+------lifelog--
+```
+
+Für `text`:
+
+- Höchstens 100 000 Zeichen. Leer oder nur Leerzeichen gilt als fehlend.
+- Das Backend speichert den Text als Originaldatei: `dateiname`
+  `text.txt`, `mimeTyp` `text/plain; charset=utf-8`, `groesse` und
+  `sha256` über die UTF-8-Bytes. Damit funktionieren Abruf
+  (`GET …/datei`), Duplikat-Erkennung und Löschen genau wie bei einer
+  Datei.
+
+```http
+------lifelog
+Content-Disposition: form-data; name="text"
+
+Hausarztpraxis Beispiel
+Überweisung vom 21.10.2026
+...
 ------lifelog--
 ```
 
 **Ablauf im Backend**
 
-1. Größe und Typ prüfen.
-2. SHA-256-Hash über den Dateiinhalt berechnen und in MongoDB nach
-   `datei.sha256` suchen. Gibt es den Hash schon, bricht das Backend mit
-   `409 DUPLIKAT` ab. Diese Prüfung kommt **vor** dem Modellaufruf, damit
-   für ein Duplikat kein Vision-LLM-Aufruf anfällt. Ein eindeutiger Index auf
-   `datei.sha256` fängt zusätzlich den Fall ab, dass dieselbe Datei zweimal
-   gleichzeitig hochgeladen wird.
+1. Größe und Typ prüfen bzw. Text prüfen, `modul` prüfen.
+2. SHA-256-Hash über den Dateiinhalt (bzw. die UTF-8-Bytes des Texts)
+   berechnen und in MongoDB nach `datei.sha256` suchen. Gibt es den Hash
+   schon, bricht das Backend mit `409 DUPLIKAT` ab. Diese Prüfung kommt
+   **vor** dem Modellaufruf, damit für ein Duplikat kein Modellaufruf
+   anfällt. Ein eindeutiger Index auf `datei.sha256` fängt zusätzlich den
+   Fall ab, dass dieselbe Datei zweimal gleichzeitig hochgeladen wird. Die
+   Prüfung gilt über alle Module hinweg.
 3. Datei an das Vision-LLM schicken. Es liefert `dokumentdatum`, `quelle`,
-   `typ`, `volltext` und `infos` als JSON.
-4. Das JSON prüfen (Pflichtfelder, Datumsformat, erlaubter `typ`) und
-   `modul` auf `gesundheit` setzen.
+   `typ`, `volltext` und `infos` als JSON. Beim Text-Import bekommt das
+   Sprachmodell den Text und liefert dieselben Felder außer `volltext`;
+   `volltext` ist der eingegebene Text.
+4. Das JSON prüfen (Pflichtfelder, Datumsformat, erlaubter `typ` des
+   Moduls) und `modul` setzen.
 5. Volltext in Abschnitte zerlegen und Embeddings berechnen.
 6. Eintrag, Abschnitte mit Embeddings und Originaldatei speichern.
 
@@ -299,9 +348,10 @@ Der Body ist der vollständige Eintrag wie in Abschnitt 2, mit leerer Liste
 
 | HTTP | Code | Bemerkung |
 |---|---|---|
-| 400 | `DATEI_FEHLT` | Feld `datei` fehlt oder Datei ist leer |
-| 409 | `DUPLIKAT` | Datei mit gleichem SHA-256-Hash existiert. `details.eintragId` nennt den vorhandenen Eintrag. |
-| 413 | `DATEI_ZU_GROSS` | Über 10 MB |
+| 400 | `DATEI_FEHLT` | Weder `datei` noch `text`, oder der Inhalt ist leer bzw. nur Leerzeichen |
+| 400 | `UNGUELTIGE_ANFRAGE` | `datei` und `text` zugleich, oder unbekanntes `modul` (`details.feld`, `details.wert`) |
+| 409 | `DUPLIKAT` | Datei bzw. Text mit gleichem SHA-256-Hash existiert. `details.eintragId` nennt den vorhandenen Eintrag. |
+| 413 | `DATEI_ZU_GROSS` | Datei über 10 MB bzw. Text über 100 000 Zeichen |
 | 415 | `DATEITYP_NICHT_UNTERSTUETZT` | Kein JPEG, PNG, HEIC oder PDF |
 | 422 | `NICHT_LESBAR` | Kein Dokument erkennbar, z. B. unscharfes Foto |
 | 502 | `AUSLESEN_FEHLGESCHLAGEN` | Antwort des Vision-LLM passt nicht zum erwarteten JSON |
@@ -326,18 +376,19 @@ vorhandenen Eintrag springen:
 ### 3.2 Alle Einträge für die Zeitleiste
 
 ```http
-GET /api/v1/eintraege?sortierung=dokumentdatum&richtung=absteigend
+GET /api/v1/eintraege?modul=gesundheit&sortierung=dokumentdatum&richtung=absteigend
 ```
 
 **Anfrage**
 
 | Parameter | Werte | Standard |
 |---|---|---|
+| `modul` | siehe [Module](#module) | `gesundheit` |
 | `sortierung` | `dokumentdatum`, `importdatum` | `dokumentdatum` |
 | `richtung` | `absteigend`, `aufsteigend` | `absteigend` |
 
-Beide Parameter sind optional. Ohne Parameter kommt das neueste Dokument
-zuerst.
+Alle Parameter sind optional. Die Liste enthält nur Einträge des gewählten
+Moduls. Ohne Parameter kommt das neueste Dokument aus `gesundheit` zuerst.
 
 **Sortierregeln**
 
@@ -387,13 +438,13 @@ Diese Regeln bekommen im Backend Tests.
 Keine Einträge: `200 OK` mit `"eintraege": []` und `"anzahl": 0`.
 
 Im Prototyp gibt es keine Seitenaufteilung. Die Liste enthält immer alle
-Einträge.
+Einträge des Moduls.
 
 **Fehler**
 
 | HTTP | Code | Bemerkung |
 |---|---|---|
-| 400 | `UNGUELTIGER_PARAMETER` | z. B. `sortierung=quelle` |
+| 400 | `UNGUELTIGER_PARAMETER` | z. B. `sortierung=quelle` oder ein unbekanntes `modul` |
 | 500 | `INTERNER_FEHLER` | |
 
 ```json
@@ -447,6 +498,9 @@ Content-Type: application/pdf
 Content-Length: 184320
 Content-Disposition: inline; filename="befund_oktober.pdf"
 ```
+
+Bei einem Text-Import ist es der Text mit
+`Content-Type: text/plain; charset=utf-8` und `filename="text.txt"`.
 
 **Fehler** (als JSON wie in Abschnitt 1)
 
@@ -576,17 +630,19 @@ Content-Type: application/json
 | Feld | Typ | Bemerkung |
 |---|---|---|
 | `frage` | String | Pflicht, höchstens 500 Zeichen |
+| `modul` | String | Optional, Standard `gesundheit`. Gesucht wird nur in Dokumenten dieses Moduls. |
 
 ```json
 {
-  "frage": "Welchen Hämoglobinwert hatte ich im Oktober?"
+  "frage": "Welchen Hämoglobinwert hatte ich im Oktober?",
+  "modul": "gesundheit"
 }
 ```
 
 **Ablauf im Backend**
 
 1. Embedding der Frage berechnen.
-2. Per Atlas Vector Search die passendsten Abschnitte finden.
+2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden.
 3. Gibt es keinen passenden Abschnitt, antwortet das Backend ohne Aufruf des
    Sprachmodells mit dem festen Satz (siehe unten).
 4. Sonst bekommt das Sprachmodell die Frage und nur diese Abschnitte. Es
@@ -605,6 +661,7 @@ nicht.
     {
       "nr": 1,
       "eintragId": "6727a1f3c2b4e5d6f7a8b9c0",
+      "modul": "gesundheit",
       "typ": "laborbefund",
       "quelle": "Labor Muster GmbH, Salzburg",
       "dokumentdatum": "2026-10-14",
@@ -619,6 +676,7 @@ nicht.
 | `antwort` | String | Antworttext. Verweise `[n]` zeigen auf `quellen[].nr`. |
 | `gefunden` | Boolean | `false`, wenn kein passender Abschnitt gefunden wurde |
 | `quellen` | Liste | Verwendete Abschnitte. Mit `eintragId` öffnet die App den Eintrag. |
+| `quellen[].modul` | String | Modul des Eintrags. Ein `typ` ist nur zusammen mit dem Modul eindeutig (z. B. `rezept`). |
 | `quellen[].auszug` | String | Der Abschnitt aus dem Volltext, auf den sich die Antwort stützt |
 
 `dokumentdatum` und `quelle` in `quellen` zeigen die aktuellen Werte des
@@ -640,10 +698,45 @@ Kein Treffer ist kein Fehler. Die Antwort lautet immer wörtlich:
 
 | HTTP | Code | Bemerkung |
 |---|---|---|
-| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON |
+| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON, oder unbekanntes `modul` |
 | 400 | `FRAGE_FEHLT` | Feld fehlt, ist leer oder nur Leerzeichen |
 | 400 | `FRAGE_ZU_LANG` | Über 500 Zeichen |
 | 503 | `MODELL_NICHT_ERREICHBAR` | Embedding- oder Sprachmodell nicht erreichbar |
+| 500 | `INTERNER_FEHLER` | |
+
+### 3.7 Eintrag löschen
+
+```http
+DELETE /api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0
+```
+
+**Anfrage**
+
+Kein Body. `{id}` ist die ID des Eintrags.
+
+**Ablauf im Backend**
+
+1. Abschnitte mit Embeddings des Eintrags löschen.
+2. Originaldatei löschen.
+3. Eintrag löschen.
+
+Der Eintrag kommt **zuletzt**. Scheitert ein Schritt, antwortet das Backend
+mit `500 INTERNER_FEHLER` und der Eintrag ist weiter sichtbar. Ein erneuter
+Aufruf räumt den Rest auf.
+
+Danach lässt sich dieselbe Datei wieder hochladen, weil ihr Hash nicht mehr
+gespeichert ist.
+
+**Antwort `204 No Content`**
+
+Kein Body.
+
+**Fehler**
+
+| HTTP | Code | Bemerkung |
+|---|---|---|
+| 400 | `UNGUELTIGE_ID` | |
+| 404 | `EINTRAG_NICHT_GEFUNDEN` | Auch bei einem zweiten Löschen desselben Eintrags |
 | 500 | `INTERNER_FEHLER` | |
 
 ---
@@ -687,15 +780,35 @@ Geplantes Verhalten:
   `POST /eintraege` sofort `202 Accepted` liefern. Die App fragt dann den
   Status ab.
 - **Seitenaufteilung** der Zeitleiste, sobald es viele Einträge gibt.
-- **Einträge löschen**, inklusive Originaldatei und Abschnitten.
 - **Infos hinzufügen und löschen**, falls das Vision-LLM einen Wert übersieht.
 - **Filter nach `typ`** in der Zeitleiste.
-- **Weitere Module** (Ernährung, Rezepte, Sport): Das Feld `modul` trennt die
-  Bereiche. Ein `typ` gilt immer nur innerhalb seines Moduls. So bleibt
-  `rezept` in `gesundheit` ein ärztliches Rezept, und ein späteres Modul für
-  Kochrezepte kann eigene Typen haben, ohne dass es zu Verwechslungen kommt.
-  Noch offen: welches Modul ein Upload bekommt (Auswahl in der App oder
-  Erkennung durch das Vision-LLM), ob `modul` korrigierbar wird und ein
-  Filter nach `modul` in der Zeitleiste.
+- **Weitere Module** (Ernährung, Rezepte, Sport): Upload, Liste und Frage
+  nehmen `modul` schon an (siehe [Module](#module)). Ein `typ` gilt immer nur
+  innerhalb seines Moduls. So bleibt `rezept` in `gesundheit` ein ärztliches
+  Rezept, und ein späteres Modul für Kochrezepte kann eigene Typen haben.
+  Noch offen: die IDs und Typen der weiteren Module, und ob `modul`
+  korrigierbar wird.
 - **Duplikate nur bei exakt gleichen Bytes:** Ein neues Foto desselben
-  Dokuments hat einen anderen Hash und wird nicht als Duplikat erkannt.
+  Dokuments hat einen anderen Hash und wird nicht als Duplikat erkannt. Beim
+  Text-Import genügt ein zusätzliches Leerzeichen für einen neuen Hash.
+
+---
+
+## 5. Änderungen seit 03.11.2026
+
+Kurzübersicht für die Umsetzung im Backend. Alle Änderungen nutzen
+vorhandene Fehlercodes.
+
+1. **`modul`** ([Module](#module)): optional bei `POST /eintraege`
+   (Formularfeld), `GET /eintraege` (Query) und `POST /fragen` (JSON),
+   Standard `gesundheit`. Die Liste und die Suche gelten nur für das Modul.
+   `quellen[]` hat zusätzlich `modul`.
+2. **Text-Import** ([3.1](#31-datei-oder-text-hochladen-und-auslesen)):
+   Formularfeld `text` statt `datei` am selben Endpunkt. Der Text wird als
+   `text.txt` (`text/plain; charset=utf-8`) gespeichert; `datei` bleibt
+   dadurch Pflichtfeld. Höchstens 100 000 Zeichen.
+3. **Löschen** ([3.7](#37-eintrag-löschen)):
+   `DELETE /eintraege/{id}` mit `204`. Löscht Abschnitte, Datei und zuletzt
+   den Eintrag.
+4. **Regel** ([Wichtige Regeln](#wichtige-regeln)): Listen sind immer `[]`,
+   nie `null`.
