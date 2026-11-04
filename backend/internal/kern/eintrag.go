@@ -13,6 +13,10 @@ import (
 // anschlägt.
 var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
 
+// ErrEintragNichtGefunden: Es gibt keinen Eintrag mit dieser ID
+// (→ 404 EINTRAG_NICHT_GEFUNDEN).
+var ErrEintragNichtGefunden = errors.New("Eintrag nicht gefunden")
+
 // ErrUngueltigeID: Die ID ist keine ObjectId (24 Hex-Zeichen).
 var ErrUngueltigeID = errors.New("ungültige ID")
 

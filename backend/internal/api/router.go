@@ -6,10 +6,11 @@ import "net/http"
 // Schritt kommen Felder dazu (Speicher, Dienste). Über Schnittstellen statt
 // konkreter Typen lassen sich die Handler ohne Datenbank testen.
 type Abhaengigkeiten struct {
-	DB        Pinger
-	Eintraege EintragSpeicher
-	Hochladen Hochlader
-	Fragen    Frager
+	DB          Pinger
+	Eintraege   EintragSpeicher
+	Hochladen   Hochlader
+	Fragen      Frager
+	Korrigieren Korrigierer
 }
 
 // NeuerRouter verbindet die Pfade aus docs/API.md mit den Handlern.
@@ -22,6 +23,7 @@ func NeuerRouter(abh Abhaengigkeiten) http.Handler {
 	mux.HandleFunc("GET /api/v1/eintraege", eintraegeListeHandler(abh.Eintraege))
 	mux.HandleFunc("POST /api/v1/eintraege", hochladenHandler(abh.Hochladen))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}", eintragHandler(abh.Eintraege))
+	mux.HandleFunc("PATCH /api/v1/eintraege/{id}", korrigierenHandler(abh.Korrigieren))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", dateiHandler(abh.Eintraege))
 	mux.HandleFunc("POST /api/v1/fragen", fragenHandler(abh.Fragen))
 

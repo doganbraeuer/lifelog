@@ -279,6 +279,35 @@ func (s *Speicher) AbschnitteLoeschen(ctx context.Context, eintragID string) err
 	return nil
 }
 
+// KorrekturSpeichern schreibt die korrigierbaren Felder eines Eintrags
+// zurück (API.md 3.5): typ, dokumentdatum, quelle, infos und korrekturen.
+// Alles andere (volltext, datei, importdatum, modul) wird nicht angefasst,
+// auch nicht versehentlich, weil nur diese fünf Felder im $set stehen.
+//
+// gefunden ist false, wenn es den Eintrag nicht (mehr) gibt.
+func (s *Speicher) KorrekturSpeichern(ctx context.Context, e kern.Eintrag) (gefunden bool, err error) {
+	// Dieselbe Umwandlung wie beim Speichern, damit Zeitpunkte (UTC),
+	// fehlende Einheiten (omitempty) und leere Listen gleich aussehen.
+	dok, err := zuEintragDok(e)
+	if err != nil {
+		return false, err
+	}
+	res, err := s.eintraege.UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: dok.ID}},
+		bson.D{{Key: "$set", Value: bson.D{
+			{Key: "typ", Value: dok.Typ},
+			{Key: "dokumentdatum", Value: dok.Dokumentdatum},
+			{Key: "quelle", Value: dok.Quelle},
+			{Key: "infos", Value: dok.Infos},
+			{Key: "korrekturen", Value: dok.Korrekturen},
+		}}},
+	)
+	if err != nil {
+		return false, fmt.Errorf("Korrektur speichern: %w", err)
+	}
+	return res.MatchedCount > 0, nil
+}
+
 // EintragLoeschen löscht nur das Eintrag-Dokument. gefunden ist false, wenn
 // es keinen Eintrag mit dieser ID gab. Abschnitte und Datei löscht der
 // Aufrufer vorher mit AbschnitteLoeschen und DateiLoeschen (API.md 3.7).
