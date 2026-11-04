@@ -9,8 +9,10 @@
 // ausführen: Es löscht zuerst die eigenen Einträge und fügt sie neu ein.
 // Andere Einträge in der Datenbank bleiben unberührt.
 //
-// Die Einträge sehen aus wie Text-Importe (datei = text.txt). Die Datei selbst
-// liegt noch nicht in GridFS. Das kommt mit Schritt 4 (GET …/datei) dazu.
+// Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der Volltext
+// als text.txt in GridFS, damit GET /eintraege/{id}/datei auch für sie
+// funktioniert. Abschnitte und Embeddings gibt es für Testdaten nicht; sie
+// tauchen also in der Suche (POST /fragen) nicht auf.
 package main
 
 import (
@@ -59,8 +61,12 @@ func ausfuehren(nurEntfernen bool) error {
 		return err
 	}
 
+	// Entfernen in der Reihenfolge aus API.md 3.7: Datei vor Eintrag.
 	eintraege := testeintraege()
 	for _, e := range eintraege {
+		if err := db.DateiLoeschen(ctx, e.Datei.ID); err != nil {
+			return err
+		}
 		if _, err := db.EintragLoeschen(ctx, e.ID); err != nil {
 			return err
 		}
@@ -70,7 +76,11 @@ func ausfuehren(nurEntfernen bool) error {
 		return nil
 	}
 
+	// Einfügen wie beim Upload: Datei zuerst, Eintrag zuletzt.
 	for _, e := range eintraege {
+		if err := db.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, []byte(e.Volltext)); err != nil {
+			return err
+		}
 		if err := db.EintragSpeichern(ctx, e); err != nil {
 			return err
 		}

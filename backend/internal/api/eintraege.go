@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	"lifelog/backend/internal/kern"
@@ -16,6 +17,8 @@ const (
 // brauchen. Umgesetzt von speicher.Speicher, im Test von einer Attrappe.
 type EintragSpeicher interface {
 	ListeKurz(ctx context.Context, modul string) ([]kern.EintragKurz, error)
+	EintragLesen(ctx context.Context, id string) (e kern.Eintrag, gefunden bool, err error)
+	DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error)
 }
 
 // eintraegeListeHandler beantwortet GET /api/v1/eintraege (API.md, 3.2).

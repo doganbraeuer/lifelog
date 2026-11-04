@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -154,6 +155,45 @@ func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
 		return fmt.Errorf("Eintrag speichern: %w", err)
 	}
 	return nil
+}
+
+// EintragLesen liefert den vollständigen Eintrag. gefunden ist false, wenn
+// es keinen Eintrag mit dieser ID gibt.
+func (s *Speicher) EintragLesen(ctx context.Context, id string) (e kern.Eintrag, gefunden bool, err error) {
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return kern.Eintrag{}, false, kern.ErrUngueltigeID
+	}
+	var dok eintragDok
+	err = s.eintraege.FindOne(ctx, bson.D{{Key: "_id", Value: oid}}).Decode(&dok)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return kern.Eintrag{}, false, nil
+	}
+	if err != nil {
+		return kern.Eintrag{}, false, fmt.Errorf("Eintrag lesen: %w", err)
+	}
+	return dok.zuKern(), true, nil
+}
+
+// DateiOeffnen öffnet die Originaldatei zum Lesen. Die Daten kommen in
+// Stücken aus GridFS, während der Aufrufer liest; die Datei wird also nie
+// ganz in den Speicher geladen. Der Aufrufer muss Close aufrufen.
+//
+// ctx gilt für das ganze Lesen, nicht nur fürs Öffnen.
+// Fehlt die Datei, ist der Fehler kern.ErrOriginalFehlt.
+func (s *Speicher) DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error) {
+	oid, err := bson.ObjectIDFromHex(dateiID)
+	if err != nil {
+		return nil, 0, kern.ErrUngueltigeID
+	}
+	strom, err := s.dateien.OpenDownloadStream(ctx, oid)
+	if errors.Is(err, mongo.ErrFileNotFound) {
+		return nil, 0, kern.ErrOriginalFehlt
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("Datei öffnen: %w", err)
+	}
+	return strom, strom.GetFile().Length, nil
 }
 
 // EintragMitHash sucht den Eintrag, dessen Datei diesen SHA-256-Hash hat.

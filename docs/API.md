@@ -500,11 +500,23 @@ Die Datei als Binärdaten, kein JSON.
 ```http
 Content-Type: application/pdf
 Content-Length: 184320
-Content-Disposition: inline; filename="befund_oktober.pdf"
+Content-Disposition: inline; filename=befund_oktober.pdf
+X-Content-Type-Options: nosniff
+Cache-Control: private, no-store
 ```
 
 Bei einem Text-Import ist es der Text mit
-`Content-Type: text/plain; charset=utf-8` und `filename="text.txt"`.
+`Content-Type: text/plain; charset=utf-8` und `filename=text.txt`.
+
+- `Content-Disposition` folgt RFC 6266: Anführungszeichen nur, wenn der
+  Name sie braucht; Namen mit Umlauten kommen als `filename*=utf-8''…`
+  (Prozent-Kodierung). Die App liest den Header deshalb mit einem
+  RFC-konformen Parser, statt das Beispiel wörtlich zu erwarten.
+- `X-Content-Type-Options: nosniff`: Der Inhalt wird nur als der angegebene
+  Typ behandelt, nie erraten.
+- `Cache-Control: private, no-store`: Die Originaldatei soll in keinem
+  Zwischenspeicher (Proxy, HTTP-Cache) landen. Will die App das Dokument
+  offline zeigen, speichert sie es bewusst selbst.
 
 **Fehler** (als JSON wie in Abschnitt 1)
 
@@ -852,3 +864,7 @@ vorhandene Fehlercodes.
 6. **Unvollständige Infos** ([3.1](#31-datei-oder-text-hochladen-und-auslesen),
    Schritt 4): Infos ohne `name` oder `wert` werden beim Upload weggelassen,
    nicht abgelehnt. Im Log steht nur das Feld, nie der Wert.
+7. **Originaldatei** ([3.4](#34-originaldatei-abrufen)): zusätzlich
+   `X-Content-Type-Options: nosniff` und `Cache-Control: private, no-store`;
+   `Content-Disposition` nach RFC 6266 (Anführungszeichen nur bei Bedarf,
+   Umlaute als `filename*`).

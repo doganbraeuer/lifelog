@@ -20,6 +20,8 @@ func NeuerRouter(abh Abhaengigkeiten) http.Handler {
 	mux.HandleFunc("GET /api/v1/status", statusHandler(abh.DB))
 	mux.HandleFunc("GET /api/v1/eintraege", eintraegeListeHandler(abh.Eintraege))
 	mux.HandleFunc("POST /api/v1/eintraege", hochladenHandler(abh.Hochladen))
+	mux.HandleFunc("GET /api/v1/eintraege/{id}", eintragHandler(abh.Eintraege))
+	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", dateiHandler(abh.Eintraege))
 
 	// Reihenfolge: Log ganz außen, damit auch abgefangene panics mit
 	// Status 500 im Log erscheinen.

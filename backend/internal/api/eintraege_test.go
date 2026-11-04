@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -20,12 +22,36 @@ type speicherAttrappe struct {
 	err          error
 	aufrufe      int
 	gefragtModul string
+
+	eintraege map[string]kern.Eintrag // ID → Eintrag (für GET /eintraege/{id})
+	dateien   map[string][]byte       // Datei-ID → Inhalt (für …/datei)
+	dateiErr  error                   // wenn gesetzt, scheitert DateiOeffnen damit
 }
 
 func (s *speicherAttrappe) ListeKurz(_ context.Context, modul string) ([]kern.EintragKurz, error) {
 	s.aufrufe++
 	s.gefragtModul = modul
 	return slices.Clone(s.liste), s.err
+}
+
+func (s *speicherAttrappe) EintragLesen(_ context.Context, id string) (kern.Eintrag, bool, error) {
+	s.aufrufe++
+	if s.err != nil {
+		return kern.Eintrag{}, false, s.err
+	}
+	e, ok := s.eintraege[id]
+	return e, ok, nil
+}
+
+func (s *speicherAttrappe) DateiOeffnen(_ context.Context, dateiID string) (io.ReadCloser, int64, error) {
+	if s.dateiErr != nil {
+		return nil, 0, s.dateiErr
+	}
+	d, ok := s.dateien[dateiID]
+	if !ok {
+		return nil, 0, kern.ErrOriginalFehlt
+	}
+	return io.NopCloser(bytes.NewReader(d)), int64(len(d)), nil
 }
 
 func kurz(id, datum string, importMinute int) kern.EintragKurz {

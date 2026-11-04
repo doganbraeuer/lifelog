@@ -154,6 +154,24 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 		t.Fatalf("ListeKurz = %+v, %v", liste, err)
 	}
 
+	// Eintrag vollständig lesen und Datei über den Speicher öffnen (Schritt 4).
+	e, gefunden, err := s.EintragLesen(ctx, eintragID)
+	if err != nil || !gefunden || e.Volltext != "Hämoglobin 14,2 g/dl" || len(e.Infos) != 1 || e.Datei.ID != dateiID {
+		t.Fatalf("EintragLesen = %+v, %v, %v", e, gefunden, err)
+	}
+	if _, gefunden, err := s.EintragLesen(ctx, NeueID()); err != nil || gefunden {
+		t.Errorf("unbekannte ID: gefunden=%v, err=%v", gefunden, err)
+	}
+	inhalt, laenge, err := s.DateiOeffnen(ctx, dateiID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gelesen, _ = io.ReadAll(inhalt)
+	_ = inhalt.Close()
+	if laenge != int64(len(daten)) || !bytes.Equal(gelesen, daten) {
+		t.Errorf("DateiOeffnen: Länge %d, Inhalt %q", laenge, gelesen)
+	}
+
 	// 4. Löschen in der Reihenfolge aus API.md 3.7, jeder Schritt wiederholbar.
 	for durchgang := 1; durchgang <= 2; durchgang++ {
 		if err := s.AbschnitteLoeschen(ctx, eintragID); err != nil {
@@ -168,8 +186,8 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 		}
 	}
 	pruefeAnzahlAbschnitte(t, s, ctx, eintragID, 0)
-	if _, err := s.dateien.OpenDownloadStream(ctx, oid); err == nil {
-		t.Error("Datei ist nach dem Löschen noch abrufbar")
+	if _, _, err := s.DateiOeffnen(ctx, dateiID); !errors.Is(err, kern.ErrOriginalFehlt) {
+		t.Errorf("nach dem Löschen: erwartet ErrOriginalFehlt, bekommen %v", err)
 	}
 	if _, gefunden, _ := s.EintragMitHash(ctx, hash); gefunden {
 		t.Error("Hash nach dem Löschen noch vorhanden: dieselbe Datei ließe sich nicht neu hochladen")

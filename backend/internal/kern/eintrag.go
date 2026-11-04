@@ -13,6 +13,29 @@ import (
 // anschlägt.
 var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
 
+// ErrUngueltigeID: Die ID ist keine ObjectId (24 Hex-Zeichen).
+var ErrUngueltigeID = errors.New("ungültige ID")
+
+// ErrOriginalFehlt: Der Eintrag existiert, seine Originaldatei aber nicht.
+// Darf nicht vorkommen (Datei wird vor dem Eintrag gespeichert und nach
+// ihm gelöscht); wenn doch, ist das ein interner Fehler.
+var ErrOriginalFehlt = errors.New("Originaldatei fehlt")
+
+// PruefeID prüft, ob id wie eine ObjectId aussieht: genau 24 Hex-Zeichen.
+// So antwortet die API auf "/eintraege/abc" mit 400 statt mit 404, und die
+// Datenbank wird gar nicht erst gefragt.
+func PruefeID(id string) error {
+	if len(id) != 24 {
+		return ErrUngueltigeID
+	}
+	for _, r := range id {
+		if !('0' <= r && r <= '9' || 'a' <= r && r <= 'f' || 'A' <= r && r <= 'F') {
+			return ErrUngueltigeID
+		}
+	}
+	return nil
+}
+
 // Eintrag ist ein vollständiger Eintrag nach docs/API.md, Abschnitt 2.
 type Eintrag struct {
 	ID            string    // ObjectId als Hex-String (24 Zeichen)
