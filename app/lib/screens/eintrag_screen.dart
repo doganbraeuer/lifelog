@@ -384,6 +384,11 @@ class _Originaldatei extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bild = this.bild;
+    final (symbol, art) = datei.istPdf
+        ? (Icons.picture_as_pdf_outlined, 'PDF')
+        : datei.istText
+        ? (Icons.article_outlined, 'Text')
+        : (Icons.image_outlined, 'Bild');
     return Card(
       margin: const EdgeInsets.all(16),
       clipBehavior: Clip.antiAlias,
@@ -421,16 +426,9 @@ class _Originaldatei extends StatelessWidget {
               },
             ),
           ListTile(
-            leading: Icon(
-              datei.istPdf
-                  ? Icons.picture_as_pdf_outlined
-                  : Icons.image_outlined,
-            ),
+            leading: Icon(symbol),
             title: Text(datei.dateiname),
-            subtitle: Text(
-              '${formatGroesse(datei.groesse)} · '
-              '${datei.istPdf ? 'PDF' : 'Bild'}',
-            ),
+            subtitle: Text('${formatGroesse(datei.groesse)} · $art'),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

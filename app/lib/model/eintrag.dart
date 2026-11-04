@@ -134,9 +134,18 @@ class Datei {
   final int groesse;
   final String sha256;
 
-  bool get istPdf => mimeTyp == 'application/pdf';
-  bool get istBild => mimeTyp.startsWith('image/');
+  bool get istPdf => medientyp(mimeTyp) == 'application/pdf';
+  bool get istBild => medientyp(mimeTyp).startsWith('image/');
+
+  /// Text, z. B. `text.txt` aus einem Text-Import (`text/plain`, auch mit
+  /// `; charset=utf-8`).
+  bool get istText => medientyp(mimeTyp) == 'text/plain';
 }
+
+/// Der reine Medientyp ohne Parameter, klein geschrieben:
+/// `Text/Plain; charset=UTF-8` → `text/plain`.
+String medientyp(String mimeTyp) =>
+    mimeTyp.split(';').first.trim().toLowerCase();
 
 /// Eine Korrektur: ursprünglich erkannter und aktueller Wert.
 class Korrektur {
@@ -168,6 +177,7 @@ class DateiInhalt {
   final Uint8List bytes;
   final String mimeTyp;
 
-  bool get istPdf => mimeTyp == 'application/pdf';
-  bool get istBild => mimeTyp.startsWith('image/');
+  bool get istPdf => medientyp(mimeTyp) == 'application/pdf';
+  bool get istBild => medientyp(mimeTyp).startsWith('image/');
+  bool get istText => medientyp(mimeTyp) == 'text/plain';
 }

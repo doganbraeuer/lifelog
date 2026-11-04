@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
@@ -72,6 +75,7 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
     if (datei == null) return const Center(child: CircularProgressIndicator());
 
     if (datei.istPdf) return widget.pdfAnzeige.erstellen(datei.bytes);
+    if (datei.istText) return _TextAnsicht(bytes: datei.bytes);
     if (datei.istBild) {
       // Mit zwei Fingern zoomen und verschieben.
       return InteractiveViewer(
@@ -97,6 +101,38 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
         child: Text(
           'Dieser Dateityp (${datei.mimeTyp}) kann nicht angezeigt werden.',
           textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+/// Zeigt eine Textdatei: UTF-8, markierbar und scrollbar.
+class _TextAnsicht extends StatelessWidget {
+  const _TextAnsicht({required this.bytes});
+
+  final Uint8List bytes;
+
+  /// Dekodiert UTF-8. Ungültige Bytes werden zu „�“ statt zu einer
+  /// Exception, damit eine kaputte Datei die Ansicht nicht abstürzen lässt.
+  /// Ein BOM am Anfang (von manchen Windows-Editoren) wird entfernt.
+  static String dekodieren(Uint8List bytes) {
+    final text = utf8.decode(bytes, allowMalformed: true);
+    return text.startsWith('﻿') ? text.substring(1) : text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = dekodieren(bytes);
+    if (text.trim().isEmpty) {
+      return const Center(child: Text('Die Textdatei ist leer.'));
+    }
+    return Scrollbar(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: SelectableText(
+          text,
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
       ),
     );
