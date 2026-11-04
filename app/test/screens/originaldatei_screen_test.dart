@@ -84,6 +84,7 @@ void main() {
       grosserBildschirm(tester);
       await tester.pumpWidget(testApp(schnellerMock()));
       await tester.pumpAndSettle();
+      await zuGesundheit(tester);
       await tester.tap(find.text('Dr. Erika Beispiel, Allgemeinmedizin'));
       await tester.pumpAndSettle();
     }
@@ -115,6 +116,7 @@ void main() {
       grosserBildschirm(tester);
       await tester.pumpWidget(testApp(schnellerMock()));
       await tester.pumpAndSettle();
+      await zuGesundheit(tester);
       await tester.tap(find.text('Labor Muster GmbH, Salzburg'));
       await tester.pumpAndSettle();
 

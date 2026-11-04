@@ -18,6 +18,7 @@ Future<void> zumEintrag(
   grosserBildschirm(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
+  await zuGesundheit(tester);
   await tester.tap(find.textContaining(quelle));
   await tester.pumpAndSettle();
 }

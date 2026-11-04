@@ -9,6 +9,7 @@ import '../module/modul_katalog.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
+import '../widgets/navigation.dart';
 import 'korrektur_dialoge.dart';
 import 'originaldatei_screen.dart';
 
@@ -126,14 +127,13 @@ class _EintragScreenState extends State<EintragScreen> {
   }
 
   void _originalOeffnen(Eintrag eintrag, DateiInhalt? vorhanden) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => OriginaldateiScreen(
-          api: widget.api,
-          eintragId: eintrag.id,
-          dateiname: eintrag.datei.dateiname,
-          vorhanden: vorhanden,
-        ),
+    oeffneSeite<void>(
+      context,
+      OriginaldateiScreen(
+        api: widget.api,
+        eintragId: eintrag.id,
+        dateiname: eintrag.datei.dateiname,
+        vorhanden: vorhanden,
       ),
     );
   }

@@ -17,6 +17,7 @@ Future<void> zumUpload(
   grosserBildschirm(tester);
   await tester.pumpWidget(testApp(mock, auswahl: auswahl));
   await tester.pumpAndSettle();
+  await zuGesundheit(tester);
   await tester.tap(
     find.descendant(
       of: find.byType(NavigationBar),

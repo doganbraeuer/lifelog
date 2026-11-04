@@ -11,6 +11,7 @@ Future<void> zuFragen(WidgetTester tester, MockApiClient mock) async {
   grosserBildschirm(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
+  await zuGesundheit(tester);
   await tester.tap(
     find.descendant(
       of: find.byType(NavigationBar),

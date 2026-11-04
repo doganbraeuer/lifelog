@@ -24,6 +24,12 @@ Future<void> zurueck(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Die App startet im Screen „Bereiche“; das öffnet Gesundheit.
+Future<void> zuGesundheit(WidgetTester tester) async {
+  await tester.tap(find.text('Gesundheit'));
+  await tester.pumpAndSettle();
+}
+
 /// Die App mit Mock-Backend und Fake-Dateiauswahl. Ohne [katalog] gelten
 /// die Standard-Module.
 LifelogApp testApp(

@@ -7,7 +7,7 @@ void main() {
   final katalog = ModulKatalog.standard();
 
   group('Standard-Module', () {
-    test('IDs wie abgestimmt, in dieser Reihenfolge', () {
+    test('IDs wie vorgesehen (noch abzustimmen), in dieser Reihenfolge', () {
       expect(katalog.module.map((m) => m.id), [
         'gesundheit',
         'ernaehrung',

@@ -20,6 +20,7 @@ void main() {
   ) async {
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     expect(find.text('Mock'), findsOneWidget);
     expect(find.text('14.10.2026'), findsOneWidget);
@@ -34,6 +35,7 @@ void main() {
   testWidgets('Richtung umschalten: ohne Datum bleibt am Ende', (tester) async {
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     await tester.tap(find.byIcon(Icons.arrow_downward));
     await tester.pumpAndSettle();
@@ -46,6 +48,7 @@ void main() {
   testWidgets('nach Importdatum sortieren', (tester) async {
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     await tester.tap(find.byIcon(Icons.sort));
     await tester.pumpAndSettle();
@@ -65,6 +68,7 @@ void main() {
     final mock = schnellerMock()..simulierterFehler = true;
     await tester.pumpWidget(testApp(mock));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
     expect(find.text(labor), findsNothing);
@@ -79,6 +83,7 @@ void main() {
   testWidgets('leere Zeitleiste', (tester) async {
     await tester.pumpWidget(testApp(schnellerMock(mitBeispieldaten: false)));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     expect(find.textContaining('Noch keine Dokumente'), findsOneWidget);
   });
@@ -87,6 +92,7 @@ void main() {
     grosserBildschirm(tester);
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
 
     await tester.tap(find.text(labor));
     await tester.pumpAndSettle();

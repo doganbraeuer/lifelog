@@ -5,6 +5,7 @@ import '../api/api_fehler.dart';
 import '../model/antwort.dart';
 import '../module/modul_katalog.dart';
 import '../widgets/mock_hinweis.dart';
+import '../widgets/navigation.dart';
 
 /// Höchstlänge einer Frage laut docs/API.md.
 const maxFrageLaenge = 500;
@@ -82,6 +83,7 @@ class _FrageScreenState extends State<FrageScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BereicheKnopf(),
         title: const Text('Fragen'),
         actions: [MockHinweis(sichtbar: widget.api.istMock)],
       ),

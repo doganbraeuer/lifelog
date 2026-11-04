@@ -8,6 +8,7 @@ import '../model/eintrag.dart';
 import '../plattform/datei_auswahl.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
+import '../widgets/navigation.dart';
 
 /// Hinweis zum Datenschutz, steht immer oben im Screen.
 const cloudHinweis =
@@ -152,6 +153,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const BereicheKnopf(),
         title: const Text('Hochladen'),
         actions: [MockHinweis(sichtbar: widget.api.istMock)],
       ),

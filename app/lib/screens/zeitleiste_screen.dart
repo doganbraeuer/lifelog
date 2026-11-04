@@ -7,14 +7,19 @@ import '../module/modul_katalog.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_hinweis.dart';
+import '../widgets/navigation.dart';
 import 'eintrag_screen.dart';
 
-/// Alle Einträge als Liste. Sortierung und Richtung sind wählbar; sortiert
-/// wird im Backend, die App zeigt die Liste in der gelieferten Reihenfolge.
+/// Alle Einträge eines Moduls als Liste. Sortierung und Richtung sind
+/// wählbar; sortiert wird im Backend, die App zeigt die Liste in der
+/// gelieferten Reihenfolge.
 class ZeitleisteScreen extends StatefulWidget {
-  const ZeitleisteScreen({super.key, required this.api});
+  const ZeitleisteScreen({super.key, required this.api, required this.modulId});
 
   final ApiClient api;
+
+  /// Nur Einträge mit diesem `modul` werden gezeigt.
+  final String modulId;
 
   @override
   State<ZeitleisteScreen> createState() => ZeitleisteScreenState();
@@ -53,7 +58,12 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
       );
       if (!mounted || nr != _anfrageNr) return;
       setState(() {
-        _eintraege = eintraege;
+        // Die API kennt (noch) keinen Filter nach Modul, deshalb filtert die
+        // App selbst. Die Reihenfolge des Backends bleibt dabei erhalten.
+        _eintraege = [
+          for (final e in eintraege)
+            if (e.modul == widget.modulId) e,
+        ];
         _laedt = false;
       });
     } on ApiFehler catch (fehler) {
@@ -81,10 +91,9 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
   /// Öffnet einen Eintrag. Öffentlich, damit der Upload nach dem Hochladen
   /// (oder bei einem Duplikat) direkt den Eintrag zeigen kann.
   Future<void> eintragOeffnen(String eintragId) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => EintragScreen(api: widget.api, eintragId: eintragId),
-      ),
+    await oeffneSeite<void>(
+      context,
+      EintragScreen(api: widget.api, eintragId: eintragId),
     );
     // Nach einer Korrektur kann sich z. B. das Datum geändert haben.
     if (mounted) neuLaden();
@@ -95,6 +104,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     final absteigend = _richtung == Richtung.absteigend;
     return Scaffold(
       appBar: AppBar(
+        leading: const BereicheKnopf(),
         title: const Text('Zeitleiste'),
         actions: [
           MockHinweis(sichtbar: widget.api.istMock),

@@ -40,6 +40,7 @@ void main() {
       testApp(schnellerMock(katalog: katalog), katalog: katalog),
     );
     await tester.pumpAndSettle();
+    await zuGesundheit(tester);
     await tester.tap(find.text('Labor Muster GmbH, Salzburg'));
     await tester.pumpAndSettle();
 

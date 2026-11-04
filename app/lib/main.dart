@@ -5,7 +5,7 @@ import 'api/api_client.dart';
 import 'api/api_client_auswahl.dart';
 import 'module/modul_katalog.dart';
 import 'plattform/datei_auswahl.dart';
-import 'screens/start_screen.dart';
+import 'screens/bereiche_screen.dart';
 
 void main() {
   runApp(
@@ -42,13 +42,15 @@ class LifelogApp extends StatelessWidget {
       katalog: katalog,
       child: MaterialApp(
         title: 'Lifelog',
-        theme: ThemeData(colorSchemeSeed: Colors.teal),
+        // Neutrales Grundschema für den Screen „Bereiche“. Jedes Modul
+        // bekommt beim Öffnen sein eigenes Schema aus seiner Farbe.
+        theme: ThemeData(colorSchemeSeed: Colors.blueGrey),
         // Die App ist deutsch. Damit sind auch eingebaute Texte wie in der
         // Datumsauswahl („Abbrechen“, Monatsnamen) deutsch.
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         supportedLocales: const [Locale('de')],
         locale: const Locale('de'),
-        home: StartScreen(api: api, dateiAuswahl: dateiAuswahl),
+        home: BereicheScreen(api: api, dateiAuswahl: dateiAuswahl),
       ),
     );
   }

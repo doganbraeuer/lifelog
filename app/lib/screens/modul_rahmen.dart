@@ -2,27 +2,37 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../model/eintrag.dart';
+import '../module/modul_definition.dart';
 import '../plattform/datei_auswahl.dart';
+import '../widgets/navigation.dart';
 import 'eintrag_screen.dart';
 import 'frage_screen.dart';
 import 'upload_screen.dart';
 import 'zeitleiste_screen.dart';
 
-/// Rahmen der App mit der Navigationsleiste unten.
+/// Rahmen eines Moduls mit der Navigationsleiste unten (Zeitleiste,
+/// Hochladen, Fragen). Alle Module nutzen diesen Rahmen; das Farbschema
+/// setzt der Screen „Bereiche“ beim Öffnen.
 ///
 /// `IndexedStack` hält alle drei Bereiche am Leben. Wechselt man den
 /// Bereich, bleiben Scroll-Position und Sortierung der Zeitleiste erhalten.
-class StartScreen extends StatefulWidget {
-  const StartScreen({super.key, required this.api, required this.dateiAuswahl});
+class ModulRahmen extends StatefulWidget {
+  const ModulRahmen({
+    super.key,
+    required this.modul,
+    required this.api,
+    required this.dateiAuswahl,
+  });
 
+  final ModulDefinition modul;
   final ApiClient api;
   final DateiAuswahl dateiAuswahl;
 
   @override
-  State<StartScreen> createState() => _StartScreenState();
+  State<ModulRahmen> createState() => _ModulRahmenState();
 }
 
-class _StartScreenState extends State<StartScreen> {
+class _ModulRahmenState extends State<ModulRahmen> {
   var _index = 0;
 
   /// Zugriff auf die Zeitleiste, um sie neu zu laden und Einträge zu öffnen.
@@ -43,10 +53,9 @@ class _StartScreenState extends State<StartScreen> {
   /// Öffnet einen Eintrag über dem aktuellen Bereich, ohne zur Zeitleiste
   /// zu wechseln. So führt „Zurück“ z. B. wieder zur Antwort auf die Frage.
   Future<void> _eintragDarueberOeffnen(String eintragId) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => EintragScreen(api: widget.api, eintragId: eintragId),
-      ),
+    await oeffneSeite<void>(
+      context,
+      EintragScreen(api: widget.api, eintragId: eintragId),
     );
     // Falls dort etwas korrigiert wurde.
     _zeitleiste.currentState?.neuLaden();
@@ -58,7 +67,11 @@ class _StartScreenState extends State<StartScreen> {
       body: IndexedStack(
         index: _index,
         children: [
-          ZeitleisteScreen(key: _zeitleiste, api: widget.api),
+          ZeitleisteScreen(
+            key: _zeitleiste,
+            api: widget.api,
+            modulId: widget.modul.id,
+          ),
           UploadScreen(
             api: widget.api,
             dateiAuswahl: widget.dateiAuswahl,
@@ -67,8 +80,7 @@ class _StartScreenState extends State<StartScreen> {
           ),
           FrageScreen(
             api: widget.api,
-            // Bis Etappe h2 gibt es nur den Bereich Gesundheit.
-            modulId: 'gesundheit',
+            modulId: widget.modul.id,
             eintragOeffnen: _eintragDarueberOeffnen,
           ),
         ],
