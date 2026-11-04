@@ -6,6 +6,7 @@ class TypDefinition {
     required this.id,
     required this.name,
     required this.symbol,
+    this.farbe,
   });
 
   /// Wert von `typ` in der API, z. B. `laborbefund`.
@@ -14,6 +15,10 @@ class TypDefinition {
   /// Anzeigename, z. B. „Laborbefund“.
   final String name;
   final IconData symbol;
+
+  /// Farbe des Punkts in der Zeitachse. Sie kennzeichnet nur den Typ,
+  /// nie einen Wert. Fehlt sie, gilt die Farbe des Moduls.
+  final Color? farbe;
 }
 
 /// Ein Bereich von Lifelog, z. B. Gesundheit oder Sport.

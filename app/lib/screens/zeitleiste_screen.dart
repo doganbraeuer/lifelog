@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../api/api_fehler.dart';
 import '../model/eintrag.dart';
+import '../model/zeitleisten_gruppen.dart';
 import '../module/modul_katalog.dart';
 import '../widgets/fehler_anzeige.dart';
 import '../widgets/format.dart';
@@ -10,16 +11,24 @@ import '../widgets/mock_hinweis.dart';
 import '../widgets/navigation.dart';
 import 'eintrag_screen.dart';
 
-/// Alle Einträge eines Moduls als Liste. Sortierung und Richtung sind
-/// wählbar; sortiert wird im Backend, die App zeigt die Liste in der
-/// gelieferten Reihenfolge.
+/// Alle Einträge eines Moduls als Zeitachse mit Monatsabschnitten.
+/// Sortierung und Richtung sind wählbar; sortiert wird im Backend, die App
+/// zeigt die Liste in der gelieferten Reihenfolge und gruppiert sie nur.
 class ZeitleisteScreen extends StatefulWidget {
-  const ZeitleisteScreen({super.key, required this.api, required this.modulId});
+  const ZeitleisteScreen({
+    super.key,
+    required this.api,
+    required this.modulId,
+    this.zumHochladen,
+  });
 
   final ApiClient api;
 
   /// Nur Einträge mit diesem `modul` werden gezeigt.
   final String modulId;
+
+  /// Wechselt zur Seite „Hochladen“ (Knopf im leeren Zustand).
+  final VoidCallback? zumHochladen;
 
   @override
   State<ZeitleisteScreen> createState() => ZeitleisteScreenState();
@@ -169,36 +178,132 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     return RefreshIndicator(
       onRefresh: neuLaden,
       child: eintraege.isEmpty
-          ? ListView(
-              // ListView statt Text, damit Pull-to-Refresh auch hier geht.
-              children: const [
-                Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text(
-                    'Noch keine Dokumente.\n'
-                    'Unter „Hochladen“ kannst du das erste hinzufügen.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
+          ? _LeereZeitleiste(
+              modulId: widget.modulId,
+              zumHochladen: widget.zumHochladen,
             )
-          : ListView.separated(
-              itemCount: eintraege.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (_, i) => _EintragKachel(
-                eintrag: eintraege[i],
-                zeigeImport: _sortierung == Sortierung.importdatum,
-                onTap: () => eintragOeffnen(eintraege[i].id),
-              ),
-            ),
+          : _zeitachse(eintraege),
+    );
+  }
+
+  /// Zeitachse: Monatsüberschriften, links eine durchgehende Linie mit
+  /// einem Punkt pro Eintrag.
+  Widget _zeitachse(List<EintragKurz> eintraege) {
+    final gruppen = gruppiereZeitleiste(eintraege, _sortierung);
+    final zeilen = <Widget>[];
+    for (var g = 0; g < gruppen.length; g++) {
+      final gruppe = gruppen[g];
+      zeilen.add(_MonatsUeberschrift(titel: gruppe.titel, linieOben: g > 0));
+      for (var i = 0; i < gruppe.eintraege.length; i++) {
+        final eintrag = gruppe.eintraege[i];
+        final letzter =
+            g == gruppen.length - 1 && i == gruppe.eintraege.length - 1;
+        zeilen.add(
+          _EintragZeile(
+            eintrag: eintrag,
+            zeigeImport: _sortierung == Sortierung.importdatum,
+            linieUnten: !letzter,
+            onTap: () => eintragOeffnen(eintrag.id),
+          ),
+        );
+      }
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: zeilen,
     );
   }
 }
 
-class _EintragKachel extends StatelessWidget {
-  const _EintragKachel({
+/// Breite der linken Spalte mit Linie und Punkten.
+const _achsenBreite = 64.0;
+
+/// Zeichnet die senkrechte Linie der Zeitachse in der linken Spalte.
+class _AchsenMaler extends CustomPainter {
+  _AchsenMaler({required this.farbe, required this.oben, required this.unten});
+
+  final Color farbe;
+
+  /// Linie von oben bis zur Mitte bzw. von der Mitte bis unten zeichnen.
+  final bool oben;
+  final bool unten;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final x = size.width / 2;
+    final y = size.height / 2;
+    final stift = Paint()
+      ..color = farbe
+      ..strokeWidth = 2;
+    if (oben) canvas.drawLine(Offset(x, 0), Offset(x, y), stift);
+    if (unten) canvas.drawLine(Offset(x, y), Offset(x, size.height), stift);
+  }
+
+  @override
+  bool shouldRepaint(_AchsenMaler alt) =>
+      alt.farbe != farbe || alt.oben != oben || alt.unten != unten;
+}
+
+class _MonatsUeberschrift extends StatelessWidget {
+  const _MonatsUeberschrift({required this.titel, required this.linieOben});
+
+  final String titel;
+  final bool linieOben;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: _achsenBreite,
+          child: ExcludeSemantics(
+            child: CustomPaint(
+              painter: _AchsenMaler(
+                farbe: theme.colorScheme.outlineVariant,
+                oben: linieOben,
+                unten: true,
+              ),
+              child: Center(
+                // Kleiner Knoten, an dem der Monat beginnt.
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(_achsenBreite, 20, 16, 8),
+          child: Semantics(
+            header: true,
+            child: Text(
+              titel,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EintragZeile extends StatelessWidget {
+  const _EintragZeile({
     required this.eintrag,
     required this.zeigeImport,
+    required this.linieUnten,
     required this.onTap,
   });
 
@@ -207,32 +312,148 @@ class _EintragKachel extends StatelessWidget {
   /// Bei Sortierung nach Importdatum wird es mit angezeigt, damit die
   /// Reihenfolge nachvollziehbar ist.
   final bool zeigeImport;
+  final bool linieUnten;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final datum = eintrag.dokumentdatum;
     final quelle = eintrag.quelle;
-    final grau = Theme.of(context).colorScheme.onSurfaceVariant;
+    final grau = theme.colorScheme.onSurfaceVariant;
     final katalog = ModulKatalog.von(context);
-    return ListTile(
-      leading: Icon(katalog.typSymbol(eintrag.modul, eintrag.typ)),
-      title: Text(katalog.typName(eintrag.modul, eintrag.typ)),
-      subtitle: Text(
-        [
-          quelle ?? 'Quelle unbekannt',
-          if (zeigeImport)
-            'Importiert: ${formatZeitpunktLokal(eintrag.importdatum)}',
-        ].join('\n'),
-      ),
-      isThreeLine: zeigeImport,
-      trailing: datum != null
-          ? Text(datum.anzeige)
-          : Text(
-              'ohne Datum',
-              style: TextStyle(fontStyle: FontStyle.italic, color: grau),
+    // Sanfte Töne aus der Typfarbe; sie kennzeichnet nur den Typ.
+    final punkt = ColorScheme.fromSeed(
+      seedColor: katalog.typFarbe(eintrag.modul, eintrag.typ),
+      brightness: theme.brightness,
+    );
+
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: _achsenBreite,
+          child: ExcludeSemantics(
+            child: CustomPaint(
+              painter: _AchsenMaler(
+                farbe: theme.colorScheme.outlineVariant,
+                oben: true,
+                unten: linieUnten,
+              ),
+              child: Center(
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: punkt.primaryContainer,
+                    shape: BoxShape.circle,
+                    // Ring in Hintergrundfarbe trennt den Punkt von der Linie.
+                    border: Border.all(
+                      color: theme.colorScheme.surface,
+                      width: 3,
+                    ),
+                  ),
+                  child: Icon(
+                    katalog.typSymbol(eintrag.modul, eintrag.typ),
+                    size: 18,
+                    color: punkt.onPrimaryContainer,
+                  ),
+                ),
+              ),
             ),
-      onTap: onTap,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: _achsenBreite - 8),
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(left: 8, right: 16),
+            title: Text(katalog.typName(eintrag.modul, eintrag.typ)),
+            subtitle: Text(
+              [
+                quelle ?? 'Quelle unbekannt',
+                if (zeigeImport)
+                  'Importiert: ${formatZeitpunktLokal(eintrag.importdatum)}',
+              ].join('\n'),
+              maxLines: zeigeImport ? 3 : 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            isThreeLine: zeigeImport,
+            trailing: datum != null
+                ? Text(datum.anzeige)
+                : Text(
+                    'ohne Datum',
+                    style: TextStyle(fontStyle: FontStyle.italic, color: grau),
+                  ),
+            onTap: onTap,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Leerer Zustand: großes Symbol, Hinweis und Knopf zum Hochladen.
+class _LeereZeitleiste extends StatelessWidget {
+  const _LeereZeitleiste({required this.modulId, required this.zumHochladen});
+
+  final String modulId;
+  final VoidCallback? zumHochladen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final symbol =
+        ModulKatalog.von(context).nachId(modulId)?.symbol ??
+        Icons.inbox_outlined;
+    // ListView statt Column, damit Pull-to-Refresh auch hier geht.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 64, 32, 32),
+      children: [
+        ExcludeSemantics(
+          child: Center(
+            child: Container(
+              width: 112,
+              height: 112,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                symbol,
+                size: 56,
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Noch keine Dokumente.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Lade ein Foto, ein PDF oder einen Text hoch. '
+          'Es erscheint dann hier in der Zeitleiste.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (zumHochladen != null) ...[
+          const SizedBox(height: 24),
+          Center(
+            child: FilledButton.icon(
+              onPressed: zumHochladen,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Dokument hochladen'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

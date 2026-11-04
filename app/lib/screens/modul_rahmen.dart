@@ -110,6 +110,7 @@ class _ModulRahmenState extends State<ModulRahmen> {
               key: _zeitleiste,
               api: widget.api,
               modulId: widget.modul.id,
+              zumHochladen: () => _zeigeSeite(1),
             ),
           ),
           _AmLeben(

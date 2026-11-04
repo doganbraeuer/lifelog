@@ -180,15 +180,18 @@ void main() {
     testWidgets('Kacheln zeigen die Farbe ihres Moduls', (tester) async {
       await starten(tester);
 
+      // Aktive Kacheln: Verlauf aus den Containerfarben des Moduls.
       for (final modul in standardModule.where((m) => m.aktiv)) {
-        final karte = tester.widget<Card>(
-          find.ancestor(of: find.text(modul.name), matching: find.byType(Card)),
+        final ink = tester.widget<Ink>(
+          find.ancestor(of: find.text(modul.name), matching: find.byType(Ink)),
         );
-        expect(
-          karte.color,
-          ColorScheme.fromSeed(seedColor: modul.farbe).primaryContainer,
-          reason: modul.id,
-        );
+        final verlauf =
+            (ink.decoration! as BoxDecoration).gradient! as LinearGradient;
+        final farben = ColorScheme.fromSeed(seedColor: modul.farbe);
+        expect(verlauf.colors, [
+          farben.primaryContainer,
+          farben.secondaryContainer,
+        ], reason: modul.id);
       }
     });
   });

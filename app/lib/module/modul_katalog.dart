@@ -17,26 +17,34 @@ const standardModule = <ModulDefinition>[
     farbe: Colors.teal,
     aktiv: true,
     // Genau die Typen aus docs/API.md, Abschnitt 2.
+    // Farben der Punkte in der Zeitachse, angelehnt an die Kugeln im
+    // App-Icon (orange, blau). Rezept bekommt Violett statt Rot: Rot wirkt
+    // in einer Gesundheits-Zeitleiste wie eine Warnung. Die Farben
+    // kennzeichnen nur den Typ, nie einen Wert.
     typen: [
       TypDefinition(
         id: 'arztbrief',
         name: 'Arztbrief',
         symbol: Icons.description_outlined,
+        farbe: Color(0xFFF5A623), // Orange wie im Icon
       ),
       TypDefinition(
         id: 'laborbefund',
         name: 'Laborbefund',
         symbol: Icons.science_outlined,
+        farbe: Color(0xFF2F80ED), // Blau wie im Icon
       ),
       TypDefinition(
         id: 'rezept',
         name: 'Rezept',
         symbol: Icons.medication_outlined,
+        farbe: Color(0xFF7E57C2), // Violett
       ),
       TypDefinition(
         id: 'sonstiges',
         name: 'Sonstiges',
         symbol: Icons.insert_drive_file_outlined,
+        // keine eigene Farbe: Modulfarbe (Teal)
       ),
     ],
   ),
@@ -111,6 +119,12 @@ class ModulKatalog {
 
   IconData typSymbol(String modulId, String typId) =>
       nachId(modulId)?.typ(typId)?.symbol ?? unbekanntesSymbol;
+
+  /// Farbe eines Typs: eigene Typfarbe, sonst Modulfarbe, sonst neutral.
+  Color typFarbe(String modulId, String typId) {
+    final modul = nachId(modulId);
+    return modul?.typ(typId)?.farbe ?? modul?.farbe ?? Colors.blueGrey;
+  }
 }
 
 /// Stellt den [ModulKatalog] allen Seiten und Dialogen bereit.
