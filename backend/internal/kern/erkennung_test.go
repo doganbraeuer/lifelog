@@ -218,4 +218,16 @@ func TestPruefeDatum(t *testing.T) {
 			t.Errorf("PruefeDatum(%q) = %v, erwartet ErrDatumUngueltig", falsch, err)
 		}
 	}
+
+	// Format falsch und Tag unmöglich sind unterscheidbar (API.md 3.5).
+	for _, format := range []string{"", "14.10.2026", "2026-1-05", "2026/10/14", "2026-10-1a", " 2026-10-14", "２０２６-10-14"} {
+		if err := PruefeDatum(format); errors.Is(err, ErrKeinKalendertag) {
+			t.Errorf("PruefeDatum(%q): Formatfehler als ErrKeinKalendertag gemeldet", format)
+		}
+	}
+	for _, tag := range []string{"2025-02-29", "2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-10-00"} {
+		if err := PruefeDatum(tag); !errors.Is(err, ErrKeinKalendertag) {
+			t.Errorf("PruefeDatum(%q) = %v, erwartet ErrKeinKalendertag", tag, err)
+		}
+	}
 }

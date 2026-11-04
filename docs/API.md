@@ -540,15 +540,28 @@ bleiben unverändert.
 
 | Feld | Typ | Bemerkung |
 |---|---|---|
-| `typ` | String | Einer der erlaubten Typen des Moduls aus Abschnitt 2 |
-| `dokumentdatum` | String oder `null` | Format `YYYY-MM-DD`, muss ein gültiges Kalenderdatum sein |
-| `quelle` | String oder `null` | |
-| `infos` | Liste | Je Element `id` (Pflicht) plus `wert` und/oder `einheit`. `"einheit": null` entfernt die Einheit. |
+| `typ` | String | Einer der erlaubten Typen des Moduls, zu dem der Eintrag gehört (Abschnitt 2). `null` ist nicht erlaubt. |
+| `dokumentdatum` | String oder `null` | Format `YYYY-MM-DD`, muss ein gültiges Kalenderdatum sein. `null` entfernt das Datum. |
+| `quelle` | String oder `null` | `null` entfernt die Quelle. |
+| `infos` | Liste | Je Element `id` (Pflicht) plus `wert` und/oder `einheit`. `"einheit": null` entfernt die Einheit. `"wert": null` ist nicht erlaubt, eine Info hat immer einen Wert. |
 
 `volltext` ist im Prototyp nicht korrigierbar und führt zu
 `400 FELD_NICHT_KORRIGIERBAR` (Ausbau siehe
-[Offene Punkte](#4-offene-punkte)). Neue Infos hinzufügen oder Infos löschen
-geht im Prototyp ebenfalls nicht.
+[Offene Punkte](#4-offene-punkte)). Dasselbe gilt für `id`, `modul`,
+`importdatum`, `datei`, `korrekturen` und den `name` einer Info
+(`infos.<id>.name`). Neue Infos hinzufügen oder Infos löschen geht im
+Prototyp ebenfalls nicht.
+
+Weitere Regeln:
+
+- **Leerraum** am Anfang und Ende wird entfernt, wie beim Upload. Bleibt bei
+  `quelle` oder `einheit` nichts übrig, gilt das wie `null`. Ein leerer
+  `wert` ist ein Fehler.
+- **Jede Info-`id`** darf nur einmal vorkommen. Ein Element ohne `wert` und
+  ohne `einheit` ist ein Fehler.
+- **Ein leerer Body** (`{}`) ist ein Fehler. Eine Anfrage, deren Werte schon
+  gelten, ist dagegen gültig: Die Antwort ist `200` mit dem unveränderten
+  Eintrag, es entsteht keine Korrektur.
 
 ```json
 {
@@ -564,7 +577,8 @@ geht im Prototyp ebenfalls nicht.
 1. Anfrage prüfen. Ist ein Teil ungültig, ändert das Backend gar nichts.
 2. Neue Werte in die Felder schreiben.
 3. `korrekturen` nach den Regeln aus Abschnitt 2 pflegen. Ein Feld, dessen
-   Wert sich nicht ändert, erzeugt keine Korrektur.
+   Wert sich nicht ändert, erzeugt keine Korrektur. Alle Korrekturen einer
+   Anfrage bekommen denselben `zeitpunkt`.
 
 Korrekturen ändern nur `typ`, `dokumentdatum`, `quelle` und `infos`. Die
 Abschnitte und Embeddings für die Suche bleiben unverändert, weil sie aus dem
@@ -618,11 +632,15 @@ Der aktualisierte vollständige Eintrag. Ausschnitt für das Beispiel oben:
 | HTTP | Code | Bemerkung |
 |---|---|---|
 | 400 | `UNGUELTIGE_ID` | |
-| 400 | `UNGUELTIGE_ANFRAGE` | z. B. `"dokumentdatum": "15.10.2026"`, unbekanntes Feld, unbekannter `typ`, Info ohne `id`, leerer Body |
-| 400 | `FELD_NICHT_KORRIGIERBAR` | z. B. `volltext`, `modul`, `importdatum`, `datei` |
+| 400 | `UNGUELTIGE_ANFRAGE` | z. B. `"dokumentdatum": "15.10.2026"`, unbekanntes Feld, unbekannter `typ`, falscher JSON-Typ, `null` bei `typ` oder `wert`, leerer `wert`, Info ohne `id`, doppelte Info-`id`, Info ohne Änderung, leerer Body. `details.feld` nennt das Feld (z. B. `infos.i2.wert`), `details.wert` den abgelehnten Wert, bei Info-Fehlern ohne Feld `details.infoId` die ID. |
+| 400 | `FELD_NICHT_KORRIGIERBAR` | z. B. `volltext`, `modul`, `importdatum`, `datei`, `infos.<id>.name`. `details.feld` nennt das Feld. |
 | 404 | `EINTRAG_NICHT_GEFUNDEN` | |
 | 404 | `INFO_NICHT_GEFUNDEN` | `details.infoId` nennt die unbekannte ID |
 | 500 | `INTERNER_FEHLER` | |
+
+Ist ein Datum im richtigen Format, gibt es aber nicht (`"2026-02-31"`),
+lautet die Nachricht „Das Dokumentdatum ist kein gültiges Kalenderdatum.“
+Enthält eine Anfrage mehrere Fehler, meldet das Backend nur einen davon.
 
 ```json
 {
@@ -862,6 +880,15 @@ Geplantes Verhalten:
   nicht mit eingebettet, sinken solche Scores. `volltext` und die Auszüge in
   `quellen` bleiben dabei unverändert; es ändert sich nur, was ins Embedding
   geht. Danach neu kalibrieren.
+- **Gleichzeitige Korrekturen:** `PATCH /eintraege/{id}` liest den Eintrag,
+  ändert ihn und schreibt ihn zurück, ohne Sperre. Kommen zwei Korrekturen
+  am selben Eintrag gleichzeitig an, gewinnt die zweite, und die erste kann
+  verloren gehen. Mit einem Nutzer und einem Dialog pro Korrektur ist das im
+  Prototyp kaum zu erreichen. Später: ein Versionszähler im Eintrag, und bei
+  einem Konflikt `409`.
+- **Längengrenzen für Korrekturen:** Für `quelle`, `wert` und `einheit` gibt
+  es keine eigene Höchstlänge, nur die Grenze für den ganzen Body (64 KiB).
+  Später festlegen, z. B. passend zu dem, was die App anzeigen kann.
 
 ---
 
@@ -895,3 +922,10 @@ vorhandene Fehlercodes.
 8. **Fragen** ([3.6](#36-frage-stellen)): Schwelle 0,82 als erster Filter;
    Antworten ohne gültigen Verweis werden zum festen Satz; `quellen` nur mit
    den zitierten Abschnitten; 503 auch bei unverwertbarer Modellantwort.
+9. **Korrigieren** ([3.5](#35-erkannte-werte-korrigieren)): Leerraum wird
+   entfernt, leere `quelle`/`einheit` gelten als `null`, leerer `wert` ist
+   ein Fehler; `null` bei `typ` und `wert` ist ein Fehler; doppelte Info-IDs
+   und Infos ohne Änderung sind Fehler; `infos.<id>.name` ist nicht
+   korrigierbar; `details.feld` bzw. `details.infoId` bei Fehlern; eine
+   Anfrage ohne tatsächliche Änderung liefert `200` und den unveränderten
+   Eintrag.
