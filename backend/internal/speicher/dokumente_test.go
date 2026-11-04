@@ -121,6 +121,64 @@ func TestEintragDok_UngueltigeIDs(t *testing.T) {
 	}
 }
 
+func TestAbschnittDok_HinUndZurueck(t *testing.T) {
+	original := kern.Abschnitt{
+		EintragID: "6727a1f3c2b4e5d6f7a8b9c0",
+		Modul:     "gesundheit",
+		Nr:        2,
+		Text:      "Hämoglobin 14,2 g/dl",
+		// Werte, die als float32 nicht exakt dezimal darstellbar sind.
+		Embedding: []float32{0.1, -0.33333334, 1e-7, 0.99999994, -1},
+	}
+	dok, err := zuAbschnittDok(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dok.ID.IsZero() {
+		t.Error("Abschnitt braucht eine eigene _id")
+	}
+
+	roh, err := bson.Marshal(dok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m bson.M
+	_ = bson.Unmarshal(roh, &m)
+	if _, ok := m["eintragId"].(bson.ObjectID); !ok {
+		t.Errorf("eintragId ist %T, erwartet ObjectID (sonst findet AbschnitteLoeschen nichts)", m["eintragId"])
+	}
+	if _, ok := m["embedding"].(bson.A); !ok {
+		t.Errorf("embedding ist %T, erwartet Array (Atlas Vector Search)", m["embedding"])
+	}
+
+	var gelesen abschnittDok
+	if err := bson.Unmarshal(roh, &gelesen); err != nil {
+		t.Fatal(err)
+	}
+	if got := gelesen.zuKern(); !reflect.DeepEqual(got, original) {
+		t.Errorf("nach BSON:\n%+v\nerwartet:\n%+v", got, original)
+	}
+}
+
+func TestAbschnittDok_Ungueltig(t *testing.T) {
+	if _, err := zuAbschnittDok(kern.Abschnitt{EintragID: "x", Embedding: []float32{1}}); err == nil {
+		t.Error("ungültige Eintrag-ID muss Fehler liefern")
+	}
+	if _, err := zuAbschnittDok(kern.Abschnitt{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
+		t.Error("Abschnitt ohne Embedding muss Fehler liefern")
+	}
+}
+
+func TestNeueID(t *testing.T) {
+	a, b := NeueID(), NeueID()
+	if a == b {
+		t.Error("zwei IDs sind gleich")
+	}
+	if _, err := bson.ObjectIDFromHex(a); err != nil || len(a) != 24 {
+		t.Errorf("%q ist keine ObjectId: %v", a, err)
+	}
+}
+
 func TestImportdatumWirdUTC(t *testing.T) {
 	e := beispielEintrag()
 	wien := time.FixedZone("MEZ", 3600)

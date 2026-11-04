@@ -3,7 +3,38 @@
 // deterministisch und wird mit Unit-Tests abgedeckt.
 package kern
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrDuplikat: Es gibt schon einen Eintrag mit genau dieser Datei (gleicher
+// SHA-256-Hash). Der Speicher meldet ihn, wenn der eindeutige Index
+// anschlägt.
+var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
+
+// ErrUngueltigeID: Die ID ist keine ObjectId (24 Hex-Zeichen).
+var ErrUngueltigeID = errors.New("ungültige ID")
+
+// ErrOriginalFehlt: Der Eintrag existiert, seine Originaldatei aber nicht.
+// Darf nicht vorkommen (Datei wird vor dem Eintrag gespeichert und nach
+// ihm gelöscht); wenn doch, ist das ein interner Fehler.
+var ErrOriginalFehlt = errors.New("Originaldatei fehlt")
+
+// PruefeID prüft, ob id wie eine ObjectId aussieht: genau 24 Hex-Zeichen.
+// So antwortet die API auf "/eintraege/abc" mit 400 statt mit 404, und die
+// Datenbank wird gar nicht erst gefragt.
+func PruefeID(id string) error {
+	if len(id) != 24 {
+		return ErrUngueltigeID
+	}
+	for _, r := range id {
+		if !('0' <= r && r <= '9' || 'a' <= r && r <= 'f' || 'A' <= r && r <= 'F') {
+			return ErrUngueltigeID
+		}
+	}
+	return nil
+}
 
 // Eintrag ist ein vollständiger Eintrag nach docs/API.md, Abschnitt 2.
 type Eintrag struct {
@@ -53,4 +84,15 @@ type EintragKurz struct {
 	Dokumentdatum *string
 	Importdatum   time.Time
 	Quelle        *string
+}
+
+// Abschnitt ist ein Stück Volltext mit seinem Embedding, die Grundlage der
+// Suche (POST /fragen). Modul steht im Abschnitt selbst, damit die
+// Vektorsuche direkt danach filtern kann.
+type Abschnitt struct {
+	EintragID string
+	Modul     string
+	Nr        int // Reihenfolge im Volltext, ab 1
+	Text      string
+	Embedding []float32
 }

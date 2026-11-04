@@ -3,6 +3,7 @@ package konfig
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // umgebung baut eine getenv-Funktion aus einer Map, damit Tests keine echten
@@ -29,6 +30,50 @@ func TestLaden_Standardwerte(t *testing.T) {
 	}
 	if !k.NurLokal() {
 		t.Error("Standard muss nur lokal erreichbar sein")
+	}
+	if k.GeminiModell != StandardGeminiModell || k.GeminiEmbeddingModell != StandardGeminiEmbeddingModell {
+		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	}
+	if k.GeminiModellErsatz != "" {
+		t.Errorf("Ersatzmodell ist optional und standardmäßig leer, nicht %q", k.GeminiModellErsatz)
+	}
+	if k.GeminiErsatzReserve != 20*time.Second {
+		t.Errorf("Reserve = %v, erwartet 20s", k.GeminiErsatzReserve)
+	}
+}
+
+func TestLaden_ErsatzReserve(t *testing.T) {
+	for wert, erwartet := range map[string]time.Duration{"15": 15 * time.Second, "0": 0, " 25 ": 25 * time.Second} {
+		w := vollstaendig()
+		w["GEMINI_ERSATZ_RESERVE_SEKUNDEN"] = wert
+		k, err := Laden(umgebung(w))
+		if err != nil || k.GeminiErsatzReserve != erwartet {
+			t.Errorf("%q: %v, %v; erwartet %v", wert, k.GeminiErsatzReserve, err, erwartet)
+		}
+	}
+	for _, falsch := range []string{"-1", "abc", "2.5", "20s"} {
+		w := vollstaendig()
+		w["GEMINI_ERSATZ_RESERVE_SEKUNDEN"] = falsch
+		if _, err := Laden(umgebung(w)); err == nil {
+			t.Errorf("%q: erwartet Fehler", falsch)
+		}
+	}
+}
+
+func TestLaden_ModelleUeberschreiben(t *testing.T) {
+	w := vollstaendig()
+	w["GEMINI_MODELL"] = " anderes-modell "
+	w["GEMINI_EMBEDDING_MODELL"] = "anderes-embedding"
+	w["GEMINI_MODELL_ERSATZ"] = " ersatz-modell "
+	k, err := Laden(umgebung(w))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.GeminiModell != "anderes-modell" || k.GeminiEmbeddingModell != "anderes-embedding" {
+		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	}
+	if k.GeminiModellErsatz != "ersatz-modell" {
+		t.Errorf("Ersatz = %q", k.GeminiModellErsatz)
 	}
 }
 

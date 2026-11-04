@@ -157,7 +157,7 @@ So liefern `POST /eintraege`, `GET /eintraege/{id}` und
 
 | Feld | Typ | Bemerkung |
 |---|---|---|
-| `id` | String | Stabile ID innerhalb des Eintrags (`i1`, `i2`, …). Vergibt das Backend beim Upload. Darüber werden Infos korrigiert. |
+| `id` | String | Stabile ID innerhalb des Eintrags (`i1`, `i2`, …). Vergibt das Backend beim Upload, lückenlos auch dann, wenn es unvollständige Infos weglässt (siehe 3.1). Darüber werden Infos korrigiert. |
 | `name` | String | Bezeichnung, z. B. `"Hämoglobin"` |
 | `wert` | String | Immer ein String, genau wie auf dem Dokument (`"14,2"`, `"<0,5"`, `"positiv"`). So geht nichts durch Umwandeln in Zahlen verloren. |
 | `einheit` | String, optional | Fehlt, wenn das Dokument keine Einheit nennt |
@@ -299,7 +299,10 @@ Hausarztpraxis Beispiel
    Sprachmodell den Text und liefert dieselben Felder außer `volltext`;
    `volltext` ist der eingegebene Text.
 4. Das JSON prüfen (Pflichtfelder, Datumsformat, erlaubter `typ` des
-   Moduls) und `modul` setzen.
+   Moduls) und `modul` setzen. Eine einzelne Info ohne `name` oder ohne
+   `wert` lässt das Backend **weg**, statt den ganzen Upload abzulehnen. Ins
+   Log schreibt es nur, welches Feld fehlte (z. B. `infos[2].wert`), **nie**
+   einen Wert. Die übrigen Infos werden lückenlos nummeriert (`i1`, `i2`, …).
 5. Volltext in Abschnitte zerlegen und Embeddings berechnen.
 6. Eintrag, Abschnitte mit Embeddings und Originaldatei speichern.
 
@@ -497,11 +500,23 @@ Die Datei als Binärdaten, kein JSON.
 ```http
 Content-Type: application/pdf
 Content-Length: 184320
-Content-Disposition: inline; filename="befund_oktober.pdf"
+Content-Disposition: inline; filename=befund_oktober.pdf
+X-Content-Type-Options: nosniff
+Cache-Control: private, no-store
 ```
 
 Bei einem Text-Import ist es der Text mit
-`Content-Type: text/plain; charset=utf-8` und `filename="text.txt"`.
+`Content-Type: text/plain; charset=utf-8` und `filename=text.txt`.
+
+- `Content-Disposition` folgt RFC 6266: Anführungszeichen nur, wenn der
+  Name sie braucht; Namen mit Umlauten kommen als `filename*=utf-8''…`
+  (Prozent-Kodierung). Die App liest den Header deshalb mit einem
+  RFC-konformen Parser, statt das Beispiel wörtlich zu erwarten.
+- `X-Content-Type-Options: nosniff`: Der Inhalt wird nur als der angegebene
+  Typ behandelt, nie erraten.
+- `Cache-Control: private, no-store`: Die Originaldatei soll in keinem
+  Zwischenspeicher (Proxy, HTTP-Cache) landen. Will die App das Dokument
+  offline zeigen, speichert sie es bewusst selbst.
 
 **Fehler** (als JSON wie in Abschnitt 1)
 
@@ -643,11 +658,24 @@ Content-Type: application/json
 **Ablauf im Backend**
 
 1. Embedding der Frage berechnen.
-2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden.
-3. Gibt es keinen passenden Abschnitt, antwortet das Backend ohne Aufruf des
-   Sprachmodells mit dem festen Satz (siehe unten).
+2. Per Atlas Vector Search die passendsten Abschnitte des Moduls finden
+   (höchstens 5).
+3. Erste Schicht: Abschnitte mit einem Score unter 0,82 fallen weg (grober
+   Filter, kalibriert am 04.11.2026 mit `backend/cmd/kalibrieren`, siehe
+   Kommentar an `kern.MinScore`), ebenso Abschnitte, deren Eintrag
+   es nicht mehr gibt. Bleibt keiner übrig, antwortet das Backend ohne Aufruf
+   des Sprachmodells mit dem festen Satz (siehe unten).
 4. Sonst bekommt das Sprachmodell die Frage und nur diese Abschnitte. Es
    antwortet nur aus diesen Abschnitten und setzt Verweise wie `[1]`.
+   Beantworten die Abschnitte die Frage nicht, antwortet es mit dem festen
+   Satz.
+5. Zweite Schicht: Enthält die Antwort keinen gültigen Verweis, gilt sie als
+   „nichts gefunden“ (fester Satz, `gefunden: false`). Eine Antwort ohne
+   Quellenangabe erreicht die App nie.
+
+`quellen` enthält nur die Abschnitte, auf die die Antwort tatsächlich
+verweist. Die Nummern `nr` sind nicht unbedingt lückenlos (z. B. nur `1`
+und `3`); sie passen immer zu den Verweisen im Text.
 
 Die Antwort stützt sich auf den `volltext`. Korrekturen an `infos` ändern sie
 nicht.
@@ -699,10 +727,10 @@ Kein Treffer ist kein Fehler. Die Antwort lautet immer wörtlich:
 
 | HTTP | Code | Bemerkung |
 |---|---|---|
-| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON, oder unbekanntes `modul` |
+| 400 | `UNGUELTIGE_ANFRAGE` | Body ist kein gültiges JSON, unbekanntes Feld, oder unbekanntes `modul` (`details.feld`, `details.wert`) |
 | 400 | `FRAGE_FEHLT` | Feld fehlt, ist leer oder nur Leerzeichen |
 | 400 | `FRAGE_ZU_LANG` | Über 500 Zeichen |
-| 503 | `MODELL_NICHT_ERREICHBAR` | Embedding- oder Sprachmodell nicht erreichbar |
+| 503 | `MODELL_NICHT_ERREICHBAR` | Embedding- oder Sprachmodell nicht erreichbar, oder das Sprachmodell liefert keine verwertbare Antwort (z. B. leer oder blockiert) |
 | 500 | `INTERNER_FEHLER` | |
 
 ### 3.7 Eintrag löschen
@@ -823,6 +851,17 @@ Geplantes Verhalten:
 - **Duplikate nur bei exakt gleichen Bytes:** Ein neues Foto desselben
   Dokuments hat einen anderen Hash und wird nicht als Duplikat erkannt. Beim
   Text-Import genügt ein zusätzliches Leerzeichen für einen neuen Hash.
+- **Schwelle neu kalibrieren:** Die Schwelle 0,82 beruht auf 4 kurzen
+  Testeinträgen mit je einem Abschnitt. Nach den ersten echten
+  (synthetischen) Uploads `go run ./cmd/kalibrieren` erneut laufen lassen,
+  am besten mit Fragen zu den hochgeladenen Dokumenten. Längere Dokumente
+  mit mehreren Abschnitten können niedriger liegen.
+- **Briefköpfe und Adressen vor dem Einbetten herausfiltern:** Fachfremde
+  Fragen mit „Salzburg“ (Wetter, Zugfahrt) lagen mit 0,79–0,80 nahe an der
+  Schwelle, weil die Adresse im Briefkopf steht. Werden Briefkopf und Adressen
+  nicht mit eingebettet, sinken solche Scores. `volltext` und die Auszüge in
+  `quellen` bleiben dabei unverändert; es ändert sich nur, was ins Embedding
+  geht. Danach neu kalibrieren.
 
 ---
 
@@ -846,3 +885,13 @@ vorhandene Fehlercodes.
    nie `null`.
 5. **Status** ([3.8](#38-status-health-check)): `GET /status` als
    Health-Check, `200` oder `503`.
+6. **Unvollständige Infos** ([3.1](#31-datei-oder-text-hochladen-und-auslesen),
+   Schritt 4): Infos ohne `name` oder `wert` werden beim Upload weggelassen,
+   nicht abgelehnt. Im Log steht nur das Feld, nie der Wert.
+7. **Originaldatei** ([3.4](#34-originaldatei-abrufen)): zusätzlich
+   `X-Content-Type-Options: nosniff` und `Cache-Control: private, no-store`;
+   `Content-Disposition` nach RFC 6266 (Anführungszeichen nur bei Bedarf,
+   Umlaute als `filename*`).
+8. **Fragen** ([3.6](#36-frage-stellen)): Schwelle 0,82 als erster Filter;
+   Antworten ohne gültigen Verweis werden zum festen Satz; `quellen` nur mit
+   den zitierten Abschnitten; 503 auch bei unverwertbarer Modellantwort.

@@ -3,9 +3,11 @@
 package speicher
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -16,15 +18,29 @@ import (
 	"lifelog/backend/internal/kern"
 )
 
-// Namen der Collections.
+// Namen der Collections. GridFS legt für den Bucket "dateien" selbst die
+// Collections dateien.files (Metadaten) und dateien.chunks (Daten in
+// Stücken zu 255 KB) an.
 const (
-	collEintraege = "eintraege"
+	collEintraege  = "eintraege"
+	collAbschnitte = "abschnitte"
+	bucketDateien  = "dateien"
 )
 
 // Speicher ist die Verbindung zu einer Lifelog-Datenbank.
 type Speicher struct {
-	client    *mongo.Client
-	eintraege *mongo.Collection
+	client     *mongo.Client
+	db         *mongo.Database
+	eintraege  *mongo.Collection
+	abschnitte *mongo.Collection
+	dateien    *mongo.GridFSBucket
+}
+
+// NeueID erzeugt eine neue ObjectId als Hex-String. Der Upload vergibt die
+// IDs vorab, weil Datei und Abschnitte auf den Eintrag verweisen, der erst
+// zuletzt gespeichert wird.
+func NeueID() string {
+	return bson.NewObjectID().Hex()
 }
 
 // Verbinden baut die Verbindung auf und prüft sie mit einem Ping.
@@ -36,9 +52,13 @@ func Verbinden(ctx context.Context, uri, datenbank string) (*Speicher, error) {
 	if err != nil {
 		return nil, errors.New("MongoDB-Client konnte nicht erstellt werden (MONGODB_URI prüfen)")
 	}
+	db := client.Database(datenbank)
 	s := &Speicher{
-		client:    client,
-		eintraege: client.Database(datenbank).Collection(collEintraege),
+		client:     client,
+		db:         db,
+		eintraege:  db.Collection(collEintraege),
+		abschnitte: db.Collection(collAbschnitte),
+		dateien:    db.GridFSBucket(options.GridFSBucket().SetName(bucketDateien)),
 	}
 
 	pingCtx, abbrechen := context.WithTimeout(ctx, 10*time.Second)
@@ -81,6 +101,16 @@ func (s *Speicher) IndexeAnlegen(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("Indexe anlegen: %w", err)
 	}
+
+	// Löschen eines Eintrags entfernt seine Abschnitte über eintragId.
+	// Ohne Index müsste MongoDB dafür alle Abschnitte durchsuchen.
+	_, err = s.abschnitte.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "eintragId", Value: 1}},
+		Options: options.Index().SetName("eintragId"),
+	})
+	if err != nil {
+		return fmt.Errorf("Indexe anlegen: %w", err)
+	}
 	return nil
 }
 
@@ -108,20 +138,150 @@ func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]kern.EintragK
 
 // EintragSpeichern fügt einen neuen Eintrag ein. ID und Datei.ID müssen
 // gültige ObjectIds sein.
+//
+// Gibt es schon einen Eintrag mit demselben datei.sha256, meldet der
+// eindeutige Index einen Fehler, und EintragSpeichern liefert kern.ErrDuplikat.
+// Das fängt den Fall ab, dass zwei gleiche Uploads gleichzeitig an der
+// Duplikat-Prüfung vorbeikommen.
 func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
 	dok, err := zuEintragDok(e)
 	if err != nil {
 		return err
 	}
 	if _, err := s.eintraege.InsertOne(ctx, dok); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return kern.ErrDuplikat
+		}
 		return fmt.Errorf("Eintrag speichern: %w", err)
 	}
 	return nil
 }
 
+// EintragLesen liefert den vollständigen Eintrag. gefunden ist false, wenn
+// es keinen Eintrag mit dieser ID gibt.
+func (s *Speicher) EintragLesen(ctx context.Context, id string) (e kern.Eintrag, gefunden bool, err error) {
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return kern.Eintrag{}, false, kern.ErrUngueltigeID
+	}
+	var dok eintragDok
+	err = s.eintraege.FindOne(ctx, bson.D{{Key: "_id", Value: oid}}).Decode(&dok)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return kern.Eintrag{}, false, nil
+	}
+	if err != nil {
+		return kern.Eintrag{}, false, fmt.Errorf("Eintrag lesen: %w", err)
+	}
+	return dok.zuKern(), true, nil
+}
+
+// DateiOeffnen öffnet die Originaldatei zum Lesen. Die Daten kommen in
+// Stücken aus GridFS, während der Aufrufer liest; die Datei wird also nie
+// ganz in den Speicher geladen. Der Aufrufer muss Close aufrufen.
+//
+// ctx gilt für das ganze Lesen, nicht nur fürs Öffnen.
+// Fehlt die Datei, ist der Fehler kern.ErrOriginalFehlt.
+func (s *Speicher) DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error) {
+	oid, err := bson.ObjectIDFromHex(dateiID)
+	if err != nil {
+		return nil, 0, kern.ErrUngueltigeID
+	}
+	strom, err := s.dateien.OpenDownloadStream(ctx, oid)
+	if errors.Is(err, mongo.ErrFileNotFound) {
+		return nil, 0, kern.ErrOriginalFehlt
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("Datei öffnen: %w", err)
+	}
+	return strom, strom.GetFile().Length, nil
+}
+
+// EintragMitHash sucht den Eintrag, dessen Datei diesen SHA-256-Hash hat.
+// Die Suche gilt über alle Module (API.md 3.1).
+func (s *Speicher) EintragMitHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error) {
+	var treffer struct {
+		ID bson.ObjectID `bson:"_id"`
+	}
+	err = s.eintraege.FindOne(ctx,
+		bson.D{{Key: "datei.sha256", Value: sha256}},
+		options.FindOne().SetProjection(bson.D{{Key: "_id", Value: 1}}),
+	).Decode(&treffer)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("Duplikat prüfen: %w", err)
+	}
+	return treffer.ID.Hex(), true, nil
+}
+
+// DateiSpeichern legt die Originaldatei in GridFS ab. GridFS teilt Dateien
+// in Stücke, weil ein einzelnes MongoDB-Dokument höchstens 16 MB groß sein
+// darf. Unsere Dateien sind zwar ≤ 10 MB, aber so bleibt das Eintrag-Dokument
+// klein und die Datei wird nur geladen, wenn jemand sie wirklich ansieht.
+func (s *Speicher) DateiSpeichern(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error {
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("ungültige Datei-ID: %w", err)
+	}
+	err = s.dateien.UploadFromStreamWithID(ctx, oid, dateiname, bytes.NewReader(daten),
+		options.GridFSUpload().SetMetadata(bson.D{{Key: "mimeTyp", Value: mimeTyp}}))
+	if err != nil {
+		return fmt.Errorf("Datei speichern: %w", err)
+	}
+	return nil
+}
+
+// DateiLoeschen entfernt die Datei aus GridFS. Gibt es sie nicht (mehr), ist
+// das kein Fehler: So kann ein abgebrochenes Löschen einfach wiederholt
+// werden (API.md 3.7).
+func (s *Speicher) DateiLoeschen(ctx context.Context, id string) error {
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("ungültige Datei-ID: %w", err)
+	}
+	if err := s.dateien.Delete(ctx, oid); err != nil && !errors.Is(err, mongo.ErrFileNotFound) {
+		return fmt.Errorf("Datei löschen: %w", err)
+	}
+	return nil
+}
+
+// AbschnitteSpeichern fügt alle Abschnitte eines Eintrags ein. Eine leere
+// Liste ist erlaubt und bewirkt nichts.
+func (s *Speicher) AbschnitteSpeichern(ctx context.Context, abschnitte []kern.Abschnitt) error {
+	if len(abschnitte) == 0 {
+		return nil
+	}
+	doks := make([]any, 0, len(abschnitte))
+	for _, a := range abschnitte {
+		dok, err := zuAbschnittDok(a)
+		if err != nil {
+			return err
+		}
+		doks = append(doks, dok)
+	}
+	if _, err := s.abschnitte.InsertMany(ctx, doks); err != nil {
+		return fmt.Errorf("Abschnitte speichern: %w", err)
+	}
+	return nil
+}
+
+// AbschnitteLoeschen entfernt alle Abschnitte eines Eintrags. Gibt es keine,
+// ist das kein Fehler.
+func (s *Speicher) AbschnitteLoeschen(ctx context.Context, eintragID string) error {
+	oid, err := bson.ObjectIDFromHex(eintragID)
+	if err != nil {
+		return fmt.Errorf("ungültige Eintrag-ID: %w", err)
+	}
+	if _, err := s.abschnitte.DeleteMany(ctx, bson.D{{Key: "eintragId", Value: oid}}); err != nil {
+		return fmt.Errorf("Abschnitte löschen: %w", err)
+	}
+	return nil
+}
+
 // EintragLoeschen löscht nur das Eintrag-Dokument. gefunden ist false, wenn
-// es keinen Eintrag mit dieser ID gab. Abschnitte und Datei folgen in
-// Schritt 8 (DELETE).
+// es keinen Eintrag mit dieser ID gab. Abschnitte und Datei löscht der
+// Aufrufer vorher mit AbschnitteLoeschen und DateiLoeschen (API.md 3.7).
 func (s *Speicher) EintragLoeschen(ctx context.Context, id string) (gefunden bool, err error) {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
