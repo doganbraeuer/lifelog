@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -80,6 +81,31 @@ func DotenvLaden() error {
 		}
 	}
 	return nil
+}
+
+// DotenvSuchen lädt die erste .env, die es vom aktuellen Ordner aus nach
+// oben findet. Für Tests: go test läuft im Paketordner (z. B.
+// backend/internal/speicher), die .env liegt im Repo-Wurzelverzeichnis.
+// Keine .env zu finden ist kein Fehler.
+func DotenvSuchen() error {
+	dir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	for {
+		pfad := filepath.Join(dir, ".env")
+		if _, err := os.Stat(pfad); err == nil {
+			if err := godotenv.Load(pfad); err != nil {
+				return fmt.Errorf("%s konnte nicht gelesen werden: %w", pfad, err)
+			}
+			return nil
+		}
+		eltern := filepath.Dir(dir)
+		if eltern == dir {
+			return nil
+		}
+		dir = eltern
+	}
 }
 
 // Laden liest die Konfiguration über getenv (im Programm os.Getenv, in Tests

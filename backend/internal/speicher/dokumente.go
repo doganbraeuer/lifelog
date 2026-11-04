@@ -153,3 +153,45 @@ func (d eintragKurzDok) zuKern() kern.EintragKurz {
 		Quelle:        d.Quelle,
 	}
 }
+
+// abschnittDok ist ein Abschnitt in der Collection "abschnitte".
+//
+// Das Embedding wird als normales Zahlen-Array gespeichert (768 Zahlen).
+// Atlas Vector Search liest genau dieses Feld (Pfad "embedding"), und
+// "modul" ist dort als Filterfeld eingetragen (Schritt 5).
+type abschnittDok struct {
+	ID        bson.ObjectID `bson:"_id"`
+	EintragID bson.ObjectID `bson:"eintragId"`
+	Modul     string        `bson:"modul"`
+	Nr        int           `bson:"nr"`
+	Text      string        `bson:"text"`
+	Embedding []float32     `bson:"embedding"`
+}
+
+func zuAbschnittDok(a kern.Abschnitt) (abschnittDok, error) {
+	eintragID, err := bson.ObjectIDFromHex(a.EintragID)
+	if err != nil {
+		return abschnittDok{}, fmt.Errorf("ungültige Eintrag-ID im Abschnitt: %w", err)
+	}
+	if len(a.Embedding) == 0 {
+		return abschnittDok{}, fmt.Errorf("Abschnitt %d hat kein Embedding", a.Nr)
+	}
+	return abschnittDok{
+		ID:        bson.NewObjectID(),
+		EintragID: eintragID,
+		Modul:     a.Modul,
+		Nr:        a.Nr,
+		Text:      a.Text,
+		Embedding: a.Embedding,
+	}, nil
+}
+
+func (d abschnittDok) zuKern() kern.Abschnitt {
+	return kern.Abschnitt{
+		EintragID: d.EintragID.Hex(),
+		Modul:     d.Modul,
+		Nr:        d.Nr,
+		Text:      d.Text,
+		Embedding: d.Embedding,
+	}
+}

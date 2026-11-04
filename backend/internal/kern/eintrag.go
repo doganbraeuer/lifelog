@@ -54,3 +54,14 @@ type EintragKurz struct {
 	Importdatum   time.Time
 	Quelle        *string
 }
+
+// Abschnitt ist ein Stück Volltext mit seinem Embedding, die Grundlage der
+// Suche (POST /fragen). Modul steht im Abschnitt selbst, damit die
+// Vektorsuche direkt danach filtern kann.
+type Abschnitt struct {
+	EintragID string
+	Modul     string
+	Nr        int // Reihenfolge im Volltext, ab 1
+	Text      string
+	Embedding []float32
+}

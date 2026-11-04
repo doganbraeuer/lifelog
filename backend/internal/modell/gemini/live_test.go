@@ -24,8 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"lifelog/backend/internal/kern"
 	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell"
@@ -36,7 +34,9 @@ func liveGemini(t *testing.T) *Gemini {
 	if os.Getenv("LIFELOG_LIVE") != "1" {
 		t.Skip("Live-Test übersprungen (LIFELOG_LIVE=1 setzen)")
 	}
-	ladeEnvAusRepo(t)
+	if err := konfig.DotenvSuchen(); err != nil {
+		t.Fatal(err)
+	}
 	k, err := konfig.Laden(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -52,26 +52,6 @@ func liveGemini(t *testing.T) *Gemini {
 	}
 	t.Logf("Modelle: %s (Ersatz %q) / %s", k.GeminiModell, k.GeminiModellErsatz, k.GeminiEmbeddingModell)
 	return g
-}
-
-// ladeEnvAusRepo sucht die .env vom Paketordner aus nach oben.
-func ladeEnvAusRepo(t *testing.T) {
-	t.Helper()
-	dir, _ := os.Getwd()
-	for {
-		pfad := filepath.Join(dir, ".env")
-		if _, err := os.Stat(pfad); err == nil {
-			if err := godotenv.Load(pfad); err != nil {
-				t.Fatalf(".env nicht lesbar: %v", err)
-			}
-			return
-		}
-		eltern := filepath.Dir(dir)
-		if eltern == dir {
-			return // keine .env gefunden, dann gelten nur Umgebungsvariablen
-		}
-		dir = eltern
-	}
 }
 
 func testdatei(t *testing.T, name string) []byte {

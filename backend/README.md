@@ -30,6 +30,13 @@ die synthetischen Dateien aus `testdaten/`):
 LIFELOG_LIVE=1 go test ./internal/modell/gemini/ -run Live -v
 ```
 
+Integrationstests gegen MongoDB (benutzen eine eigene Datenbank
+`<MONGODB_DB>_integrationstest` und löschen sie danach wieder):
+
+```sh
+LIFELOG_MONGO_TEST=1 go test ./internal/speicher/ -run Integration -v
+```
+
 ## Gemini-Modelle
 
 ```sh
@@ -72,5 +79,5 @@ sips -s format png laborbefund.pdf --out laborbefund.png
 | `internal/modell` | Austauschbare Schnittstelle zu den Modellen (`Leser`, `Einbetter`) |
 | `internal/modell/gemini` | Umsetzung mit Gemini, inkl. Wiederholung und Ersatzmodell |
 | `internal/modell/attrappe` | Modell-Ersatz für Tests |
-| `internal/speicher` | MongoDB: Einträge, Indexe |
+| `internal/speicher` | MongoDB: Einträge, Abschnitte mit Embeddings, Originaldateien (GridFS), Indexe |
 | `internal/api` | Router, Handler, Fehlerformat, JSON-Typen |
