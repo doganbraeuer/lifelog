@@ -59,12 +59,8 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
       );
       if (!mounted || nr != _anfrageNr) return;
       setState(() {
-        // Die API kennt (noch) keinen Filter nach Modul, deshalb filtert die
-        // App selbst. Die Reihenfolge des Backends bleibt dabei erhalten.
-        _eintraege = [
-          for (final e in eintraege)
-            if (e.modul == widget.modulId) e,
-        ];
+        // Das Backend liefert nur Einträge des Moduls (?modul=), sortiert.
+        _eintraege = eintraege;
         _laedt = false;
       });
     } on ApiFehler catch (fehler) {

@@ -139,6 +139,58 @@ class _EintragScreenState extends State<EintragScreen> {
   }
 
   // -------------------------------------------------------------------------
+  // Löschen
+  // -------------------------------------------------------------------------
+
+  /// Fragt nach und löscht dann Eintrag, Originaldatei und Suchabschnitte.
+  /// Bei Erfolg schließt sich die Ansicht; die Zeitleiste lädt danach neu.
+  Future<void> _loeschen() async {
+    final bestaetigt = await showDialog<bool>(
+      context: context,
+      builder: (dialog) {
+        final farben = Theme.of(dialog).colorScheme;
+        return AlertDialog(
+          title: const Text('Eintrag löschen?'),
+          content: const Text(
+            'Eintrag, Originaldatei und Suchabschnitte werden endgültig '
+            'gelöscht.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: farben.error,
+                foregroundColor: farben.onError,
+              ),
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Löschen'),
+            ),
+          ],
+        );
+      },
+    );
+    if (bestaetigt != true || !mounted) return;
+
+    final navigator = Navigator.of(context);
+    final nachricht = ScaffoldMessenger.of(context);
+    setState(() => _speichert = true);
+    try {
+      await widget.api.loeschen(widget.eintragId);
+      navigator.pop();
+      nachricht.showSnackBar(
+        const SnackBar(content: Text('Eintrag gelöscht.')),
+      );
+    } on ApiFehler catch (fehler) {
+      // Nichts gelöscht (bzw. der Eintrag ist noch sichtbar): Ansicht bleibt.
+      nachricht.showSnackBar(SnackBar(content: Text(fehler.nachricht)));
+      if (mounted) setState(() => _speichert = false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Anzeige
   // -------------------------------------------------------------------------
 
@@ -152,7 +204,14 @@ class _EintragScreenState extends State<EintragScreen> {
               ? 'Eintrag'
               : ModulKatalog.von(context).typName(eintrag.modul, eintrag.typ),
         ),
-        actions: [MockHinweis(sichtbar: widget.api.istMock)],
+        actions: [
+          MockHinweis(sichtbar: widget.api.istMock),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Eintrag löschen',
+            onPressed: eintrag == null || _speichert ? null : _loeschen,
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
           child: SizedBox(

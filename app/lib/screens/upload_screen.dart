@@ -15,10 +15,12 @@ const cloudHinweis =
     'Dokumente werden zur Auswertung an einen Cloud-Dienst gesendet. '
     'Bitte nur Testdokumente verwenden.';
 
-/// Foto aufnehmen, Bild oder PDF wählen und hochladen.
+/// Foto aufnehmen, Bild oder PDF wählen und hochladen, oder den
+/// Dokumentinhalt als Text eingeben.
 ///
 /// Ablauf: Datei wählen → Vorschau prüfen → „Hochladen“. Die Vorschau
 /// verhindert, dass versehentlich die falsche Datei in die Cloud geht.
+/// Beim Text: eingeben bzw. einfügen → „Importieren“.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({
     super.key,
@@ -50,6 +52,16 @@ class _UploadScreenState extends State<UploadScreen> {
   ApiFehler? _fehler;
   var _laedtHoch = false;
 
+  /// `true`, solange das Textfeld für den Text-Import offen ist.
+  var _textModus = false;
+  final _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
   /// Bei diesen Fehlern lohnt ein zweiter Versuch mit derselben Datei.
   static const _wiederholbar = {
     FehlerCode.netzwerkFehler,
@@ -63,6 +75,8 @@ class _UploadScreenState extends State<UploadScreen> {
   void initState() {
     super.initState();
     _verloreneDateiAbholen();
+    // Damit „Importieren“ beim Tippen aktiv bzw. inaktiv wird.
+    _text.addListener(() => setState(() {}));
   }
 
   Future<void> _verloreneDateiAbholen() async {
@@ -157,6 +171,54 @@ class _UploadScreenState extends State<UploadScreen> {
     _fehler = null;
   });
 
+  // -------------------------------------------------------------------------
+  // Text-Import
+  // -------------------------------------------------------------------------
+
+  void _textOeffnen() => setState(() {
+    _textModus = true;
+    _fehler = null;
+  });
+
+  void _textAbbrechen() => setState(() {
+    _textModus = false;
+    _text.clear();
+    _fehler = null;
+  });
+
+  Future<void> _textImportieren() async {
+    final text = _text.text;
+    if (text.trim().isEmpty) return;
+    FocusScope.of(context).unfocus(); // Tastatur schließen
+    setState(() {
+      _laedtHoch = true;
+      _fehler = null;
+    });
+    try {
+      final eintrag = await widget.api.textImportieren(
+        text,
+        modul: widget.modulId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _laedtHoch = false;
+        _textModus = false;
+        _text.clear();
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Text gespeichert.')));
+      widget.hochgeladen(eintrag);
+    } on ApiFehler catch (fehler) {
+      if (!mounted) return;
+      // Der Text bleibt bei jedem Fehler stehen, damit man ihn ändern
+      // (z. B. kürzen) oder erneut senden kann.
+      setState(() {
+        _laedtHoch = false;
+        _fehler = fehler;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,7 +236,12 @@ class _UploadScreenState extends State<UploadScreen> {
             _FehlerKarte(fehler: fehler, eintragOeffnen: widget.eintragOeffnen),
             const SizedBox(height: 16),
           ],
-          if (_datei case final datei?) _vorschau(datei) else _auswahlKnoepfe(),
+          if (_datei case final datei?)
+            _vorschau(datei)
+          else if (_textModus)
+            _texteingabe()
+          else
+            _auswahlKnoepfe(),
         ],
       ),
     );
@@ -202,12 +269,55 @@ class _UploadScreenState extends State<UploadScreen> {
           icon: const Icon(Icons.picture_as_pdf_outlined),
           label: const Text('PDF auswählen'),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _textOeffnen,
+          icon: const Icon(Icons.notes),
+          label: const Text('Text eingeben'),
+        ),
         const SizedBox(height: 12),
         Text(
-          'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB.',
+          'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB '
+          'oder Text bis 100 000 Zeichen.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
+      ],
+    );
+  }
+
+  Widget _texteingabe() {
+    final fehler = _fehler;
+    final wiederholen = fehler != null && _wiederholbar.contains(fehler.code);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _text,
+          enabled: !_laedtHoch,
+          minLines: 6,
+          maxLines: 14,
+          maxLength: maxTextLaenge,
+          keyboardType: TextInputType.multiline,
+          decoration: const InputDecoration(
+            labelText: 'Dokumentinhalt',
+            hintText: 'Text des Dokuments eingeben oder einfügen',
+            alignLabelWithHint: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_laedtHoch)
+          const _Auswertung()
+        else ...[
+          FilledButton.icon(
+            onPressed: _text.text.trim().isEmpty ? null : _textImportieren,
+            icon: Icon(wiederholen ? Icons.refresh : Icons.cloud_upload),
+            label: Text(wiederholen ? 'Erneut versuchen' : 'Importieren'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _textAbbrechen, child: const Text('Abbrechen')),
+        ],
       ],
     );
   }
@@ -260,17 +370,7 @@ class _UploadScreenState extends State<UploadScreen> {
         ),
         const SizedBox(height: 16),
         if (_laedtHoch)
-          const Column(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text(
-                'Das Dokument wird ausgewertet.\n'
-                'Das kann bis zu einer Minute dauern.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          )
+          const _Auswertung()
         else ...[
           FilledButton.icon(
             onPressed: _hochladen,
@@ -286,6 +386,24 @@ class _UploadScreenState extends State<UploadScreen> {
       ],
     );
   }
+}
+
+/// Ladeanzeige, solange das Backend auswertet (bis zu einer Minute).
+class _Auswertung extends StatelessWidget {
+  const _Auswertung();
+
+  @override
+  Widget build(BuildContext context) => const Column(
+    children: [
+      CircularProgressIndicator(),
+      SizedBox(height: 12),
+      Text(
+        'Das Dokument wird ausgewertet.\n'
+        'Das kann bis zu einer Minute dauern.',
+        textAlign: TextAlign.center,
+      ),
+    ],
+  );
 }
 
 class _Hinweis extends StatelessWidget {

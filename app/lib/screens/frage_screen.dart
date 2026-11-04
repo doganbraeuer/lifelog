@@ -23,8 +23,7 @@ class FrageScreen extends StatefulWidget {
 
   final ApiClient api;
 
-  /// Modul, in dem gefragt wird. Die Quellen einer Antwort nennen laut API
-  /// kein Modul, nur den `typ`; dessen Name kommt deshalb aus diesem Modul.
+  /// Modul, in dem gefragt wird (`modul` bei `POST /fragen`).
   final String modulId;
 
   /// Öffnet den Eintrag einer Quelle. „Zurück“ führt wieder hierher.
@@ -190,7 +189,6 @@ class _FrageScreenState extends State<FrageScreen> {
           for (final quelle in antwort.quellen)
             _QuellenKarte(
               quelle: quelle,
-              modulId: widget.modulId,
               oeffnen: () => widget.eintragOeffnen(quelle.eintragId),
             ),
         ],
@@ -201,22 +199,18 @@ class _FrageScreenState extends State<FrageScreen> {
 
 /// Eine Quelle: Nummer wie im Antworttext, Dokument und Auszug.
 class _QuellenKarte extends StatelessWidget {
-  const _QuellenKarte({
-    required this.quelle,
-    required this.modulId,
-    required this.oeffnen,
-  });
+  const _QuellenKarte({required this.quelle, required this.oeffnen});
 
   final Quelle quelle;
-  final String modulId;
   final VoidCallback oeffnen;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final katalog = ModulKatalog.von(context);
+    // Typname aus dem Modul der Quelle; ein typ ist nur damit eindeutig.
     final kopf = [
-      katalog.typName(modulId, quelle.typ),
+      katalog.typName(quelle.modul, quelle.typ),
       quelle.dokumentdatum?.anzeige ?? 'ohne Datum',
     ].join(' · ');
     return Card(
@@ -235,7 +229,10 @@ class _QuellenKarte extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Icon(katalog.typSymbol(modulId, quelle.typ), size: 16),
+                        Icon(
+                          katalog.typSymbol(quelle.modul, quelle.typ),
+                          size: 16,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(kopf, style: theme.textTheme.labelLarge),
