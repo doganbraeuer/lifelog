@@ -54,6 +54,21 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# App-Icons für Android und iOS. Erzeugen mit: dart run flutter_launcher_icons
+# Die Bilder unter assets/icon/ werden nur dafür gebraucht und stehen deshalb
+# nicht unter flutter: assets: (sonst wären sie unnötig in der App).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  # Der App Store lehnt Icons mit Transparenz ab.
+  remove_alpha_ios: true
+  # Adaptives Icon ab Android 8: Das System schneidet es in die Form des
+  # Launchers (Kreis, Quadrat, ...) und kann die Ebenen animieren.
+  adaptive_icon_background: "assets/icon/icon_background.png"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
