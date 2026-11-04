@@ -56,12 +56,14 @@ func starten() error {
 		Schluessel:      k.GeminiKey,
 		Modell:          k.GeminiModell,
 		ErsatzModell:    k.GeminiModellErsatz,
+		ErsatzReserve:   k.GeminiErsatzReserve,
 		EmbeddingModell: k.GeminiEmbeddingModell,
 	})
 	if err != nil {
 		return err
 	}
-	slog.Info("Modelle", "lesen", k.GeminiModell, "ersatz", k.GeminiModellErsatz, "embedding", k.GeminiEmbeddingModell)
+	slog.Info("Modelle", "lesen", k.GeminiModell, "ersatz", k.GeminiModellErsatz,
+		"reserve", k.GeminiErsatzReserve, "embedding", k.GeminiEmbeddingModell)
 
 	server := &http.Server{
 		Addr: k.Lauschadresse(),

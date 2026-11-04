@@ -45,12 +45,13 @@ func liveGemini(t *testing.T) *Gemini {
 		Schluessel:      k.GeminiKey,
 		Modell:          k.GeminiModell,
 		ErsatzModell:    k.GeminiModellErsatz,
+		ErsatzReserve:   k.GeminiErsatzReserve,
 		EmbeddingModell: k.GeminiEmbeddingModell,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("Modelle: %s (Ersatz %q) / %s", k.GeminiModell, k.GeminiModellErsatz, k.GeminiEmbeddingModell)
+	t.Logf("Modelle: %s (Ersatz %q, Reserve %v) / %s", k.GeminiModell, g.e.ErsatzModell, k.GeminiErsatzReserve, k.GeminiEmbeddingModell)
 	return g
 }
 

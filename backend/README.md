@@ -47,6 +47,8 @@ Der Schlüssel kommt aus `.env` und wird nie ausgegeben. Ob ein Modell in der
 kostenlosen Stufe nutzbar ist und welche Limits gelten, steht nur in AI Studio
 bzw. auf der Preisseite. Bei 429/503 versucht das Backend es bis zu zweimal
 erneut; mit `GEMINI_MODELL_ERSATZ` danach einmal ein anderes Modell zum Lesen.
+Dafür sind vom Lese-Limit (50 s) standardmäßig 20 s reserviert
+(`GEMINI_ERSATZ_RESERVE_SEKUNDEN`), das Hauptmodell bekommt 30 s.
 
 ## Synthetische Testdaten
 

@@ -5,6 +5,7 @@ package gemini
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -20,6 +21,10 @@ import (
 const (
 	leseTimeout      = 50 * time.Second
 	einbettenTimeout = 20 * time.Second
+
+	// mindestHauptzeit: So viel Zeit bleibt dem Hauptmodell mindestens,
+	// egal wie groß die Reserve für den Ersatz eingestellt ist.
+	mindestHauptzeit = 10 * time.Second
 )
 
 // Einstellungen für Neu.
@@ -28,6 +33,11 @@ type Einstellungen struct {
 	Modell          string // Hauptmodell zum Lesen
 	ErsatzModell    string // optional: wird einmal versucht, wenn Modell nicht erreichbar bleibt
 	EmbeddingModell string // ohne Ersatz: Embeddings verschiedener Modelle passen nicht zusammen
+
+	// ErsatzReserve: Dieser Teil des Lese-Limits ist dem Ersatzmodell
+	// vorbehalten. Das Hauptmodell muss samt Wiederholungen vorher fertig
+	// sein. Gilt nur, wenn ErsatzModell gesetzt ist.
+	ErsatzReserve time.Duration
 }
 
 // Die beiden Aufrufe, die wirklich ins Netz gehen. Als Funktionen, damit
@@ -44,6 +54,7 @@ type Gemini struct {
 	erzeugen       erzeugenFunk
 	einbettenAPI   einbettenFunk
 	neuWiederholer func(beschreibung string) wiederholer
+	leseTimeout    time.Duration // Feld statt Konstante, damit Tests nicht 50 s warten
 }
 
 var (
@@ -66,11 +77,16 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 	if e.ErsatzModell == e.Modell {
 		e.ErsatzModell = "" // derselbe Name wäre nur ein vierter Versuch
 	}
+	if e.ErsatzReserve < 0 || e.ErsatzReserve > leseTimeout-mindestHauptzeit {
+		return nil, fmt.Errorf("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss zwischen 0 und %d liegen (Lese-Limit %v, Hauptmodell braucht mindestens %v)",
+			int((leseTimeout - mindestHauptzeit).Seconds()), leseTimeout, mindestHauptzeit)
+	}
 	return &Gemini{
 		e:              e,
 		erzeugen:       client.Models.GenerateContent,
 		einbettenAPI:   client.Models.EmbedContent,
 		neuWiederholer: standardWiederholer,
+		leseTimeout:    leseTimeout,
 	}, nil
 }
 
@@ -80,9 +96,25 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 // Ablauf: Hauptmodell, bei 429/503 bis zu zwei Wiederholungen. Bleibt es
 // nicht erreichbar und ist ein Ersatzmodell eingestellt, wird dieses einmal
 // versucht. Alles innerhalb von leseTimeout.
+//
+// Zeitaufteilung mit Ersatzmodell (Standard 30 s + 20 s):
+//
+//	|---- Hauptmodell + Wiederholungen ----|---- Reserve: Ersatz ----|
+//	0                                     30 s                     50 s
+//
+// Ohne diese Aufteilung könnte ein hängendes Hauptmodell das ganze Limit
+// verbrauchen, und der Ersatz käme nie zum Zug.
 func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, leseTimeout)
+	ctx, abbrechen := context.WithTimeout(ctx, g.leseTimeout)
 	defer abbrechen()
+
+	hauptCtx := ctx
+	if g.e.ErsatzModell != "" && g.e.ErsatzReserve > 0 {
+		frist, _ := ctx.Deadline() // durch WithTimeout immer gesetzt
+		var hauptAbbrechen context.CancelFunc
+		hauptCtx, hauptAbbrechen = context.WithDeadline(ctx, frist.Add(-g.e.ErsatzReserve))
+		defer hauptAbbrechen()
+	}
 
 	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
 		genai.NewPartFromBytes(daten, mimeTyp),
@@ -98,16 +130,23 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 	}
 
 	var resp *genai.GenerateContentResponse
-	err := g.neuWiederholer("Lesen "+g.e.Modell).ausfuehren(ctx, func(ctx context.Context) error {
+	err := g.neuWiederholer("Lesen "+g.e.Modell).ausfuehren(hauptCtx, func(ctx context.Context) error {
 		var err error
 		resp, err = g.erzeugen(ctx, g.e.Modell, inhalte, cfg)
 		return err
 	})
 	err = uebersetzeFehler(err, g.e.Schluessel)
 
+	// ctx.Err() == nil: Das Gesamtlimit läuft noch und die App ist noch da.
+	// (Abgelaufen sein darf nur hauptCtx, dann ist die Reserve übrig.)
 	if errors.Is(err, modell.ErrNichtErreichbar) && g.e.ErsatzModell != "" && ctx.Err() == nil {
+		rest := time.Duration(0)
+		if frist, ok := ctx.Deadline(); ok {
+			rest = time.Until(frist).Round(time.Millisecond)
+		}
+		// Der Fehler des Hauptmodells ist schon übersetzt und maskiert.
 		slog.Warn("Hauptmodell nicht erreichbar, Ersatzmodell wird einmal versucht",
-			"modell", g.e.Modell, "ersatz", g.e.ErsatzModell)
+			"modell", g.e.Modell, "fehler", err, "ersatz", g.e.ErsatzModell, "restzeit", rest)
 		resp, err = g.erzeugen(ctx, g.e.ErsatzModell, inhalte, cfg)
 		err = uebersetzeFehler(err, g.e.Schluessel)
 	}

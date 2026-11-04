@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -38,6 +39,13 @@ const (
 	// sind nicht vergleichbar. Wer das Modell wechselt, muss alle Abschnitte
 	// neu einbetten, sonst findet die Suche nichts Sinnvolles mehr.
 	StandardGeminiEmbeddingModell = "gemini-embedding-2"
+
+	// StandardErsatzReserveSekunden: So viele Sekunden des Lese-Limits (50 s)
+	// bleiben für das Ersatzmodell reserviert. Das Hauptmodell bekommt samt
+	// Wiederholungen den Rest, also 30 s. Ohne Ersatzmodell gibt es keine
+	// Reserve. Grund: Hängt das Hauptmodell bis zur Frist, bliebe für den
+	// Ersatz sonst keine Zeit (beobachtet am 04.11.2026).
+	StandardErsatzReserveSekunden = 20
 )
 
 // Konfig enthält alle Einstellungen, die das Backend beim Start braucht.
@@ -46,7 +54,8 @@ type Konfig struct {
 	MongoDB               string
 	GeminiKey             string
 	GeminiModell          string
-	GeminiModellErsatz    string // optional, leer = kein Ersatzmodell
+	GeminiModellErsatz    string        // optional, leer = kein Ersatzmodell
+	GeminiErsatzReserve   time.Duration // Teil des Lese-Limits, der dem Ersatz vorbehalten ist
 	GeminiEmbeddingModell string
 	Adresse               string
 	Port                  string
@@ -144,6 +153,15 @@ func Laden(getenv func(string) string) (Konfig, error) {
 	if p, err := strconv.Atoi(k.Port); err != nil || p < 1 || p > 65535 {
 		return Konfig{}, errors.New("PORT muss eine Zahl zwischen 1 und 65535 sein")
 	}
+
+	// Ob die Reserve zum Lese-Limit passt, prüft gemini.Neu (dort ist das
+	// Limit bekannt). Hier nur: ganze Zahl, nicht negativ.
+	reserve := mitStandard(getenv("GEMINI_ERSATZ_RESERVE_SEKUNDEN"), strconv.Itoa(StandardErsatzReserveSekunden))
+	sek, err := strconv.Atoi(reserve)
+	if err != nil || sek < 0 {
+		return Konfig{}, errors.New("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss eine ganze Zahl ≥ 0 sein")
+	}
+	k.GeminiErsatzReserve = time.Duration(sek) * time.Second
 
 	return k, nil
 }

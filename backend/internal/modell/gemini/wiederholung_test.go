@@ -182,9 +182,11 @@ func testGemini(n *netzAttrappe, ersatz string) *Gemini {
 	return &Gemini{
 		e: Einstellungen{
 			Schluessel: "GEHEIM", Modell: "haupt", ErsatzModell: ersatz, EmbeddingModell: "embed",
+			ErsatzReserve: 20 * time.Second,
 		},
 		erzeugen:     n.erzeugen,
 		einbettenAPI: n.einbetten,
+		leseTimeout:  leseTimeout,
 		neuWiederholer: func(b string) wiederholer {
 			w := standardWiederholer(b)
 			w.schlafen = func(context.Context, time.Duration) error { return nil } // nicht wirklich warten
