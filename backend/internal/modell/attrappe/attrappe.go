@@ -18,8 +18,10 @@ type Leser struct {
 	Erkennung kern.Erkennung
 	Err       error
 
-	mu      sync.Mutex
-	aufrufe int
+	mu          sync.Mutex
+	aufrufe     int
+	textAufrufe int
+	letzterText string
 }
 
 var _ modell.Leser = (*Leser)(nil)
@@ -29,6 +31,24 @@ func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string)
 	defer l.mu.Unlock()
 	l.aufrufe++
 	return l.Erkennung, l.Err
+}
+
+// TextLesen liefert dieselbe Erkennung bzw. denselben Fehler wie
+// DokumentLesen, zählt aber getrennt.
+func (l *Leser) TextLesen(_ context.Context, text string, _ []string) (kern.Erkennung, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.textAufrufe++
+	l.letzterText = text
+	return l.Erkennung, l.Err
+}
+
+// TextAufrufe: wie oft TextLesen aufgerufen wurde, und mit welchem Text
+// zuletzt.
+func (l *Leser) TextAufrufe() (int, string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.textAufrufe, l.letzterText
 }
 
 // Aufrufe: wie oft DokumentLesen aufgerufen wurde.

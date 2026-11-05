@@ -22,6 +22,11 @@ const EmbeddingDimensionen = 768
 // Das Ergebnis ist ungeprüft, prüfen muss kern.PruefeErkennung.
 type Leser interface {
 	DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error)
+
+	// TextLesen ordnet einen eingegebenen Text ein (Text-Import): Datum,
+	// Quelle, Typ und Infos. Lesbar ist immer true, Volltext bleibt leer;
+	// der Volltext ist der eingegebene Text, den setzt der Aufrufer.
+	TextLesen(ctx context.Context, text string, erlaubteTypen []string) (kern.Erkennung, error)
 }
 
 // Einbetter berechnet Embeddings: Vektoren, deren Abstand zueinander

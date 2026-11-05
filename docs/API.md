@@ -267,7 +267,15 @@ gesundheit
 
 Für `text`:
 
-- Höchstens 100 000 Zeichen. Leer oder nur Leerzeichen gilt als fehlend.
+- Höchstens 100 000 Zeichen (Unicode-Zeichen, nicht Bytes). Leer oder nur
+  Leerzeichen gilt als fehlend. Kommt `datei` zusammen mit einem solchen
+  leeren `text`, gilt die Anfrage als Datei-Upload.
+- Genau ein Feld `text`, gültiges UTF-8.
+- Der Text wird nicht verändert, auch nicht getrimmt: Leerraum am Rand und
+  Zeilenenden wie `\r\n` bleiben, wie sie ankommen. `volltext` ist genau
+  dieser Text.
+- Beim Text gibt es kein `NICHT_LESBAR`: Ein eingegebener Text gilt immer
+  als lesbar. Passt kein Typ, wird er `sonstiges`.
 - Das Backend speichert den Text als Originaldatei: `dateiname`
   `text.txt`, `mimeTyp` `text/plain; charset=utf-8`, `groesse` und
   `sha256` über die UTF-8-Bytes. Damit funktionieren Abruf
@@ -353,11 +361,11 @@ Der Body ist der vollständige Eintrag wie in Abschnitt 2, mit leerer Liste
 | HTTP | Code | Bemerkung |
 |---|---|---|
 | 400 | `DATEI_FEHLT` | Weder `datei` noch `text`, oder der Inhalt ist leer bzw. nur Leerzeichen |
-| 400 | `UNGUELTIGE_ANFRAGE` | `datei` und `text` zugleich, oder unbekanntes `modul` (`details.feld`, `details.wert`) |
+| 400 | `UNGUELTIGE_ANFRAGE` | `datei` und `text` zugleich, mehr als eine Datei bzw. ein Feld `text`, `text` kein gültiges UTF-8 (`details.feld`: `text`), oder unbekanntes `modul` (`details.feld`, `details.wert`) |
 | 409 | `DUPLIKAT` | Datei bzw. Text mit gleichem SHA-256-Hash existiert. `details.eintragId` nennt den vorhandenen Eintrag. |
-| 413 | `DATEI_ZU_GROSS` | Datei über 10 MB bzw. Text über 100 000 Zeichen |
+| 413 | `DATEI_ZU_GROSS` | Datei über 10 MB bzw. Text über 100 000 Zeichen (dann `details.maxZeichen`: `100000`) |
 | 415 | `DATEITYP_NICHT_UNTERSTUETZT` | Kein JPEG, PNG, HEIC oder PDF |
-| 422 | `NICHT_LESBAR` | Kein Dokument erkennbar, z. B. unscharfes Foto |
+| 422 | `NICHT_LESBAR` | Kein Dokument erkennbar, z. B. unscharfes Foto (nur bei `datei`) |
 | 502 | `AUSLESEN_FEHLGESCHLAGEN` | Antwort des Vision-LLM passt nicht zum erwarteten JSON |
 | 503 | `MODELL_NICHT_ERREICHBAR` | Vision-LLM oder Embedding-Modell nicht erreichbar |
 | 500 | `INTERNER_FEHLER` | z. B. Datenbank nicht erreichbar |
@@ -930,3 +938,7 @@ vorhandene Fehlercodes.
    korrigierbar; `details.feld` bzw. `details.infoId` bei Fehlern; eine
    Anfrage ohne tatsächliche Änderung liefert `200` und den unveränderten
    Eintrag.
+10. **Text-Import** ([3.1](#31-datei-oder-text-hochladen-und-auslesen)):
+    Zeichen zählen als Unicode-Zeichen; der Text wird nicht getrimmt; kein
+    `NICHT_LESBAR` beim Text; `UNGUELTIGE_ANFRAGE` auch bei mehreren
+    `text`-Feldern oder ungültigem UTF-8; `413` mit `details.maxZeichen`.

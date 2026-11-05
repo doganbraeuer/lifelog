@@ -125,6 +125,46 @@ func TestLive_DokumentLesen(t *testing.T) {
 	}
 }
 
+func TestLive_TextLesen(t *testing.T) {
+	g := liveGemini(t)
+	text := string(testdatei(t, "laborbefund.txt"))
+
+	start := time.Now()
+	e, err := g.TextLesen(context.Background(), text, kern.ErlaubteTypen("gesundheit"))
+	dauer := time.Since(start).Round(time.Millisecond)
+	if err != nil {
+		t.Fatalf("nach %v: %v", dauer, err)
+	}
+	t.Logf("Dauer %v", dauer)
+
+	// Wie im Dienst: Volltext ist der eingegebene Text.
+	e.Volltext = text
+	eintrag, ausgelassen, err := kern.PruefeErkennung(e, "gesundheit")
+	if err != nil {
+		t.Fatalf("Prüfung: %v", err)
+	}
+	if len(ausgelassen) > 0 {
+		t.Logf("ausgelassen: %v", ausgelassen)
+	}
+	if eintrag.Typ != "laborbefund" {
+		t.Errorf("typ = %q", eintrag.Typ)
+	}
+	if deref(eintrag.Dokumentdatum) != "2026-10-14" {
+		t.Errorf("dokumentdatum = %v", deref(eintrag.Dokumentdatum))
+	}
+	if !strings.Contains(deref(eintrag.Quelle), "Labor Muster") {
+		t.Errorf("quelle = %v", deref(eintrag.Quelle))
+	}
+	hb := false
+	for _, info := range eintrag.Infos {
+		t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Wert, deref(info.Einheit))
+		hb = hb || (info.Name == "Hämoglobin" && info.Wert == "14,2" && deref(info.Einheit) == "g/dl")
+	}
+	if !hb {
+		t.Error("Hämoglobin 14,2 g/dl fehlt")
+	}
+}
+
 func TestLive_LeereSeiteIstNichtLesbar(t *testing.T) {
 	g := liveGemini(t)
 
