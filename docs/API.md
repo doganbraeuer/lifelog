@@ -769,7 +769,8 @@ Kein Body. `{id}` ist die ID des Eintrags.
 
 Der Eintrag kommt **zuletzt**. Scheitert ein Schritt, antwortet das Backend
 mit `500 INTERNER_FEHLER` und der Eintrag ist weiter sichtbar. Ein erneuter
-Aufruf räumt den Rest auf.
+Aufruf räumt den Rest auf. Bricht die App die Verbindung ab, nachdem das
+Löschen begonnen hat, läuft es trotzdem zu Ende.
 
 Danach lässt sich dieselbe Datei wieder hochladen, weil ihr Hash nicht mehr
 gespeichert ist.
@@ -907,7 +908,7 @@ vorhandene Fehlercodes.
    dadurch Pflichtfeld. Höchstens 100 000 Zeichen.
 3. **Löschen** ([3.7](#37-eintrag-löschen)):
    `DELETE /eintraege/{id}` mit `204`. Löscht Abschnitte, Datei und zuletzt
-   den Eintrag.
+   den Eintrag. Läuft zu Ende, auch wenn die App die Verbindung abbricht.
 4. **Regel** ([Wichtige Regeln](#wichtige-regeln)): Listen sind immer `[]`,
    nie `null`.
 5. **Status** ([3.8](#38-status-health-check)): `GET /status` als

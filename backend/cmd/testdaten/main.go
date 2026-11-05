@@ -5,10 +5,15 @@
 //	go run ./cmd/testdaten                   einfügen, mit Abschnitten und Embeddings (Gemini)
 //	go run ./cmd/testdaten -ohne-abschnitte  einfügen ohne Gemini (Suche findet sie dann nicht)
 //	go run ./cmd/testdaten -entfernen        wieder löschen
+//	go run ./cmd/testdaten -wegwerf          einen Wegwerf-Eintrag zum Testen von DELETE anlegen
 //
 // Die Testeinträge haben feste IDs. Darum kann man das Programm beliebig oft
 // ausführen: Es löscht zuerst die eigenen Einträge und fügt sie neu ein.
 // Andere Einträge in der Datenbank bleiben unberührt.
+//
+// -wegwerf legt bei jedem Aufruf einen weiteren Eintrag mit neuer ID an
+// (ohne Gemini, siehe beispieldaten.Wegwerf) und gibt die ID aus. Nur diese
+// ID zum Ausprobieren von DELETE verwenden.
 //
 // Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der Volltext
 // als text.txt in GridFS. Die Abschnitte entstehen wie beim Upload
@@ -33,9 +38,16 @@ import (
 func main() {
 	entfernen := flag.Bool("entfernen", false, "Testdaten nur löschen, nicht neu einfügen")
 	ohneAbschnitte := flag.Bool("ohne-abschnitte", false, "keine Abschnitte und Embeddings anlegen (ohne Gemini-Aufruf)")
+	wegwerf := flag.Bool("wegwerf", false, "nur einen Wegwerf-Eintrag mit neuer ID anlegen (zum Testen von DELETE)")
 	flag.Parse()
 
-	if err := ausfuehren(*entfernen, *ohneAbschnitte); err != nil {
+	var err error
+	if *wegwerf {
+		err = wegwerfAnlegen()
+	} else {
+		err = ausfuehren(*entfernen, *ohneAbschnitte)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler:", err)
 		os.Exit(1)
 	}
@@ -148,4 +160,38 @@ func einbetten(ctx context.Context, k konfig.Konfig, eintraege []kern.Eintrag) (
 		ergebnis[a.EintragID] = append(ergebnis[a.EintragID], a)
 	}
 	return ergebnis, nil
+}
+
+// wegwerfAnlegen speichert einen Wegwerf-Eintrag wie beim Upload (Datei,
+// Abschnitte, Eintrag zuletzt) und gibt seine ID aus. Die festen
+// Testeinträge und alle anderen Einträge bleiben unberührt.
+func wegwerfAnlegen() error {
+	if err := konfig.DotenvLaden(); err != nil {
+		return err
+	}
+	k, err := konfig.Laden(os.Getenv)
+	if err != nil {
+		return err
+	}
+	ctx, abbrechen := context.WithTimeout(context.Background(), 30*time.Second)
+	defer abbrechen()
+
+	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	if err != nil {
+		return err
+	}
+	defer db.Trennen(context.Background())
+
+	e, abschnitte := beispieldaten.Wegwerf(speicher.NeueID(), speicher.NeueID(), time.Now())
+	if err := db.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, []byte(e.Volltext)); err != nil {
+		return err
+	}
+	if err := db.AbschnitteSpeichern(ctx, abschnitte); err != nil {
+		return err
+	}
+	if err := db.EintragSpeichern(ctx, e); err != nil {
+		return err
+	}
+	fmt.Printf("Wegwerf-Eintrag mit %d Abschnitt(en) angelegt (Datenbank %q):\n%s\n", len(abschnitte), k.MongoDB, e.ID)
+	return nil
 }

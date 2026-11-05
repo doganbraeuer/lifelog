@@ -89,6 +89,17 @@ Die Testeinträge (`internal/beispieldaten`) haben feste IDs. Andere Einträge
 bleiben unberührt. Die Abschnitte entstehen wie beim Upload: gleiches
 Zerlegen, gleiches Embedding-Modell.
 
+Zum Ausprobieren von `DELETE /eintraege/{id}` (z. B. aus der App):
+
+```sh
+go run ./cmd/testdaten -wegwerf          # legt einen Wegwerf-Eintrag mit neuer ID an und gibt die ID aus
+curl -i -X DELETE localhost:8080/api/v1/eintraege/<ID>   # 204, ein zweites Mal 404
+```
+
+Der Wegwerf-Eintrag braucht kein Gemini: Sein Abschnitt hat einen festen
+Vektor statt eines echten Embeddings, die Suche zeigt ihn nicht an. Nur die
+ausgegebene ID löschen, nicht die festen Testeinträge oder echte Uploads.
+
 ## Schwelle kalibrieren
 
 ```sh
