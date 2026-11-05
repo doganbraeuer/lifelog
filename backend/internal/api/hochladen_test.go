@@ -20,13 +20,19 @@ import (
 
 // hochladerAttrappe merkt sich den Upload und liefert eintrag bzw. err.
 type hochladerAttrappe struct {
-	eintrag kern.Eintrag
-	err     error
-	upload  *dienst.Upload
+	eintrag    kern.Eintrag
+	err        error
+	upload     *dienst.Upload
+	textUpload *dienst.TextUpload
 }
 
 func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u dienst.Upload) (kern.Eintrag, error) {
 	h.upload = &u
+	return h.eintrag, h.err
+}
+
+func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u dienst.TextUpload) (kern.Eintrag, error) {
+	h.textUpload = &u
 	return h.eintrag, h.err
 }
 
@@ -134,9 +140,6 @@ func TestHochladen_Formularfehler(t *testing.T) {
 		{"datei und text", func(t *testing.T) *http.Request {
 			return formular(t, map[string][]byte{"a.pdf": pdf}, map[string]string{"text": "Befund"})
 		}, 400, CodeUngueltigeAnfrage},
-		{"nur text (Schritt 6)", func(t *testing.T) *http.Request {
-			return formular(t, nil, map[string]string{"text": "Befund"})
-		}, 400, CodeUngueltigeAnfrage},
 		{"zwei Dateien", func(t *testing.T) *http.Request {
 			return formular(t, map[string][]byte{"a.pdf": pdf, "b.pdf": pdf}, nil)
 		}, 400, CodeUngueltigeAnfrage},
@@ -149,7 +152,7 @@ func TestHochladen_Formularfehler(t *testing.T) {
 			h := &hochladerAttrappe{}
 			rec := hochladen(t, h, f.anfrage(t))
 			pruefeFehler(t, rec, f.status, f.code)
-			if h.upload != nil {
+			if h.upload != nil || h.textUpload != nil {
 				t.Error("bei einem Formularfehler darf der Dienst nicht aufgerufen werden")
 			}
 		})
@@ -162,6 +165,9 @@ func TestHochladen_LeererTextZaehltNicht(t *testing.T) {
 	rec := hochladen(t, h, formular(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"text": "  "}))
 	if rec.Code != http.StatusCreated {
 		t.Errorf("Status = %d, Body %s", rec.Code, rec.Body)
+	}
+	if h.upload == nil || h.textUpload != nil {
+		t.Error("muss als Datei-Upload laufen")
 	}
 }
 

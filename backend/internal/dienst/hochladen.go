@@ -37,6 +37,22 @@ type Upload struct {
 	Modul     string // leer = Standardmodul
 }
 
+// TextUpload ist ein eingegebener Text (Text-Import, API.md 3.1).
+type TextUpload struct {
+	Text  string // genau wie eingegeben, nicht getrimmt
+	Modul string // leer = Standardmodul
+}
+
+// eingang ist, was Datei- und Text-Upload nach der Eingangsprüfung
+// gemeinsam haben. lesen ruft das passende Modell auf.
+type eingang struct {
+	modul     string
+	daten     []byte // wird gespeichert und gehasht
+	dateiname string
+	mimeTyp   string
+	lesen     func(ctx context.Context) (kern.Erkennung, error)
+}
+
 // DuplikatFehler: Genau diese Datei gibt es schon. EintragID nennt den
 // vorhandenen Eintrag, damit die App direkt dorthin springen kann.
 type DuplikatFehler struct{ EintragID string }
@@ -92,8 +108,63 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 		return kern.Eintrag{}, err
 	}
 
+	return h.verarbeiten(ctx, eingang{
+		modul:     modul,
+		daten:     u.Daten,
+		dateiname: dateiname(u.Dateiname),
+		mimeTyp:   mimeTyp,
+		lesen: func(ctx context.Context) (kern.Erkennung, error) {
+			return h.leser.DokumentLesen(ctx, u.Daten, mimeTyp, kern.ErlaubteTypen(modul))
+		},
+	})
+}
+
+// TextAusfuehren importiert einen eingegebenen Text. Ablauf wie bei
+// Ausfuehren, mit drei Unterschieden (API.md 3.1):
+//
+//   - Statt Größe und Typ prüft kern.PruefeText (leer, UTF-8, 100 000
+//     Zeichen).
+//   - Gespeichert und gehasht werden die UTF-8-Bytes des Texts, als
+//     text.txt mit text/plain; charset=utf-8.
+//   - Das Sprachmodell (Leser.TextLesen) liefert nur Datum, Quelle, Typ
+//     und Infos. volltext ist der eingegebene Text, unverändert, und ein
+//     Text gilt immer als lesbar.
+//
+// Fehler: kern.ErrUnbekanntesModul, kern.ErrDateiLeer, kern.ErrTextKeinUTF8,
+// kern.ErrTextZuLang, *DuplikatFehler, kern.ErrErkennungUngueltig,
+// modell.ErrAntwortUngueltig, modell.ErrNichtErreichbar oder ein interner
+// Fehler.
+func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (kern.Eintrag, error) {
+	modul, err := kern.PruefeModul(u.Modul)
+	if err != nil {
+		return kern.Eintrag{}, err
+	}
+	if err := kern.PruefeText(u.Text); err != nil {
+		return kern.Eintrag{}, err
+	}
+	return h.verarbeiten(ctx, eingang{
+		modul:     modul,
+		daten:     []byte(u.Text), // Go-Strings sind UTF-8: genau diese Bytes
+		dateiname: kern.TextDateiname,
+		mimeTyp:   kern.MimeText,
+		lesen: func(ctx context.Context) (kern.Erkennung, error) {
+			e, err := h.leser.TextLesen(ctx, u.Text, kern.ErlaubteTypen(modul))
+			if err != nil {
+				return kern.Erkennung{}, err
+			}
+			e.Lesbar = true
+			e.Volltext = u.Text
+			return e, nil
+		},
+	})
+}
+
+// verarbeiten führt die Schritte 2–6 aus, gleich für Datei und Text.
+func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (kern.Eintrag, error) {
+	modul := ein.modul
+
 	// 2. Duplikat prüfen, bevor ein Modellaufruf etwas kostet.
-	summe := sha256.Sum256(u.Daten)
+	summe := sha256.Sum256(ein.daten)
 	hash := hex.EncodeToString(summe[:])
 	if id, gefunden, err := h.speicher.EintragMitHash(ctx, hash); err != nil {
 		return kern.Eintrag{}, err
@@ -102,7 +173,7 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 	}
 
 	// 3. Lesen.
-	erkennung, err := h.leser.DokumentLesen(ctx, u.Daten, mimeTyp, kern.ErlaubteTypen(modul))
+	erkennung, err := ein.lesen(ctx)
 	if err != nil {
 		return kern.Eintrag{}, err
 	}
@@ -137,9 +208,9 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 	eintrag.Importdatum = h.jetzt().UTC().Truncate(time.Millisecond)
 	eintrag.Datei = kern.Datei{
 		ID:        h.neueID(),
-		Dateiname: dateiname(u.Dateiname),
-		MimeTyp:   mimeTyp,
-		Groesse:   int64(len(u.Daten)),
+		Dateiname: ein.dateiname,
+		MimeTyp:   ein.mimeTyp,
+		Groesse:   int64(len(ein.daten)),
 		Sha256:    hash,
 	}
 	abschnitte := make([]kern.Abschnitt, len(texte))
@@ -150,7 +221,7 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 	}
 
 	// 6. Speichern, Eintrag zuletzt.
-	if err := h.speichern(ctx, eintrag, abschnitte, u.Daten); err != nil {
+	if err := h.speichern(ctx, eintrag, abschnitte, ein.daten); err != nil {
 		return kern.Eintrag{}, err
 	}
 	return eintrag, nil

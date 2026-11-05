@@ -31,10 +31,20 @@ const (
 // kern.PruefeDatei das genau; alles darüber bricht schon beim Lesen ab.
 const formularPuffer = 1 << 20 // 1 MiB
 
-// Hochlader führt den Upload aus. Umgesetzt von dienst.Hochladen.
+// Hochlader führt den Upload bzw. Text-Import aus. Umgesetzt von
+// dienst.Hochladen.
 type Hochlader interface {
 	Ausfuehren(ctx context.Context, u dienst.Upload) (kern.Eintrag, error)
+	TextAusfuehren(ctx context.Context, u dienst.TextUpload) (kern.Eintrag, error)
 }
+
+// art: Datei-Upload oder Text-Import. Bestimmt nur die Fehlermeldungen.
+type art int
+
+const (
+	artDatei art = iota
+	artText
+)
 
 // hochladenHandler beantwortet POST /api/v1/eintraege (API.md 3.1).
 func hochladenHandler(h Hochlader) http.HandlerFunc {
@@ -61,16 +71,25 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 		dateien := r.MultipartForm.File["datei"]
-		hatText := strings.TrimSpace(ersterWert(r.MultipartForm.Value["text"])) != ""
+		texte := r.MultipartForm.Value["text"]
+		// Leer oder nur Leerraum gilt als fehlend (API.md 3.1).
+		hatText := len(texte) > 0 && strings.TrimSpace(texte[0]) != ""
+		modul := ersterWert(r.MultipartForm.Value["modul"])
 		switch {
+		case len(texte) > 1:
+			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage, "Bitte genau einen Text schicken.", nil)
+			return
 		case len(dateien) > 0 && hatText:
 			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 				"Bitte entweder eine Datei oder einen Text schicken, nicht beides.", nil)
 			return
 		case hatText:
-			// Text-Import folgt in Schritt 6 (API.md 3.1).
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
-				"Text-Import ist noch nicht verfügbar. Bitte eine Datei schicken.", nil)
+			// Der Text geht unverändert weiter, nicht getrimmt.
+			eintrag, err := h.TextAusfuehren(r.Context(), dienst.TextUpload{Text: texte[0], Modul: modul})
+			schreibeErgebnis(w, r, eintrag, err, artText, modul)
+			return
+		case len(dateien) == 0 && len(texte) == 1:
+			schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
 			return
 		case len(dateien) == 0:
 			schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte eine Datei auswählen.", nil)
@@ -85,26 +104,39 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 			schreibeInternenFehler(w, r, err)
 			return
 		}
-		modul := ersterWert(r.MultipartForm.Value["modul"])
-
 		eintrag, err := h.Ausfuehren(r.Context(), dienst.Upload{
 			Daten: daten, Dateiname: dateien[0].Filename, Modul: modul,
 		})
-		if err != nil {
-			schreibeUploadFehler(w, r, err, modul)
-			return
-		}
-
-		w.Header().Set("Location", "/api/v1/eintraege/"+eintrag.ID)
-		schreibeJSON(w, http.StatusCreated, eintragZuJSON(eintrag))
+		schreibeErgebnis(w, r, eintrag, err, artDatei, modul)
 	}
+}
+
+// schreibeErgebnis: 201 mit Location und Eintrag, oder der passende Fehler.
+func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag kern.Eintrag, err error, a art, modul string) {
+	if err != nil {
+		schreibeUploadFehler(w, r, err, a, modul)
+		return
+	}
+	w.Header().Set("Location", "/api/v1/eintraege/"+eintrag.ID)
+	schreibeJSON(w, http.StatusCreated, eintragZuJSON(eintrag))
 }
 
 // schreibeUploadFehler ordnet jedem Fehler des Dienstes den Code aus
 // API.md 3.1 zu.
-func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, modul string) {
+func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a art, modul string) {
 	var duplikat *dienst.DuplikatFehler
 	switch {
+	case a == artText && errors.Is(err, kern.ErrDateiLeer):
+		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
+	case errors.Is(err, kern.ErrTextKeinUTF8):
+		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+			"Der Text ist kein gültiges UTF-8.", map[string]any{"feld": "text"})
+	case errors.Is(err, kern.ErrTextZuLang):
+		schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross,
+			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": kern.MaxTextZeichen})
+	case a == artText && errors.As(err, &duplikat):
+		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diesen Text hast du schon importiert.",
+			map[string]any{"eintragId": duplikat.EintragID})
 	case errors.Is(err, kern.ErrUnbekanntesModul):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",

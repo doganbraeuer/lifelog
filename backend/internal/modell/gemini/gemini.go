@@ -111,6 +111,23 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 	return erkennungAusAntwort(resp)
 }
 
+// TextLesen ordnet einen eingegebenen Text ein (Text-Import, API.md 3.1):
+// Datum, Quelle, Typ und Infos. Volltext bleibt leer und Lesbar ist true;
+// der Volltext ist der eingegebene Text, den setzt der Aufrufer. Gleiche
+// Wiederholung, gleicher Ersatz und gleiches Limit wie DokumentLesen.
+func (g *Gemini) TextLesen(ctx context.Context, text string, erlaubteTypen []string) (kern.Erkennung, error) {
+	inhalte, cfg := textAnfrage(text, erlaubteTypen)
+	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Text lesen", inhalte, cfg)
+	if err != nil {
+		return kern.Erkennung{}, err
+	}
+	antwort, err := textAusAntwort(resp)
+	if err != nil {
+		return kern.Erkennung{}, err
+	}
+	return textErkennungAusText(antwort)
+}
+
 // Antworten beantwortet eine Frage nur aus den Fundstellen (Schritt 5).
 // Gleiche Wiederholung und gleicher Ersatz wie beim Lesen.
 func (g *Gemini) Antworten(ctx context.Context, frage string, fundstellen []kern.Fundstelle) (string, error) {
@@ -186,6 +203,23 @@ func leseAnfrage(daten []byte, mimeTyp string, erlaubteTypen []string) ([]*genai
 		// Abschreiben braucht wenig „Nachdenken“. Im AI Studio Playground
 		// (04.11.2026, gleiches PDF): LOW 3,4 s, MEDIUM 5,9 s.
 		ThinkingConfig: &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
+	}
+	return inhalte, cfg
+}
+
+// textAnfrage baut Inhalt und Konfiguration für den Text-Import. Der Text
+// ist ein eigener Teil der Nachricht, getrennt vom Auftrag; die
+// Systemanweisung sagt, dass er Inhalt ist und keine Anweisung.
+func textAnfrage(text string, erlaubteTypen []string) ([]*genai.Content, *genai.GenerateContentConfig) {
+	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
+		genai.NewPartFromText("Ordne den folgenden Text nach den Regeln in JSON ein."),
+		genai.NewPartFromText(text),
+	}, genai.RoleUser)}
+	cfg := &genai.GenerateContentConfig{
+		SystemInstruction:  genai.NewContentFromText(textAnweisung(erlaubteTypen), genai.RoleUser),
+		ResponseMIMEType:   "application/json",
+		ResponseJsonSchema: textSchema(erlaubteTypen),
+		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
 	}
 	return inhalte, cfg
 }
