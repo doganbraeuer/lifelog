@@ -83,6 +83,7 @@ func starten() error {
 			Hochladen:   dienst.NeuHochladen(db, g, g, speicher.NeueID),
 			Fragen:      dienst.NeuFragen(db, g, g),
 			Korrigieren: dienst.NeuKorrigieren(db),
+			Loeschen:    dienst.NeuLoeschen(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz

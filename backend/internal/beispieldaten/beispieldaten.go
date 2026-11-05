@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/modell"
 )
 
 // Feste IDs der Testeinträge. Fest, damit cmd/testdaten genau diese wieder
@@ -118,4 +119,45 @@ func textEintrag(id, dateiID, typ string, datum, quelle *string, importdatum, vo
 		},
 		Korrekturen: []kern.Korrektur{},
 	}
+}
+
+// Wegwerf baut einen erfundenen Eintrag zum Ausprobieren von DELETE
+// (cmd/testdaten -wegwerf). Die IDs vergibt der Aufrufer neu, damit nie
+// ein fester Testeintrag oder ein hochgeladenes Dokument getroffen wird.
+// Der Zeitpunkt steht im Text, so hat jeder Wegwerf-Eintrag einen anderen
+// Hash und ist kein Duplikat.
+//
+// Die Abschnitte haben statt eines echten Embeddings einen festen
+// Einheitsvektor (1, 0, 0, …): kein Gemini-Aufruf. Sein Score zu echten
+// Fragen liegt um 0,5, weit unter kern.MinScore; die Suche zeigt ihn also
+// nicht an.
+func Wegwerf(id, dateiID string, jetzt time.Time) (kern.Eintrag, []kern.Abschnitt) {
+	jetzt = jetzt.UTC().Truncate(time.Millisecond)
+	volltext := "Wegwerf-Eintrag zum Testen des Löschens.\n\nAngelegt am " +
+		jetzt.Format(time.RFC3339Nano) + ". Enthält keine Gesundheitsdaten."
+	hash := sha256.Sum256([]byte(volltext))
+	e := kern.Eintrag{
+		ID:          id,
+		Modul:       "gesundheit",
+		Typ:         "sonstiges",
+		Importdatum: jetzt,
+		Quelle:      zeiger("Wegwerf-Test"),
+		Volltext:    volltext,
+		Infos:       []kern.Info{},
+		Datei: kern.Datei{
+			ID:        dateiID,
+			Dateiname: "wegwerf.txt",
+			MimeTyp:   "text/plain; charset=utf-8",
+			Groesse:   int64(len(volltext)),
+			Sha256:    hex.EncodeToString(hash[:]),
+		},
+		Korrekturen: []kern.Korrektur{},
+	}
+	abschnitte := Abschnitte(e)
+	for i := range abschnitte {
+		v := make([]float32, modell.EmbeddingDimensionen)
+		v[0] = 1
+		abschnitte[i].Embedding = v
+	}
+	return e, abschnitte
 }

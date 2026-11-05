@@ -11,6 +11,7 @@ type Abhaengigkeiten struct {
 	Hochladen   Hochlader
 	Fragen      Frager
 	Korrigieren Korrigierer
+	Loeschen    Loescher
 }
 
 // NeuerRouter verbindet die Pfade aus docs/API.md mit den Handlern.
@@ -24,6 +25,7 @@ func NeuerRouter(abh Abhaengigkeiten) http.Handler {
 	mux.HandleFunc("POST /api/v1/eintraege", hochladenHandler(abh.Hochladen))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}", eintragHandler(abh.Eintraege))
 	mux.HandleFunc("PATCH /api/v1/eintraege/{id}", korrigierenHandler(abh.Korrigieren))
+	mux.HandleFunc("DELETE /api/v1/eintraege/{id}", loeschenHandler(abh.Loeschen))
 	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", dateiHandler(abh.Eintraege))
 	mux.HandleFunc("POST /api/v1/fragen", fragenHandler(abh.Fragen))
 
