@@ -118,11 +118,20 @@ go run ./cmd/kalibrieren     # wertet mit kern.MinScore aus
 go run ./cmd/kalibrieren -schwelle 0.82
 ```
 
-Stellt 18 feste Fragen (`cmd/kalibrieren/fragen.go`): 10, die die Testdaten
-beantworten, 3 zu Gesundheit, die nicht drinstehen, und 5 fachfremde. Pro
-Frage zeigt es den besten Score der Vektorsuche und ob der richtige Eintrag
-oben steht. Danach folgt, welche Schwellen passend von fachfremd trennen.
-Kosten: ein Embedding pro Frage. Das Sprachmodell wird nicht aufgerufen.
+Stellt 45 feste Fragen (`cmd/kalibrieren/fragen.go`): 29 passende (davon 6,
+deren Antwort in zwei Einträgen steht), 8 zu Gesundheit, die nicht
+drinstehen, und 8 fachfremde. Gebraucht werden die Testdaten und die
+synthetischen Demo-Daten (Lipidprofile 20.01./22.07., Orthopädie und
+Überweisung 05.03., FSME 10.06., Notizen 12.08./23.09.2026). Demo-Einträge
+findet das Programm über Dokumentdatum und Typ, die Überweisung über
+Dokumentdatum und Quelle (ihr Typ wird evtl. korrigiert). Fehlt einer oder
+gibt es ihn doppelt, bricht es vor dem ersten Embedding ab. In der Datenbank liest es nur.
+
+Pro Frage zeigt es den besten Score und ob ein erwarteter Eintrag oben
+steht. Bei zwei Einträgen zählt der schwächere, denn beide müssen beim
+Sprachmodell ankommen. Danach folgt, welche Schwellen passend von fachfremd
+trennen. Kosten: ein Embedding pro Frage. Das Sprachmodell wird nicht
+aufgerufen.
 
 `testdaten/laborbefund.{txt,pdf,png}` ist ein erfundener Befund für Uploads
 und Live-Tests. PDF und PNG sind aus der `.txt` erzeugt:

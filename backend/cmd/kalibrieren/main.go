@@ -4,14 +4,17 @@
 // besten Score der Vektorsuche aus. Das Sprachmodell (Antworter) wird NICHT
 // aufgerufen; es kostet nur ein Embedding pro Frage.
 //
-// Vorher einmal die Testdaten mit Abschnitten einfügen:
+// Vorher müssen die Testdaten (go run ./cmd/testdaten, mit Abschnitten) und
+// die synthetischen Demo-Daten (Laborbefunde, Orthopädie, FSME, Notizen;
+// hochgeladen) in der Datenbank liegen. Die Demo-Einträge findet das
+// Programm über Typ und Dokumentdatum; fehlt einer oder gibt es ihn doppelt,
+// bricht es vor dem ersten Embedding ab. In der Datenbank wird nur gelesen.
 //
-//	go run ./cmd/testdaten
 //	go run ./cmd/kalibrieren                  # mit der Schwelle kern.MinScore
 //	go run ./cmd/kalibrieren -schwelle 0.82   # andere Schwelle durchrechnen
 //
-// Gesucht wird im Modul gesundheit über alle Abschnitte, also auch über
-// hochgeladene Einträge (in der Tabelle als "anderer" markiert).
+// Gesucht wird im Modul gesundheit über alle Abschnitte. Die Tabelle nennt
+// beim besten Treffer Typ und Dokumentdatum (MM-TT).
 package main
 
 import (
@@ -23,12 +26,12 @@ import (
 	"os/signal"
 	"time"
 
-	"lifelog/backend/internal/beispieldaten"
 	"lifelog/backend/internal/kern"
 	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
+	"strings"
 )
 
 func main() {
@@ -83,18 +86,27 @@ func ausfuehren(schwelle float64) error {
 		return err
 	}
 
+	// Nur lesend: Ziele (Typ + Dokumentdatum oder Testdaten-ID) zu IDs auflösen,
+	// bevor das erste Embedding Kontingent kostet.
+	liste, err := db.ListeKurz(ctx, "gesundheit")
+	if err != nil {
+		return err
+	}
 	fragen := kalibrierfragen()
-	fmt.Printf("%d Fragen, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
-		len(fragen), k.GeminiEmbeddingModell, k.MongoDB, kern.AnzahlTreffer)
-	fmt.Println(" Nr  Gruppe     Bester  Treffer      Richtig  Frage")
-
-	typen := map[string]string{}
-	for _, e := range beispieldaten.Eintraege() {
-		typen[e.ID] = e.Typ
+	ids, err := aufloesen(fragen, liste)
+	if err != nil {
+		return fmt.Errorf("Einträge zu den Fragen fehlen oder sind nicht eindeutig (Testdaten: go run ./cmd/testdaten; Demo-Daten: hochladen):\n%w", err)
+	}
+	namen := map[string]string{}
+	for _, e := range liste {
+		namen[e.ID] = kurzname(e)
 	}
 
+	fmt.Printf("%d Fragen, %d Einträge, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
+		len(fragen), len(liste), k.GeminiEmbeddingModell, k.MongoDB, kern.AnzahlTreffer)
+	fmt.Println(" Nr  Gruppe     Bester  Treffer            Richtig        Frage")
+
 	messungen := make([]messung, 0, len(fragen))
-	testdatenGetroffen := false
 	for i, f := range fragen {
 		vektor, err := g.FrageEinbetten(ctx, f.Text)
 		if err != nil {
@@ -107,48 +119,61 @@ func ausfuehren(schwelle float64) error {
 		if err != nil {
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
-		for _, t := range treffer {
-			if _, ok := typen[t.EintragID]; ok {
-				testdatenGetroffen = true
-			}
-		}
 
-		m := messen(f, treffer)
+		erwartet := make([]string, len(f.Erwartet))
+		for j, z := range f.Erwartet {
+			erwartet[j] = ids[z]
+		}
+		m := messen(f, erwartet, treffer)
 		messungen = append(messungen, m)
-		fmt.Printf("%3d  %-9s  %s   %-12s %-8s %s\n",
-			i+1, f.Gruppe, zahl(m.Bester), eintragName(typen, m.BesterEintrag), markierung(m), f.Text)
+		fmt.Printf("%3d  %-9s  %s   %-18s %-14s %s\n",
+			i+1, f.Gruppe, zahl(m.Bester), eintragName(namen, m.BesterEintrag), markierung(m), f.Text)
 	}
 
 	fmt.Println()
 	fmt.Print(auswerten(messungen, schwelle).Zusammenfassung())
-	if !testdatenGetroffen {
-		fmt.Println("\nHinweis: Kein Treffer stammt aus den Testdaten. Erst `go run ./cmd/testdaten` (mit Abschnitten),",
-			"dann einige Sekunden warten, bis Atlas sie in den Index übernommen hat.")
-	}
 	return nil
 }
 
-func eintragName(typen map[string]string, id string) string {
+// kurzname für die Tabelle, z. B. "laborbefund 07-22".
+func kurzname(e kern.EintragKurz) string {
+	if e.Dokumentdatum == nil || len(*e.Dokumentdatum) != 10 {
+		return e.Typ + " o. D."
+	}
+	return e.Typ + " " + (*e.Dokumentdatum)[5:]
+}
+
+func eintragName(namen map[string]string, id string) string {
 	if id == "" {
 		return "–"
 	}
-	if typ, ok := typen[id]; ok {
-		return typ
+	if n, ok := namen[id]; ok {
+		return n
 	}
-	return "anderer"
+	return "unbekannt"
 }
 
-// markierung: ✓ richtiger Eintrag oben, sonst ✗ und der Score des richtigen
-// Eintrags (– wenn er nicht unter den Treffern ist). Nur bei passend.
+// markierung (nur bei passend): ✓ wenn ein erwarteter Eintrag oben steht,
+// sonst ✗; dahinter bei mehreren erwarteten Einträgen deren Scores, bei
+// einem der Score, wenn er nicht oben steht (– = nicht unter den Treffern).
 func markierung(m messung) string {
-	switch {
-	case m.Frage.Gruppe != passend:
+	if m.Frage.Gruppe != passend {
 		return ""
-	case m.RichtigOben():
-		return "✓"
-	case m.Erwartet == 0:
-		return "✗ –"
-	default:
-		return "✗ " + zahl(m.Erwartet)
 	}
+	zeichen := "✗"
+	if m.RichtigOben() {
+		zeichen = "✓"
+	}
+	if len(m.Erwartet) == 1 && m.RichtigOben() {
+		return zeichen
+	}
+	werte := make([]string, len(m.Erwartet))
+	for i, s := range m.Erwartet {
+		if s == 0 {
+			werte[i] = "–"
+		} else {
+			werte[i] = zahl(s)
+		}
+	}
+	return zeichen + " " + strings.Join(werte, "/")
 }

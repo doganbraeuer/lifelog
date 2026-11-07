@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -8,43 +9,127 @@ import (
 	"lifelog/backend/internal/kern"
 )
 
+// aufloesen macht aus den Zielen aller Fragen Eintrags-IDs. Ein ID-Ziel muss
+// in der Liste stehen, ein Ziel über Dokumentdatum (plus Typ/Quelle) muss
+// genau einen Eintrag treffen. Sonst gibt es einen Fehler (alle Probleme auf einmal),
+// damit ein fehlender oder doppelter Upload nicht still falsche Zahlen
+// liefert. Ohne I/O, damit testbar.
+func aufloesen(fragen []kalibrierfrage, liste []kern.EintragKurz) (map[ziel]string, error) {
+	ids := map[ziel]string{}
+	var fehler []error
+	for _, f := range fragen {
+		for _, z := range f.Erwartet {
+			if _, schon := ids[z]; schon {
+				continue
+			}
+			var passende []string
+			for _, e := range liste {
+				if z.ID != "" {
+					if e.ID == z.ID {
+						passende = append(passende, e.ID)
+					}
+				} else if passt(z, e) {
+					passende = append(passende, e.ID)
+				}
+			}
+			switch len(passende) {
+			case 1:
+				ids[z] = passende[0]
+			case 0:
+				fehler = append(fehler, fmt.Errorf("kein Eintrag für %v (Frage %q)", z, f.Text))
+				ids[z] = "" // nur einmal melden
+			default:
+				fehler = append(fehler, fmt.Errorf("%d Einträge für %v, erwartet genau einen (Frage %q)", len(passende), z, f.Text))
+				ids[z] = ""
+			}
+		}
+	}
+	if len(fehler) > 0 {
+		return nil, errors.Join(fehler...)
+	}
+	return ids, nil
+}
+
+// passt: gleiches Dokumentdatum, dazu Typ und Quelle, soweit im Ziel angegeben.
+func passt(z ziel, e kern.EintragKurz) bool {
+	if e.Dokumentdatum == nil || *e.Dokumentdatum != z.Datum {
+		return false
+	}
+	if z.Typ != "" && e.Typ != z.Typ {
+		return false
+	}
+	if z.Quelle != "" && (e.Quelle == nil || *e.Quelle != z.Quelle) {
+		return false
+	}
+	return true
+}
+
 // messung ist das Ergebnis der Vektorsuche für eine Frage. Ohne I/O, damit
 // die Auswertung testbar ist.
 type messung struct {
 	Frage         kalibrierfrage
-	Bester        float64 // höchster Score aller Treffer, 0 ohne Treffer
-	BesterEintrag string  // Eintrag des besten Treffers, "" ohne Treffer
-	Erwartet      float64 // nur passend: bester Score eines Abschnitts des erwarteten Eintrags, 0 wenn nicht unter den Treffern
+	IDs           []string  // aufgelöste Ziele, gleiche Reihenfolge wie Frage.Erwartet
+	Bester        float64   // höchster Score aller Treffer, 0 ohne Treffer
+	BesterEintrag string    // Eintrag des besten Treffers, "" ohne Treffer
+	Erwartet      []float64 // je erwartetem Eintrag der beste Score, 0 wenn nicht unter den Treffern
 }
 
 // messen fasst die Treffer einer Frage zusammen. Die Treffer kommen von
 // Atlas absteigend sortiert, darauf verlassen wir uns aber nicht.
-func messen(f kalibrierfrage, treffer []kern.Treffer) messung {
-	m := messung{Frage: f}
+func messen(f kalibrierfrage, ids []string, treffer []kern.Treffer) messung {
+	m := messung{Frage: f, IDs: ids, Erwartet: make([]float64, len(ids))}
 	for _, t := range treffer {
 		if t.Score > m.Bester {
 			m.Bester, m.BesterEintrag = t.Score, t.EintragID
 		}
-		if f.Gruppe == passend && t.EintragID == f.Erwartet && t.Score > m.Erwartet {
-			m.Erwartet = t.Score
+		for i, id := range ids {
+			if t.EintragID == id && t.Score > m.Erwartet[i] {
+				m.Erwartet[i] = t.Score
+			}
 		}
 	}
 	return m
 }
 
-// RichtigOben: Der beste Treffer gehört zum erwarteten Eintrag.
+// RichtigOben: Der beste Treffer gehört zu einem der erwarteten Einträge.
 func (m messung) RichtigOben() bool {
-	return m.Frage.Gruppe == passend && m.BesterEintrag != "" && m.BesterEintrag == m.Frage.Erwartet
+	if m.Frage.Gruppe != passend || m.BesterEintrag == "" {
+		return false
+	}
+	for _, id := range m.IDs {
+		if id == m.BesterEintrag {
+			return true
+		}
+	}
+	return false
+}
+
+// AlleGefunden: Jeder erwartete Eintrag ist unter den Treffern.
+func (m messung) AlleGefunden() bool {
+	for _, s := range m.Erwartet {
+		if s == 0 {
+			return false
+		}
+	}
+	return len(m.Erwartet) > 0
 }
 
 // massgeblich ist der Score, der über die Schwelle entscheidet: bei
-// passenden Fragen der des richtigen Eintrags (kommt seine Fundstelle zum
-// Sprachmodell?), sonst der beste überhaupt (wird das Sprachmodell gefragt?).
+// passenden Fragen der schwächste erwartete Eintrag (kommen alle nötigen
+// Fundstellen zum Sprachmodell?), sonst der beste überhaupt (wird das
+// Sprachmodell gefragt?).
 func (m messung) massgeblich() float64 {
-	if m.Frage.Gruppe == passend {
-		return m.Erwartet
+	if m.Frage.Gruppe != passend {
+		return m.Bester
 	}
-	return m.Bester
+	if len(m.Erwartet) == 0 {
+		return 0
+	}
+	min := m.Erwartet[0]
+	for _, s := range m.Erwartet[1:] {
+		min = math.Min(min, s)
+	}
+	return min
 }
 
 // spanne: kleinster und größter maßgeblicher Score einer Gruppe und wie
@@ -54,35 +139,43 @@ type spanne struct {
 	Min, Max      float64
 }
 
+func (s *spanne) hinzu(wert, schwelle float64) {
+	if s.Anzahl == 0 {
+		s.Min, s.Max = wert, wert
+	}
+	s.Min, s.Max = math.Min(s.Min, wert), math.Max(s.Max, wert)
+	s.Anzahl++
+	if wert >= schwelle {
+		s.Durch++
+	}
+}
+
 type auswertung struct {
 	Schwelle                  float64
 	Passend, Nah, Fachfremd   spanne
-	FalschOben, NichtGefunden int // nur passend
+	Mehrere                   spanne // Teilmenge von Passend: Antwort braucht mehrere Einträge
+	FalschOben, NichtGefunden int    // nur passend
 }
 
 func auswerten(messungen []messung, schwelle float64) auswertung {
 	a := auswertung{Schwelle: schwelle}
 	for _, m := range messungen {
-		s := &a.Fachfremd
+		wert := m.massgeblich()
 		switch m.Frage.Gruppe {
 		case passend:
-			s = &a.Passend
-			if m.Erwartet == 0 {
+			a.Passend.hinzu(wert, schwelle)
+			if len(m.Erwartet) > 1 {
+				a.Mehrere.hinzu(wert, schwelle)
+			}
+			if !m.AlleGefunden() {
 				a.NichtGefunden++
 			} else if !m.RichtigOben() {
 				a.FalschOben++
 			}
 		case nah:
-			s = &a.Nah
-		}
-		wert := m.massgeblich()
-		if s.Anzahl == 0 {
-			s.Min, s.Max = wert, wert
-		}
-		s.Min, s.Max = math.Min(s.Min, wert), math.Max(s.Max, wert)
-		s.Anzahl++
-		if wert >= schwelle {
-			s.Durch++
+			a.Nah.hinzu(wert, schwelle)
+		default:
+			a.Fachfremd.hinzu(wert, schwelle)
 		}
 	}
 	return a
@@ -111,13 +204,14 @@ func (a auswertung) Zusammenfassung() string {
 	}
 	fmt.Fprintf(&b, "Schwelle %s (cos %s):\n", zahl(a.Schwelle), zahl(kern.KosinusAusScore(a.Schwelle)))
 	zeile("passend", a.Passend, "Fundstellen kommen durch (soll: alle)")
+	zeile("  mehrere", a.Mehrere, "davon mit mehreren Einträgen, alle kommen durch")
 	zeile("nah", a.Nah, "gehen ans Sprachmodell (erlaubt, es antwortet mit dem festen Satz)")
 	zeile("fachfremd", a.Fachfremd, "gehen ans Sprachmodell (soll: keine)")
 	if a.FalschOben > 0 {
 		fmt.Fprintf(&b, "  %d passende Fragen: bester Treffer aus einem anderen Eintrag\n", a.FalschOben)
 	}
 	if a.NichtGefunden > 0 {
-		fmt.Fprintf(&b, "  %d passende Fragen: richtiger Eintrag nicht unter den Treffern\n", a.NichtGefunden)
+		fmt.Fprintf(&b, "  %d passende Fragen: mindestens ein erwarteter Eintrag nicht unter den Treffern\n", a.NichtGefunden)
 	}
 	if a.Trennbar() {
 		fmt.Fprintf(&b, "Trennbar: jede Schwelle über %s bis einschließlich %s trennt passend von fachfremd.\n",
