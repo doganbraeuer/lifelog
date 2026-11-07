@@ -878,11 +878,14 @@ Geplantes Verhalten:
 - **Duplikate nur bei exakt gleichen Bytes:** Ein neues Foto desselben
   Dokuments hat einen anderen Hash und wird nicht als Duplikat erkannt. Beim
   Text-Import genügt ein zusätzliches Leerzeichen für einen neuen Hash.
-- **Schwelle neu kalibrieren:** Die Schwelle 0,82 beruht auf 4 kurzen
-  Testeinträgen mit je einem Abschnitt. Nach den ersten echten
-  (synthetischen) Uploads `go run ./cmd/kalibrieren` erneut laufen lassen,
-  am besten mit Fragen zu den hochgeladenen Dokumenten. Längere Dokumente
-  mit mehreren Abschnitten können niedriger liegen.
+- **Schwelle neu kalibrieren:** Am 08.11.2026 mit den synthetischen
+  Demo-Daten nachgemessen (45 Fragen, 12 Einträge): passend 0,830–0,902
+  (bei zwei Einträgen 0,850–0,866), nah 0,823–0,861, fachfremd 0,758–0,808.
+  Trennende Schwellen liegen in (0,808; 0,830]; 0,82 hat 0,012 Abstand nach
+  oben und unten. Knappste passende Frage: „Wie oft pro Woche soll ich zur
+  Physiotherapie?“ (0,830, die Physio-Notiz liegt höher). Knappste fachfremde:
+  „Hast du ein Rezept für Apfelkuchen?“ (0,808). Entscheidung (Dogan, 08.11.2026):
+  0,82 bleibt. Bei mehr Dokumenten weiter beobachten.
 - **Briefköpfe und Adressen vor dem Einbetten herausfiltern:** Fachfremde
   Fragen mit „Salzburg“ (Wetter, Zugfahrt) lagen mit 0,79–0,80 nahe an der
   Schwelle, weil die Adresse im Briefkopf steht. Werden Briefkopf und Adressen
