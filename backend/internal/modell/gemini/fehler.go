@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/konfig"
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/modell"
 )
 
@@ -22,7 +22,7 @@ func uebersetzeFehler(err error, schluessel string) error {
 	if err == nil {
 		return nil
 	}
-	text := konfig.Maskiere(err.Error(), schluessel)
+	text := config.Maskiere(err.Error(), schluessel)
 
 	var api genai.APIError
 	if asFehler(err, &api) {

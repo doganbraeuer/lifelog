@@ -22,8 +22,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/konfig"
 )
 
 var eigeneCollections = []string{collEintraege, collAbschnitte, bucketDateien + ".files", bucketDateien + ".chunks"}
@@ -33,10 +33,10 @@ func testSpeicher(t *testing.T) (*Speicher, context.Context) {
 	if os.Getenv("LIFELOG_MONGO_TEST") != "1" {
 		t.Skip("Integrationstest übersprungen (LIFELOG_MONGO_TEST=1 setzen)")
 	}
-	if err := konfig.DotenvSuchen(); err != nil {
+	if err := config.DotenvSuchen(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"lifelog/backend/internal/api"
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
 )
@@ -27,10 +27,10 @@ func main() {
 }
 
 func starten() error {
-	if err := konfig.DotenvLaden(); err != nil {
+	if err := config.DotenvLaden(); err != nil {
 		return err
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		return err
 	}

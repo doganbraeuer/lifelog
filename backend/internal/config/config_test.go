@@ -1,4 +1,4 @@
-package konfig
+package config
 
 import (
 	"strings"

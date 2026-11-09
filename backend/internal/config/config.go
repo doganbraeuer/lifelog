@@ -1,8 +1,8 @@
-// Package konfig liest die Einstellungen des Backends aus Umgebungsvariablen.
+// Package config liest die Einstellungen des Backends aus Umgebungsvariablen.
 //
 // Geheimnisse (MongoDB-Zugang, API-Schlüssel) stehen nur in .env und werden
 // nie geloggt. Fehlermeldungen nennen deshalb nur Variablennamen, nie Werte.
-package konfig
+package config
 
 import (
 	"errors"

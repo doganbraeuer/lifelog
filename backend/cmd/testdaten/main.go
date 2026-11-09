@@ -29,8 +29,8 @@ import (
 	"time"
 
 	"lifelog/backend/internal/beispieldaten"
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
 )
@@ -54,10 +54,10 @@ func main() {
 }
 
 func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
-	if err := konfig.DotenvLaden(); err != nil {
+	if err := config.DotenvLaden(); err != nil {
 		return err
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 // einbetten zerlegt alle Testeinträge und holt die Embeddings in einem
 // Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
 // Eintrag-ID.
-func einbetten(ctx context.Context, k konfig.Konfig, eintraege []kern.Eintrag) (map[string][]kern.Abschnitt, error) {
+func einbetten(ctx context.Context, k config.Konfig, eintraege []kern.Eintrag) (map[string][]kern.Abschnitt, error) {
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
 		Modell:          k.GeminiModell,
@@ -166,10 +166,10 @@ func einbetten(ctx context.Context, k konfig.Konfig, eintraege []kern.Eintrag) (
 // Abschnitte, Eintrag zuletzt) und gibt seine ID aus. Die festen
 // Testeinträge und alle anderen Einträge bleiben unberührt.
 func wegwerfAnlegen() error {
-	if err := konfig.DotenvLaden(); err != nil {
+	if err := config.DotenvLaden(); err != nil {
 		return err
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		return err
 	}

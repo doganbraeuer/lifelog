@@ -5,7 +5,7 @@
 //	go run ./cmd/modelle
 //
 // Der Schlüssel kommt aus .env (wie beim Server), steht also nie im Befehl,
-// und wird nie ausgegeben: Fehlermeldungen laufen durch konfig.Maskiere.
+// und wird nie ausgegeben: Fehlermeldungen laufen durch config.Maskiere.
 //
 // Achtung: Die Liste sagt, welche Modelle es gibt, nicht, ob sie in der
 // kostenlosen Stufe nutzbar sind oder mit welchen Limits. Das steht in AI
@@ -22,11 +22,11 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/konfig"
+	"lifelog/backend/internal/config"
 )
 
 func main() {
-	if err := konfig.DotenvLaden(); err != nil {
+	if err := config.DotenvLaden(); err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler:", err)
 		os.Exit(1)
 	}
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	if err := auflisten(schluessel); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", konfig.Maskiere(err.Error(), schluessel))
+		fmt.Fprintln(os.Stderr, "Fehler:", config.Maskiere(err.Error(), schluessel))
 		os.Exit(1)
 	}
 }

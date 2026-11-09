@@ -30,8 +30,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/konfig"
 )
 
 const diagnoseLimit = 120 * time.Second
@@ -45,10 +45,10 @@ func TestDiagnose_Lesen(t *testing.T) {
 		variante = "voll"
 	}
 
-	if err := konfig.DotenvSuchen(); err != nil {
+	if err := config.DotenvSuchen(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}

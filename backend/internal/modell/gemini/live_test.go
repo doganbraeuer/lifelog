@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell"
 )
 
@@ -34,10 +34,10 @@ func liveGemini(t *testing.T) *Gemini {
 	if os.Getenv("LIFELOG_LIVE") != "1" {
 		t.Skip("Live-Test übersprungen (LIFELOG_LIVE=1 setzen)")
 	}
-	if err := konfig.DotenvSuchen(); err != nil {
+	if err := config.DotenvSuchen(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}

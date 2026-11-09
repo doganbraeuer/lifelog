@@ -26,8 +26,8 @@ import (
 	"os/signal"
 	"time"
 
+	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/konfig"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
@@ -48,10 +48,10 @@ func ausfuehren(schwelle float64) error {
 	if schwelle <= 0 || schwelle > 1 {
 		return fmt.Errorf("-schwelle muss zwischen 0 und 1 liegen")
 	}
-	if err := konfig.DotenvLaden(); err != nil {
+	if err := config.DotenvLaden(); err != nil {
 		return err
 	}
-	k, err := konfig.Laden(os.Getenv)
+	k, err := config.Laden(os.Getenv)
 	if err != nil {
 		return err
 	}

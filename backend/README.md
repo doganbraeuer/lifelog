@@ -150,7 +150,7 @@ sips -s format png laborbefund.pdf --out laborbefund.png
 | `cmd/kalibrieren` | Scores der Vektorsuche für feste Fragen messen (Schwelle) |
 | `internal/beispieldaten` | Die erfundenen Testeinträge, gemeinsam für beide Programme |
 | `cmd/modelle` | Verfügbare Gemini-Modelle auflisten |
-| `internal/konfig` | Umgebungsvariablen lesen und prüfen, Geheimnisse maskieren |
+| `internal/config` | Umgebungsvariablen lesen und prüfen, Geheimnisse maskieren |
 | `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung, Dateityp, Abschnitte, Prüfung der Erkennung, Fragen, Korrekturen |
 | `internal/modell` | Austauschbare Schnittstelle zu den Modellen (`Leser`, `Einbetter`) |
 | `internal/modell/gemini` | Umsetzung mit Gemini, inkl. Wiederholung und Ersatzmodell |
