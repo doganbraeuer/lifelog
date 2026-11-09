@@ -2,21 +2,21 @@ package config
 
 import "testing"
 
-func TestMaskiere(t *testing.T) {
-	faelle := []struct {
-		text, erwartet string
-		geheim         []string
+func TestMask(t *testing.T) {
+	cases := []struct {
+		text, want string
+		secrets    []string
 	}{
-		{"Fehler mit Schlüssel ABC123 drin", "Fehler mit Schlüssel *** drin", []string{"ABC123"}},
+		{"error with key ABC123 inside", "error with key *** inside", []string{"ABC123"}},
 		{"ABC123/ABC123", "***/***", []string{"ABC123"}},
-		{"nichts Geheimes", "nichts Geheimes", []string{"ABC123"}},
-		{"uri pw und key", "uri *** und ***", []string{"pw", "key"}},
-		{"leeres Geheimnis ändert nichts", "leeres Geheimnis ändert nichts", []string{""}},
-		{"ohne Geheimnisse", "ohne Geheimnisse", nil},
+		{"nothing secret", "nothing secret", []string{"ABC123"}},
+		{"uri pw and key", "uri *** and ***", []string{"pw", "key"}},
+		{"empty secret changes nothing", "empty secret changes nothing", []string{""}},
+		{"without secrets", "without secrets", nil},
 	}
-	for _, f := range faelle {
-		if got := Maskiere(f.text, f.geheim...); got != f.erwartet {
-			t.Errorf("Maskiere(%q, %q) = %q, erwartet %q", f.text, f.geheim, got, f.erwartet)
+	for _, c := range cases {
+		if got := Mask(c.text, c.secrets...); got != c.want {
+			t.Errorf("Mask(%q, %q) = %q, want %q", c.text, c.secrets, got, c.want)
 		}
 	}
 }

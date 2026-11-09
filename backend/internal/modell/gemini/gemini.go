@@ -87,7 +87,7 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 		e.ErsatzModell = "" // derselbe Name wäre nur ein vierter Versuch
 	}
 	if e.ErsatzReserve < 0 || e.ErsatzReserve > maxErsatzReserve {
-		return nil, fmt.Errorf("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss zwischen 0 und %d liegen (Limits: Lesen %v, Antworten %v; Hauptmodell braucht mindestens %v)",
+		return nil, fmt.Errorf("GEMINI_FALLBACK_RESERVE_SECONDS muss zwischen 0 und %d liegen (Limits: Lesen %v, Antworten %v; Hauptmodell braucht mindestens %v)",
 			int(maxErsatzReserve.Seconds()), leseTimeout, antwortTimeout, mindestHauptzeit)
 	}
 	return &Gemini{

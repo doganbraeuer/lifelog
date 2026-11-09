@@ -1,11 +1,11 @@
 // modelle listet die Gemini-Modelle, die der eigene API-Schlüssel sehen kann,
-// mit ihren Fähigkeiten. Hilft beim Auswählen von GEMINI_MODELL und
-// GEMINI_EMBEDDING_MODELL.
+// mit ihren Fähigkeiten. Hilft beim Auswählen von GEMINI_MODEL und
+// GEMINI_EMBEDDING_MODEL.
 //
 //	go run ./cmd/modelle
 //
 // Der Schlüssel kommt aus .env (wie beim Server), steht also nie im Befehl,
-// und wird nie ausgegeben: Fehlermeldungen laufen durch config.Maskiere.
+// und wird nie ausgegeben: Fehlermeldungen laufen durch config.Mask.
 //
 // Achtung: Die Liste sagt, welche Modelle es gibt, nicht, ob sie in der
 // kostenlosen Stufe nutzbar sind oder mit welchen Limits. Das steht in AI
@@ -26,7 +26,7 @@ import (
 )
 
 func main() {
-	if err := config.DotenvLaden(); err != nil {
+	if err := config.LoadDotenv(); err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler:", err)
 		os.Exit(1)
 	}
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	if err := auflisten(schluessel); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", config.Maskiere(err.Error(), schluessel))
+		fmt.Fprintln(os.Stderr, "Fehler:", config.Mask(err.Error(), schluessel))
 		os.Exit(1)
 	}
 }

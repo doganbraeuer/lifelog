@@ -2,14 +2,14 @@ package config
 
 import "strings"
 
-// Maskiere ersetzt jedes Vorkommen der Geheimnisse in text durch "***".
-// Für Fehlermeldungen fremder Bibliotheken, deren Inhalt wir nicht
-// kontrollieren, bevor sie ins Log oder auf den Bildschirm gehen. Leere
-// Geheimnisse werden ignoriert (sonst würde jede Stelle ersetzt).
-func Maskiere(text string, geheimnisse ...string) string {
-	for _, g := range geheimnisse {
-		if g != "" {
-			text = strings.ReplaceAll(text, g, "***")
+// Mask replaces every occurrence of the secrets in text with "***". For
+// error messages of third-party libraries whose content we do not control,
+// before they go to the log or the screen. Empty secrets are ignored
+// (otherwise every position would be replaced).
+func Mask(text string, secrets ...string) string {
+	for _, s := range secrets {
+		if s != "" {
+			text = strings.ReplaceAll(text, s, "***")
 		}
 	}
 	return text

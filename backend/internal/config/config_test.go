@@ -6,143 +6,183 @@ import (
 	"time"
 )
 
-// umgebung baut eine getenv-Funktion aus einer Map, damit Tests keine echten
-// Umgebungsvariablen brauchen.
-func umgebung(werte map[string]string) func(string) string {
-	return func(name string) string { return werte[name] }
+// env builds a getenv function from a map, so tests need no real
+// environment variables.
+func env(values map[string]string) func(string) string {
+	return func(name string) string { return values[name] }
 }
 
-func vollstaendig() map[string]string {
+func complete() map[string]string {
 	return map[string]string{
-		"MONGODB_URI":    "mongodb+srv://nutzer:GEHEIM@beispiel.invalid/",
+		"MONGODB_URI":    "mongodb+srv://user:SECRET@example.invalid/",
 		"MONGODB_DB":     "lifelog_test",
-		"GEMINI_API_KEY": "GEHEIMER-SCHLUESSEL",
+		"GEMINI_API_KEY": "SECRET-KEY",
 	}
 }
 
-func TestLaden_Standardwerte(t *testing.T) {
-	k, err := Laden(umgebung(vollstaendig()))
+func TestLoad_Defaults(t *testing.T) {
+	c, err := Load(env(complete()))
 	if err != nil {
-		t.Fatalf("unerwarteter Fehler: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := k.Lauschadresse(); got != "127.0.0.1:8080" {
-		t.Errorf("Lauschadresse = %q, erwartet 127.0.0.1:8080", got)
+	if got := c.ListenAddress(); got != "127.0.0.1:8080" {
+		t.Errorf("ListenAddress = %q, want 127.0.0.1:8080", got)
 	}
-	if !k.NurLokal() {
-		t.Error("Standard muss nur lokal erreichbar sein")
+	if !c.LocalOnly() {
+		t.Error("default must be reachable only locally")
 	}
-	if k.GeminiModell != StandardGeminiModell || k.GeminiEmbeddingModell != StandardGeminiEmbeddingModell {
-		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	if c.GeminiModel != DefaultGeminiModel || c.GeminiEmbeddingModel != DefaultGeminiEmbeddingModel {
+		t.Errorf("models = %q / %q", c.GeminiModel, c.GeminiEmbeddingModel)
 	}
-	if k.GeminiModellErsatz != "" {
-		t.Errorf("Ersatzmodell ist optional und standardmäßig leer, nicht %q", k.GeminiModellErsatz)
+	if c.GeminiFallbackModel != "" {
+		t.Errorf("fallback model is optional and empty by default, not %q", c.GeminiFallbackModel)
 	}
-	if k.GeminiErsatzReserve != 20*time.Second {
-		t.Errorf("Reserve = %v, erwartet 20s", k.GeminiErsatzReserve)
-	}
-}
-
-func TestLaden_ErsatzReserve(t *testing.T) {
-	for wert, erwartet := range map[string]time.Duration{"15": 15 * time.Second, "0": 0, " 25 ": 25 * time.Second} {
-		w := vollstaendig()
-		w["GEMINI_ERSATZ_RESERVE_SEKUNDEN"] = wert
-		k, err := Laden(umgebung(w))
-		if err != nil || k.GeminiErsatzReserve != erwartet {
-			t.Errorf("%q: %v, %v; erwartet %v", wert, k.GeminiErsatzReserve, err, erwartet)
-		}
-	}
-	for _, falsch := range []string{"-1", "abc", "2.5", "20s"} {
-		w := vollstaendig()
-		w["GEMINI_ERSATZ_RESERVE_SEKUNDEN"] = falsch
-		if _, err := Laden(umgebung(w)); err == nil {
-			t.Errorf("%q: erwartet Fehler", falsch)
-		}
+	if c.GeminiFallbackReserve != 20*time.Second {
+		t.Errorf("reserve = %v, want 20s", c.GeminiFallbackReserve)
 	}
 }
 
-func TestLaden_ModelleUeberschreiben(t *testing.T) {
-	w := vollstaendig()
-	w["GEMINI_MODELL"] = " anderes-modell "
-	w["GEMINI_EMBEDDING_MODELL"] = "anderes-embedding"
-	w["GEMINI_MODELL_ERSATZ"] = " ersatz-modell "
-	k, err := Laden(umgebung(w))
+func TestLoad_FallbackReserve(t *testing.T) {
+	for value, want := range map[string]time.Duration{"15": 15 * time.Second, "0": 0, " 25 ": 25 * time.Second} {
+		e := complete()
+		e["GEMINI_FALLBACK_RESERVE_SECONDS"] = value
+		c, err := Load(env(e))
+		if err != nil || c.GeminiFallbackReserve != want {
+			t.Errorf("%q: %v, %v; want %v", value, c.GeminiFallbackReserve, err, want)
+		}
+	}
+	for _, invalid := range []string{"-1", "abc", "2.5", "20s"} {
+		e := complete()
+		e["GEMINI_FALLBACK_RESERVE_SECONDS"] = invalid
+		if _, err := Load(env(e)); err == nil {
+			t.Errorf("%q: want error", invalid)
+		}
+	}
+}
+
+func TestLoad_OverrideModels(t *testing.T) {
+	e := complete()
+	e["GEMINI_MODEL"] = " other-model "
+	e["GEMINI_EMBEDDING_MODEL"] = "other-embedding"
+	e["GEMINI_FALLBACK_MODEL"] = " fallback-model "
+	c, err := Load(env(e))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if k.GeminiModell != "anderes-modell" || k.GeminiEmbeddingModell != "anderes-embedding" {
-		t.Errorf("Modelle = %q / %q", k.GeminiModell, k.GeminiEmbeddingModell)
+	if c.GeminiModel != "other-model" || c.GeminiEmbeddingModel != "other-embedding" {
+		t.Errorf("models = %q / %q", c.GeminiModel, c.GeminiEmbeddingModel)
 	}
-	if k.GeminiModellErsatz != "ersatz-modell" {
-		t.Errorf("Ersatz = %q", k.GeminiModellErsatz)
+	if c.GeminiFallbackModel != "fallback-model" {
+		t.Errorf("fallback = %q", c.GeminiFallbackModel)
 	}
 }
 
-func TestLaden_AdresseUndPortUeberschreiben(t *testing.T) {
-	w := vollstaendig()
-	w["ADRESSE"] = "0.0.0.0"
-	w["PORT"] = "9090"
-	k, err := Laden(umgebung(w))
+func TestLoad_OverrideAddressAndPort(t *testing.T) {
+	e := complete()
+	e["ADDRESS"] = "0.0.0.0"
+	e["PORT"] = "9090"
+	c, err := Load(env(e))
 	if err != nil {
-		t.Fatalf("unerwarteter Fehler: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := k.Lauschadresse(); got != "0.0.0.0:9090" {
-		t.Errorf("Lauschadresse = %q, erwartet 0.0.0.0:9090", got)
+	if got := c.ListenAddress(); got != "0.0.0.0:9090" {
+		t.Errorf("ListenAddress = %q, want 0.0.0.0:9090", got)
 	}
-	if k.NurLokal() {
-		t.Error("0.0.0.0 darf nicht als nur lokal gelten")
+	if c.LocalOnly() {
+		t.Error("0.0.0.0 must not count as local only")
 	}
 }
 
-func TestLaden_LeerzeichenZaehlenAlsLeer(t *testing.T) {
-	w := vollstaendig()
-	w["ADRESSE"] = "   "
-	w["MONGODB_DB"] = "  "
-	_, err := Laden(umgebung(w))
+func TestLoad_WhitespaceCountsAsEmpty(t *testing.T) {
+	e := complete()
+	e["ADDRESS"] = "   "
+	e["MONGODB_DB"] = "  "
+	_, err := Load(env(e))
 	if err == nil || !strings.Contains(err.Error(), "MONGODB_DB") {
-		t.Fatalf("erwartet Fehler zu MONGODB_DB, bekommen: %v", err)
+		t.Fatalf("want error about MONGODB_DB, got: %v", err)
 	}
 }
 
-func TestLaden_FehlendeVariablen(t *testing.T) {
-	_, err := Laden(umgebung(map[string]string{}))
+func TestLoad_MissingVariables(t *testing.T) {
+	_, err := Load(env(map[string]string{}))
 	if err == nil {
-		t.Fatal("erwartet einen Fehler")
+		t.Fatal("want an error")
 	}
 	for _, name := range []string{"MONGODB_URI", "MONGODB_DB", "GEMINI_API_KEY"} {
 		if !strings.Contains(err.Error(), name) {
-			t.Errorf("Fehlermeldung nennt %s nicht: %q", name, err)
+			t.Errorf("error message does not name %s: %q", name, err)
 		}
 	}
 }
 
-func TestLaden_GeheimnisseNieInFehlermeldung(t *testing.T) {
-	w := vollstaendig()
-	delete(w, "MONGODB_DB") // erzeugt einen Fehler, während Geheimnisse gesetzt sind
-	w["PORT"] = "keine-zahl"
-	_, err := Laden(umgebung(w))
+func TestLoad_SecretsNeverInErrorMessage(t *testing.T) {
+	e := complete()
+	delete(e, "MONGODB_DB") // causes an error while secrets are set
+	e["PORT"] = "not-a-number"
+	_, err := Load(env(e))
 	if err == nil {
-		t.Fatal("erwartet einen Fehler")
+		t.Fatal("want an error")
 	}
-	for _, geheim := range []string{"GEHEIM", "GEHEIMER-SCHLUESSEL"} {
-		if strings.Contains(err.Error(), geheim) {
-			t.Errorf("Fehlermeldung enthält ein Geheimnis: %q", err)
+	for _, secret := range []string{"SECRET", "SECRET-KEY"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("error message contains a secret: %q", err)
 		}
 	}
 
-	w = vollstaendig()
-	w["PORT"] = "keine-zahl"
-	_, err = Laden(umgebung(w))
-	if err == nil || strings.Contains(err.Error(), "GEHEIM") {
-		t.Errorf("Port-Fehler fehlt oder enthält Geheimnis: %v", err)
+	e = complete()
+	e["PORT"] = "not-a-number"
+	_, err = Load(env(e))
+	if err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Errorf("port error missing or contains a secret: %v", err)
 	}
 }
 
-func TestLaden_UngueltigerPort(t *testing.T) {
+func TestLoad_InvalidPort(t *testing.T) {
 	for _, port := range []string{"abc", "0", "70000", "-1"} {
-		w := vollstaendig()
-		w["PORT"] = port
-		if _, err := Laden(umgebung(w)); err == nil {
-			t.Errorf("PORT=%q: erwartet Fehler", port)
+		e := complete()
+		e["PORT"] = port
+		if _, err := Load(env(e)); err == nil {
+			t.Errorf("PORT=%q: want error", port)
 		}
+	}
+}
+
+// An old German name left in .env must not be ignored silently: most of
+// these variables are optional, so the default would apply without notice.
+func TestLoad_RenamedVariablesFail(t *testing.T) {
+	for _, r := range renamedVariables {
+		e := complete()
+		e[r.old] = "secret-value"
+		_, err := Load(env(e))
+		if err == nil {
+			t.Errorf("%s set: want error", r.old)
+			continue
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, r.old) || !strings.Contains(msg, r.new) {
+			t.Errorf("%s: error should name old and new name: %q", r.old, msg)
+		}
+		if strings.Contains(msg, "secret-value") {
+			t.Errorf("%s: error message contains the value: %q", r.old, msg)
+		}
+	}
+}
+
+func TestLoad_RenamedVariablesAllNamed(t *testing.T) {
+	e := complete()
+	e["ADRESSE"] = "0.0.0.0"
+	e["GEMINI_MODELL"] = "x"
+	_, err := Load(env(e))
+	if err == nil || !strings.Contains(err.Error(), "ADRESSE") || !strings.Contains(err.Error(), "GEMINI_MODELL") {
+		t.Fatalf("want one error naming both old variables, got: %v", err)
+	}
+}
+
+func TestLoad_RenamedVariableEmptyIsIgnored(t *testing.T) {
+	// An empty old line like "GEMINI_MODELL=" from the old .env.example is harmless.
+	e := complete()
+	e["GEMINI_MODELL"] = "  "
+	if _, err := Load(env(e)); err != nil {
+		t.Fatalf("empty old variable must not fail: %v", err)
 	}
 }

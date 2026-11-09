@@ -14,7 +14,7 @@ REST-API nach [docs/API.md](../docs/API.md).
 
 Standardmäßig lauscht der Server nur auf `127.0.0.1:8080`. Der
 Android-Emulator erreicht ihn über `http://10.0.2.2:8080`. Für ein echtes Handy
-im WLAN: `ADRESSE=0.0.0.0 go run ./cmd/server` und die IP des Rechners
+im WLAN: `ADDRESS=0.0.0.0 go run ./cmd/server` und die IP des Rechners
 verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
 
 Hochladen von Hand (nur synthetische Dokumente):
@@ -56,9 +56,9 @@ go run ./cmd/modelle   # listet die Modelle, die der eigene Schlüssel sieht
 Der Schlüssel kommt aus `.env` und wird nie ausgegeben. Ob ein Modell in der
 kostenlosen Stufe nutzbar ist und welche Limits gelten, steht nur in AI Studio
 bzw. auf der Preisseite. Bei 429/503 versucht das Backend es bis zu zweimal
-erneut; mit `GEMINI_MODELL_ERSATZ` danach einmal ein anderes Modell zum Lesen.
+erneut; mit `GEMINI_FALLBACK_MODEL` danach einmal ein anderes Modell zum Lesen.
 Dafür sind vom Lese-Limit (50 s) standardmäßig 20 s reserviert
-(`GEMINI_ERSATZ_RESERVE_SEKUNDEN`), das Hauptmodell bekommt 30 s.
+(`GEMINI_FALLBACK_RESERVE_SECONDS`), das Hauptmodell bekommt 30 s.
 
 ## Vektorindex
 

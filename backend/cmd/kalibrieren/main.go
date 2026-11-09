@@ -48,10 +48,10 @@ func ausfuehren(schwelle float64) error {
 	if schwelle <= 0 || schwelle > 1 {
 		return fmt.Errorf("-schwelle muss zwischen 0 und 1 liegen")
 	}
-	if err := config.DotenvLaden(); err != nil {
+	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
@@ -79,8 +79,8 @@ func ausfuehren(schwelle float64) error {
 	// Nur der Einbetter wird benutzt; Lese- und Antwortmodell bleiben unberührt.
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModell,
-		EmbeddingModell: k.GeminiEmbeddingModell,
+		Modell:          k.GeminiModel,
+		EmbeddingModell: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func ausfuehren(schwelle float64) error {
 	}
 
 	fmt.Printf("%d Fragen, %d Einträge, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
-		len(fragen), len(liste), k.GeminiEmbeddingModell, k.MongoDB, kern.AnzahlTreffer)
+		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, kern.AnzahlTreffer)
 	fmt.Println(" Nr  Gruppe     Bester  Treffer            Richtig        Frage")
 
 	messungen := make([]messung, 0, len(fragen))

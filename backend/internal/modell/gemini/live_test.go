@@ -34,24 +34,24 @@ func liveGemini(t *testing.T) *Gemini {
 	if os.Getenv("LIFELOG_LIVE") != "1" {
 		t.Skip("Live-Test übersprungen (LIFELOG_LIVE=1 setzen)")
 	}
-	if err := config.DotenvSuchen(); err != nil {
+	if err := config.FindDotenv(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
 	g, err := Neu(context.Background(), Einstellungen{
 		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModell,
-		ErsatzModell:    k.GeminiModellErsatz,
-		ErsatzReserve:   k.GeminiErsatzReserve,
-		EmbeddingModell: k.GeminiEmbeddingModell,
+		Modell:          k.GeminiModel,
+		ErsatzModell:    k.GeminiFallbackModel,
+		ErsatzReserve:   k.GeminiFallbackReserve,
+		EmbeddingModell: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("Modelle: %s (Ersatz %q, Reserve %v) / %s", k.GeminiModell, g.e.ErsatzModell, k.GeminiErsatzReserve, k.GeminiEmbeddingModell)
+	t.Logf("Modelle: %s (Ersatz %q, Reserve %v) / %s", k.GeminiModel, g.e.ErsatzModell, k.GeminiFallbackReserve, k.GeminiEmbeddingModel)
 	return g
 }
 

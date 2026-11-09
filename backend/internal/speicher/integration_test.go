@@ -33,10 +33,10 @@ func testSpeicher(t *testing.T) (*Speicher, context.Context) {
 	if os.Getenv("LIFELOG_MONGO_TEST") != "1" {
 		t.Skip("Integrationstest übersprungen (LIFELOG_MONGO_TEST=1 setzen)")
 	}
-	if err := config.DotenvSuchen(); err != nil {
+	if err := config.FindDotenv(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}

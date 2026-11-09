@@ -1,7 +1,7 @@
-// Package config liest die Einstellungen des Backends aus Umgebungsvariablen.
+// Package config reads the backend settings from environment variables.
 //
-// Geheimnisse (MongoDB-Zugang, API-Schlüssel) stehen nur in .env und werden
-// nie geloggt. Fehlermeldungen nennen deshalb nur Variablennamen, nie Werte.
+// Secrets (MongoDB credentials, API key) live only in .env and are never
+// logged. Error messages therefore name only variable names, never values.
 package config
 
 import (
@@ -17,159 +17,190 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Standardwerte für optionale Variablen.
+// Defaults for optional variables.
 const (
-	StandardAdresse = "127.0.0.1"
-	StandardPort    = "8080"
+	DefaultAddress = "127.0.0.1"
+	DefaultPort    = "8080"
 
-	// Modelle, geprüft am 04.11.2026 mit go run ./cmd/modelle und der
-	// Preisseite (aistudio.google.com/docs/pricing). Beide sind in der
-	// kostenlosen Stufe nutzbar; dort dürfen Eingaben zur Verbesserung der
-	// Produkte verwendet werden, daher nur synthetische Dokumente.
-	// Die genauen Free-Tier-Limits (Anfragen pro Minute/Tag) zeigt nur AI
-	// Studio im eigenen Projekt an.
+	// Models, checked on 2026-11-04 with go run ./cmd/modelle and the pricing
+	// page (aistudio.google.com/docs/pricing). Both can be used in the free
+	// tier; there, inputs may be used to improve the products, so only
+	// synthetic documents. The exact free-tier limits (requests per
+	// minute/day) are only shown by AI Studio in the own project.
 	//
-	// gemini-3.8-flash: stabil, Bild (inkl. HEIC) und PDF als Eingabe,
-	// JSON-Ausgabe nach Schema. (gemini-2.5-flash ist veraltet und wird ab
-	// 01.12.2026 umgeleitet.)
-	StandardGeminiModell = "gemini-3.8-flash"
+	// gemini-3.8-flash: stable, image (including HEIC) and PDF as input,
+	// JSON output following a schema. (gemini-2.5-flash is deprecated and
+	// will be redirected from 2026-12-01.)
+	DefaultGeminiModel = "gemini-3.8-flash"
 
-	// gemini-embedding-2: bis 8192 Tokens pro Text, 768 Dimensionen werden
-	// automatisch normalisiert. ACHTUNG: Embeddings verschiedener Modelle
-	// sind nicht vergleichbar. Wer das Modell wechselt, muss alle Abschnitte
-	// neu einbetten, sonst findet die Suche nichts Sinnvolles mehr.
-	StandardGeminiEmbeddingModell = "gemini-embedding-2"
+	// gemini-embedding-2: up to 8192 tokens per text, 768 dimensions are
+	// normalized automatically. CAUTION: embeddings of different models are
+	// not comparable. Whoever switches the model must re-embed all chunks,
+	// otherwise search finds nothing useful anymore.
+	DefaultGeminiEmbeddingModel = "gemini-embedding-2"
 
-	// StandardErsatzReserveSekunden: So viele Sekunden des Limits bleiben für
-	// das Ersatzmodell reserviert, beim Lesen (50 s → Hauptmodell 30 s) und
-	// beim Antworten (45 s → Hauptmodell 25 s). Erlaubt sind 0 bis 35 (prüft
-	// gemini.Neu). Ohne Ersatzmodell gibt es keine Reserve. Grund: Hängt das
-	// Hauptmodell bis zur Frist, bliebe für den Ersatz sonst keine Zeit
-	// (beobachtet am 04.11.2026).
-	StandardErsatzReserveSekunden = 20
+	// DefaultFallbackReserveSeconds: this many seconds of the time limit are
+	// reserved for the fallback model, when reading (50 s → main model 30 s)
+	// and when answering (45 s → main model 25 s). Allowed are 0 to 35
+	// (checked by gemini.Neu). Without a fallback model there is no reserve.
+	// Reason: if the main model hangs until the deadline, there would be no
+	// time left for the fallback (observed on 2026-11-04).
+	DefaultFallbackReserveSeconds = 20
 )
 
-// Konfig enthält alle Einstellungen, die das Backend beim Start braucht.
-type Konfig struct {
+// renamedVariables maps the German variable names used until 2026-11-09 to
+// their English replacements (docs/GLOSSARY.md). Most of them are optional:
+// without this check, an old name left in .env would be ignored silently and
+// the default would apply. Remove once nobody uses the old names anymore.
+var renamedVariables = []struct{ old, new string }{
+	{"ADRESSE", "ADDRESS"},
+	{"GEMINI_MODELL", "GEMINI_MODEL"},
+	{"GEMINI_EMBEDDING_MODELL", "GEMINI_EMBEDDING_MODEL"},
+	{"GEMINI_MODELL_ERSATZ", "GEMINI_FALLBACK_MODEL"},
+	{"GEMINI_ERSATZ_RESERVE_SEKUNDEN", "GEMINI_FALLBACK_RESERVE_SECONDS"},
+}
+
+// Config holds all settings the backend needs at startup.
+type Config struct {
 	MongoURI              string
 	MongoDB               string
 	GeminiKey             string
-	GeminiModell          string
-	GeminiModellErsatz    string        // optional, leer = kein Ersatzmodell
-	GeminiErsatzReserve   time.Duration // Teil des Lese-Limits, der dem Ersatz vorbehalten ist
-	GeminiEmbeddingModell string
-	Adresse               string
+	GeminiModel           string
+	GeminiFallbackModel   string        // optional, empty = no fallback model
+	GeminiFallbackReserve time.Duration // part of the read time limit reserved for the fallback
+	GeminiEmbeddingModel  string
+	Address               string
 	Port                  string
 }
 
-// Lauschadresse ergibt z. B. "127.0.0.1:8080". net.JoinHostPort setzt
-// IPv6-Adressen korrekt in eckige Klammern.
-func (k Konfig) Lauschadresse() string {
-	return net.JoinHostPort(k.Adresse, k.Port)
+// ListenAddress returns e.g. "127.0.0.1:8080". net.JoinHostPort puts IPv6
+// addresses in square brackets correctly.
+func (c Config) ListenAddress() string {
+	return net.JoinHostPort(c.Address, c.Port)
 }
 
-// NurLokal ist true, wenn der Server nur vom eigenen Rechner aus erreichbar ist.
-func (k Konfig) NurLokal() bool {
-	switch k.Adresse {
+// LocalOnly is true if the server can only be reached from this machine.
+func (c Config) LocalOnly() bool {
+	switch c.Address {
 	case "127.0.0.1", "localhost", "::1":
 		return true
 	}
 	return false
 }
 
-// DotenvLaden lädt .env-Dateien in die Umgebung. Gesucht wird in backend/.env
-// und im Repo-Wurzelverzeichnis (../.env, wenn der Server aus backend/
-// gestartet wird). Eine fehlende Datei ist kein Fehler, denn im Betrieb
-// können die Variablen auch direkt gesetzt sein. Bereits gesetzte
-// Umgebungsvariablen werden nicht überschrieben, sie haben Vorrang.
-func DotenvLaden() error {
-	for _, pfad := range []string{".env", "../.env"} {
-		err := godotenv.Load(pfad)
+// LoadDotenv loads .env files into the environment. It looks in backend/.env
+// and in the repository root (../.env when the server is started from
+// backend/). A missing file is not an error, because in operation the
+// variables can also be set directly. Variables that are already set are not
+// overwritten; they take precedence.
+func LoadDotenv() error {
+	for _, path := range []string{".env", "../.env"} {
+		err := godotenv.Load(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			// Bewusst ohne err-Inhalt der Datei, nur Pfad und Art des Fehlers.
-			return fmt.Errorf("%s konnte nicht gelesen werden: %w", pfad, err)
+			// Deliberately without the file content, only path and kind of error.
+			return fmt.Errorf("could not read %s: %w", path, err)
 		}
 	}
 	return nil
 }
 
-// DotenvSuchen lädt die erste .env, die es vom aktuellen Ordner aus nach
-// oben findet. Für Tests: go test läuft im Paketordner (z. B.
-// backend/internal/speicher), die .env liegt im Repo-Wurzelverzeichnis.
-// Keine .env zu finden ist kein Fehler.
-func DotenvSuchen() error {
+// FindDotenv loads the first .env found from the current directory upwards.
+// For tests: go test runs in the package directory (e.g.
+// backend/internal/speicher), the .env lives in the repository root. Not
+// finding a .env is not an error.
+func FindDotenv() error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 	for {
-		pfad := filepath.Join(dir, ".env")
-		if _, err := os.Stat(pfad); err == nil {
-			if err := godotenv.Load(pfad); err != nil {
-				return fmt.Errorf("%s konnte nicht gelesen werden: %w", pfad, err)
+		path := filepath.Join(dir, ".env")
+		if _, err := os.Stat(path); err == nil {
+			if err := godotenv.Load(path); err != nil {
+				return fmt.Errorf("could not read %s: %w", path, err)
 			}
 			return nil
 		}
-		eltern := filepath.Dir(dir)
-		if eltern == dir {
+		parent := filepath.Dir(dir)
+		if parent == dir {
 			return nil
 		}
-		dir = eltern
+		dir = parent
 	}
 }
 
-// Laden liest die Konfiguration über getenv (im Programm os.Getenv, in Tests
-// eine eigene Funktion). Fehlen Pflichtvariablen, nennt der Fehler alle
-// fehlenden Namen auf einmal.
-func Laden(getenv func(string) string) (Konfig, error) {
-	k := Konfig{
-		MongoURI:     strings.TrimSpace(getenv("MONGODB_URI")),
-		MongoDB:      strings.TrimSpace(getenv("MONGODB_DB")),
-		GeminiKey:    strings.TrimSpace(getenv("GEMINI_API_KEY")),
-		GeminiModell: mitStandard(getenv("GEMINI_MODELL"), StandardGeminiModell),
-		// Ersatz nur fürs Lesen. Für Embeddings gibt es bewusst keinen: Vektoren
-		// zweier Modelle sind nicht vergleichbar.
-		GeminiModellErsatz: strings.TrimSpace(getenv("GEMINI_MODELL_ERSATZ")),
-		GeminiEmbeddingModell: mitStandard(getenv("GEMINI_EMBEDDING_MODELL"),
-			StandardGeminiEmbeddingModell),
-		Adresse: mitStandard(getenv("ADRESSE"), StandardAdresse),
-		Port:    mitStandard(getenv("PORT"), StandardPort),
+// Load reads the configuration via getenv (os.Getenv in the program, a
+// custom function in tests). If required variables are missing, the error
+// names all missing names at once.
+func Load(getenv func(string) string) (Config, error) {
+	if err := checkRenamed(getenv); err != nil {
+		return Config{}, err
 	}
 
-	var fehlend []string
-	if k.MongoURI == "" {
-		fehlend = append(fehlend, "MONGODB_URI")
-	}
-	if k.MongoDB == "" {
-		fehlend = append(fehlend, "MONGODB_DB")
-	}
-	if k.GeminiKey == "" {
-		fehlend = append(fehlend, "GEMINI_API_KEY")
-	}
-	if len(fehlend) > 0 {
-		return Konfig{}, fmt.Errorf("Pflichtvariablen fehlen: %s (siehe .env.example)",
-			strings.Join(fehlend, ", "))
-	}
-
-	if p, err := strconv.Atoi(k.Port); err != nil || p < 1 || p > 65535 {
-		return Konfig{}, errors.New("PORT muss eine Zahl zwischen 1 und 65535 sein")
+	c := Config{
+		MongoURI:    strings.TrimSpace(getenv("MONGODB_URI")),
+		MongoDB:     strings.TrimSpace(getenv("MONGODB_DB")),
+		GeminiKey:   strings.TrimSpace(getenv("GEMINI_API_KEY")),
+		GeminiModel: withDefault(getenv("GEMINI_MODEL"), DefaultGeminiModel),
+		// Fallback only for reading and answering. There is deliberately none
+		// for embeddings: vectors of two models are not comparable.
+		GeminiFallbackModel: strings.TrimSpace(getenv("GEMINI_FALLBACK_MODEL")),
+		GeminiEmbeddingModel: withDefault(getenv("GEMINI_EMBEDDING_MODEL"),
+			DefaultGeminiEmbeddingModel),
+		Address: withDefault(getenv("ADDRESS"), DefaultAddress),
+		Port:    withDefault(getenv("PORT"), DefaultPort),
 	}
 
-	// Ob die Reserve zum Lese-Limit passt, prüft gemini.Neu (dort ist das
-	// Limit bekannt). Hier nur: ganze Zahl, nicht negativ.
-	reserve := mitStandard(getenv("GEMINI_ERSATZ_RESERVE_SEKUNDEN"), strconv.Itoa(StandardErsatzReserveSekunden))
-	sek, err := strconv.Atoi(reserve)
-	if err != nil || sek < 0 {
-		return Konfig{}, errors.New("GEMINI_ERSATZ_RESERVE_SEKUNDEN muss eine ganze Zahl ≥ 0 sein")
+	var missing []string
+	if c.MongoURI == "" {
+		missing = append(missing, "MONGODB_URI")
 	}
-	k.GeminiErsatzReserve = time.Duration(sek) * time.Second
+	if c.MongoDB == "" {
+		missing = append(missing, "MONGODB_DB")
+	}
+	if c.GeminiKey == "" {
+		missing = append(missing, "GEMINI_API_KEY")
+	}
+	if len(missing) > 0 {
+		return Config{}, fmt.Errorf("required variables missing: %s (see .env.example)",
+			strings.Join(missing, ", "))
+	}
 
-	return k, nil
+	if p, err := strconv.Atoi(c.Port); err != nil || p < 1 || p > 65535 {
+		return Config{}, errors.New("PORT must be a number between 1 and 65535")
+	}
+
+	// Whether the reserve fits the read time limit is checked by gemini.Neu
+	// (the limit is known there). Here only: whole number, not negative.
+	reserve := withDefault(getenv("GEMINI_FALLBACK_RESERVE_SECONDS"), strconv.Itoa(DefaultFallbackReserveSeconds))
+	sec, err := strconv.Atoi(reserve)
+	if err != nil || sec < 0 {
+		return Config{}, errors.New("GEMINI_FALLBACK_RESERVE_SECONDS must be a whole number ≥ 0")
+	}
+	c.GeminiFallbackReserve = time.Duration(sec) * time.Second
+
+	return c, nil
 }
 
-func mitStandard(wert, standard string) string {
-	if w := strings.TrimSpace(wert); w != "" {
-		return w
+// checkRenamed fails if a variable is still set under its old German name.
+// The error names all of them at once, with their new names, but no values.
+func checkRenamed(getenv func(string) string) error {
+	var found []string
+	for _, r := range renamedVariables {
+		if strings.TrimSpace(getenv(r.old)) != "" {
+			found = append(found, r.old+" → "+r.new)
+		}
 	}
-	return standard
+	if len(found) > 0 {
+		return fmt.Errorf("environment variables were renamed, please update .env (see .env.example): %s",
+			strings.Join(found, ", "))
+	}
+	return nil
+}
+
+func withDefault(value, def string) string {
+	if v := strings.TrimSpace(value); v != "" {
+		return v
+	}
+	return def
 }

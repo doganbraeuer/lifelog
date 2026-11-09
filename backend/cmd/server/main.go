@@ -27,10 +27,10 @@ func main() {
 }
 
 func starten() error {
-	if err := config.DotenvLaden(); err != nil {
+	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
@@ -64,19 +64,19 @@ func starten() error {
 	// Antworter umsetzt.
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModell,
-		ErsatzModell:    k.GeminiModellErsatz,
-		ErsatzReserve:   k.GeminiErsatzReserve,
-		EmbeddingModell: k.GeminiEmbeddingModell,
+		Modell:          k.GeminiModel,
+		ErsatzModell:    k.GeminiFallbackModel,
+		ErsatzReserve:   k.GeminiFallbackReserve,
+		EmbeddingModell: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
 	}
-	slog.Info("Modelle", "lesen", k.GeminiModell, "ersatz", k.GeminiModellErsatz,
-		"reserve", k.GeminiErsatzReserve, "embedding", k.GeminiEmbeddingModell)
+	slog.Info("Modelle", "lesen", k.GeminiModel, "ersatz", k.GeminiFallbackModel,
+		"reserve", k.GeminiFallbackReserve, "embedding", k.GeminiEmbeddingModel)
 
 	server := &http.Server{
-		Addr: k.Lauschadresse(),
+		Addr: k.ListenAddress(),
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:          db,
 			Eintraege:   db,
@@ -91,14 +91,14 @@ func starten() error {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	if !k.NurLokal() {
-		slog.Warn("Backend ist im ganzen Netz erreichbar (ADRESSE ist nicht lokal). Nur zum Testen verwenden.",
-			"adresse", k.Adresse)
+	if !k.LocalOnly() {
+		slog.Warn("Backend ist im ganzen Netz erreichbar (ADDRESS ist nicht lokal). Nur zum Testen verwenden.",
+			"adresse", k.Address)
 	}
 
 	serverFehler := make(chan error, 1)
 	go func() {
-		slog.Info("Server läuft", "adresse", "http://"+k.Lauschadresse())
+		slog.Info("Server läuft", "adresse", "http://"+k.ListenAddress())
 		serverFehler <- server.ListenAndServe()
 	}()
 

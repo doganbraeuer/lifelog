@@ -3,7 +3,7 @@ package gemini
 // Diagnose: ein einzelner Leseaufruf, ohne Wiederholung und ohne Ersatz,
 // mit Dauer, Abbruchgrund und Token-Verbrauch.
 //
-//	LIFELOG_DIAGNOSE=1 LIFELOG_DIAGNOSE_VARIANTE=voll go test ./internal/modell/gemini/ -run Diagnose -v
+//	LIFELOG_DIAGNOSE=1 LIFELOG_DIAGNOSE_VARIANT=voll go test ./internal/modell/gemini/ -run Diagnose -v
 //
 // Varianten (bauen aufeinander auf):
 //
@@ -13,8 +13,8 @@ package gemini
 //
 // Weitere Schalter, um andere Modelle zu vergleichen:
 //
-//	LIFELOG_DIAGNOSE_MODELL=gemini-3.6-flash   statt GEMINI_MODELL
-//	LIFELOG_DIAGNOSE_DATEI=laborbefund.png     statt laborbefund.pdf (oder ein
+//	LIFELOG_DIAGNOSE_MODEL=gemini-3.6-flash   statt GEMINI_MODEL
+//	LIFELOG_DIAGNOSE_FILE=laborbefund.png     statt laborbefund.pdf (oder ein
 //	                                           absoluter Pfad, nur synthetisch!)
 //	LIFELOG_DIAGNOSE_THINKING=aus              ohne ThinkingConfig (für Modelle
 //	                                           ohne thinkingLevel)
@@ -40,30 +40,30 @@ func TestDiagnose_Lesen(t *testing.T) {
 	if os.Getenv("LIFELOG_DIAGNOSE") != "1" {
 		t.Skip("Diagnose übersprungen (LIFELOG_DIAGNOSE=1 setzen)")
 	}
-	variante := os.Getenv("LIFELOG_DIAGNOSE_VARIANTE")
+	variante := os.Getenv("LIFELOG_DIAGNOSE_VARIANT")
 	if variante == "" {
 		variante = "voll"
 	}
 
-	if err := config.DotenvSuchen(); err != nil {
+	if err := config.FindDotenv(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
 	g, err := Neu(context.Background(), Einstellungen{
-		Schluessel: k.GeminiKey, Modell: k.GeminiModell, EmbeddingModell: k.GeminiEmbeddingModell,
+		Schluessel: k.GeminiKey, Modell: k.GeminiModel, EmbeddingModell: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	modellName := k.GeminiModell
-	if m := os.Getenv("LIFELOG_DIAGNOSE_MODELL"); m != "" {
+	modellName := k.GeminiModel
+	if m := os.Getenv("LIFELOG_DIAGNOSE_MODEL"); m != "" {
 		modellName = m
 	}
-	dateiname := os.Getenv("LIFELOG_DIAGNOSE_DATEI")
+	dateiname := os.Getenv("LIFELOG_DIAGNOSE_FILE")
 	if dateiname == "" {
 		dateiname = "laborbefund.pdf"
 	}

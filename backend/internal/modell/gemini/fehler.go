@@ -22,7 +22,7 @@ func uebersetzeFehler(err error, schluessel string) error {
 	if err == nil {
 		return nil
 	}
-	text := config.Maskiere(err.Error(), schluessel)
+	text := config.Mask(err.Error(), schluessel)
 
 	var api genai.APIError
 	if asFehler(err, &api) {

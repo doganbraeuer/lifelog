@@ -54,10 +54,10 @@ func main() {
 }
 
 func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
-	if err := config.DotenvLaden(); err != nil {
+	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
@@ -128,11 +128,11 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 // einbetten zerlegt alle Testeinträge und holt die Embeddings in einem
 // Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
 // Eintrag-ID.
-func einbetten(ctx context.Context, k config.Konfig, eintraege []kern.Eintrag) (map[string][]kern.Abschnitt, error) {
+func einbetten(ctx context.Context, k config.Config, eintraege []kern.Eintrag) (map[string][]kern.Abschnitt, error) {
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModell,
-		EmbeddingModell: k.GeminiEmbeddingModell,
+		Modell:          k.GeminiModel,
+		EmbeddingModell: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func einbetten(ctx context.Context, k config.Konfig, eintraege []kern.Eintrag) (
 	}
 	vektoren, err := g.AbschnitteEinbetten(ctx, texte)
 	if err != nil {
-		return nil, fmt.Errorf("Embeddings (%s): %w", k.GeminiEmbeddingModell, err)
+		return nil, fmt.Errorf("Embeddings (%s): %w", k.GeminiEmbeddingModel, err)
 	}
 	if len(vektoren) != len(texte) {
 		return nil, fmt.Errorf("%d Embeddings für %d Abschnitte", len(vektoren), len(texte))
@@ -166,10 +166,10 @@ func einbetten(ctx context.Context, k config.Konfig, eintraege []kern.Eintrag) (
 // Abschnitte, Eintrag zuletzt) und gibt seine ID aus. Die festen
 // Testeinträge und alle anderen Einträge bleiben unberührt.
 func wegwerfAnlegen() error {
-	if err := config.DotenvLaden(); err != nil {
+	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Laden(os.Getenv)
+	k, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
