@@ -34,25 +34,23 @@ func (g group) String() string {
 }
 
 // target names the entry that contains the answer: either by the fixed ID
-// of a test entry (cmd/seed) or by document date plus type and/or issuer
-// (uploaded demo data, whose IDs are new on every upload). Empty fields are
-// not compared. resolve turns it into an ID.
+// of a seed entry (cmd/seed) or by the file name of the uploaded original
+// (demo data in demo/, whose IDs are new on every upload). Type, issuer and
+// document date come from the read model and can change with the next
+// upload; the file name does not. Text imports are all called text.txt, so
+// for them the document date decides as well. Empty fields are not
+// compared. resolve turns a target into an ID.
 type target struct {
-	ID     string
-	Type   string
-	Date   string // "YYYY-MM-DD"
-	Issuer string // exactly as in the entry
+	ID       string
+	FileName string // exactly as uploaded, e.g. "01_lab_report_2026-01-20.pdf"
+	Date     string // "YYYY-MM-DD", only needed for text imports
 }
 
 func (t target) String() string {
 	if t.ID != "" {
 		return "ID " + t.ID
 	}
-	s := t.Type + " " + t.Date
-	if t.Issuer != "" {
-		s += " (" + t.Issuer + ")"
-	}
-	return strings.TrimSpace(s)
+	return strings.TrimSpace(t.FileName + " " + t.Date)
 }
 
 type question struct {
@@ -61,20 +59,16 @@ type question struct {
 	Expected []target // entries with the answer, only for relevant; with several, all must arrive
 }
 
-// Demo data (synthetic, uploaded on 2026-11-07/08). The read model
-// classified the vaccination certificate and the text notes as other.
-// The referral came in as prescription and is the only one on its day. It used to
-// be found by its issuer, but since the upload on 2026-11-08 the doctor's
-// letter on the same day has the same issuer. If its type is ever corrected
-// in the app, adjust the target here.
+// Demo data from demo/, uploaded with demo/upload.sh. The two notes are
+// text imports (file name text.txt) and are found by their document date.
 var (
-	labJanuary    = target{Type: "lab_report", Date: "2026-01-20"}
-	labJuly       = target{Type: "lab_report", Date: "2026-07-22"}
-	orthopedics   = target{Type: "doctor_letter", Date: "2026-03-05"}
-	referral      = target{Type: "prescription", Date: "2026-03-05"}
-	tbe           = target{Type: "other", Date: "2026-06-10"}
-	physioEnd     = target{Type: "other", Date: "2026-08-12"}
-	bloodPressure = target{Type: "other", Date: "2026-09-23"}
+	labJanuary    = target{FileName: "01_lab_report_2026-01-20.pdf"}
+	labJuly       = target{FileName: "06_lab_report_followup_2026-07-22.pdf"}
+	orthopedics   = target{FileName: "02_doctor_letter_orthopedics_2026-03-05_photo.png"}
+	referral      = target{FileName: "03_referral_physiotherapy_2026-03-05.pdf"}
+	tbe           = target{FileName: "05_vaccination_tbe_2026-06-10.pdf"}
+	physioEnd     = target{FileName: "text.txt", Date: "2026-08-12"}
+	bloodPressure = target{FileName: "text.txt", Date: "2026-09-23"}
 )
 
 // questions is fixed, so measurements before and after a change (model,

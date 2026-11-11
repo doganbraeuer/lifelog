@@ -9,12 +9,19 @@ import (
 	"lifelog/backend/internal/core"
 )
 
+// candidate is what resolve needs to know about an entry.
+type candidate struct {
+	ID       string
+	FileName string // file name of the original, "text.txt" for text imports
+	Date     string // document date, "" if the entry has none
+}
+
 // resolve turns the targets of all questions into entry IDs. An ID target
-// must be in the list, a target by document date (plus type/issuer) must
-// match exactly one entry. Otherwise there is an error (all problems at
-// once), so a missing or duplicate upload does not silently give wrong
-// numbers. Without I/O, so it is testable.
-func resolve(questions []question, list []core.EntrySummary) (map[target]string, error) {
+// must be in the list, a target by file name (plus date) must match exactly
+// one entry. Otherwise there is an error (all problems at once), so a
+// missing or duplicate upload does not silently give wrong numbers. Without
+// I/O, so it is testable.
+func resolve(questions []question, list []candidate) (map[target]string, error) {
 	ids := map[target]string{}
 	var errs []error
 	for _, q := range questions {
@@ -23,13 +30,9 @@ func resolve(questions []question, list []core.EntrySummary) (map[target]string,
 				continue
 			}
 			var matching []string
-			for _, e := range list {
-				if t.ID != "" {
-					if e.ID == t.ID {
-						matching = append(matching, e.ID)
-					}
-				} else if matches(t, e) {
-					matching = append(matching, e.ID)
+			for _, c := range list {
+				if matches(t, c) {
+					matching = append(matching, c.ID)
 				}
 			}
 			switch len(matching) {
@@ -50,19 +53,16 @@ func resolve(questions []question, list []core.EntrySummary) (map[target]string,
 	return ids, nil
 }
 
-// matches: same document date, plus type and issuer as far as given in the
-// target.
-func matches(t target, e core.EntrySummary) bool {
-	if e.DocumentDate == nil || *e.DocumentDate != t.Date {
+// matches: the same ID, or the same file name and, if given, the same
+// document date. A target without ID and file name matches nothing.
+func matches(t target, c candidate) bool {
+	if t.ID != "" {
+		return c.ID == t.ID
+	}
+	if t.FileName == "" || c.FileName != t.FileName {
 		return false
 	}
-	if t.Type != "" && e.Type != t.Type {
-		return false
-	}
-	if t.Issuer != "" && (e.Issuer == nil || *e.Issuer != t.Issuer) {
-		return false
-	}
-	return true
+	return t.Date == "" || c.Date == t.Date
 }
 
 // measurement is the result of the vector search for one question. Without

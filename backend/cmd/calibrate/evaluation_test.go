@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -45,17 +47,16 @@ func TestQuestions_Structure(t *testing.T) {
 			}
 			seen[tg] = true
 			switch {
-			case tg.ID != "" && (tg.Type != "" || tg.Date != "" || tg.Issuer != ""):
-				t.Errorf("%q: target %+v has ID and type/date/issuer", q.Text, tg)
+			case tg.ID != "" && (tg.FileName != "" || tg.Date != ""):
+				t.Errorf("%q: target %+v has ID and file name/date", q.Text, tg)
 			case tg.ID != "" && !ids[tg.ID]:
 				t.Errorf("%q: expected entry %q is not a seed entry", q.Text, tg.ID)
-			case tg.ID == "":
-				if tg.Type == "" && tg.Issuer == "" {
-					t.Errorf("%q: target %+v without type and without issuer", q.Text, tg)
-				}
+			case tg.FileName == "text.txt":
 				if _, err := time.Parse(time.DateOnly, tg.Date); err != nil {
-					t.Errorf("%q: target %+v: invalid date: %v", q.Text, tg, err)
+					t.Errorf("%q: text import %+v needs a valid date: %v", q.Text, tg, err)
 				}
+			case tg.ID == "":
+				checkDemoFile(t, q.Text, tg)
 			}
 		}
 	}
@@ -65,36 +66,53 @@ func TestQuestions_Structure(t *testing.T) {
 	}
 }
 
-func date(s string) *string { return &s }
+// checkDemoFile: a target by file name must exist in demo/ and be uploaded
+// by demo/upload.sh, otherwise calibrate would stop after every refill.
+func checkDemoFile(t *testing.T, question string, tg target) {
+	t.Helper()
+	if tg.Date != "" {
+		t.Errorf("%q: target %+v: the date is only for text imports", question, tg)
+	}
+	found, err := filepath.Glob(filepath.Join("..", "..", "..", "demo", "*", tg.FileName))
+	if err != nil || len(found) != 1 {
+		t.Errorf("%q: %s should be in exactly one folder of demo/, found %v", question, tg.FileName, found)
+	}
+	script, err := os.ReadFile(filepath.Join("..", "..", "..", "demo", "upload.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), "/"+tg.FileName+`"`) {
+		t.Errorf("%q: demo/upload.sh does not upload %s", question, tg.FileName)
+	}
+}
 
 func TestResolve(t *testing.T) {
-	list := []core.EntrySummary{
-		{ID: "T1", Type: "doctor_letter", DocumentDate: date("2026-09-02")},
-		{ID: "D1", Type: "lab_report", DocumentDate: date("2026-01-20")},
-		{ID: "D2", Type: "lab_report", DocumentDate: date("2026-07-22")},
-		{ID: "D3", Type: "lab_report", DocumentDate: date("2026-10-14")},
-		{ID: "D4", Type: "lab_report", DocumentDate: date("2026-10-14")},
-		{ID: "N1", Type: "other", DocumentDate: nil},
-		{ID: "O1", Type: "doctor_letter", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe, Facharzt")},
-		{ID: "O2", Type: "other", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe")},
+	list := []candidate{
+		{ID: "T1", FileName: "text.txt", Date: "2026-09-02"},
+		{ID: "D1", FileName: "01_lab_report_2026-01-20.pdf", Date: "2026-01-20"},
+		{ID: "D2", FileName: "06_lab_report_followup_2026-07-22.pdf", Date: "2026-07-21"}, // model read the date wrong
+		{ID: "D3", FileName: "twice.pdf"},
+		{ID: "D4", FileName: "twice.pdf"},
+		{ID: "N1", FileName: "text.txt", Date: "2026-08-12"},
+		{ID: "N2", FileName: "text.txt", Date: ""},
 	}
-	jan := target{Type: "lab_report", Date: "2026-01-20"}
-	july := target{Type: "lab_report", Date: "2026-07-22"}
-	ref := target{Date: "2026-03-05", Issuer: "Orthopädie, Dr. Probe"}
+	jan := target{FileName: "01_lab_report_2026-01-20.pdf"}
+	july := target{FileName: "06_lab_report_followup_2026-07-22.pdf"}
+	note := target{FileName: "text.txt", Date: "2026-08-12"}
 	q := func(targets ...target) question {
 		return question{Text: "x", Group: relevant, Expected: targets}
 	}
 
 	ids, err := resolve([]question{
-		q(target{ID: "T1"}, july),
-		q(jan, july), // july a second time: no double check, no error
-		q(ref),       // by issuer, independent of the type; the longer issuer on the same day does not match
+		q(target{ID: "T1"}, july), // by file name, whatever date the model read
+		q(jan, july),              // july a second time: no double check, no error
+		q(note),                   // text import: file name plus date
 		{Text: "y", Group: unrelated},
 	}, list)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[target]string{{ID: "T1"}: "T1", jan: "D1", july: "D2", ref: "O2"}
+	want := map[target]string{{ID: "T1"}: "T1", jan: "D1", july: "D2", note: "N1"}
 	if len(ids) != len(want) {
 		t.Errorf("ids = %v", ids)
 	}
@@ -108,13 +126,12 @@ func TestResolve(t *testing.T) {
 		tg   target
 		want string
 	}{
-		"ID missing":         {target{ID: "T9"}, "no entry for ID T9"},
-		"date missing":       {target{Type: "lab_report", Date: "2026-08-12"}, "no entry for lab_report 2026-08-12"},
-		"wrong type":         {target{Type: "prescription", Date: "2026-01-20"}, "no entry for prescription 2026-01-20"},
-		"twice":              {target{Type: "lab_report", Date: "2026-10-14"}, "2 entries for lab_report 2026-10-14"},
-		"never without date": {target{Type: "other", Date: ""}, "no entry for other "},
-		"issuer missing":     {target{Date: "2026-03-05", Issuer: "Physiotherapie Beispiel"}, "no entry for 2026-03-05 (Physiotherapie Beispiel)"},
-		"only date":          {target{Date: "2026-03-05"}, "2 entries for 2026-03-05"},
+		"ID missing":        {target{ID: "T9"}, "no entry for ID T9"},
+		"file missing":      {target{FileName: "missing.pdf"}, "no entry for missing.pdf"},
+		"twice":             {target{FileName: "twice.pdf"}, "2 entries for twice.pdf"},
+		"text without date": {target{FileName: "text.txt"}, "3 entries for text.txt"},
+		"note date missing": {target{FileName: "text.txt", Date: "2026-09-23"}, "no entry for text.txt 2026-09-23"},
+		"empty target":      {target{Date: "2026-08-12"}, "no entry for 2026-08-12"},
 	} {
 		_, err := resolve([]question{q(jan, c.tg)}, list)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -123,9 +140,9 @@ func TestResolve(t *testing.T) {
 	}
 
 	// Several problems come together, each only once.
-	missing := target{Type: "doctor_letter", Date: "2026-04-01"}
+	missing := target{FileName: "missing.pdf"}
 	_, err = resolve([]question{q(missing), q(missing, target{ID: "T9"})}, list)
-	if err == nil || strings.Count(err.Error(), "doctor_letter 2026-04-01") != 1 || !strings.Contains(err.Error(), "ID T9") {
+	if err == nil || strings.Count(err.Error(), "missing.pdf") != 1 || !strings.Contains(err.Error(), "ID T9") {
 		t.Errorf("several errors: %v", err)
 	}
 }

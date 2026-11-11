@@ -6,9 +6,10 @@
 //
 // Before, the seed data (go run ./cmd/seed, with chunks) and the synthetic
 // demo data (lab reports, orthopedics, TBE, notes; uploaded) must be in the
-// database. The program finds the demo entries by type and document date; if
-// one is missing or there twice, it stops before the first embedding. It
-// only reads from the database.
+// database (demo/upload.sh does both). The program finds the demo entries by
+// the file name of the original (text imports by date); if one is missing or
+// there twice, it stops before the first embedding. It only reads from the
+// database.
 //
 //	go run ./cmd/calibrate                    # with the threshold core.MinScore
 //	go run ./cmd/calibrate -threshold 0.82    # compute another threshold
@@ -86,16 +87,32 @@ func run(threshold float64) error {
 		return err
 	}
 
-	// Read only: resolve targets (type + document date or seed ID) to IDs
-	// before the first embedding costs quota.
+	// Read only: resolve targets (seed ID or file name) to IDs before the
+	// first embedding costs quota. The short form has no file name, so each
+	// entry is read once.
 	list, err := db.ListSummaries(ctx, "health")
 	if err != nil {
 		return err
 	}
+	candidates := make([]candidate, 0, len(list))
+	for _, s := range list {
+		e, found, err := db.GetEntry(ctx, s.ID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			continue // deleted in the meantime
+		}
+		date := ""
+		if e.DocumentDate != nil {
+			date = *e.DocumentDate
+		}
+		candidates = append(candidates, candidate{ID: e.ID, FileName: e.File.FileName, Date: date})
+	}
 	qs := questions()
-	ids, err := resolve(qs, list)
+	ids, err := resolve(qs, candidates)
 	if err != nil {
-		return fmt.Errorf("entries for the questions are missing or not unique (seed data: go run ./cmd/seed; demo data: upload):\n%w", err)
+		return fmt.Errorf("entries for the questions are missing or not unique (fill the database with demo/upload.sh):\n%w", err)
 	}
 	names := map[string]string{}
 	for _, e := range list {
