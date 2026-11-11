@@ -26,8 +26,7 @@ func response(text string, reason genai.FinishReason) *genai.GenerateContentResp
 	}
 }
 
-// validResponse uses the JSON field names of the read schema, which are
-// still German (read.go).
+// validResponse uses the JSON field names of the read schema (read.go).
 const validResponse = `{
   "readable": true,
   "documentDate": "2026-10-14",

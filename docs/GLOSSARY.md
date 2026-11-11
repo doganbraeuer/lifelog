@@ -236,6 +236,7 @@ Every place where the app talks to the backend:
 | index `eintragId` | `entryId` |
 | vector index `abschnitte_vektor` (filter `modul`) | `chunks_vector` (filter `module`) |
 | file `abschnitte_vektor.json` | `chunks_vector.json` |
+| integration test database `<MONGODB_DB>_integrationstest` | `<MONGODB_DB>_integration_test` |
 
 ## Environment variables
 
@@ -276,6 +277,30 @@ Every place where the app talks to the backend:
 | `internal/beispieldaten` | `internal/sampledata` |
 | `internal/api` | unchanged |
 | `backend/testdaten` (`laborbefund.*`) | `backend/testdata` (`lab_report.*`) |
+
+## Demo data (demo/)
+
+Until 2026-11-11 outside the repository in `lifelog-demo` and
+`lifelog-live`. Content unchanged, file names English; `fotos/` → `photos/`,
+`texte/` → `texts/`, suffix `_foto` → `_photo`.
+
+| German | English |
+|---|---|
+| `hochladen.sh` | `demo/upload.sh` (also runs `cmd/seed`) |
+| `LIESMICH.txt` (both folders) | `demo/README.md` |
+| `01_laborbefund_2026-01-20` | `01_lab_report_2026-01-20` |
+| `02_arztbrief_orthopaedie_2026-03-05` | `02_doctor_letter_orthopedics_2026-03-05` |
+| `03_ueberweisung_physiotherapie_2026-03-05` | `03_referral_physiotherapy_2026-03-05` |
+| `04_rezept_2026-05-18` | `04_prescription_2026-05-18` |
+| `05_impfbestaetigung_fsme_2026-06-10` | `05_vaccination_tbe_2026-06-10` |
+| `06_laborbefund_kontrolle_2026-07-22` | `06_lab_report_followup_2026-07-22` |
+| `07_notiz_physiotherapie_2026-08-12.txt` | `07_note_physiotherapy_2026-08-12.txt` |
+| `08_notiz_blutdruck_2026-09-23.txt` | `08_note_blood_pressure_2026-09-23.txt` |
+| `lifelog_live_demo/` | `demo/live/` |
+| `L1_laborbefund_2026-10-28` | `L1_lab_report_2026-10-28` |
+| `L2_arztbrief_kontrolle_2026-04-30` | `L2_doctor_letter_followup_2026-04-30` |
+| `L3_sehtest_2026-09-15_foto` | `L3_eye_test_2026-09-15_photo` |
+| app uploads `image_picker_….png` (2026-11-09) | `demo/live/*_app.png` |
 
 ## Model interface (internal/llm)
 

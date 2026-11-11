@@ -882,6 +882,11 @@ Planned behaviour:
   2026-11-08): 0.82 stays. Keep watching with more documents. Measure again
   after the switch to English prompts (2026-11): the read prompt determines
   the full text of uploaded files and therefore their chunks and vectors.
+  Baseline before the switch (15 entries, same ranges, near up to 0.865):
+  [docs/calibration/2026-11-11-baseline.md](calibration/2026-11-11-baseline.md).
+  After refilling the database with `demo/upload.sh`, run
+  `backend/cmd/calibrate` and compare; the seed entries must score exactly
+  as before.
 - **Filter letterheads and addresses before embedding:** unrelated questions
   mentioning „Salzburg“ (weather, train ride) scored 0.79–0.80, close to the
   threshold, because the address is in the letterhead. If letterheads and

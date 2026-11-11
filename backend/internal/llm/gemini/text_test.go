@@ -98,7 +98,7 @@ func TestTextExtractionFromText(t *testing.T) {
 		t.Errorf("without readable/code block: %v", err)
 	}
 
-	for _, broken := range []string{"", "kein JSON", `{"type": 3}`, `{"facts": [{"value": 14.2}]}`} {
+	for _, broken := range []string{"", "no JSON", `{"type": 3}`, `{"facts": [{"value": 14.2}]}`} {
 		_, err := textExtractionFromText(broken)
 		if !errors.Is(err, llm.ErrInvalidResponse) {
 			t.Errorf("%q: %v, want ErrInvalidResponse", broken, err)
@@ -166,7 +166,7 @@ func TestReadText_SendsTextRequest(t *testing.T) {
 
 	// Truncated response: invalid, not unavailable.
 	g.generate = func(context.Context, string, []*genai.Content, *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-		return response(`{"type": "sonst`, genai.FinishReasonMaxTokens), nil
+		return response(`{"type": "oth`, genai.FinishReasonMaxTokens), nil
 	}
 	if _, err := g.ReadText(context.Background(), text, []string{"other"}); !errors.Is(err, llm.ErrInvalidResponse) {
 		t.Errorf("truncated: %v", err)
