@@ -382,3 +382,52 @@ func TestVerify_MixedSources(t *testing.T) {
 		t.Errorf("source = %q, want pdf_text", v.Source)
 	}
 }
+
+// TestVerify_Corrected: a corrected field gets its own status, which still
+// says whether the corrected value is in the original.
+func TestVerify_Corrected(t *testing.T) {
+	e := labEntry()
+	at := checkTime
+	e.Facts[1].Value = "6,3" // the user typed a value that is not on the document
+	e.Facts[0].Unit = ptr("mg/dl")
+	e.Issuer = ptr("Labor Muster GmbH, Salzburg")
+	e.Corrections = []Correction{
+		{Field: "facts.f1.unit", Recognized: ptr("g/dl"), Corrected: ptr("mg/dl"), CorrectedAt: at},
+		{Field: "facts.f2.value", Recognized: ptr("6,9"), Corrected: ptr("6,3"), CorrectedAt: at},
+		{Field: "issuer", Recognized: ptr("Labor Muster"), Corrected: ptr("Labor Muster GmbH, Salzburg"), CorrectedAt: at},
+		{Field: "type", Recognized: ptr("other"), Corrected: ptr("lab_report"), CorrectedAt: at},
+	}
+	// The original says "Leukozyten 6,8 G/l" and "Hämoglobin 14,2 g/dl".
+	v := Verify(e, ocrPage(labPage...), checkTime)
+
+	want := map[string]string{
+		"documentDate": FieldConfirmed,            // not corrected
+		"issuer":       FieldCorrectedConfirmed,   // corrected to what the original says
+		"facts.f1":     FieldCorrectedUnconfirmed, // unit corrected to "mg/dl", the original says g/dl
+		"facts.f2":     FieldCorrectedUnconfirmed, // value corrected to 6,3, the original says 6,8
+		"facts.f3":     FieldConfirmed,
+		"facts.f4":     FieldConfirmed,
+	}
+	for name, status := range want {
+		if got := field(t, v, name).Status; got != status {
+			t.Errorf("%s: %s, want %s", name, got, status)
+		}
+	}
+	if v.Confirmed != 4 || v.Corrected != 3 || v.Total != 6 || *v.MatchPercent() != 67 {
+		t.Errorf("confirmed/corrected/total/percent = %d/%d/%d/%d", v.Confirmed, v.Corrected, v.Total, *v.MatchPercent())
+	}
+	if is := field(t, v, "issuer"); is.Source != SourceOCR || len(is.Locations) == 0 {
+		t.Errorf("corrected and found: source %q, locations %+v", is.Source, is.Locations)
+	}
+}
+
+// facts.f1 must not count as corrected because of facts.f10.
+func TestCorrected_PrefixIsExact(t *testing.T) {
+	e := Entry{Corrections: []Correction{{Field: "facts.f10.value"}}}
+	if corrected(e, "facts.f1") {
+		t.Error("facts.f1 counted as corrected because of facts.f10.value")
+	}
+	if !corrected(e, "facts.f10") {
+		t.Error("facts.f10 not counted as corrected")
+	}
+}

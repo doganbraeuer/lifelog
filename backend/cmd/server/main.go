@@ -15,6 +15,9 @@ import (
 	"lifelog/backend/internal/api"
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/llm/gemini"
+	"lifelog/backend/internal/ocr"
+	"lifelog/backend/internal/ocr/poppler"
+	"lifelog/backend/internal/ocr/tesseract"
 	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/store"
 )
@@ -74,12 +77,14 @@ func run() error {
 	slog.Info("models", "read", c.GeminiModel, "fallback", c.GeminiFallbackModel,
 		"reserve", c.GeminiFallbackReserve, "embedding", c.GeminiEmbeddingModel)
 
+	recognizer := newRecognizer(c)
+
 	server := &http.Server{
 		Addr: c.ListenAddress(),
 		Handler: api.NewRouter(api.Dependencies{
 			DB:        db,
 			Entries:   db,
-			Uploader:  service.NewUploader(db, g, g, store.NewID),
+			Uploader:  service.NewUploader(db, g, g, recognizer, store.NewID),
 			Asker:     service.NewAsker(db, g, g),
 			Corrector: service.NewCorrector(db),
 			Deleter:   service.NewDeleter(db),
@@ -113,4 +118,36 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// newRecognizer builds the second reader for the verification (docs/API.md,
+// verification). A missing program is never fatal: the server starts, and
+// files it cannot read are stored unchecked (ocr_unavailable). Without
+// Poppler that concerns PDFs, without Tesseract photos and scanned pages.
+// nil if OCR_ENGINE=none.
+func newRecognizer(c config.Config) ocr.Recognizer {
+	if c.OCREngine == config.OCREngineNone {
+		slog.Info("verification switched off (OCR_ENGINE=none), files stay unchecked")
+		return nil
+	}
+	p := &ocr.Pipeline{}
+	if pdf, err := poppler.New(); err != nil {
+		slog.Warn("Poppler missing, PDFs stay unchecked (backend/README.md, section verification)", "error", err)
+	} else {
+		p.PDF = pdf
+	}
+	if engine, err := tesseract.New(c.TesseractLang); err != nil {
+		slog.Warn("Tesseract missing, photos and scans stay unchecked (backend/README.md, section verification)", "error", err)
+	} else {
+		p.Engine = engine
+	}
+	var names []string
+	if p.PDF != nil {
+		names = append(names, p.PDF.Name())
+	}
+	if p.Engine != nil {
+		names = append(names, p.Engine.Name())
+	}
+	slog.Info("verification", "programs", names)
+	return p
 }

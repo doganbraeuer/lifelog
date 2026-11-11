@@ -9,20 +9,21 @@ import (
 )
 
 // DeleteStore is what deleting needs from the database. Implemented by
-// store.Store. DeleteFile and DeleteChunks must not return an error if
-// there is nothing (left) to delete.
+// store.Store. DeleteChunks, DeleteOCR and DeleteFile must not return an
+// error if there is nothing (left) to delete.
 type DeleteStore interface {
 	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
 	DeleteChunks(ctx context.Context, entryID string) error
+	DeleteOCR(ctx context.Context, entryID string) error
 	DeleteFile(ctx context.Context, id string) error
 	DeleteEntry(ctx context.Context, id string) (found bool, err error)
 }
 
-// deleteTimeout: time for the three delete steps. They keep running without
+// deleteTimeout: time for the four delete steps. They keep running without
 // the request's context (see Delete), so they need a limit of their own.
 const deleteTimeout = 30 * time.Second
 
-// Deleter deletes an entry with its chunks and original file
+// Deleter deletes an entry with its chunks, stored words and original file
 // (docs/API.md 3.7).
 type Deleter struct {
 	store DeleteStore
@@ -36,8 +37,9 @@ func NewDeleter(s DeleteStore) *Deleter {
 //
 //  1. Check the ID, load the entry (it names the ID of the original file).
 //  2. Delete the chunks: from now on search no longer finds the entry.
-//  3. Delete the original file. If it is already missing, that is no error.
-//  4. Delete the entry last.
+//  3. Delete the words read from the original (collection ocr).
+//  4. Delete the original file. If it is already missing, that is no error.
+//  5. Delete the entry last.
 //
 // If a step fails, Delete stops. The entry is then still visible, and
 // calling again cleans up the rest.
@@ -65,6 +67,9 @@ func (d *Deleter) Delete(ctx context.Context, id string) error {
 	defer cancel()
 
 	if err := d.store.DeleteChunks(ctx, id); err != nil {
+		return err
+	}
+	if err := d.store.DeleteOCR(ctx, id); err != nil {
 		return err
 	}
 	if err := d.store.DeleteFile(ctx, e.File.ID); err != nil {

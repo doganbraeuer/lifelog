@@ -32,6 +32,9 @@ type entryDoc struct {
 	Facts        []factDoc       `bson:"facts"`
 	File         fileDoc         `bson:"file"`
 	Corrections  []correctionDoc `bson:"corrections"`
+	// Verification is missing in entries stored before 2026-11-11 and in
+	// seed entries; reading them gives unchecked/not_run.
+	Verification *verificationDoc `bson:"verification,omitempty"`
 }
 
 // factDoc and correctionDoc have exactly the field names of core.Fact and
@@ -114,7 +117,8 @@ func toEntryDoc(e core.Entry) (entryDoc, error) {
 			Size:     e.File.Size,
 			Sha256:   e.File.Sha256,
 		},
-		Corrections: corrections,
+		Corrections:  corrections,
+		Verification: toVerificationDoc(e.Verification),
 	}, nil
 }
 
@@ -143,7 +147,8 @@ func (d entryDoc) toCore() core.Entry {
 			Size:     d.File.Size,
 			Sha256:   d.File.Sha256,
 		},
-		Corrections: corrections,
+		Corrections:  corrections,
+		Verification: d.Verification.toCore(),
 	}
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"math"
 	"time"
 
 	"lifelog/backend/internal/core"
@@ -53,6 +54,43 @@ type entryJSON struct {
 	Facts        []factJSON       `json:"facts"`
 	File         fileJSON         `json:"file"`
 	Corrections  []correctionJSON `json:"corrections"`
+	Verification verificationJSON `json:"verification"`
+}
+
+// verificationJSON is entry.verification (API.md, section 2). Empty texts
+// become null, so the app sees one consistent shape for every status.
+type verificationJSON struct {
+	Status       string           `json:"status"`
+	Reason       *string          `json:"reason"`
+	Source       *string          `json:"source"`
+	Engine       *string          `json:"engine"`
+	CheckedAt    *string          `json:"checkedAt"`
+	Confirmed    int              `json:"confirmed"`
+	Corrected    int              `json:"corrected"`
+	Total        int              `json:"total"`
+	MatchPercent *int             `json:"matchPercent"`
+	Fields       []fieldCheckJSON `json:"fields"`
+}
+
+type fieldCheckJSON struct {
+	Field      string         `json:"field"`
+	Status     string         `json:"status"`
+	Source     *string        `json:"source"`
+	Confidence *int           `json:"confidence"`
+	Locations  []locationJSON `json:"locations"`
+}
+
+// locationJSON is either a rectangle on a page (page, x, y, width, height)
+// or a range in the full text of a text import (start, end). The fields of
+// the other kind are left out (pointers with omitempty).
+type locationJSON struct {
+	Page   *int     `json:"page,omitempty"`
+	X      *float64 `json:"x,omitempty"`
+	Y      *float64 `json:"y,omitempty"`
+	Width  *float64 `json:"width,omitempty"`
+	Height *float64 `json:"height,omitempty"`
+	Start  *int     `json:"start,omitempty"`
+	End    *int     `json:"end,omitempty"`
 }
 
 type factJSON struct {
@@ -101,8 +139,64 @@ func entryToJSON(e core.Entry) entryJSON {
 			ID: e.File.ID, FileName: e.File.FileName, MimeType: e.File.MimeType,
 			Size: e.File.Size, Sha256: e.File.Sha256,
 		},
-		Corrections: corrections,
+		Corrections:  corrections,
+		Verification: verificationToJSON(e.Verification),
 	}
+}
+
+func verificationToJSON(v core.Verification) verificationJSON {
+	if v.Status == "" {
+		// Never set (cannot come from the store, which reads it as
+		// not_run): show the same.
+		v = core.Unchecked(core.ReasonNotRun)
+	}
+	out := verificationJSON{
+		Status:       v.Status,
+		Reason:       nullIfEmpty(v.Reason),
+		Source:       nullIfEmpty(v.Source),
+		Engine:       nullIfEmpty(v.Engine),
+		Confirmed:    v.Confirmed,
+		Corrected:    v.Corrected,
+		Total:        v.Total,
+		MatchPercent: v.MatchPercent(),
+		Fields:       make([]fieldCheckJSON, 0, len(v.Fields)), // never nil
+	}
+	if v.CheckedAt != nil {
+		t := timeJSON(*v.CheckedAt)
+		out.CheckedAt = &t
+	}
+	for _, f := range v.Fields {
+		fj := fieldCheckJSON{
+			Field: f.Field, Status: f.Status, Source: nullIfEmpty(f.Source), Confidence: f.Confidence,
+			Locations: make([]locationJSON, 0, len(f.Locations)), // never nil
+		}
+		for _, l := range f.Locations {
+			fj.Locations = append(fj.Locations, locationToJSON(l))
+		}
+		out.Fields = append(out.Fields, fj)
+	}
+	return out
+}
+
+func locationToJSON(l core.Location) locationJSON {
+	if l.Page == 0 {
+		start, end := l.Start, l.End
+		return locationJSON{Start: &start, End: &end}
+	}
+	page := l.Page
+	x, y, w, h := round4(l.Box.X), round4(l.Box.Y), round4(l.Box.W), round4(l.Box.H)
+	return locationJSON{Page: &page, X: &x, Y: &y, Width: &w, Height: &h}
+}
+
+// round4: four decimals are a tenth of a millimetre on an A4 page, more
+// than enough for drawing a rectangle.
+func round4(f float64) float64 { return math.Round(f*10000) / 10000 }
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func entryListToJSON(list []core.EntrySummary) entryListJSON {

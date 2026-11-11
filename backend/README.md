@@ -63,6 +63,29 @@ pricing page. On 429/503 the backend retries up to twice; with
 that, 20 s of the read time limit (50 s) are reserved by default
 (`GEMINI_FALLBACK_RESERVE_SECONDS`); the main model gets 30 s.
 
+## Verification (text layer and OCR)
+
+A second reader checks the values the vision LLM extracted
+(docs/API.md, section 2, verification). It runs locally, with open source
+programs, and costs no model call:
+
+```sh
+brew install poppler tesseract tesseract-lang          # macOS
+sudo apt install poppler-utils tesseract-ocr tesseract-ocr-deu   # Debian/Ubuntu
+```
+
+- PDF pages with a text layer: `pdftotext -bbox-layout` (Poppler).
+- Photos and PDF pages without a text layer: `pdftoppm` renders the page,
+  Tesseract (`TESSERACT_LANG`, default `deu`) reads it.
+
+It runs at the same time as the vision LLM (limit 30 s), so an upload does
+not take longer. The words with their positions are stored in the
+collection `ocr`; PATCH checks corrected values against them. If a program
+is missing, the server still starts and logs a warning; the affected
+entries are stored `unchecked` with `reason: ocr_unavailable`. `OCR_ENGINE=none`
+switches the check off. The tests that need the programs skip themselves if
+they are missing.
+
 ## Vector index
 
 Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
@@ -169,10 +192,13 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `cmd/models` | List available Gemini models |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
 | `internal/config` | Read and check environment variables, mask secrets |
-| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections |
+| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original |
 | `internal/llm` | Replaceable interface to the models (`Reader`, `Embedder`, `Answerer`) |
 | `internal/llm/gemini` | Implementation with Gemini, including retry and fallback model |
 | `internal/llm/fake` | Fake models for tests |
+| `internal/ocr` | Replaceable second reader: `Recognizer` (file), `Engine` (image), `PDF`; `Pipeline` uses the text layer where possible and OCR where needed |
+| `internal/ocr/poppler`, `internal/ocr/tesseract` | Implementations with the command line programs (stdin/stdout, no temporary files) |
+| `internal/ocr/fake` | Fake second reader for tests |
 | `internal/service` | Use cases: upload, text import, question, correction, delete |
-| `internal/store` | MongoDB: entries, chunks with embeddings, original files (GridFS), indexes |
+| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), indexes |
 | `internal/api` | Router, handlers, error format, JSON types |

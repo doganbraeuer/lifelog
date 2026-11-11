@@ -17,6 +17,9 @@ const (
 
 	FieldConfirmed   = "confirmed"
 	FieldUnconfirmed = "unconfirmed"
+	// The user corrected the field; the corrected value was (not) found.
+	FieldCorrectedConfirmed   = "corrected_confirmed"
+	FieldCorrectedUnconfirmed = "corrected_unconfirmed"
 
 	SourcePDFText = "pdf_text" // PDF page with a text layer: words read from the PDF itself
 	SourceOCR     = "ocr"      // photo or PDF page without a text layer: OCR
@@ -50,7 +53,8 @@ type Verification struct {
 	Source    string     // SourcePDFText, SourceOCR, SourceText or SourceMixed; empty for unchecked
 	Engine    string     // e.g. "pdftotext 26.11.0"; empty for text and unchecked
 	CheckedAt *time.Time // nil for unchecked
-	Confirmed int
+	Confirmed int        // fields whose current value was found (also corrected ones)
+	Corrected int        // fields the user corrected
 	Total     int
 	Fields    []FieldCheck // never nil
 }
@@ -68,8 +72,8 @@ func (v Verification) MatchPercent() *int {
 // FieldCheck is the result for one field.
 type FieldCheck struct {
 	Field      string // "documentDate", "issuer" or "facts.<id>"
-	Status     string // FieldConfirmed or FieldUnconfirmed
-	Source     string // how it was confirmed: source of the first location; empty if unconfirmed
+	Status     string // FieldConfirmed, FieldUnconfirmed, FieldCorrectedConfirmed or FieldCorrectedUnconfirmed
+	Source     string // how it was found: source of the first location; empty if not found
 	Confidence *int   // lowest OCR confidence of the matched OCR words; nil if there are none
 	Locations  []Location
 }
@@ -159,7 +163,15 @@ func (d *document) verify(e Entry, source, engine string, now time.Time) Verific
 		Fields:    []FieldCheck{},
 	}
 	add := func(field string, best, all []match) {
-		v.Fields = append(v.Fields, d.fieldCheck(field, best, all))
+		fc := d.fieldCheck(field, best, all)
+		if corrected(e, field) {
+			if fc.Status == FieldConfirmed {
+				fc.Status = FieldCorrectedConfirmed
+			} else {
+				fc.Status = FieldCorrectedUnconfirmed
+			}
+		}
+		v.Fields = append(v.Fields, fc)
 	}
 	if e.DocumentDate != nil {
 		all := d.findDate(*e.DocumentDate)
@@ -176,11 +188,27 @@ func (d *document) verify(e Entry, source, engine string, now time.Time) Verific
 
 	v.Total = len(v.Fields)
 	for _, fc := range v.Fields {
-		if fc.Status == FieldConfirmed {
+		switch fc.Status {
+		case FieldConfirmed:
 			v.Confirmed++
+		case FieldCorrectedConfirmed:
+			v.Confirmed++
+			v.Corrected++
+		case FieldCorrectedUnconfirmed:
+			v.Corrected++
 		}
 	}
 	return v
+}
+
+// corrected: does e.Corrections hold an item for this field? For a fact
+// ("facts.f2") a correction of its value or unit counts ("facts.f2.value",
+// "facts.f2.unit"). A correction back to the recognized value has been
+// removed already (rule 3), so the field then counts as not corrected.
+func corrected(e Entry, field string) bool {
+	return slices.ContainsFunc(e.Corrections, func(c Correction) bool {
+		return c.Field == field || strings.HasPrefix(c.Field, field+".")
+	})
 }
 
 // head returns the first match as a list, or nil.

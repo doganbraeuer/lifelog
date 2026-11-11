@@ -12,6 +12,7 @@ import (
 // by store.Store.
 type CorrectionStore interface {
 	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
+	GetOCR(ctx context.Context, entryID string) (r core.OCRResult, found bool, err error)
 	SaveCorrection(ctx context.Context, e core.Entry) (found bool, err error)
 }
 
@@ -31,7 +32,9 @@ func NewCorrector(s CorrectionStore) *Corrector {
 //  2. core.Correct: check everything, then apply rules 1–4.
 //  3. If nothing changed: write nothing, return the entry unchanged
 //     (API.md 3.5).
-//  4. Otherwise store the correctable fields.
+//  4. Check the values again (reverify), so corrected fields show whether
+//     the new value is in the original.
+//  5. Store the correctable fields and the verification.
 //
 // Without a lock: two simultaneous corrections of the same entry can
 // overwrite each other (API.md 4, concurrent corrections).
@@ -62,6 +65,11 @@ func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (cor
 		return updated, nil
 	}
 
+	updated.Verification, err = c.reverify(ctx, updated, now)
+	if err != nil {
+		return core.Entry{}, err
+	}
+
 	found, err = c.store.SaveCorrection(ctx, updated)
 	if err != nil {
 		return core.Entry{}, err
@@ -70,7 +78,37 @@ func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (cor
 		// Deleted between reading and writing.
 		return core.Entry{}, core.ErrEntryNotFound
 	}
-	// Only field names, never values.
-	slog.Info("correction saved", "entry", id, "fields", changed)
+	// Only field names and counts, never values.
+	slog.Info("correction saved", "entry", id, "fields", changed,
+		"confirmed", updated.Verification.Confirmed, "corrected", updated.Verification.Corrected)
 	return updated, nil
+}
+
+// reverify checks the corrected entry against what was read at upload,
+// without reading the original again:
+//
+//   - unchecked stays unchecked (nothing was read).
+//   - Text import: against the full text, which never changes.
+//   - File: against the words stored at upload (collection ocr).
+//
+// If the words of a checked entry are missing (must not happen: the upload
+// stores them before the entry), the old verification is kept and a
+// warning logged; the correction itself is still saved.
+func (c *Corrector) reverify(ctx context.Context, e core.Entry, now time.Time) (core.Verification, error) {
+	old := e.Verification
+	if old.Status != core.VerificationChecked {
+		return old, nil
+	}
+	if old.Source == core.SourceText {
+		return core.VerifyText(e, now), nil
+	}
+	words, found, err := c.store.GetOCR(ctx, e.ID)
+	if err != nil {
+		return core.Verification{}, err
+	}
+	if !found {
+		slog.Warn("ocr words missing, verification not updated", "entry", e.ID)
+		return old, nil
+	}
+	return core.Verify(e, words, now), nil
 }

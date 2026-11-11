@@ -26,7 +26,7 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-var ownCollections = []string{collEntries, collChunks, bucketFiles + ".files", bucketFiles + ".chunks"}
+var ownCollections = []string{collEntries, collChunks, collOCR, bucketFiles + ".files", bucketFiles + ".chunks"}
 
 func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
@@ -91,7 +91,8 @@ func testEntry(id, fileID, hash string) core.Entry {
 		Facts:        []core.Fact{{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
 		File: core.File{ID: fileID, FileName: "befund.pdf", MimeType: core.MimePDF,
 			Size: 9, Sha256: hash},
-		Corrections: []core.Correction{},
+		Corrections:  []core.Correction{},
+		Verification: sampleVerification(), // from documents_test.go
 	}
 }
 

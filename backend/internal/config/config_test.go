@@ -186,3 +186,20 @@ func TestLoad_RenamedVariableEmptyIsIgnored(t *testing.T) {
 		t.Fatalf("empty old variable must not fail: %v", err)
 	}
 }
+
+func TestLoad_OCR(t *testing.T) {
+	c, err := Load(env(complete()))
+	if err != nil || c.OCREngine != "tesseract" || c.TesseractLang != "deu" {
+		t.Errorf("defaults: %q, %q, %v", c.OCREngine, c.TesseractLang, err)
+	}
+	e := complete()
+	e["OCR_ENGINE"], e["TESSERACT_LANG"] = " none ", "deu+eng"
+	c, err = Load(env(e))
+	if err != nil || c.OCREngine != "none" || c.TesseractLang != "deu+eng" {
+		t.Errorf("set: %q, %q, %v", c.OCREngine, c.TesseractLang, err)
+	}
+	e["OCR_ENGINE"] = "paddle"
+	if _, err := Load(env(e)); err == nil || !strings.Contains(err.Error(), "OCR_ENGINE") {
+		t.Errorf("unknown engine: %v", err)
+	}
+}
