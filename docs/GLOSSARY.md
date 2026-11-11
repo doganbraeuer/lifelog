@@ -339,6 +339,7 @@ the text layer of a PDF, or OCR for photos and scans.
 | Prüfung eines Felds | field check | `FieldCheck` |
 | geprüft / nicht geprüft | `checked` / `unchecked` | |
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |
+| korrigiert und bestätigt / korrigiert und unbestätigt | `corrected_confirmed` / `corrected_unconfirmed` | |
 | Grund (warum nicht geprüft) | reason | |
 | Übereinstimmung in Prozent | match percent | `matchPercent` |
 | Prüfquelle | source: `pdf_text` (text layer), `ocr`, `text` (text import), `mixed` (entry only) | `Source` |
@@ -353,9 +354,10 @@ the text layer of a PDF, or OCR for photos and scans.
 | `verification.reason` | `null`, `ocr_unavailable`, `ocr_failed`, `unsupported_file_type`, `too_many_pages`, `no_text`, `not_run` |
 | `verification.source` | `pdf_text`, `ocr`, `text`, `mixed`, `null` |
 | `verification.fields[].source` | `pdf_text`, `ocr`, `text`, `null` |
-| `verification.engine`, `checkedAt`, `confirmed`, `total`, `matchPercent` | |
+| `verification.engine`, `checkedAt`, `confirmed`, `corrected`, `total`, `matchPercent` | |
+| `verification.fields[].status` | `confirmed`, `unconfirmed`, `corrected_confirmed`, `corrected_unconfirmed` |
 | `verification.fields[].field` | `documentDate`, `issuer`, `facts.<id>` |
-| `verification.fields[].status` / `confidence` / `locations` | |
+| `verification.fields[].confidence` / `locations` | |
 | location in a file | `page`, `x`, `y`, `width`, `height` (fractions of the page) |
 | location in a text import | `start`, `end` (code point offsets in `fullText`) |
 
@@ -363,7 +365,8 @@ the text layer of a PDF, or OCR for photos and scans.
 
 | German | English |
 |---|---|
-| collection mit den OCR-Wörtern | `ocr` (unique index `ocr_entry_unique` on `entryId`) |
+| collection mit den gelesenen Wörtern (Textebene oder OCR) | `ocr` (`_id` = entry ID; `engine`, `pages`, `words`) |
+| entry field in MongoDB | `verification` (missing in old entries → `unchecked`/`not_run`) |
 | Messung der OCR-Qualität | `cmd/ocrcheck` |
 | Messergebnisse | `docs/ocr/` |
 | OCR wählen / ausschalten | env `OCR_ENGINE` (`tesseract`, `none`) |

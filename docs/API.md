@@ -143,6 +143,7 @@ return an entry:
     "engine": "pdftotext 26.11.0",
     "checkedAt": "2026-11-03T19:05:31Z",
     "confirmed": 5,
+    "corrected": 1,
     "total": 6,
     "matchPercent": 83,
     "fields": [
@@ -153,7 +154,7 @@ return an entry:
                       { "page": 1, "x": 0.3391, "y": 0.0911, "width": 0.0802, "height": 0.0139 }] },
       { "field": "facts.f1", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.3012, "y": 0.2950, "width": 0.1120, "height": 0.0145 }] },
-      { "field": "facts.f2", "status": "confirmed", "source": "pdf_text", "confidence": null,
+      { "field": "facts.f2", "status": "corrected_confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.3018, "y": 0.3157, "width": 0.0988, "height": 0.0143 }] },
       { "field": "facts.f3", "status": "unconfirmed", "source": null, "confidence": null, "locations": [] },
       { "field": "facts.f4", "status": "confirmed", "source": "pdf_text", "confidence": null,
@@ -256,7 +257,8 @@ the place in the original.
 | `source` | String or `null` | What was compared against: `pdf_text`, `ocr`, `text`, or `mixed` if the pages of a PDF used both `pdf_text` and `ocr`. `null` for `unchecked`. |
 | `engine` | String or `null` | Programs with version (and language for OCR), e.g. `"pdftotext 26.11.0"`, `"tesseract 5.5.4 deu"`, for `mixed` both separated by a comma. `null` for a text import and for `unchecked`. |
 | `checkedAt` | String or `null` | Time of the last check (RFC 3339, UTC). `null` for `unchecked`. |
-| `confirmed` | Number | Number of confirmed fields |
+| `confirmed` | Number | Number of fields whose current value was found in the original (`confirmed` and `corrected_confirmed`) |
+| `corrected` | Number | Number of fields the user corrected (`corrected_confirmed` and `corrected_unconfirmed`) |
 | `total` | Number | Number of checked fields |
 | `matchPercent` | Number or `null` | `confirmed / total` in percent, rounded to a whole number. `null` for `unchecked` and when `total` is 0. |
 | `fields` | List | One item per checked field. `[]` for `unchecked`. |
@@ -266,10 +268,10 @@ the place in the original.
 | Field | Type | Note |
 |---|---|---|
 | `field` | String | `documentDate`, `issuer` or `facts.<id>`. Order: date, issuer, facts in the order of `facts`. |
-| `status` | String | `confirmed`: found in the original. `unconfirmed`: not found. |
-| `source` | String or `null` | How the field was confirmed: `pdf_text`, `ocr` or `text` (the source of the page of the first location). `null` for `unconfirmed`. |
-| `confidence` | Number or `null` | Lowest OCR confidence (0–100) of the matched words. Only for `source: ocr`; `null` for `pdf_text`, `text` and `unconfirmed`. |
-| `locations` | List | Where the value is in the original, best match first, at most 3. `[]` for `unconfirmed`. |
+| `status` | String | `confirmed`: found in the original. `unconfirmed`: not found. `corrected_confirmed`: the user corrected the field, and the corrected value was found in the original. `corrected_unconfirmed`: the user corrected the field, and the corrected value was not found. |
+| `source` | String or `null` | How the field was confirmed: `pdf_text`, `ocr` or `text` (the source of the page of the first location). `null` if the value was not found. |
+| `confidence` | Number or `null` | Lowest OCR confidence (0–100) of the matched words. Only for `source: ocr`; `null` for `pdf_text`, `text` and if the value was not found. |
+| `locations` | List | Where the value is in the original, best match first, at most 3. `[]` if the value was not found. |
 
 A location in a **file** (`pdf_text` or `ocr`) is a rectangle on a page:
 
@@ -343,8 +345,14 @@ succeeds; a failed check is never an HTTP error. `reason`:
 | `not_run` | Entry from before 2026-11-11, never checked |
 
 `verification` describes the current values: after a correction
-(`PATCH`, section 3.5) the backend checks again. A corrected value that is
-not in the original therefore becomes `unconfirmed`.
+(`PATCH`, section 3.5) the backend checks again against the words stored at
+upload. A field counts as corrected while `corrections` holds an item for
+it (`documentDate`, `issuer`, or for a fact `facts.<id>.value` or
+`facts.<id>.unit`). Its status then says whether the corrected value is in
+the original: `corrected_confirmed` or `corrected_unconfirmed`. Setting a
+field back to the recognized value removes the correction (section 2,
+rule 3), and the field is `confirmed` or `unconfirmed` again. A field set to
+`null` is no longer checked.
 
 ### Short form for the timeline
 
@@ -512,6 +520,7 @@ list (`verification` shortened here, see section 2):
     "engine": "pdftotext 26.11.0",
     "checkedAt": "2026-11-03T18:42:07Z",
     "confirmed": 5,
+    "corrected": 0,
     "total": 6,
     "matchPercent": 83,
     "fields": [ "…" ]
@@ -529,6 +538,7 @@ If the original could not be read, `verification` looks like this:
   "engine": null,
   "checkedAt": null,
   "confirmed": 0,
+  "corrected": 0,
   "total": 0,
   "matchPercent": null,
   "fields": []
@@ -773,8 +783,9 @@ from `fullText`.
 If at least one value changed, the backend checks the entry again
 ([verification](#verification)) against the words stored at upload (or
 against `fullText` for a text import). This needs no new OCR run. A
-corrected value that does not appear in the original becomes
-`unconfirmed`. An `unchecked` entry stays `unchecked`.
+corrected field gets `corrected_confirmed` if the corrected value appears
+in the original, otherwise `corrected_unconfirmed`. An `unchecked` entry
+stays `unchecked`.
 
 **Response `200 OK`**
 
@@ -1160,7 +1171,8 @@ error code.
 2. **Text import:** the same check against the entered text
    (`source: text`, locations as `start`/`end`).
 3. **Correcting** ([3.5](#35-correct-recognized-values)): `verification` is
-   recomputed after a change.
+   recomputed after a change against the stored words; corrected fields get
+   `corrected_confirmed` or `corrected_unconfirmed`.
 4. **Delete** ([3.7](#37-delete-an-entry)): also deletes the stored OCR
    words.
 5. **Old entries:** `unchecked` with `reason: not_run`.
