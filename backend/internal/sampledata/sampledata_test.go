@@ -1,4 +1,4 @@
-package beispieldaten
+package sampledata
 
 import (
 	"testing"

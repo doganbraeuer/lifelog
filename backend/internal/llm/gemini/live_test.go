@@ -5,7 +5,7 @@ package gemini
 //	LIFELOG_LIVE=1 go test ./internal/llm/gemini/ -run Live -v
 //
 // They cost requests from the quota and send only the synthetic document
-// from backend/testdaten/ to Google. The API key comes from the .env in the
+// from backend/testdata/ to Google. The API key comes from the .env in the
 // repository root and is never printed.
 
 import (
@@ -57,7 +57,7 @@ func liveGemini(t *testing.T) *Gemini {
 
 func testFile(t *testing.T, name string) []byte {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "testdaten", name))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestLive_ReadDocument(t *testing.T) {
 	g := liveGemini(t)
 	types := core.AllowedTypes("gesundheit")
 
-	for _, name := range []string{"laborbefund.pdf", "laborbefund.png"} {
+	for _, name := range []string{"lab_report.pdf", "lab_report.png"} {
 		t.Run(name, func(t *testing.T) {
 			data := testFile(t, name)
 			mime, err := core.CheckFile(data)
@@ -127,7 +127,7 @@ func TestLive_ReadDocument(t *testing.T) {
 
 func TestLive_ReadText(t *testing.T) {
 	g := liveGemini(t)
-	text := string(testFile(t, "laborbefund.txt"))
+	text := string(testFile(t, "lab_report.txt"))
 
 	start := time.Now()
 	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("gesundheit"))

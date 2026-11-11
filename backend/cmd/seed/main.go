@@ -12,7 +12,7 @@
 // Andere Einträge in der Datenbank bleiben unberührt.
 //
 // -wegwerf legt bei jedem Aufruf einen weiteren Eintrag mit neuer ID an
-// (ohne Gemini, siehe beispieldaten.Wegwerf) und gibt die ID aus. Nur diese
+// (ohne Gemini, siehe sampledata.Wegwerf) und gibt die ID aus. Nur diese
 // ID zum Ausprobieren von DELETE verwenden.
 //
 // Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der Volltext
@@ -28,10 +28,10 @@ import (
 	"os"
 	"time"
 
-	"lifelog/backend/internal/beispieldaten"
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm/gemini"
+	"lifelog/backend/internal/sampledata"
 	"lifelog/backend/internal/store"
 )
 
@@ -66,7 +66,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 	ctx, abbrechen := context.WithTimeout(context.Background(), 60*time.Second)
 	defer abbrechen()
 
-	eintraege := beispieldaten.Eintraege()
+	eintraege := sampledata.Eintraege()
 
 	// Embeddings zuerst: Scheitert Gemini, bleibt die Datenbank, wie sie war.
 	abschnitte := map[string][]core.Chunk{}
@@ -141,7 +141,7 @@ func einbetten(ctx context.Context, k config.Config, eintraege []core.Entry) (ma
 	var alle []core.Chunk
 	var texte []string
 	for _, e := range eintraege {
-		for _, a := range beispieldaten.Abschnitte(e) {
+		for _, a := range sampledata.Abschnitte(e) {
 			alle = append(alle, a)
 			texte = append(texte, a.Text)
 		}
@@ -182,7 +182,7 @@ func wegwerfAnlegen() error {
 	}
 	defer db.Disconnect(context.Background())
 
-	e, abschnitte := beispieldaten.Wegwerf(store.NewID(), store.NewID(), time.Now())
+	e, abschnitte := sampledata.Wegwerf(store.NewID(), store.NewID(), time.Now())
 	if err := db.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 		return err
 	}

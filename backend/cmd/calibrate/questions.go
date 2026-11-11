@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"lifelog/backend/internal/beispieldaten"
+	"lifelog/backend/internal/sampledata"
 )
 
 // gruppe sagt, was die Suche bei einer Frage tun soll.
@@ -90,16 +90,16 @@ func kalibrierfragen() []kalibrierfrage {
 
 	return []kalibrierfrage{
 		// Testdaten (04.11.2026)
-		p("Welchen Hämoglobinwert hatte ich im Oktober?", id(beispieldaten.Laborbefund)),
-		p("Wie hoch waren meine Leukozyten?", id(beispieldaten.Laborbefund)),
-		p("Was stand beim CRP?", id(beispieldaten.Laborbefund)),
-		p("Welches Labor hat mein Blutbild gemacht?", id(beispieldaten.Laborbefund)),
-		p("Wie hoch war mein Blutdruck bei der Routinekontrolle?", id(beispieldaten.Arztbrief)),
-		p("Wann soll ich wieder zur Kontrolle bei Dr. Beispiel?", id(beispieldaten.Arztbrief)),
-		p("Welches Medikament wurde mir verschrieben?", id(beispieldaten.Rezept)),
-		p("Wie oft am Tag soll ich Beispielin nehmen?", id(beispieldaten.Rezept)),
-		p("Wie viele Tabletten stehen auf dem Rezept?", id(beispieldaten.Rezept)),
-		p("Wo liegt mein Impfpass?", id(beispieldaten.Notiz)),
+		p("Welchen Hämoglobinwert hatte ich im Oktober?", id(sampledata.Laborbefund)),
+		p("Wie hoch waren meine Leukozyten?", id(sampledata.Laborbefund)),
+		p("Was stand beim CRP?", id(sampledata.Laborbefund)),
+		p("Welches Labor hat mein Blutbild gemacht?", id(sampledata.Laborbefund)),
+		p("Wie hoch war mein Blutdruck bei der Routinekontrolle?", id(sampledata.Arztbrief)),
+		p("Wann soll ich wieder zur Kontrolle bei Dr. Beispiel?", id(sampledata.Arztbrief)),
+		p("Welches Medikament wurde mir verschrieben?", id(sampledata.Rezept)),
+		p("Wie oft am Tag soll ich Beispielin nehmen?", id(sampledata.Rezept)),
+		p("Wie viele Tabletten stehen auf dem Rezept?", id(sampledata.Rezept)),
+		p("Wo liegt mein Impfpass?", id(sampledata.Notiz)),
 
 		// Bis 07.11. nah; seit den Lipidprofilen steht die Antwort in beiden Laborbefunden.
 		p("Wie hoch war mein Cholesterin?", laborJanuar, laborJuli),
@@ -134,7 +134,7 @@ func kalibrierfragen() []kalibrierfrage {
 		p("Wie hat sich mein Gesamtcholesterin zwischen Januar und Juli entwickelt?", laborJanuar, laborJuli),
 		p("Warum wurde mir Physiotherapie verordnet und wie oft pro Woche?", orthopaedie, ueberweisung),
 		p("Wie lange hat es von der Überweisung bis zum Abschluss der Physiotherapie gedauert?", ueberweisung, physioEnde),
-		p("Wie hat sich mein Blutdruck seit der Routinekontrolle verändert?", id(beispieldaten.Arztbrief), blutdruck),
+		p("Wie hat sich mein Blutdruck seit der Routinekontrolle verändert?", id(sampledata.Arztbrief), blutdruck),
 
 		n("Wurde bei mir schon ein MRT gemacht?"),
 		n("Wie hoch war mein HbA1c-Wert?"),

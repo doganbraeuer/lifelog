@@ -1,8 +1,8 @@
-// Package beispieldaten enthält die erfundenen Testeinträge. Sie werden von
+// Package sampledata enthält die erfundenen Testeinträge. Sie werden von
 // cmd/testdaten (einfügen, entfernen) und cmd/kalibrieren (Fragen, deren
 // Antwort in einem bestimmten Eintrag steht) gemeinsam benutzt. Alle Daten
 // sind erfunden.
-package beispieldaten
+package sampledata
 
 import (
 	"crypto/sha256"

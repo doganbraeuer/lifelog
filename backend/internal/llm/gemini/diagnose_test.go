@@ -14,12 +14,12 @@ package gemini
 // More switches to compare other models:
 //
 //	LIFELOG_DIAGNOSE_MODEL=gemini-3.6-flash   instead of GEMINI_MODEL
-//	LIFELOG_DIAGNOSE_FILE=laborbefund.png     instead of laborbefund.pdf (or an
+//	LIFELOG_DIAGNOSE_FILE=lab_report.png     instead of lab_report.pdf (or an
 //	                                          absolute path, synthetic only!)
 //	LIFELOG_DIAGNOSE_THINKING=off             without ThinkingConfig (for models
 //	                                          without thinkingLevel)
 //
-// Sends only synthetic files from testdaten/.
+// Sends only synthetic files from testdata/.
 
 import (
 	"context"
@@ -65,10 +65,10 @@ func TestDiagnose_Read(t *testing.T) {
 	}
 	fileName := os.Getenv("LIFELOG_DIAGNOSE_FILE")
 	if fileName == "" {
-		fileName = "laborbefund.pdf"
+		fileName = "lab_report.pdf"
 	}
 	// An absolute path allows converted variants outside the repository
-	// (e.g. the same page as JPEG); otherwise a file from testdaten/.
+	// (e.g. the same page as JPEG); otherwise a file from testdata/.
 	var data []byte
 	if filepath.IsAbs(fileName) {
 		if data, err = os.ReadFile(fileName); err != nil {
@@ -144,7 +144,7 @@ func TestDiagnose_Read(t *testing.T) {
 		}
 		t.Logf("checked: type=%s date=%s issuer=%s, %d facts, dropped %v",
 			entry.Type, deref(entry.DocumentDate), deref(entry.Issuer), len(entry.Facts), dropped)
-		// The values are synthetic (testdaten/), so they may go into the test log.
+		// The values are synthetic (testdata/), so they may go into the test log.
 		for _, f := range entry.Facts {
 			t.Logf("  %s = %q %s", f.Name, f.Value, deref(f.Unit))
 		}

@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/beispieldaten"
 	"lifelog/backend/internal/core"
+	"lifelog/backend/internal/sampledata"
 )
 
 func TestKalibrierfragen_Aufbau(t *testing.T) {
 	ids := map[string]bool{}
-	for _, e := range beispieldaten.Eintraege() {
+	for _, e := range sampledata.Eintraege() {
 		ids[e.ID] = true
 	}
 	anzahl := map[gruppe]int{}
