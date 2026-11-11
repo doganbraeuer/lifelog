@@ -11,8 +11,8 @@ import (
 // FragenSpeicher ist, was die Suche von der Datenbank braucht. Umgesetzt
 // von speicher.Speicher.
 type FragenSpeicher interface {
-	AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Hit, error)
-	EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error)
+	SimilarChunks(ctx context.Context, vektor []float32, modul string, k int) ([]core.Hit, error)
+	SummariesByIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error)
 }
 
 // Fragen beantwortet Fragen zu den Dokumenten (docs/API.md 3.6).
@@ -55,7 +55,7 @@ func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Answ
 	if err != nil {
 		return core.Answer{}, err
 	}
-	alle, err := f.speicher.AehnlicheAbschnitte(ctx, vektor, modul, core.MaxHits)
+	alle, err := f.speicher.SimilarChunks(ctx, vektor, modul, core.MaxHits)
 	if err != nil {
 		return core.Answer{}, err
 	}
@@ -94,7 +94,7 @@ func (f *Fragen) fundstellen(ctx context.Context, treffer []core.Hit, modul stri
 	for _, t := range treffer {
 		ids = append(ids, t.EntryID)
 	}
-	eintraege, err := f.speicher.EintraegeKurzNachIDs(ctx, ids)
+	eintraege, err := f.speicher.SummariesByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}

@@ -42,7 +42,7 @@ func (s *loeschAttrappe) schritt(ctx context.Context, name, arg string) error {
 	return nil
 }
 
-func (s *loeschAttrappe) EintragLesen(ctx context.Context, id string) (core.Entry, bool, error) {
+func (s *loeschAttrappe) GetEntry(ctx context.Context, id string) (core.Entry, bool, error) {
 	if err := s.schritt(ctx, "EintragLesen", id); err != nil {
 		return core.Entry{}, false, err
 	}
@@ -56,7 +56,7 @@ func (s *loeschAttrappe) EintragLesen(ctx context.Context, id string) (core.Entr
 	return e, true, nil
 }
 
-func (s *loeschAttrappe) AbschnitteLoeschen(ctx context.Context, id string) error {
+func (s *loeschAttrappe) DeleteChunks(ctx context.Context, id string) error {
 	if err := s.schritt(ctx, "AbschnitteLoeschen", id); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (s *loeschAttrappe) AbschnitteLoeschen(ctx context.Context, id string) erro
 }
 
 // DateiLoeschen verhält sich wie speicher: Fehlt die Datei, kein Fehler.
-func (s *loeschAttrappe) DateiLoeschen(ctx context.Context, id string) error {
+func (s *loeschAttrappe) DeleteFile(ctx context.Context, id string) error {
 	if err := s.schritt(ctx, "DateiLoeschen", id); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (s *loeschAttrappe) DateiLoeschen(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *loeschAttrappe) EintragLoeschen(ctx context.Context, id string) (bool, error) {
+func (s *loeschAttrappe) DeleteEntry(ctx context.Context, id string) (bool, error) {
 	if err := s.schritt(ctx, "EintragLoeschen", id); err != nil {
 		return false, err
 	}

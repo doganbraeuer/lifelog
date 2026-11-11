@@ -10,98 +10,98 @@ import (
 	"lifelog/backend/internal/dienst"
 )
 
-// legeAn speichert einen vollständigen Eintrag wie der Upload: Datei,
-// zwei Abschnitte, Eintrag zuletzt.
-func legeAn(t *testing.T, s *Speicher, ctx context.Context, hash string) core.Entry {
+// create stores a full entry like the upload does: file, two chunks, entry
+// last.
+func create(t *testing.T, s *Store, ctx context.Context, hash string) core.Entry {
 	t.Helper()
-	e := testEintrag(NeueID(), NeueID(), hash)
-	if err := s.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte("%PDF-1.7 synthetisch")); err != nil {
+	e := testEntry(NewID(), NewID(), hash)
+	if err := s.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte("%PDF-1.7 synthetic")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AbschnitteSpeichern(ctx, []core.Chunk{
+	if err := s.SaveChunks(ctx, []core.Chunk{
 		{EntryID: e.ID, Module: "gesundheit", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
 		{EntryID: e.ID, Module: "gesundheit", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EintragSpeichern(ctx, e); err != nil {
+	if err := s.SaveEntry(ctx, e); err != nil {
 		t.Fatal(err)
 	}
 	return e
 }
 
-// pruefeDatei: da ist true, wenn sich die Datei öffnen lässt.
-func pruefeDatei(t *testing.T, s *Speicher, ctx context.Context, dateiID string, da bool) {
+// checkFile: exists is true if the file can be opened.
+func checkFile(t *testing.T, s *Store, ctx context.Context, fileID string, exists bool) {
 	t.Helper()
-	inhalt, _, err := s.DateiOeffnen(ctx, dateiID)
+	content, _, err := s.OpenFile(ctx, fileID)
 	switch {
 	case err == nil:
-		inhalt.Close()
-		if !da {
-			t.Errorf("Datei %s noch da", dateiID)
+		content.Close()
+		if !exists {
+			t.Errorf("file %s still there", fileID)
 		}
 	case errors.Is(err, core.ErrOriginalMissing):
-		if da {
-			t.Errorf("Datei %s fehlt", dateiID)
+		if exists {
+			t.Errorf("file %s missing", fileID)
 		}
 	default:
 		t.Fatal(err)
 	}
 }
 
-// Läuft nur mit LIFELOG_MONGO_TEST=1 (siehe integration_test.go). Echter
-// Dienst gegen echtes MongoDB (API.md 3.7).
-func TestIntegration_EintragLoeschen(t *testing.T) {
-	s, ctx := testSpeicher(t)
-	l := dienst.NeuLoeschen(s)
+// Only runs with LIFELOG_MONGO_TEST=1 (see integration_test.go). Real
+// service against a real MongoDB (API.md 3.7).
+func TestIntegration_DeleteEntry(t *testing.T) {
+	s, ctx := testStore(t)
+	d := dienst.NeuLoeschen(s)
 
-	a := legeAn(t, s, ctx, strings.Repeat("a1", 32))
-	b := legeAn(t, s, ctx, strings.Repeat("b2", 32))
+	a := create(t, s, ctx, strings.Repeat("a1", 32))
+	b := create(t, s, ctx, strings.Repeat("b2", 32))
 
-	if err := l.Ausfuehren(ctx, a.ID); err != nil {
+	if err := d.Ausfuehren(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	// A ist vollständig weg.
-	if _, da, err := s.EintragLesen(ctx, a.ID); err != nil || da {
-		t.Errorf("Eintrag A: da %v, %v", da, err)
+	// A is completely gone.
+	if _, exists, err := s.GetEntry(ctx, a.ID); err != nil || exists {
+		t.Errorf("entry A: exists %v, %v", exists, err)
 	}
-	pruefeAnzahlAbschnitte(t, s, ctx, a.ID, 0)
-	pruefeDatei(t, s, ctx, a.File.ID, false)
-	// Der Hash ist frei: Dieselbe Datei ließe sich wieder hochladen.
-	if _, da, err := s.EintragMitHash(ctx, a.File.Sha256); err != nil || da {
-		t.Errorf("Hash von A noch gefunden: %v, %v", da, err)
+	checkChunkCount(t, s, ctx, a.ID, 0)
+	checkFile(t, s, ctx, a.File.ID, false)
+	// The hash is free: the same file could be uploaded again.
+	if _, exists, err := s.EntryByHash(ctx, a.File.Sha256); err != nil || exists {
+		t.Errorf("hash of A still found: %v, %v", exists, err)
 	}
 
-	// B ist unberührt.
-	if _, da, err := s.EintragLesen(ctx, b.ID); err != nil || !da {
-		t.Errorf("Eintrag B: da %v, %v", da, err)
+	// B is untouched.
+	if _, exists, err := s.GetEntry(ctx, b.ID); err != nil || !exists {
+		t.Errorf("entry B: exists %v, %v", exists, err)
 	}
-	pruefeAnzahlAbschnitte(t, s, ctx, b.ID, 2)
-	pruefeDatei(t, s, ctx, b.File.ID, true)
+	checkChunkCount(t, s, ctx, b.ID, 2)
+	checkFile(t, s, ctx, b.File.ID, true)
 
-	// Zweites Löschen: 404.
-	if err := l.Ausfuehren(ctx, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
-		t.Errorf("zweites Löschen: %v, erwartet ErrEintragNichtGefunden", err)
+	// Second delete: 404.
+	if err := d.Ausfuehren(ctx, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
+		t.Errorf("second delete: %v, want ErrEntryNotFound", err)
 	}
 }
 
-// Wie nach einem abgebrochenen Löschen: Datei und Abschnitte fehlen schon,
-// der Eintrag ist noch da. Ein erneuter Aufruf räumt ohne Fehler auf.
-func TestIntegration_LoeschenNachAbbruch(t *testing.T) {
-	s, ctx := testSpeicher(t)
-	e := legeAn(t, s, ctx, strings.Repeat("c3", 32))
-	if err := s.AbschnitteLoeschen(ctx, e.ID); err != nil {
+// As after an interrupted delete: file and chunks are already gone, the
+// entry is still there. Calling again cleans up without an error.
+func TestIntegration_DeleteAfterInterruption(t *testing.T) {
+	s, ctx := testStore(t)
+	e := create(t, s, ctx, strings.Repeat("c3", 32))
+	if err := s.DeleteChunks(ctx, e.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DateiLoeschen(ctx, e.File.ID); err != nil {
+	if err := s.DeleteFile(ctx, e.File.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := dienst.NeuLoeschen(s).Ausfuehren(ctx, e.ID); err != nil {
-		t.Fatalf("Löschen mit fehlender Datei: %v", err)
+		t.Fatalf("delete with missing file: %v", err)
 	}
-	if _, da, err := s.EintragLesen(ctx, e.ID); err != nil || da {
-		t.Errorf("Eintrag: da %v, %v", da, err)
+	if _, exists, err := s.GetEntry(ctx, e.ID); err != nil || exists {
+		t.Errorf("entry: exists %v, %v", exists, err)
 	}
 }

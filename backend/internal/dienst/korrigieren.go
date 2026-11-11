@@ -11,8 +11,8 @@ import (
 // KorrekturSpeicher ist, was das Korrigieren von der Datenbank braucht.
 // Umgesetzt von speicher.Speicher.
 type KorrekturSpeicher interface {
-	EintragLesen(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	KorrekturSpeichern(ctx context.Context, e core.Entry) (gefunden bool, err error)
+	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
+	SaveCorrection(ctx context.Context, e core.Entry) (gefunden bool, err error)
 }
 
 // Korrigieren korrigiert erkannte Werte eines Eintrags (docs/API.md 3.5).
@@ -42,7 +42,7 @@ func (k *Korrigieren) Ausfuehren(ctx context.Context, id string, a core.Change) 
 	if err := core.CheckID(id); err != nil {
 		return core.Entry{}, err
 	}
-	e, gefunden, err := k.speicher.EintragLesen(ctx, id)
+	e, gefunden, err := k.speicher.GetEntry(ctx, id)
 	if err != nil {
 		return core.Entry{}, err
 	}
@@ -62,7 +62,7 @@ func (k *Korrigieren) Ausfuehren(ctx context.Context, id string, a core.Change) 
 		return neu, nil
 	}
 
-	gefunden, err = k.speicher.KorrekturSpeichern(ctx, neu)
+	gefunden, err = k.speicher.SaveCorrection(ctx, neu)
 	if err != nil {
 		return core.Entry{}, err
 	}

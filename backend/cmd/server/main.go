@@ -39,24 +39,24 @@ func starten() error {
 	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopp()
 
-	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
-	defer db.Trennen(context.Background())
+	defer db.Disconnect(context.Background())
 	slog.Info("MongoDB verbunden", "datenbank", k.MongoDB)
 
-	if err := db.IndexeAnlegen(ctx); err != nil {
+	if err := db.CreateIndexes(ctx); err != nil {
 		return err
 	}
 	// Nach IndexeAnlegen, weil die Collection "abschnitte" existieren muss.
 	// Nicht fatal: Ohne Index funktionieren Upload und Zeitleiste, nur die
 	// Suche nicht. Dann den Index in der Atlas-Oberfläche anlegen.
-	if status, err := db.VektorindexAnlegen(ctx); err != nil {
+	if status, err := db.CreateVectorIndex(ctx); err != nil {
 		slog.Warn("Vektorindex fehlt, POST /fragen funktioniert erst nach dem Anlegen in Atlas (backend/README.md, Abschnitt Vektorindex)",
-			"index", store.VektorindexName, "fehler", err)
+			"index", store.VectorIndexName, "fehler", err)
 	} else {
-		slog.Info("Vektorindex", "index", store.VektorindexName, "status", status)
+		slog.Info("Vektorindex", "index", store.VectorIndexName, "status", status)
 	}
 
 	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
@@ -80,7 +80,7 @@ func starten() error {
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:          db,
 			Eintraege:   db,
-			Hochladen:   dienst.NeuHochladen(db, g, g, store.NeueID),
+			Hochladen:   dienst.NeuHochladen(db, g, g, store.NewID),
 			Fragen:      dienst.NeuFragen(db, g, g),
 			Korrigieren: dienst.NeuKorrigieren(db),
 			Loeschen:    dienst.NeuLoeschen(db),

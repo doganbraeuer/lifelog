@@ -11,20 +11,20 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-func zeiger(s string) *string { return &s }
+func ptr(s string) *string { return &s }
 
-// beispielEintrag ist synthetisch (siehe docs/API.md).
-func beispielEintrag() core.Entry {
+// sampleEntry is synthetic (see docs/API.md).
+func sampleEntry() core.Entry {
 	return core.Entry{
 		ID:           "6727a1f3c2b4e5d6f7a8b9c0",
 		Module:       "gesundheit",
 		Type:         "laborbefund",
-		DocumentDate: zeiger("2026-10-14"),
+		DocumentDate: ptr("2026-10-14"),
 		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Issuer:       zeiger("Labor Muster GmbH, Salzburg"),
+		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
 		FullText:     "Hämoglobin 14,2 g/dl",
 		Facts: []core.Fact{
-			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
+			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
 			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
 		},
 		File: core.File{
@@ -32,159 +32,159 @@ func beispielEintrag() core.Entry {
 			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32),
 		},
 		Corrections: []core.Correction{{
-			Field: "infos.i1.wert", Recognized: zeiger("14,1"), Corrected: zeiger("14,2"),
+			Field: "infos.i1.wert", Recognized: ptr("14,1"), Corrected: ptr("14,2"),
 			CorrectedAt: time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC),
 		}},
 	}
 }
 
-// Hin und zurück über echtes BSON, ohne Datenbank: Es darf nichts verloren gehen.
-func TestEintragDok_HinUndZurueck(t *testing.T) {
-	original := beispielEintrag()
+// There and back through real BSON, without database: nothing may be lost.
+func TestEntryDoc_RoundTrip(t *testing.T) {
+	original := sampleEntry()
 
-	dok, err := zuEintragDok(original)
+	doc, err := toEntryDoc(original)
 	if err != nil {
 		t.Fatal(err)
 	}
-	roh, err := bson.Marshal(dok)
+	raw, err := bson.Marshal(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gelesen eintragDok
-	if err := bson.Unmarshal(roh, &gelesen); err != nil {
+	var read entryDoc
+	if err := bson.Unmarshal(raw, &read); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := gelesen.zuKern(); !reflect.DeepEqual(got, original) {
-		t.Errorf("nach BSON:\n%+v\nerwartet:\n%+v", got, original)
+	if got := read.toCore(); !reflect.DeepEqual(got, original) {
+		t.Errorf("after BSON:\n%+v\nwant:\n%+v", got, original)
 	}
 }
 
-func TestEintragDok_NullUndLeereListen(t *testing.T) {
-	e := beispielEintrag()
+func TestEntryDoc_NullAndEmptyLists(t *testing.T) {
+	e := sampleEntry()
 	e.DocumentDate = nil
 	e.Issuer = nil
 	e.Facts = nil
 	e.Corrections = nil
 
-	dok, err := zuEintragDok(e)
+	doc, err := toEntryDoc(e)
 	if err != nil {
 		t.Fatal(err)
 	}
-	roh, _ := bson.Marshal(dok)
+	raw, _ := bson.Marshal(doc)
 	var m bson.M
-	if err := bson.Unmarshal(roh, &m); err != nil {
+	if err := bson.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
 
-	// Datum und Quelle stehen als null in der Datenbank (Feld vorhanden).
-	for _, feld := range []string{"dokumentdatum", "quelle"} {
-		if v, ok := m[feld]; !ok || v != nil {
-			t.Errorf("%s = %v (vorhanden: %v), erwartet null", feld, v, ok)
+	// Date and issuer are stored as null in the database (field present).
+	for _, field := range []string{"dokumentdatum", "quelle"} {
+		if v, ok := m[field]; !ok || v != nil {
+			t.Errorf("%s = %v (present: %v), want null", field, v, ok)
 		}
 	}
-	// Listen sind leere Arrays, nicht null.
-	for _, feld := range []string{"infos", "korrekturen"} {
-		if _, ok := m[feld].(bson.A); !ok {
-			t.Errorf("%s ist %T, erwartet ein Array", feld, m[feld])
+	// Lists are empty arrays, not null.
+	for _, field := range []string{"infos", "korrekturen"} {
+		if _, ok := m[field].(bson.A); !ok {
+			t.Errorf("%s is %T, want an array", field, m[field])
 		}
 	}
 
-	// Ein altes Dokument mit null-Listen wird beim Lesen zu leeren Listen.
-	dok.Infos, dok.Korrekturen = nil, nil
-	k := dok.zuKern()
-	if k.Facts == nil || k.Corrections == nil {
-		t.Error("zuKern muss leere statt nil-Listen liefern")
+	// An old document with null lists becomes empty lists when read.
+	doc.Facts, doc.Corrections = nil, nil
+	c := doc.toCore()
+	if c.Facts == nil || c.Corrections == nil {
+		t.Error("toCore must return empty lists instead of nil")
 	}
 }
 
-func TestEintragDok_EinheitFehltWennNil(t *testing.T) {
-	dok, _ := zuEintragDok(beispielEintrag())
-	roh, _ := bson.Marshal(dok.Infos[1])
+func TestEntryDoc_UnitMissingWhenNil(t *testing.T) {
+	doc, _ := toEntryDoc(sampleEntry())
+	raw, _ := bson.Marshal(doc.Facts[1])
 	var m bson.M
-	_ = bson.Unmarshal(roh, &m)
+	_ = bson.Unmarshal(raw, &m)
 	if _, ok := m["einheit"]; ok {
-		t.Errorf("einheit soll fehlen, wenn nil: %v", m)
+		t.Errorf("einheit should be missing when nil: %v", m)
 	}
 }
 
-func TestEintragDok_UngueltigeIDs(t *testing.T) {
-	e := beispielEintrag()
-	e.ID = "keine-objectid"
-	if _, err := zuEintragDok(e); err == nil {
-		t.Error("ungültige Eintrag-ID muss Fehler liefern")
+func TestEntryDoc_InvalidIDs(t *testing.T) {
+	e := sampleEntry()
+	e.ID = "not-an-objectid"
+	if _, err := toEntryDoc(e); err == nil {
+		t.Error("invalid entry ID must give an error")
 	}
-	e = beispielEintrag()
+	e = sampleEntry()
 	e.File.ID = ""
-	if _, err := zuEintragDok(e); err == nil {
-		t.Error("ungültige Datei-ID muss Fehler liefern")
+	if _, err := toEntryDoc(e); err == nil {
+		t.Error("invalid file ID must give an error")
 	}
 }
 
-func TestAbschnittDok_HinUndZurueck(t *testing.T) {
+func TestChunkDoc_RoundTrip(t *testing.T) {
 	original := core.Chunk{
 		EntryID:  "6727a1f3c2b4e5d6f7a8b9c0",
 		Module:   "gesundheit",
 		Position: 2,
 		Text:     "Hämoglobin 14,2 g/dl",
-		// Werte, die als float32 nicht exakt dezimal darstellbar sind.
+		// Values that are not exactly representable in decimal as float32.
 		Embedding: []float32{0.1, -0.33333334, 1e-7, 0.99999994, -1},
 	}
-	dok, err := zuAbschnittDok(original)
+	doc, err := toChunkDoc(original)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dok.ID.IsZero() {
-		t.Error("Abschnitt braucht eine eigene _id")
+	if doc.ID.IsZero() {
+		t.Error("a chunk needs its own _id")
 	}
 
-	roh, err := bson.Marshal(dok)
+	raw, err := bson.Marshal(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var m bson.M
-	_ = bson.Unmarshal(roh, &m)
+	_ = bson.Unmarshal(raw, &m)
 	if _, ok := m["eintragId"].(bson.ObjectID); !ok {
-		t.Errorf("eintragId ist %T, erwartet ObjectID (sonst findet AbschnitteLoeschen nichts)", m["eintragId"])
+		t.Errorf("eintragId is %T, want ObjectID (otherwise DeleteChunks finds nothing)", m["eintragId"])
 	}
 	if _, ok := m["embedding"].(bson.A); !ok {
-		t.Errorf("embedding ist %T, erwartet Array (Atlas Vector Search)", m["embedding"])
+		t.Errorf("embedding is %T, want array (Atlas Vector Search)", m["embedding"])
 	}
 
-	var gelesen abschnittDok
-	if err := bson.Unmarshal(roh, &gelesen); err != nil {
+	var read chunkDoc
+	if err := bson.Unmarshal(raw, &read); err != nil {
 		t.Fatal(err)
 	}
-	if got := gelesen.zuKern(); !reflect.DeepEqual(got, original) {
-		t.Errorf("nach BSON:\n%+v\nerwartet:\n%+v", got, original)
+	if got := read.toCore(); !reflect.DeepEqual(got, original) {
+		t.Errorf("after BSON:\n%+v\nwant:\n%+v", got, original)
 	}
 }
 
-func TestAbschnittDok_Ungueltig(t *testing.T) {
-	if _, err := zuAbschnittDok(core.Chunk{EntryID: "x", Embedding: []float32{1}}); err == nil {
-		t.Error("ungültige Eintrag-ID muss Fehler liefern")
+func TestChunkDoc_Invalid(t *testing.T) {
+	if _, err := toChunkDoc(core.Chunk{EntryID: "x", Embedding: []float32{1}}); err == nil {
+		t.Error("invalid entry ID must give an error")
 	}
-	if _, err := zuAbschnittDok(core.Chunk{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
-		t.Error("Abschnitt ohne Embedding muss Fehler liefern")
+	if _, err := toChunkDoc(core.Chunk{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
+		t.Error("chunk without embedding must give an error")
 	}
 }
 
-func TestNeueID(t *testing.T) {
-	a, b := NeueID(), NeueID()
+func TestNewID(t *testing.T) {
+	a, b := NewID(), NewID()
 	if a == b {
-		t.Error("zwei IDs sind gleich")
+		t.Error("two IDs are equal")
 	}
 	if _, err := bson.ObjectIDFromHex(a); err != nil || len(a) != 24 {
-		t.Errorf("%q ist keine ObjectId: %v", a, err)
+		t.Errorf("%q is not an ObjectId: %v", a, err)
 	}
 }
 
-func TestImportdatumWirdUTC(t *testing.T) {
-	e := beispielEintrag()
-	wien := time.FixedZone("MEZ", 3600)
-	e.ImportedAt = time.Date(2026, 11, 3, 19, 42, 7, 0, wien) // = 18:42:07 UTC
-	dok, _ := zuEintragDok(e)
-	if dok.Importdatum.Location() != time.UTC || dok.Importdatum.Hour() != 18 {
-		t.Errorf("Importdatum = %v, erwartet 18:42:07 UTC", dok.Importdatum)
+func TestImportedAtBecomesUTC(t *testing.T) {
+	e := sampleEntry()
+	vienna := time.FixedZone("CET", 3600)
+	e.ImportedAt = time.Date(2026, 11, 3, 19, 42, 7, 0, vienna) // = 18:42:07 UTC
+	doc, _ := toEntryDoc(e)
+	if doc.ImportedAt.Location() != time.UTC || doc.ImportedAt.Hour() != 18 {
+		t.Errorf("ImportedAt = %v, want 18:42:07 UTC", doc.ImportedAt)
 	}
 }

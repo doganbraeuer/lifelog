@@ -28,13 +28,13 @@ type speicherAttrappe struct {
 	dateiErr  error                 // wenn gesetzt, scheitert DateiOeffnen damit
 }
 
-func (s *speicherAttrappe) ListeKurz(_ context.Context, modul string) ([]core.EntrySummary, error) {
+func (s *speicherAttrappe) ListSummaries(_ context.Context, modul string) ([]core.EntrySummary, error) {
 	s.aufrufe++
 	s.gefragtModul = modul
 	return slices.Clone(s.liste), s.err
 }
 
-func (s *speicherAttrappe) EintragLesen(_ context.Context, id string) (core.Entry, bool, error) {
+func (s *speicherAttrappe) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
 	s.aufrufe++
 	if s.err != nil {
 		return core.Entry{}, false, s.err
@@ -43,7 +43,7 @@ func (s *speicherAttrappe) EintragLesen(_ context.Context, id string) (core.Entr
 	return e, ok, nil
 }
 
-func (s *speicherAttrappe) DateiOeffnen(_ context.Context, dateiID string) (io.ReadCloser, int64, error) {
+func (s *speicherAttrappe) OpenFile(_ context.Context, dateiID string) (io.ReadCloser, int64, error) {
 	if s.dateiErr != nil {
 		return nil, 0, s.dateiErr
 	}

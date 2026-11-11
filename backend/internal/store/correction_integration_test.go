@@ -9,61 +9,61 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Läuft nur mit LIFELOG_MONGO_TEST=1 (siehe integration_test.go).
-func TestIntegration_KorrekturSpeichern(t *testing.T) {
-	s, ctx := testSpeicher(t)
+// Only runs with LIFELOG_MONGO_TEST=1 (see integration_test.go).
+func TestIntegration_SaveCorrection(t *testing.T) {
+	s, ctx := testStore(t)
 
-	e := testEintrag(NeueID(), NeueID(), strings.Repeat("cd", 32))
+	e := testEntry(NewID(), NewID(), strings.Repeat("cd", 32))
 	e.Facts = append(e.Facts, core.Fact{ID: "i2", Name: "Befundart", Value: "Blutbild klein"})
-	if err := s.EintragSpeichern(ctx, e); err != nil {
+	if err := s.SaveEntry(ctx, e); err != nil {
 		t.Fatal(err)
 	}
 
-	// Alle Arten von Korrektur auf einmal, auch null-Werte: Datum und
-	// Einheit entfernt, Einheit neu, Typ und Wert geändert.
-	jetzt := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC) // Millisekunden wie im Dienst
-	q := "Labor B"
-	neu, geaendert, err := core.Correct(e, core.Change{
+	// All kinds of correction at once, including null values: date and unit
+	// removed, unit added, type and value changed.
+	now := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC) // milliseconds as in the service
+	issuer := "Labor B"
+	updated, changed, err := core.Correct(e, core.Change{
 		Type:         &[]string{"arztbrief"}[0],
 		DocumentDate: core.Nullable{Set: true},
-		Issuer:       core.Nullable{Set: true, Value: &q},
+		Issuer:       core.Nullable{Set: true, Value: &issuer},
 		Facts: []core.FactChange{
 			{ID: "i1", Value: &[]string{"14,0"}[0], Unit: core.Nullable{Set: true}},
 			{ID: "i2", Unit: core.Nullable{Set: true, Value: &[]string{"Stück"}[0]}},
 		},
-	}, jetzt)
-	if err != nil || len(geaendert) != 6 {
-		t.Fatalf("Korrigiere: %v, geaendert %v", err, geaendert)
+	}, now)
+	if err != nil || len(changed) != 6 {
+		t.Fatalf("Correct: %v, changed %v", err, changed)
 	}
 
-	gefunden, err := s.KorrekturSpeichern(ctx, neu)
-	if err != nil || !gefunden {
-		t.Fatalf("KorrekturSpeichern: gefunden %v, %v", gefunden, err)
+	found, err := s.SaveCorrection(ctx, updated)
+	if err != nil || !found {
+		t.Fatalf("SaveCorrection: found %v, %v", found, err)
 	}
 
-	gelesen, _, err := s.EintragLesen(ctx, e.ID)
+	read, _, err := s.GetEntry(ctx, e.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Hin und zurück durch MongoDB: genau der korrigierte Eintrag, inklusive
-	// null-Werten und Zeitpunkt in UTC.
-	if !reflect.DeepEqual(gelesen, neu) {
-		t.Errorf("gelesen\n%+v\nerwartet\n%+v", gelesen, neu)
+	// There and back through MongoDB: exactly the corrected entry, including
+	// null values and the time in UTC.
+	if !reflect.DeepEqual(read, updated) {
+		t.Errorf("read\n%+v\nwant\n%+v", read, updated)
 	}
-	// Nicht korrigierbare Felder sind unverändert.
-	if gelesen.FullText != e.FullText || gelesen.File != e.File || !gelesen.ImportedAt.Equal(e.ImportedAt) || gelesen.Module != e.Module {
-		t.Errorf("nicht korrigierbare Felder geändert: %+v", gelesen)
+	// Fields that are not correctable are unchanged.
+	if read.FullText != e.FullText || read.File != e.File || !read.ImportedAt.Equal(e.ImportedAt) || read.Module != e.Module {
+		t.Errorf("non-correctable fields changed: %+v", read)
 	}
 
-	// Gibt es den Eintrag nicht, meldet KorrekturSpeichern das, statt einen
-	// neuen anzulegen.
-	fremd := neu
-	fremd.ID = NeueID()
-	gefunden, err = s.KorrekturSpeichern(ctx, fremd)
-	if err != nil || gefunden {
-		t.Errorf("unbekannter Eintrag: gefunden %v, %v", gefunden, err)
+	// If the entry does not exist, SaveCorrection reports that instead of
+	// creating a new one.
+	other := updated
+	other.ID = NewID()
+	found, err = s.SaveCorrection(ctx, other)
+	if err != nil || found {
+		t.Errorf("unknown entry: found %v, %v", found, err)
 	}
-	if _, da, _ := s.EintragLesen(ctx, fremd.ID); da {
-		t.Error("KorrekturSpeichern hat einen neuen Eintrag angelegt")
+	if _, exists, _ := s.GetEntry(ctx, other.ID); exists {
+		t.Error("SaveCorrection created a new entry")
 	}
 }

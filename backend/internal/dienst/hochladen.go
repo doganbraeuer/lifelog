@@ -22,12 +22,12 @@ import (
 // UploadSpeicher ist, was der Upload von der Datenbank braucht. Umgesetzt
 // von speicher.Speicher.
 type UploadSpeicher interface {
-	EintragMitHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error)
-	DateiSpeichern(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error
-	DateiLoeschen(ctx context.Context, id string) error
-	AbschnitteSpeichern(ctx context.Context, abschnitte []core.Chunk) error
-	AbschnitteLoeschen(ctx context.Context, eintragID string) error
-	EintragSpeichern(ctx context.Context, e core.Entry) error
+	EntryByHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error)
+	SaveFile(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error
+	DeleteFile(ctx context.Context, id string) error
+	SaveChunks(ctx context.Context, abschnitte []core.Chunk) error
+	DeleteChunks(ctx context.Context, eintragID string) error
+	SaveEntry(ctx context.Context, e core.Entry) error
 }
 
 // Upload ist eine hochgeladene Datei.
@@ -166,7 +166,7 @@ func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Entry, e
 	// 2. Duplikat prüfen, bevor ein Modellaufruf etwas kostet.
 	summe := sha256.Sum256(ein.daten)
 	hash := hex.EncodeToString(summe[:])
-	if id, gefunden, err := h.speicher.EintragMitHash(ctx, hash); err != nil {
+	if id, gefunden, err := h.speicher.EntryByHash(ctx, hash); err != nil {
 		return core.Entry{}, err
 	} else if gefunden {
 		return core.Entry{}, &DuplikatFehler{EintragID: id}
@@ -228,15 +228,15 @@ func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Entry, e
 }
 
 func (h *Hochladen) speichern(ctx context.Context, e core.Entry, abschnitte []core.Chunk, daten []byte) error {
-	if err := h.speicher.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, daten); err != nil {
+	if err := h.speicher.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, daten); err != nil {
 		h.aufraeumen(ctx, e, false)
 		return err
 	}
-	if err := h.speicher.AbschnitteSpeichern(ctx, abschnitte); err != nil {
+	if err := h.speicher.SaveChunks(ctx, abschnitte); err != nil {
 		h.aufraeumen(ctx, e, true)
 		return err
 	}
-	err := h.speicher.EintragSpeichern(ctx, e)
+	err := h.speicher.SaveEntry(ctx, e)
 	if err == nil {
 		return nil
 	}
@@ -245,7 +245,7 @@ func (h *Hochladen) speichern(ctx context.Context, e core.Entry, abschnitte []co
 	if errors.Is(err, core.ErrDuplicate) {
 		// Jemand hat dieselbe Datei gleichzeitig hochgeladen und war
 		// schneller. Den vorhandenen Eintrag nennen wie bei Schritt 2.
-		if id, gefunden, ferr := h.speicher.EintragMitHash(ctx, e.File.Sha256); ferr == nil && gefunden {
+		if id, gefunden, ferr := h.speicher.EntryByHash(ctx, e.File.Sha256); ferr == nil && gefunden {
 			return &DuplikatFehler{EintragID: id}
 		}
 	}
@@ -262,11 +262,11 @@ func (h *Hochladen) aufraeumen(ctx context.Context, e core.Entry, abschnitteAuch
 	defer abbrechen()
 
 	if abschnitteAuch {
-		if err := h.speicher.AbschnitteLoeschen(ctx, e.ID); err != nil {
+		if err := h.speicher.DeleteChunks(ctx, e.ID); err != nil {
 			slog.Error("Aufräumen: Abschnitte nicht gelöscht", "eintrag", e.ID, "fehler", err)
 		}
 	}
-	if err := h.speicher.DateiLoeschen(ctx, e.File.ID); err != nil {
+	if err := h.speicher.DeleteFile(ctx, e.File.ID); err != nil {
 		slog.Error("Aufräumen: Datei nicht gelöscht", "datei", e.File.ID, "fehler", err)
 	}
 }

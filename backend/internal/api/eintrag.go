@@ -37,7 +37,7 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 			return
 		}
 
-		inhalt, laenge, err := s.DateiOeffnen(r.Context(), e.File.ID)
+		inhalt, laenge, err := s.OpenFile(r.Context(), e.File.ID)
 		if err != nil {
 			if errors.Is(err, core.ErrOriginalMissing) {
 				// Darf nicht vorkommen: Eintrag ohne Datei ist ein Datenfehler.
@@ -74,7 +74,7 @@ func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (cor
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
 		return core.Entry{}, false
 	}
-	e, gefunden, err := s.EintragLesen(r.Context(), id)
+	e, gefunden, err := s.GetEntry(r.Context(), id)
 	if err != nil {
 		schreibeInternenFehler(w, r, err)
 		return core.Entry{}, false

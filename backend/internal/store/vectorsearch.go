@@ -12,94 +12,95 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// VektorindexName ist der Name des Atlas-Vector-Search-Index auf der
-// Collection "abschnitte".
-const VektorindexName = "abschnitte_vektor"
+// VectorIndexName is the name of the Atlas Vector Search index on the
+// collection "abschnitte".
+const VectorIndexName = "abschnitte_vektor"
 
-// vektorindexDefinition: "embedding" als Vektor (768 Dimensionen, cosine),
-// "modul" als Filterfeld, damit die Suche nur im gewählten Modul sucht.
-// Dieselbe Datei wird beim Anlegen in der Atlas-Oberfläche eingefügt
-// (backend/README.md, „Vektorindex“).
+// vectorIndexDefinition: "embedding" as vector (768 dimensions, cosine),
+// "modul" as filter field, so the search only looks in the chosen module.
+// The same file is pasted when creating the index in the Atlas UI
+// (backend/README.md, "Vektorindex").
 //
 //go:embed abschnitte_vektor.json
-var vektorindexDefinition []byte
+var vectorIndexDefinition []byte
 
-// numCandidates: So viele Kandidaten betrachtet Atlas, bevor es die besten
-// AnzahlTreffer auswählt. Mehr Kandidaten = genauer, aber langsamer;
-// 100 ist für wenige tausend Abschnitte reichlich.
+// numCandidates: Atlas considers this many candidates before it picks the
+// best MaxHits. More candidates = more accurate but slower; 100 is plenty
+// for a few thousand chunks.
 const numCandidates = 100
 
-// VektorindexAnlegen legt den Vektorindex an, falls es ihn noch nicht gibt,
-// und liefert seinen Status (z. B. "PENDING", "BUILDING", "READY").
+// CreateVectorIndex creates the vector index if it does not exist yet, and
+// returns its status (e.g. "PENDING", "BUILDING", "READY", or "CREATED" right
+// after creating it).
 //
-// Atlas baut den Index im Hintergrund; bis er "READY" ist, findet die Suche
-// nichts. Scheitert das Anlegen (z. B. fehlende Rechte), liefert die
-// Funktion den Fehler; der Server startet trotzdem, und der Index kann in
-// der Atlas-Oberfläche angelegt werden.
+// Atlas builds the index in the background; until it is "READY", search
+// finds nothing. If creating fails (e.g. missing permissions), the function
+// returns the error; the server still starts, and the index can be created
+// in the Atlas UI.
 //
-// Voraussetzung: Die Collection "abschnitte" existiert. IndexeAnlegen legt
-// sie mit dem Index auf eintragId an, darum vorher aufrufen.
-func (s *Speicher) VektorindexAnlegen(ctx context.Context) (status string, err error) {
-	status, gefunden, err := s.VektorindexStatus(ctx)
-	if err != nil || gefunden {
+// Precondition: the collection "abschnitte" exists. CreateIndexes creates it
+// with the index on eintragId, so call that first.
+func (s *Store) CreateVectorIndex(ctx context.Context) (status string, err error) {
+	status, found, err := s.VectorIndexStatus(ctx)
+	if err != nil || found {
 		return status, err
 	}
 
 	var definition bson.D
-	if err := bson.UnmarshalExtJSON(vektorindexDefinition, false, &definition); err != nil {
-		return "", fmt.Errorf("Vektorindex-Definition nicht lesbar: %w", err)
+	if err := bson.UnmarshalExtJSON(vectorIndexDefinition, false, &definition); err != nil {
+		return "", fmt.Errorf("vector index definition not readable: %w", err)
 	}
-	_, err = s.abschnitte.SearchIndexes().CreateOne(ctx, mongo.SearchIndexModel{
+	_, err = s.chunks.SearchIndexes().CreateOne(ctx, mongo.SearchIndexModel{
 		Definition: definition,
-		Options:    options.SearchIndexes().SetName(VektorindexName).SetType("vectorSearch"),
+		Options:    options.SearchIndexes().SetName(VectorIndexName).SetType("vectorSearch"),
 	})
 	if err != nil {
-		return "", fmt.Errorf("Vektorindex anlegen: %w", err)
+		return "", fmt.Errorf("create vector index: %w", err)
 	}
-	return "ANGELEGT", nil
+	return "CREATED", nil
 }
 
-// VektorindexStatus liefert den Status des Vektorindex, falls es ihn gibt.
-func (s *Speicher) VektorindexStatus(ctx context.Context) (status string, gefunden bool, err error) {
-	cur, err := s.abschnitte.SearchIndexes().List(ctx, options.SearchIndexes().SetName(VektorindexName))
+// VectorIndexStatus returns the status of the vector index, if it exists.
+func (s *Store) VectorIndexStatus(ctx context.Context) (status string, found bool, err error) {
+	cur, err := s.chunks.SearchIndexes().List(ctx, options.SearchIndexes().SetName(VectorIndexName))
 	if err != nil {
-		return "", false, fmt.Errorf("Vektorindex prüfen: %w", err)
+		return "", false, fmt.Errorf("check vector index: %w", err)
 	}
-	var indexe []struct {
+	var indexes []struct {
 		Status string `bson:"status"`
 	}
-	if err := cur.All(ctx, &indexe); err != nil {
-		return "", false, fmt.Errorf("Vektorindex prüfen: %w", err)
+	if err := cur.All(ctx, &indexes); err != nil {
+		return "", false, fmt.Errorf("check vector index: %w", err)
 	}
-	if len(indexe) == 0 {
+	if len(indexes) == 0 {
 		return "", false, nil
 	}
-	return indexe[0].Status, true, nil
+	return indexes[0].Status, true, nil
 }
 
-// trefferDok ist ein Ergebnis von $vectorSearch.
-type trefferDok struct {
-	EintragID bson.ObjectID `bson:"eintragId"`
-	Nr        int           `bson:"nr"`
-	Text      string        `bson:"text"`
-	Score     float64       `bson:"score"`
+// hitDoc is a result of $vectorSearch.
+type hitDoc struct {
+	EntryID  bson.ObjectID `bson:"eintragId"`
+	Position int           `bson:"nr"`
+	Text     string        `bson:"text"`
+	Score    float64       `bson:"score"`
 }
 
-// AehnlicheAbschnitte sucht die k Abschnitte des Moduls, deren Embedding dem
-// Vektor am ähnlichsten ist, absteigend nach Score.
+// SimilarChunks finds the k chunks of the module whose embedding is most
+// similar to the vector, by descending score.
 //
-// Der Score ist der vectorSearchScore von Atlas, bei cosine (1 + cos) / 2.
-// Gefiltert nach Schwelle wird nicht hier, sondern im Dienst (core.MinScore).
-func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Hit, error) {
+// The score is Atlas' vectorSearchScore, with cosine (1 + cos) / 2. It is
+// not filtered by threshold here but in the service (core.MinScore).
+func (s *Store) SimilarChunks(ctx context.Context, vector []float32, module string, k int) ([]core.Hit, error) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$vectorSearch", Value: bson.D{
-			{Key: "index", Value: VektorindexName},
+			{Key: "index", Value: VectorIndexName},
 			{Key: "path", Value: "embedding"},
-			{Key: "queryVector", Value: vektor},
+			{Key: "queryVector", Value: vector},
 			{Key: "numCandidates", Value: numCandidates},
 			{Key: "limit", Value: k},
-			// Nur möglich, weil "modul" im Index als Filterfeld eingetragen ist.
-			{Key: "filter", Value: bson.D{{Key: "modul", Value: bson.D{{Key: "$eq", Value: modul}}}}},
+			// Only possible because "modul" is registered as a filter field in the index.
+			{Key: "filter", Value: bson.D{{Key: "modul", Value: bson.D{{Key: "$eq", Value: module}}}}},
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
@@ -109,25 +110,25 @@ func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, mo
 			{Key: "score", Value: bson.D{{Key: "$meta", Value: "vectorSearchScore"}}},
 		}}},
 	}
-	cur, err := s.abschnitte.Aggregate(ctx, pipeline)
+	cur, err := s.chunks.Aggregate(ctx, pipeline)
 	if err != nil {
-		return nil, fmt.Errorf("Vektorsuche: %w", err)
+		return nil, fmt.Errorf("vector search: %w", err)
 	}
-	var doks []trefferDok
-	if err := cur.All(ctx, &doks); err != nil {
-		return nil, fmt.Errorf("Vektorsuche: %w", err)
+	var docs []hitDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
 	}
-	treffer := make([]core.Hit, 0, len(doks))
-	for _, d := range doks {
-		treffer = append(treffer, core.Hit{EntryID: d.EintragID.Hex(), Position: d.Nr, Text: d.Text, Score: d.Score})
+	hits := make([]core.Hit, 0, len(docs))
+	for _, d := range docs {
+		hits = append(hits, core.Hit{EntryID: d.EntryID.Hex(), Position: d.Position, Text: d.Text, Score: d.Score})
 	}
-	return treffer, nil
+	return hits, nil
 }
 
-// EintraegeKurzNachIDs lädt die Kurzform mehrerer Einträge auf einmal.
-// Einträge, die es nicht (mehr) gibt, fehlen einfach in der Map; der Dienst
-// verwirft dann die zugehörigen Abschnitte.
-func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error) {
+// SummariesByIDs loads the short form of several entries at once. Entries
+// that do not exist (anymore) are simply missing in the map; the service
+// then drops the matching chunks.
+func (s *Store) SummariesByIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error) {
 	oids := make([]bson.ObjectID, 0, len(ids))
 	for _, id := range ids {
 		oid, err := bson.ObjectIDFromHex(id)
@@ -136,22 +137,22 @@ func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[
 		}
 		oids = append(oids, oid)
 	}
-	ergebnis := map[string]core.EntrySummary{}
+	result := map[string]core.EntrySummary{}
 	if len(oids) == 0 {
-		return ergebnis, nil
+		return result, nil
 	}
-	cur, err := s.eintraege.Find(ctx,
+	cur, err := s.entries.Find(ctx,
 		bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: oids}}}},
-		options.Find().SetProjection(kurzProjektion))
+		options.Find().SetProjection(summaryProjection))
 	if err != nil {
-		return nil, fmt.Errorf("Einträge lesen: %w", err)
+		return nil, fmt.Errorf("read entries: %w", err)
 	}
-	var doks []eintragKurzDok
-	if err := cur.All(ctx, &doks); err != nil {
-		return nil, fmt.Errorf("Einträge lesen: %w", err)
+	var docs []entrySummaryDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("read entries: %w", err)
 	}
-	for _, d := range doks {
-		ergebnis[d.ID.Hex()] = d.zuKern()
+	for _, d := range docs {
+		result[d.ID.Hex()] = d.toCore()
 	}
-	return ergebnis, nil
+	return result, nil
 }

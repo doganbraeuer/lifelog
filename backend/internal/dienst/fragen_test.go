@@ -21,12 +21,12 @@ type suchAttrappe struct {
 	gefragtK     int
 }
 
-func (s *suchAttrappe) AehnlicheAbschnitte(_ context.Context, _ []float32, modul string, k int) ([]core.Hit, error) {
+func (s *suchAttrappe) SimilarChunks(_ context.Context, _ []float32, modul string, k int) ([]core.Hit, error) {
 	s.gefragtModul, s.gefragtK = modul, k
 	return s.treffer, s.err
 }
 
-func (s *suchAttrappe) EintraegeKurzNachIDs(_ context.Context, ids []string) (map[string]core.EntrySummary, error) {
+func (s *suchAttrappe) SummariesByIDs(_ context.Context, ids []string) (map[string]core.EntrySummary, error) {
 	m := map[string]core.EntrySummary{}
 	for _, id := range ids {
 		if e, ok := s.eintraege[id]; ok {

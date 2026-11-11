@@ -31,7 +31,7 @@ func neuerSpeicher() *speicherAttrappe {
 	return &speicherAttrappe{hashes: map[string]string{}, fehler: map[string]error{}, dateien: map[string][]byte{}}
 }
 
-func (s *speicherAttrappe) EintragMitHash(_ context.Context, sha string) (string, bool, error) {
+func (s *speicherAttrappe) EntryByHash(_ context.Context, sha string) (string, bool, error) {
 	s.protokoll = append(s.protokoll, "EintragMitHash")
 	if err := s.fehler["EintragMitHash"]; err != nil {
 		return "", false, err
@@ -40,7 +40,7 @@ func (s *speicherAttrappe) EintragMitHash(_ context.Context, sha string) (string
 	return id, ok, nil
 }
 
-func (s *speicherAttrappe) DateiSpeichern(_ context.Context, id, _, _ string, daten []byte) error {
+func (s *speicherAttrappe) SaveFile(_ context.Context, id, _, _ string, daten []byte) error {
 	s.protokoll = append(s.protokoll, "DateiSpeichern")
 	if err := s.fehler["DateiSpeichern"]; err != nil {
 		return err
@@ -49,13 +49,13 @@ func (s *speicherAttrappe) DateiSpeichern(_ context.Context, id, _, _ string, da
 	return nil
 }
 
-func (s *speicherAttrappe) DateiLoeschen(_ context.Context, id string) error {
+func (s *speicherAttrappe) DeleteFile(_ context.Context, id string) error {
 	s.protokoll = append(s.protokoll, "DateiLoeschen")
 	delete(s.dateien, id)
 	return nil
 }
 
-func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Chunk) error {
+func (s *speicherAttrappe) SaveChunks(_ context.Context, a []core.Chunk) error {
 	s.protokoll = append(s.protokoll, "AbschnitteSpeichern")
 	if err := s.fehler["AbschnitteSpeichern"]; err != nil {
 		return err
@@ -64,13 +64,13 @@ func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Chunk
 	return nil
 }
 
-func (s *speicherAttrappe) AbschnitteLoeschen(_ context.Context, eintragID string) error {
+func (s *speicherAttrappe) DeleteChunks(_ context.Context, eintragID string) error {
 	s.protokoll = append(s.protokoll, "AbschnitteLoeschen")
 	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a core.Chunk) bool { return a.EntryID == eintragID })
 	return nil
 }
 
-func (s *speicherAttrappe) EintragSpeichern(_ context.Context, e core.Entry) error {
+func (s *speicherAttrappe) SaveEntry(_ context.Context, e core.Entry) error {
 	s.protokoll = append(s.protokoll, "EintragSpeichern")
 	if err := s.fehler["EintragSpeichern"]; err != nil {
 		if errors.Is(err, core.ErrDuplicate) {

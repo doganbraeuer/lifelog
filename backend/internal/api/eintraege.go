@@ -16,9 +16,9 @@ const (
 // EintragSpeicher ist das, was die Einträge-Handler von der Datenbank
 // brauchen. Umgesetzt von speicher.Speicher, im Test von einer Attrappe.
 type EintragSpeicher interface {
-	ListeKurz(ctx context.Context, modul string) ([]core.EntrySummary, error)
-	EintragLesen(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error)
+	ListSummaries(ctx context.Context, modul string) ([]core.EntrySummary, error)
+	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
+	OpenFile(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error)
 }
 
 // eintraegeListeHandler beantwortet GET /api/v1/eintraege (API.md, 3.2).
@@ -45,7 +45,7 @@ func eintraegeListeHandler(speicher EintragSpeicher) http.HandlerFunc {
 			return
 		}
 
-		liste, err := speicher.ListeKurz(r.Context(), modul)
+		liste, err := speicher.ListSummaries(r.Context(), modul)
 		if err != nil {
 			schreibeInternenFehler(w, r, err)
 			return

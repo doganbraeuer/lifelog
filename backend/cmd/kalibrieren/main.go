@@ -61,19 +61,19 @@ func ausfuehren(schwelle float64) error {
 	ctx, abbrechen := context.WithTimeout(ctx, 3*time.Minute)
 	defer abbrechen()
 
-	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
-	defer db.Trennen(context.Background())
+	defer db.Disconnect(context.Background())
 
-	status, gefunden, err := db.VektorindexStatus(ctx)
+	status, gefunden, err := db.VectorIndexStatus(ctx)
 	if err != nil {
 		return err
 	}
 	if !gefunden || status != "READY" {
 		return fmt.Errorf("Vektorindex %q ist nicht bereit (Status %q); einmal den Server starten oder backend/README.md, Abschnitt Vektorindex",
-			store.VektorindexName, status)
+			store.VectorIndexName, status)
 	}
 
 	// Nur der Einbetter wird benutzt; Lese- und Antwortmodell bleiben unberührt.
@@ -88,7 +88,7 @@ func ausfuehren(schwelle float64) error {
 
 	// Nur lesend: Ziele (Typ + Dokumentdatum oder Testdaten-ID) zu IDs auflösen,
 	// bevor das erste Embedding Kontingent kostet.
-	liste, err := db.ListeKurz(ctx, "gesundheit")
+	liste, err := db.ListSummaries(ctx, "gesundheit")
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func ausfuehren(schwelle float64) error {
 			}
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
-		treffer, err := db.AehnlicheAbschnitte(ctx, vektor, "gesundheit", core.MaxHits)
+		treffer, err := db.SimilarChunks(ctx, vektor, "gesundheit", core.MaxHits)
 		if err != nil {
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}

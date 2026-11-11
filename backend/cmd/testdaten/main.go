@@ -77,25 +77,25 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 		}
 	}
 
-	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
-	defer db.Trennen(context.Background())
+	defer db.Disconnect(context.Background())
 
-	if err := db.IndexeAnlegen(ctx); err != nil {
+	if err := db.CreateIndexes(ctx); err != nil {
 		return err
 	}
 
 	// Entfernen in der Reihenfolge aus API.md 3.7: Abschnitte, Datei, Eintrag.
 	for _, e := range eintraege {
-		if err := db.AbschnitteLoeschen(ctx, e.ID); err != nil {
+		if err := db.DeleteChunks(ctx, e.ID); err != nil {
 			return err
 		}
-		if err := db.DateiLoeschen(ctx, e.File.ID); err != nil {
+		if err := db.DeleteFile(ctx, e.File.ID); err != nil {
 			return err
 		}
-		if _, err := db.EintragLoeschen(ctx, e.ID); err != nil {
+		if _, err := db.DeleteEntry(ctx, e.ID); err != nil {
 			return err
 		}
 	}
@@ -107,13 +107,13 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 	// Einfügen wie beim Upload: Datei, Abschnitte, Eintrag zuletzt.
 	anzahl := 0
 	for _, e := range eintraege {
-		if err := db.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
+		if err := db.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 			return err
 		}
-		if err := db.AbschnitteSpeichern(ctx, abschnitte[e.ID]); err != nil {
+		if err := db.SaveChunks(ctx, abschnitte[e.ID]); err != nil {
 			return err
 		}
-		if err := db.EintragSpeichern(ctx, e); err != nil {
+		if err := db.SaveEntry(ctx, e); err != nil {
 			return err
 		}
 		anzahl += len(abschnitte[e.ID])
@@ -176,20 +176,20 @@ func wegwerfAnlegen() error {
 	ctx, abbrechen := context.WithTimeout(context.Background(), 30*time.Second)
 	defer abbrechen()
 
-	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
-	defer db.Trennen(context.Background())
+	defer db.Disconnect(context.Background())
 
-	e, abschnitte := beispieldaten.Wegwerf(store.NeueID(), store.NeueID(), time.Now())
-	if err := db.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
+	e, abschnitte := beispieldaten.Wegwerf(store.NewID(), store.NewID(), time.Now())
+	if err := db.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 		return err
 	}
-	if err := db.AbschnitteSpeichern(ctx, abschnitte); err != nil {
+	if err := db.SaveChunks(ctx, abschnitte); err != nil {
 		return err
 	}
-	if err := db.EintragSpeichern(ctx, e); err != nil {
+	if err := db.SaveEntry(ctx, e); err != nil {
 		return err
 	}
 	fmt.Printf("Wegwerf-Eintrag mit %d Abschnitt(en) angelegt (Datenbank %q):\n%s\n", len(abschnitte), k.MongoDB, e.ID)

@@ -7,9 +7,9 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Die Definition im Repo muss zur Länge der Embeddings passen, sonst lehnt
-// Atlas jeden gespeicherten Abschnitt ab oder findet nichts.
-func TestVektorindexDefinition(t *testing.T) {
+// The definition in the repository must match the length of the embeddings,
+// otherwise Atlas rejects every stored chunk or finds nothing.
+func TestVectorIndexDefinition(t *testing.T) {
 	var d struct {
 		Fields []struct {
 			Type          string `json:"type"`
@@ -18,25 +18,25 @@ func TestVektorindexDefinition(t *testing.T) {
 			Similarity    string `json:"similarity"`
 		} `json:"fields"`
 	}
-	if err := json.Unmarshal(vektorindexDefinition, &d); err != nil {
-		t.Fatalf("abschnitte_vektor.json ist kein gültiges JSON: %v", err)
+	if err := json.Unmarshal(vectorIndexDefinition, &d); err != nil {
+		t.Fatalf("abschnitte_vektor.json is not valid JSON: %v", err)
 	}
-	var vektor, filterModul bool
+	var vector, moduleFilter bool
 	for _, f := range d.Fields {
 		switch {
 		case f.Type == "vector" && f.Path == "embedding":
-			vektor = true
+			vector = true
 			if f.NumDimensions != llm.EmbeddingDimensions {
-				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, llm.EmbeddingDimensions)
+				t.Errorf("numDimensions = %d, embeddings have %d", f.NumDimensions, llm.EmbeddingDimensions)
 			}
 			if f.Similarity != "cosine" {
-				t.Errorf("similarity = %q; core.MinScore ist für cosine berechnet", f.Similarity)
+				t.Errorf("similarity = %q; core.MinScore is computed for cosine", f.Similarity)
 			}
 		case f.Type == "filter" && f.Path == "modul":
-			filterModul = true
+			moduleFilter = true
 		}
 	}
-	if !vektor || !filterModul {
-		t.Errorf("Vektorfeld embedding: %v, Filterfeld modul: %v", vektor, filterModul)
+	if !vector || !moduleFilter {
+		t.Errorf("vector field embedding: %v, filter field modul: %v", vector, moduleFilter)
 	}
 }

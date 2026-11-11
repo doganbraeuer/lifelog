@@ -9,64 +9,69 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Die *Dok-Typen beschreiben, wie ein Eintrag in MongoDB aussieht. Sie sind
-// von den kern-Typen getrennt, damit die Fachlogik nichts von BSON weiß.
+// The *Doc types describe how an entry looks in MongoDB. They are separate
+// from the core types, so the domain logic knows nothing about BSON.
 //
-// Gespeichert wird:
-//   - _id als ObjectId
-//   - dokumentdatum als String "YYYY-MM-DD" oder null. Ein Text statt
-//     eines BSON-Datums, damit keine Zeitzone das Datum verschieben kann.
-//   - importdatum als BSON-Datum (UTC)
-//   - Listen immer als Array, nie als null
+// Stored are:
+//   - _id as ObjectId
+//   - dokumentdatum as string "YYYY-MM-DD" or null. A string instead of a
+//     BSON date, so no time zone can shift the date.
+//   - importdatum as BSON date (UTC)
+//   - lists always as array, never as null
+//
+// The BSON field names are still German; they change when the database is
+// refilled (plan step B9).
 
-type eintragDok struct {
-	ID            bson.ObjectID  `bson:"_id"`
-	Modul         string         `bson:"modul"`
-	Typ           string         `bson:"typ"`
-	Dokumentdatum *string        `bson:"dokumentdatum"`
-	Importdatum   time.Time      `bson:"importdatum"`
-	Quelle        *string        `bson:"quelle"`
-	Volltext      string         `bson:"volltext"`
-	Infos         []infoDok      `bson:"infos"`
-	Datei         dateiDok       `bson:"datei"`
-	Korrekturen   []korrekturDok `bson:"korrekturen"`
+type entryDoc struct {
+	ID           bson.ObjectID   `bson:"_id"`
+	Module       string          `bson:"modul"`
+	Type         string          `bson:"typ"`
+	DocumentDate *string         `bson:"dokumentdatum"`
+	ImportedAt   time.Time       `bson:"importdatum"`
+	Issuer       *string         `bson:"quelle"`
+	FullText     string          `bson:"volltext"`
+	Facts        []factDoc       `bson:"infos"`
+	File         fileDoc         `bson:"datei"`
+	Corrections  []correctionDoc `bson:"korrekturen"`
 }
 
-type infoDok struct {
+// factDoc and correctionDoc have exactly the field names of core.Fact and
+// core.Correction, so they can be converted directly (factDoc(f)).
+type factDoc struct {
 	ID    string  `bson:"id"`
 	Name  string  `bson:"name"`
 	Value string  `bson:"wert"`
 	Unit  *string `bson:"einheit,omitempty"`
 }
 
-type dateiDok struct {
-	ID        bson.ObjectID `bson:"id"`
-	Dateiname string        `bson:"dateiname"`
-	MimeTyp   string        `bson:"mimeTyp"`
-	Groesse   int64         `bson:"groesse"`
-	Sha256    string        `bson:"sha256"`
+type fileDoc struct {
+	ID       bson.ObjectID `bson:"id"`
+	FileName string        `bson:"dateiname"`
+	MimeType string        `bson:"mimeTyp"`
+	Size     int64         `bson:"groesse"`
+	Sha256   string        `bson:"sha256"`
 }
 
-type korrekturDok struct {
+type correctionDoc struct {
 	Field       string    `bson:"feld"`
 	Recognized  *string   `bson:"erkannt"`
 	Corrected   *string   `bson:"korrigiert"`
 	CorrectedAt time.Time `bson:"zeitpunkt"`
 }
 
-// eintragKurzDok liest nur die Felder, die die Zeitleiste braucht.
-type eintragKurzDok struct {
-	ID            bson.ObjectID `bson:"_id"`
-	Modul         string        `bson:"modul"`
-	Typ           string        `bson:"typ"`
-	Dokumentdatum *string       `bson:"dokumentdatum"`
-	Importdatum   time.Time     `bson:"importdatum"`
-	Quelle        *string       `bson:"quelle"`
+// entrySummaryDoc only reads the fields the timeline needs.
+type entrySummaryDoc struct {
+	ID           bson.ObjectID `bson:"_id"`
+	Module       string        `bson:"modul"`
+	Type         string        `bson:"typ"`
+	DocumentDate *string       `bson:"dokumentdatum"`
+	ImportedAt   time.Time     `bson:"importdatum"`
+	Issuer       *string       `bson:"quelle"`
 }
 
-// kurzProjektion sagt MongoDB, welche Felder es für die Liste schicken soll.
-// Volltext, Infos usw. bleiben in der Datenbank, die Antwort bleibt klein.
-var kurzProjektion = bson.D{
+// summaryProjection tells MongoDB which fields to send for the list. Full
+// text, facts etc. stay in the database, the response stays small.
+var summaryProjection = bson.D{
 	{Key: "modul", Value: 1},
 	{Key: "typ", Value: 1},
 	{Key: "dokumentdatum", Value: 1},
@@ -74,123 +79,123 @@ var kurzProjektion = bson.D{
 	{Key: "quelle", Value: 1},
 }
 
-func zuEintragDok(e core.Entry) (eintragDok, error) {
+func toEntryDoc(e core.Entry) (entryDoc, error) {
 	id, err := bson.ObjectIDFromHex(e.ID)
 	if err != nil {
-		return eintragDok{}, fmt.Errorf("ungültige Eintrag-ID: %w", err)
+		return entryDoc{}, fmt.Errorf("invalid entry ID: %w", err)
 	}
-	dateiID, err := bson.ObjectIDFromHex(e.File.ID)
+	fileID, err := bson.ObjectIDFromHex(e.File.ID)
 	if err != nil {
-		return eintragDok{}, fmt.Errorf("ungültige Datei-ID: %w", err)
+		return entryDoc{}, fmt.Errorf("invalid file ID: %w", err)
 	}
 
-	infos := make([]infoDok, 0, len(e.Facts))
-	for _, i := range e.Facts {
-		infos = append(infos, infoDok(i))
+	facts := make([]factDoc, 0, len(e.Facts))
+	for _, f := range e.Facts {
+		facts = append(facts, factDoc(f))
 	}
-	korrekturen := make([]korrekturDok, 0, len(e.Corrections))
-	for _, k := range e.Corrections {
-		k.CorrectedAt = k.CorrectedAt.UTC()
-		korrekturen = append(korrekturen, korrekturDok(k))
+	corrections := make([]correctionDoc, 0, len(e.Corrections))
+	for _, c := range e.Corrections {
+		c.CorrectedAt = c.CorrectedAt.UTC()
+		corrections = append(corrections, correctionDoc(c))
 	}
 
-	return eintragDok{
-		ID:            id,
-		Modul:         e.Module,
-		Typ:           e.Type,
-		Dokumentdatum: e.DocumentDate,
-		Importdatum:   e.ImportedAt.UTC(),
-		Quelle:        e.Issuer,
-		Volltext:      e.FullText,
-		Infos:         infos,
-		Datei: dateiDok{
-			ID:        dateiID,
-			Dateiname: e.File.FileName,
-			MimeTyp:   e.File.MimeType,
-			Groesse:   e.File.Size,
-			Sha256:    e.File.Sha256,
+	return entryDoc{
+		ID:           id,
+		Module:       e.Module,
+		Type:         e.Type,
+		DocumentDate: e.DocumentDate,
+		ImportedAt:   e.ImportedAt.UTC(),
+		Issuer:       e.Issuer,
+		FullText:     e.FullText,
+		Facts:        facts,
+		File: fileDoc{
+			ID:       fileID,
+			FileName: e.File.FileName,
+			MimeType: e.File.MimeType,
+			Size:     e.File.Size,
+			Sha256:   e.File.Sha256,
 		},
-		Korrekturen: korrekturen,
+		Corrections: corrections,
 	}, nil
 }
 
-func (d eintragDok) zuKern() core.Entry {
-	infos := make([]core.Fact, 0, len(d.Infos))
-	for _, i := range d.Infos {
-		infos = append(infos, core.Fact(i))
+func (d entryDoc) toCore() core.Entry {
+	facts := make([]core.Fact, 0, len(d.Facts))
+	for _, f := range d.Facts {
+		facts = append(facts, core.Fact(f))
 	}
-	korrekturen := make([]core.Correction, 0, len(d.Korrekturen))
-	for _, k := range d.Korrekturen {
-		korrekturen = append(korrekturen, core.Correction(k))
+	corrections := make([]core.Correction, 0, len(d.Corrections))
+	for _, c := range d.Corrections {
+		corrections = append(corrections, core.Correction(c))
 	}
 	return core.Entry{
 		ID:           d.ID.Hex(),
-		Module:       d.Modul,
-		Type:         d.Typ,
-		DocumentDate: d.Dokumentdatum,
-		ImportedAt:   d.Importdatum.UTC(),
-		Issuer:       d.Quelle,
-		FullText:     d.Volltext,
-		Facts:        infos,
+		Module:       d.Module,
+		Type:         d.Type,
+		DocumentDate: d.DocumentDate,
+		ImportedAt:   d.ImportedAt.UTC(),
+		Issuer:       d.Issuer,
+		FullText:     d.FullText,
+		Facts:        facts,
 		File: core.File{
-			ID:       d.Datei.ID.Hex(),
-			FileName: d.Datei.Dateiname,
-			MimeType: d.Datei.MimeTyp,
-			Size:     d.Datei.Groesse,
-			Sha256:   d.Datei.Sha256,
+			ID:       d.File.ID.Hex(),
+			FileName: d.File.FileName,
+			MimeType: d.File.MimeType,
+			Size:     d.File.Size,
+			Sha256:   d.File.Sha256,
 		},
-		Corrections: korrekturen,
+		Corrections: corrections,
 	}
 }
 
-func (d eintragKurzDok) zuKern() core.EntrySummary {
+func (d entrySummaryDoc) toCore() core.EntrySummary {
 	return core.EntrySummary{
 		ID:           d.ID.Hex(),
-		Module:       d.Modul,
-		Type:         d.Typ,
-		DocumentDate: d.Dokumentdatum,
-		ImportedAt:   d.Importdatum.UTC(),
-		Issuer:       d.Quelle,
+		Module:       d.Module,
+		Type:         d.Type,
+		DocumentDate: d.DocumentDate,
+		ImportedAt:   d.ImportedAt.UTC(),
+		Issuer:       d.Issuer,
 	}
 }
 
-// abschnittDok ist ein Abschnitt in der Collection "abschnitte".
+// chunkDoc is a chunk in the collection "abschnitte".
 //
-// Das Embedding wird als normales Zahlen-Array gespeichert (768 Zahlen).
-// Atlas Vector Search liest genau dieses Feld (Pfad "embedding"), und
-// "modul" ist dort als Filterfeld eingetragen (Schritt 5).
-type abschnittDok struct {
+// The embedding is stored as a plain array of numbers (768 numbers). Atlas
+// Vector Search reads exactly this field (path "embedding"), and "modul" is
+// registered there as a filter field.
+type chunkDoc struct {
 	ID        bson.ObjectID `bson:"_id"`
-	EintragID bson.ObjectID `bson:"eintragId"`
-	Modul     string        `bson:"modul"`
-	Nr        int           `bson:"nr"`
+	EntryID   bson.ObjectID `bson:"eintragId"`
+	Module    string        `bson:"modul"`
+	Position  int           `bson:"nr"`
 	Text      string        `bson:"text"`
 	Embedding []float32     `bson:"embedding"`
 }
 
-func zuAbschnittDok(a core.Chunk) (abschnittDok, error) {
-	eintragID, err := bson.ObjectIDFromHex(a.EntryID)
+func toChunkDoc(c core.Chunk) (chunkDoc, error) {
+	entryID, err := bson.ObjectIDFromHex(c.EntryID)
 	if err != nil {
-		return abschnittDok{}, fmt.Errorf("ungültige Eintrag-ID im Abschnitt: %w", err)
+		return chunkDoc{}, fmt.Errorf("invalid entry ID in chunk: %w", err)
 	}
-	if len(a.Embedding) == 0 {
-		return abschnittDok{}, fmt.Errorf("Abschnitt %d hat kein Embedding", a.Position)
+	if len(c.Embedding) == 0 {
+		return chunkDoc{}, fmt.Errorf("chunk %d has no embedding", c.Position)
 	}
-	return abschnittDok{
+	return chunkDoc{
 		ID:        bson.NewObjectID(),
-		EintragID: eintragID,
-		Modul:     a.Module,
-		Nr:        a.Position,
-		Text:      a.Text,
-		Embedding: a.Embedding,
+		EntryID:   entryID,
+		Module:    c.Module,
+		Position:  c.Position,
+		Text:      c.Text,
+		Embedding: c.Embedding,
 	}, nil
 }
 
-func (d abschnittDok) zuKern() core.Chunk {
+func (d chunkDoc) toCore() core.Chunk {
 	return core.Chunk{
-		EntryID:   d.EintragID.Hex(),
-		Module:    d.Modul,
-		Position:  d.Nr,
+		EntryID:   d.EntryID.Hex(),
+		Module:    d.Module,
+		Position:  d.Position,
 		Text:      d.Text,
 		Embedding: d.Embedding,
 	}

@@ -12,10 +12,10 @@ import (
 // von speicher.Speicher. DateiLoeschen und AbschnitteLoeschen dürfen keinen
 // Fehler liefern, wenn es nichts (mehr) zu löschen gibt.
 type LoeschSpeicher interface {
-	EintragLesen(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	AbschnitteLoeschen(ctx context.Context, eintragID string) error
-	DateiLoeschen(ctx context.Context, id string) error
-	EintragLoeschen(ctx context.Context, id string) (gefunden bool, err error)
+	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
+	DeleteChunks(ctx context.Context, eintragID string) error
+	DeleteFile(ctx context.Context, id string) error
+	DeleteEntry(ctx context.Context, id string) (gefunden bool, err error)
 }
 
 // loeschTimeout: Zeit für die drei Löschschritte. Sie laufen ohne den
@@ -54,7 +54,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 	if err := core.CheckID(id); err != nil {
 		return err
 	}
-	e, gefunden, err := l.speicher.EintragLesen(ctx, id)
+	e, gefunden, err := l.speicher.GetEntry(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -65,13 +65,13 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), loeschTimeout)
 	defer abbrechen()
 
-	if err := l.speicher.AbschnitteLoeschen(ctx, id); err != nil {
+	if err := l.speicher.DeleteChunks(ctx, id); err != nil {
 		return err
 	}
-	if err := l.speicher.DateiLoeschen(ctx, e.File.ID); err != nil {
+	if err := l.speicher.DeleteFile(ctx, e.File.ID); err != nil {
 		return err
 	}
-	gefunden, err = l.speicher.EintragLoeschen(ctx, id)
+	gefunden, err = l.speicher.DeleteEntry(ctx, id)
 	if err != nil {
 		return err
 	}

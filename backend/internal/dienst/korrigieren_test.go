@@ -23,7 +23,7 @@ type korrekturAttrappe struct {
 	gespeichert  []core.Entry
 }
 
-func (s *korrekturAttrappe) EintragLesen(_ context.Context, id string) (core.Entry, bool, error) {
+func (s *korrekturAttrappe) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
 	s.gelesen++
 	if s.lesenErr != nil {
 		return core.Entry{}, false, s.lesenErr
@@ -34,7 +34,7 @@ func (s *korrekturAttrappe) EintragLesen(_ context.Context, id string) (core.Ent
 	return *s.eintrag, true, nil
 }
 
-func (s *korrekturAttrappe) KorrekturSpeichern(_ context.Context, e core.Entry) (bool, error) {
+func (s *korrekturAttrappe) SaveCorrection(_ context.Context, e core.Entry) (bool, error) {
 	if s.speichernErr != nil {
 		return false, s.speichernErr
 	}

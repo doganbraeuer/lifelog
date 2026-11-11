@@ -1,5 +1,5 @@
-// Package store kapselt den Zugriff auf MongoDB. Andere Pakete sehen nur
-// kern-Typen, keine BSON-Dokumente.
+// Package store encapsulates access to MongoDB. Other packages only see core
+// types, no BSON documents.
 package store
 
 import (
@@ -18,307 +18,307 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Namen der Collections. GridFS legt für den Bucket "dateien" selbst die
-// Collections dateien.files (Metadaten) und dateien.chunks (Daten in
-// Stücken zu 255 KB) an.
+// Names of the collections. For the bucket "dateien", GridFS creates the
+// collections dateien.files (metadata) and dateien.chunks (data in pieces of
+// 255 KB) itself. The names are still German; they change when the database
+// is refilled (plan step B9).
 const (
-	collEintraege  = "eintraege"
-	collAbschnitte = "abschnitte"
-	bucketDateien  = "dateien"
+	collEntries = "eintraege"
+	collChunks  = "abschnitte"
+	bucketFiles = "dateien"
 )
 
-// Speicher ist die Verbindung zu einer Lifelog-Datenbank.
-type Speicher struct {
-	client     *mongo.Client
-	db         *mongo.Database
-	eintraege  *mongo.Collection
-	abschnitte *mongo.Collection
-	dateien    *mongo.GridFSBucket
+// Store is the connection to a Lifelog database.
+type Store struct {
+	client  *mongo.Client
+	db      *mongo.Database
+	entries *mongo.Collection
+	chunks  *mongo.Collection
+	files   *mongo.GridFSBucket
 }
 
-// NeueID erzeugt eine neue ObjectId als Hex-String. Der Upload vergibt die
-// IDs vorab, weil Datei und Abschnitte auf den Eintrag verweisen, der erst
-// zuletzt gespeichert wird.
-func NeueID() string {
+// NewID creates a new ObjectId as hex string. The upload assigns the IDs in
+// advance, because the file and the chunks refer to the entry, which is
+// stored last.
+func NewID() string {
 	return bson.NewObjectID().Hex()
 }
 
-// Verbinden baut die Verbindung auf und prüft sie mit einem Ping.
+// Connect opens the connection and checks it with a ping.
 //
-// Fehlermeldungen enthalten bewusst nicht die Ursache des Treibers, weil darin
-// Teile der URI stehen können. Die URI enthält das Passwort.
-func Verbinden(ctx context.Context, uri, datenbank string) (*Speicher, error) {
+// The error messages deliberately do not contain the driver's cause,
+// because it can contain parts of the URI. The URI contains the password.
+func Connect(ctx context.Context, uri, database string) (*Store, error) {
 	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
-		return nil, errors.New("MongoDB-Client konnte nicht erstellt werden (MONGODB_URI prüfen)")
+		return nil, errors.New("could not create MongoDB client (check MONGODB_URI)")
 	}
-	db := client.Database(datenbank)
-	s := &Speicher{
-		client:     client,
-		db:         db,
-		eintraege:  db.Collection(collEintraege),
-		abschnitte: db.Collection(collAbschnitte),
-		dateien:    db.GridFSBucket(options.GridFSBucket().SetName(bucketDateien)),
+	db := client.Database(database)
+	s := &Store{
+		client:  client,
+		db:      db,
+		entries: db.Collection(collEntries),
+		chunks:  db.Collection(collChunks),
+		files:   db.GridFSBucket(options.GridFSBucket().SetName(bucketFiles)),
 	}
 
-	pingCtx, abbrechen := context.WithTimeout(ctx, 10*time.Second)
-	defer abbrechen()
+	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	if err := s.Ping(pingCtx); err != nil {
-		_ = s.Trennen(context.Background())
-		return nil, errors.New("MongoDB nicht erreichbar: Zugangsdaten und Network Access in Atlas prüfen")
+		_ = s.Disconnect(context.Background())
+		return nil, errors.New("MongoDB unreachable: check credentials and Network Access in Atlas")
 	}
 	return s, nil
 }
 
-// Trennen schließt die Verbindung.
-func (s *Speicher) Trennen(ctx context.Context) error {
-	ctx, abbrechen := context.WithTimeout(ctx, 5*time.Second)
-	defer abbrechen()
+// Disconnect closes the connection.
+func (s *Store) Disconnect(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	return s.client.Disconnect(ctx)
 }
 
-// Ping prüft, ob die Datenbank antwortet (für GET /status).
-func (s *Speicher) Ping(ctx context.Context) error {
+// Ping checks whether the database responds (for GET /status).
+func (s *Store) Ping(ctx context.Context) error {
 	return s.client.Ping(ctx, readpref.Primary())
 }
 
-// IndexeAnlegen legt die normalen Indexe an. Gibt es einen Index schon mit
-// derselben Definition, passiert nichts. Man kann das bei jedem Start aufrufen.
-func (s *Speicher) IndexeAnlegen(ctx context.Context) error {
-	_, err := s.eintraege.Indexes().CreateMany(ctx, []mongo.IndexModel{
+// CreateIndexes creates the regular indexes. If an index with the same
+// definition already exists, nothing happens. It can be called on every
+// start.
+func (s *Store) CreateIndexes(ctx context.Context) error {
+	_, err := s.entries.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
-			// Duplikat-Erkennung (API.md 3.1): Der eindeutige Index fängt auch
-			// zwei gleichzeitige Uploads derselben Datei ab.
+			// Duplicate detection (API.md 3.1): the unique index also catches
+			// two simultaneous uploads of the same file.
 			Keys:    bson.D{{Key: "datei.sha256", Value: 1}},
 			Options: options.Index().SetName("datei_sha256_eindeutig").SetUnique(true),
 		},
 		{
-			// Die Zeitleiste filtert immer nach Modul.
+			// The timeline always filters by module.
 			Keys:    bson.D{{Key: "modul", Value: 1}},
 			Options: options.Index().SetName("modul"),
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("Indexe anlegen: %w", err)
+		return fmt.Errorf("create indexes: %w", err)
 	}
 
-	// Löschen eines Eintrags entfernt seine Abschnitte über eintragId.
-	// Ohne Index müsste MongoDB dafür alle Abschnitte durchsuchen.
-	_, err = s.abschnitte.Indexes().CreateOne(ctx, mongo.IndexModel{
+	// Deleting an entry removes its chunks via eintragId. Without an index,
+	// MongoDB would have to scan all chunks for that.
+	_, err = s.chunks.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "eintragId", Value: 1}},
 		Options: options.Index().SetName("eintragId"),
 	})
 	if err != nil {
-		return fmt.Errorf("Indexe anlegen: %w", err)
+		return fmt.Errorf("create indexes: %w", err)
 	}
 	return nil
 }
 
-// ListeKurz liefert alle Einträge eines Moduls in Kurzform, unsortiert.
-// Sortiert wird in core.Sortiere, weil die Regeln (null am Ende usw.) dort
-// getestet sind.
-func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]core.EntrySummary, error) {
-	cur, err := s.eintraege.Find(ctx,
-		bson.D{{Key: "modul", Value: modul}},
-		options.Find().SetProjection(kurzProjektion))
+// ListSummaries returns all entries of a module in short form, unsorted.
+// Sorting happens in core.SortEntries, because the rules (null at the end
+// etc.) are tested there.
+func (s *Store) ListSummaries(ctx context.Context, module string) ([]core.EntrySummary, error) {
+	cur, err := s.entries.Find(ctx,
+		bson.D{{Key: "modul", Value: module}},
+		options.Find().SetProjection(summaryProjection))
 	if err != nil {
-		return nil, fmt.Errorf("Einträge lesen: %w", err)
+		return nil, fmt.Errorf("read entries: %w", err)
 	}
-	var doks []eintragKurzDok
-	if err := cur.All(ctx, &doks); err != nil {
-		return nil, fmt.Errorf("Einträge lesen: %w", err)
+	var docs []entrySummaryDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("read entries: %w", err)
 	}
 
-	liste := make([]core.EntrySummary, 0, len(doks))
-	for _, d := range doks {
-		liste = append(liste, d.zuKern())
+	list := make([]core.EntrySummary, 0, len(docs))
+	for _, d := range docs {
+		list = append(list, d.toCore())
 	}
-	return liste, nil
+	return list, nil
 }
 
-// EintragSpeichern fügt einen neuen Eintrag ein. ID und Datei.ID müssen
-// gültige ObjectIds sein.
+// SaveEntry inserts a new entry. ID and File.ID must be valid ObjectIds.
 //
-// Gibt es schon einen Eintrag mit demselben datei.sha256, meldet der
-// eindeutige Index einen Fehler, und EintragSpeichern liefert core.ErrDuplikat.
-// Das fängt den Fall ab, dass zwei gleiche Uploads gleichzeitig an der
-// Duplikat-Prüfung vorbeikommen.
-func (s *Speicher) EintragSpeichern(ctx context.Context, e core.Entry) error {
-	dok, err := zuEintragDok(e)
+// If an entry with the same file sha256 already exists, the unique index
+// reports an error and SaveEntry returns core.ErrDuplicate. This catches the
+// case where two equal uploads pass the duplicate check at the same time.
+func (s *Store) SaveEntry(ctx context.Context, e core.Entry) error {
+	doc, err := toEntryDoc(e)
 	if err != nil {
 		return err
 	}
-	if _, err := s.eintraege.InsertOne(ctx, dok); err != nil {
+	if _, err := s.entries.InsertOne(ctx, doc); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return core.ErrDuplicate
 		}
-		return fmt.Errorf("Eintrag speichern: %w", err)
+		return fmt.Errorf("save entry: %w", err)
 	}
 	return nil
 }
 
-// EintragLesen liefert den vollständigen Eintrag. gefunden ist false, wenn
-// es keinen Eintrag mit dieser ID gibt.
-func (s *Speicher) EintragLesen(ctx context.Context, id string) (e core.Entry, gefunden bool, err error) {
+// GetEntry returns the full entry. found is false if there is no entry with
+// this ID.
+func (s *Store) GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error) {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return core.Entry{}, false, core.ErrInvalidID
 	}
-	var dok eintragDok
-	err = s.eintraege.FindOne(ctx, bson.D{{Key: "_id", Value: oid}}).Decode(&dok)
+	var doc entryDoc
+	err = s.entries.FindOne(ctx, bson.D{{Key: "_id", Value: oid}}).Decode(&doc)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return core.Entry{}, false, nil
 	}
 	if err != nil {
-		return core.Entry{}, false, fmt.Errorf("Eintrag lesen: %w", err)
+		return core.Entry{}, false, fmt.Errorf("read entry: %w", err)
 	}
-	return dok.zuKern(), true, nil
+	return doc.toCore(), true, nil
 }
 
-// DateiOeffnen öffnet die Originaldatei zum Lesen. Die Daten kommen in
-// Stücken aus GridFS, während der Aufrufer liest; die Datei wird also nie
-// ganz in den Speicher geladen. Der Aufrufer muss Close aufrufen.
+// OpenFile opens the original file for reading. The data comes from GridFS
+// in pieces while the caller reads; the file is never loaded into memory as
+// a whole. The caller must call Close.
 //
-// ctx gilt für das ganze Lesen, nicht nur fürs Öffnen.
-// Fehlt die Datei, ist der Fehler core.ErrOriginalFehlt.
-func (s *Speicher) DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error) {
-	oid, err := bson.ObjectIDFromHex(dateiID)
+// ctx applies to the whole reading, not only to opening.
+// If the file is missing, the error is core.ErrOriginalMissing.
+func (s *Store) OpenFile(ctx context.Context, fileID string) (content io.ReadCloser, length int64, err error) {
+	oid, err := bson.ObjectIDFromHex(fileID)
 	if err != nil {
 		return nil, 0, core.ErrInvalidID
 	}
-	strom, err := s.dateien.OpenDownloadStream(ctx, oid)
+	stream, err := s.files.OpenDownloadStream(ctx, oid)
 	if errors.Is(err, mongo.ErrFileNotFound) {
 		return nil, 0, core.ErrOriginalMissing
 	}
 	if err != nil {
-		return nil, 0, fmt.Errorf("Datei öffnen: %w", err)
+		return nil, 0, fmt.Errorf("open file: %w", err)
 	}
-	return strom, strom.GetFile().Length, nil
+	return stream, stream.GetFile().Length, nil
 }
 
-// EintragMitHash sucht den Eintrag, dessen Datei diesen SHA-256-Hash hat.
-// Die Suche gilt über alle Module (API.md 3.1).
-func (s *Speicher) EintragMitHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error) {
-	var treffer struct {
+// EntryByHash looks for the entry whose file has this SHA-256 hash. The
+// search applies across all modules (API.md 3.1).
+func (s *Store) EntryByHash(ctx context.Context, sha256 string) (id string, found bool, err error) {
+	var hit struct {
 		ID bson.ObjectID `bson:"_id"`
 	}
-	err = s.eintraege.FindOne(ctx,
+	err = s.entries.FindOne(ctx,
 		bson.D{{Key: "datei.sha256", Value: sha256}},
 		options.FindOne().SetProjection(bson.D{{Key: "_id", Value: 1}}),
-	).Decode(&treffer)
+	).Decode(&hit)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return "", false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("Duplikat prüfen: %w", err)
+		return "", false, fmt.Errorf("check duplicate: %w", err)
 	}
-	return treffer.ID.Hex(), true, nil
+	return hit.ID.Hex(), true, nil
 }
 
-// DateiSpeichern legt die Originaldatei in GridFS ab. GridFS teilt Dateien
-// in Stücke, weil ein einzelnes MongoDB-Dokument höchstens 16 MB groß sein
-// darf. Unsere Dateien sind zwar ≤ 10 MB, aber so bleibt das Eintrag-Dokument
-// klein und die Datei wird nur geladen, wenn jemand sie wirklich ansieht.
-func (s *Speicher) DateiSpeichern(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error {
+// SaveFile stores the original file in GridFS. GridFS splits files into
+// pieces, because a single MongoDB document may be at most 16 MB. Our files
+// are ≤ 10 MB, but this way the entry document stays small and the file is
+// only loaded when someone really looks at it.
+func (s *Store) SaveFile(ctx context.Context, id, fileName, mimeType string, data []byte) error {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return fmt.Errorf("ungültige Datei-ID: %w", err)
+		return fmt.Errorf("invalid file ID: %w", err)
 	}
-	err = s.dateien.UploadFromStreamWithID(ctx, oid, dateiname, bytes.NewReader(daten),
-		options.GridFSUpload().SetMetadata(bson.D{{Key: "mimeTyp", Value: mimeTyp}}))
+	err = s.files.UploadFromStreamWithID(ctx, oid, fileName, bytes.NewReader(data),
+		options.GridFSUpload().SetMetadata(bson.D{{Key: "mimeTyp", Value: mimeType}}))
 	if err != nil {
-		return fmt.Errorf("Datei speichern: %w", err)
+		return fmt.Errorf("save file: %w", err)
 	}
 	return nil
 }
 
-// DateiLoeschen entfernt die Datei aus GridFS. Gibt es sie nicht (mehr), ist
-// das kein Fehler: So kann ein abgebrochenes Löschen einfach wiederholt
-// werden (API.md 3.7).
-func (s *Speicher) DateiLoeschen(ctx context.Context, id string) error {
+// DeleteFile removes the file from GridFS. If it does not exist (anymore),
+// that is not an error: an interrupted delete can simply be repeated
+// (API.md 3.7).
+func (s *Store) DeleteFile(ctx context.Context, id string) error {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return fmt.Errorf("ungültige Datei-ID: %w", err)
+		return fmt.Errorf("invalid file ID: %w", err)
 	}
-	if err := s.dateien.Delete(ctx, oid); err != nil && !errors.Is(err, mongo.ErrFileNotFound) {
-		return fmt.Errorf("Datei löschen: %w", err)
+	if err := s.files.Delete(ctx, oid); err != nil && !errors.Is(err, mongo.ErrFileNotFound) {
+		return fmt.Errorf("delete file: %w", err)
 	}
 	return nil
 }
 
-// AbschnitteSpeichern fügt alle Abschnitte eines Eintrags ein. Eine leere
-// Liste ist erlaubt und bewirkt nichts.
-func (s *Speicher) AbschnitteSpeichern(ctx context.Context, abschnitte []core.Chunk) error {
-	if len(abschnitte) == 0 {
+// SaveChunks inserts all chunks of an entry. An empty list is allowed and
+// does nothing.
+func (s *Store) SaveChunks(ctx context.Context, chunks []core.Chunk) error {
+	if len(chunks) == 0 {
 		return nil
 	}
-	doks := make([]any, 0, len(abschnitte))
-	for _, a := range abschnitte {
-		dok, err := zuAbschnittDok(a)
+	docs := make([]any, 0, len(chunks))
+	for _, c := range chunks {
+		doc, err := toChunkDoc(c)
 		if err != nil {
 			return err
 		}
-		doks = append(doks, dok)
+		docs = append(docs, doc)
 	}
-	if _, err := s.abschnitte.InsertMany(ctx, doks); err != nil {
-		return fmt.Errorf("Abschnitte speichern: %w", err)
+	if _, err := s.chunks.InsertMany(ctx, docs); err != nil {
+		return fmt.Errorf("save chunks: %w", err)
 	}
 	return nil
 }
 
-// AbschnitteLoeschen entfernt alle Abschnitte eines Eintrags. Gibt es keine,
-// ist das kein Fehler.
-func (s *Speicher) AbschnitteLoeschen(ctx context.Context, eintragID string) error {
-	oid, err := bson.ObjectIDFromHex(eintragID)
+// DeleteChunks removes all chunks of an entry. If there are none, that is
+// not an error.
+func (s *Store) DeleteChunks(ctx context.Context, entryID string) error {
+	oid, err := bson.ObjectIDFromHex(entryID)
 	if err != nil {
-		return fmt.Errorf("ungültige Eintrag-ID: %w", err)
+		return fmt.Errorf("invalid entry ID: %w", err)
 	}
-	if _, err := s.abschnitte.DeleteMany(ctx, bson.D{{Key: "eintragId", Value: oid}}); err != nil {
-		return fmt.Errorf("Abschnitte löschen: %w", err)
+	if _, err := s.chunks.DeleteMany(ctx, bson.D{{Key: "eintragId", Value: oid}}); err != nil {
+		return fmt.Errorf("delete chunks: %w", err)
 	}
 	return nil
 }
 
-// KorrekturSpeichern schreibt die korrigierbaren Felder eines Eintrags
-// zurück (API.md 3.5): typ, dokumentdatum, quelle, infos und korrekturen.
-// Alles andere (volltext, datei, importdatum, modul) wird nicht angefasst,
-// auch nicht versehentlich, weil nur diese fünf Felder im $set stehen.
+// SaveCorrection writes the correctable fields of an entry back (API.md
+// 3.5): type, document date, issuer, facts and corrections. Everything else
+// (full text, file, import time, module) is not touched, not even by
+// accident, because only these five fields are in the $set.
 //
-// gefunden ist false, wenn es den Eintrag nicht (mehr) gibt.
-func (s *Speicher) KorrekturSpeichern(ctx context.Context, e core.Entry) (gefunden bool, err error) {
-	// Dieselbe Umwandlung wie beim Speichern, damit Zeitpunkte (UTC),
-	// fehlende Einheiten (omitempty) und leere Listen gleich aussehen.
-	dok, err := zuEintragDok(e)
+// found is false if the entry does not exist (anymore).
+func (s *Store) SaveCorrection(ctx context.Context, e core.Entry) (found bool, err error) {
+	// The same conversion as when saving, so times (UTC), missing units
+	// (omitempty) and empty lists look the same.
+	doc, err := toEntryDoc(e)
 	if err != nil {
 		return false, err
 	}
-	res, err := s.eintraege.UpdateOne(ctx,
-		bson.D{{Key: "_id", Value: dok.ID}},
+	res, err := s.entries.UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: doc.ID}},
 		bson.D{{Key: "$set", Value: bson.D{
-			{Key: "typ", Value: dok.Typ},
-			{Key: "dokumentdatum", Value: dok.Dokumentdatum},
-			{Key: "quelle", Value: dok.Quelle},
-			{Key: "infos", Value: dok.Infos},
-			{Key: "korrekturen", Value: dok.Korrekturen},
+			{Key: "typ", Value: doc.Type},
+			{Key: "dokumentdatum", Value: doc.DocumentDate},
+			{Key: "quelle", Value: doc.Issuer},
+			{Key: "infos", Value: doc.Facts},
+			{Key: "korrekturen", Value: doc.Corrections},
 		}}},
 	)
 	if err != nil {
-		return false, fmt.Errorf("Korrektur speichern: %w", err)
+		return false, fmt.Errorf("save correction: %w", err)
 	}
 	return res.MatchedCount > 0, nil
 }
 
-// EintragLoeschen löscht nur das Eintrag-Dokument. gefunden ist false, wenn
-// es keinen Eintrag mit dieser ID gab. Abschnitte und Datei löscht der
-// Aufrufer vorher mit AbschnitteLoeschen und DateiLoeschen (API.md 3.7).
-func (s *Speicher) EintragLoeschen(ctx context.Context, id string) (gefunden bool, err error) {
+// DeleteEntry deletes only the entry document. found is false if there was
+// no entry with this ID. The caller deletes chunks and file before, with
+// DeleteChunks and DeleteFile (API.md 3.7).
+func (s *Store) DeleteEntry(ctx context.Context, id string) (found bool, err error) {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return false, fmt.Errorf("ungültige Eintrag-ID: %w", err)
+		return false, fmt.Errorf("invalid entry ID: %w", err)
 	}
-	res, err := s.eintraege.DeleteOne(ctx, bson.D{{Key: "_id", Value: oid}})
+	res, err := s.entries.DeleteOne(ctx, bson.D{{Key: "_id", Value: oid}})
 	if err != nil {
-		return false, fmt.Errorf("Eintrag löschen: %w", err)
+		return false, fmt.Errorf("delete entry: %w", err)
 	}
 	return res.DeletedCount > 0, nil
 }
