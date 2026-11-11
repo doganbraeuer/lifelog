@@ -30,7 +30,7 @@ import (
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm"
 	"lifelog/backend/internal/llm/gemini"
-	"lifelog/backend/internal/speicher"
+	"lifelog/backend/internal/store"
 	"strings"
 )
 
@@ -61,7 +61,7 @@ func ausfuehren(schwelle float64) error {
 	ctx, abbrechen := context.WithTimeout(ctx, 3*time.Minute)
 	defer abbrechen()
 
-	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func ausfuehren(schwelle float64) error {
 	}
 	if !gefunden || status != "READY" {
 		return fmt.Errorf("Vektorindex %q ist nicht bereit (Status %q); einmal den Server starten oder backend/README.md, Abschnitt Vektorindex",
-			speicher.VektorindexName, status)
+			store.VektorindexName, status)
 	}
 
 	// Nur der Einbetter wird benutzt; Lese- und Antwortmodell bleiben unberührt.

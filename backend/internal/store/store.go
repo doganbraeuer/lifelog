@@ -1,6 +1,6 @@
-// Package speicher kapselt den Zugriff auf MongoDB. Andere Pakete sehen nur
+// Package store kapselt den Zugriff auf MongoDB. Andere Pakete sehen nur
 // kern-Typen, keine BSON-Dokumente.
-package speicher
+package store
 
 import (
 	"bytes"

@@ -16,7 +16,7 @@ import (
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/dienst"
 	"lifelog/backend/internal/llm/gemini"
-	"lifelog/backend/internal/speicher"
+	"lifelog/backend/internal/store"
 )
 
 func main() {
@@ -39,7 +39,7 @@ func starten() error {
 	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopp()
 
-	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
@@ -54,9 +54,9 @@ func starten() error {
 	// Suche nicht. Dann den Index in der Atlas-Oberfläche anlegen.
 	if status, err := db.VektorindexAnlegen(ctx); err != nil {
 		slog.Warn("Vektorindex fehlt, POST /fragen funktioniert erst nach dem Anlegen in Atlas (backend/README.md, Abschnitt Vektorindex)",
-			"index", speicher.VektorindexName, "fehler", err)
+			"index", store.VektorindexName, "fehler", err)
 	} else {
-		slog.Info("Vektorindex", "index", speicher.VektorindexName, "status", status)
+		slog.Info("Vektorindex", "index", store.VektorindexName, "status", status)
 	}
 
 	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
@@ -80,7 +80,7 @@ func starten() error {
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:          db,
 			Eintraege:   db,
-			Hochladen:   dienst.NeuHochladen(db, g, g, speicher.NeueID),
+			Hochladen:   dienst.NeuHochladen(db, g, g, store.NeueID),
 			Fragen:      dienst.NeuFragen(db, g, g),
 			Korrigieren: dienst.NeuKorrigieren(db),
 			Loeschen:    dienst.NeuLoeschen(db),

@@ -1,4 +1,4 @@
-package speicher
+package store
 
 // Integrationstests gegen ein echtes MongoDB (Atlas). Sie laufen nur mit
 //

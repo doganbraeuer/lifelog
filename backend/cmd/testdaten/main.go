@@ -32,7 +32,7 @@ import (
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm/gemini"
-	"lifelog/backend/internal/speicher"
+	"lifelog/backend/internal/store"
 )
 
 func main() {
@@ -77,7 +77,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 		}
 	}
 
-	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
@@ -176,13 +176,13 @@ func wegwerfAnlegen() error {
 	ctx, abbrechen := context.WithTimeout(context.Background(), 30*time.Second)
 	defer abbrechen()
 
-	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Verbinden(ctx, k.MongoURI, k.MongoDB)
 	if err != nil {
 		return err
 	}
 	defer db.Trennen(context.Background())
 
-	e, abschnitte := beispieldaten.Wegwerf(speicher.NeueID(), speicher.NeueID(), time.Now())
+	e, abschnitte := beispieldaten.Wegwerf(store.NeueID(), store.NeueID(), time.Now())
 	if err := db.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package speicher
+package store
 
 import (
 	"reflect"
