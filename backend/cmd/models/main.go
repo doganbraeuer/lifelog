@@ -1,15 +1,14 @@
-// modelle listet die Gemini-Modelle, die der eigene API-Schlüssel sehen kann,
-// mit ihren Fähigkeiten. Hilft beim Auswählen von GEMINI_MODEL und
-// GEMINI_EMBEDDING_MODEL.
+// models lists the Gemini models the own API key can see, with their
+// capabilities. Helps with choosing GEMINI_MODEL and GEMINI_EMBEDDING_MODEL.
 //
-//	go run ./cmd/modelle
+//	go run ./cmd/models
 //
-// Der Schlüssel kommt aus .env (wie beim Server), steht also nie im Befehl,
-// und wird nie ausgegeben: Fehlermeldungen laufen durch config.Mask.
+// The key comes from .env (as for the server), so it is never in the
+// command, and it is never printed: error messages go through config.Mask.
 //
-// Achtung: Die Liste sagt, welche Modelle es gibt, nicht, ob sie in der
-// kostenlosen Stufe nutzbar sind oder mit welchen Limits. Das steht in AI
-// Studio bzw. auf ai.google.dev/gemini-api/docs/rate-limits.
+// Caution: the list says which models exist, not whether they can be used
+// in the free tier or with which limits. That is in AI Studio or on
+// ai.google.dev/gemini-api/docs/rate-limits.
 package main
 
 import (
@@ -27,34 +26,34 @@ import (
 
 func main() {
 	if err := config.LoadDotenv(); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
-	schluessel := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if schluessel == "" {
-		fmt.Fprintln(os.Stderr, "Fehler: GEMINI_API_KEY fehlt (siehe .env.example)")
+	apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+	if apiKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: GEMINI_API_KEY missing (see .env.example)")
 		os.Exit(1)
 	}
 
-	if err := auflisten(schluessel); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", config.Mask(err.Error(), schluessel))
+	if err := list(apiKey); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", config.Mask(err.Error(), apiKey))
 		os.Exit(1)
 	}
 }
 
-func auflisten(schluessel string) error {
-	ctx, abbrechen := context.WithTimeout(context.Background(), 30*time.Second)
-	defer abbrechen()
+func list(apiKey string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  schluessel,
+		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
 		return err
 	}
 
-	var zeilen []string
+	var lines []string
 	for m, err := range client.Models.All(ctx) {
 		if err != nil {
 			return err
@@ -64,19 +63,19 @@ func auflisten(schluessel string) error {
 		if !text && !embed {
 			continue
 		}
-		art := "Text/Vision"
+		kind := "Text/Vision"
 		if embed {
-			art = "Embedding"
+			kind = "Embedding"
 		}
-		zeilen = append(zeilen, fmt.Sprintf("%-11s  %-45s  ein %8d / aus %6d Tokens  %s",
-			art, strings.TrimPrefix(m.Name, "models/"), m.InputTokenLimit, m.OutputTokenLimit,
+		lines = append(lines, fmt.Sprintf("%-11s  %-45s  in %8d / out %6d tokens  %s",
+			kind, strings.TrimPrefix(m.Name, "models/"), m.InputTokenLimit, m.OutputTokenLimit,
 			strings.Join(m.SupportedActions, ",")))
 	}
 
-	slices.Sort(zeilen)
-	for _, z := range zeilen {
-		fmt.Println(z)
+	slices.Sort(lines)
+	for _, l := range lines {
+		fmt.Println(l)
 	}
-	fmt.Printf("\n%d Modelle mit generateContent oder embedContent.\n", len(zeilen))
+	fmt.Printf("\n%d models with generateContent or embedContent.\n", len(lines))
 	return nil
 }

@@ -29,7 +29,7 @@ const MaxHits = 5
 // the language model: if the chunks do not answer the question, it answers
 // with NotFoundAnswer.
 //
-// Calibration of 2026-11-04 (go run ./cmd/kalibrieren; gemini-embedding-2,
+// Calibration of 2026-11-04 (go run ./cmd/calibrate; gemini-embedding-2,
 // 768 dim.; 4 test entries with one chunk each; 18 fixed questions):
 //
 //	relevant   (10)  0.857 … 0.902  right entry always ranked first

@@ -20,7 +20,7 @@ verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
 Hochladen von Hand (nur synthetische Dokumente):
 
 ```sh
-curl -F datei=@testdaten/laborbefund.pdf localhost:8080/api/v1/eintraege   # Datei
+curl -F datei=@testdata/lab_report.pdf localhost:8080/api/v1/eintraege   # Datei
 curl -F "text=<meintext.txt" localhost:8080/api/v1/eintraege               # Text-Import
 ```
 
@@ -34,7 +34,7 @@ go vet ./... && go test ./...
 ```
 
 Live-Tests gegen Gemini (kosten Anfragen aus dem Kontingent, schicken nur
-die synthetischen Dateien aus `testdaten/`):
+die synthetischen Dateien aus `testdata/`):
 
 ```sh
 LIFELOG_LIVE=1 go test ./internal/modell/gemini/ -run Live -v
@@ -50,7 +50,7 @@ LIFELOG_MONGO_TEST=1 go test ./internal/speicher/ -run Integration -v
 ## Gemini-Modelle
 
 ```sh
-go run ./cmd/modelle   # listet die Modelle, die der eigene Schlüssel sieht
+go run ./cmd/models   # listet die Modelle, die der eigene Schlüssel sieht
 ```
 
 Der Schlüssel kommt aus `.env` und wird nie ausgegeben. Ob ein Modell in der
@@ -90,19 +90,19 @@ jeder Abschnitt neu eingebettet werden.
 Damit Zeitleiste und Suche ohne Upload und ohne Vision-LLM etwas zeigen:
 
 ```sh
-go run ./cmd/testdaten                   # 4 erfundene Einträge mit Abschnitten und Embeddings (mehrfach ausführbar)
-go run ./cmd/testdaten -ohne-abschnitte  # dasselbe ohne Gemini; die Suche findet sie dann nicht
-go run ./cmd/testdaten -entfernen        # wieder löschen, samt Abschnitten
+go run ./cmd/seed                   # 4 erfundene Einträge mit Abschnitten und Embeddings (mehrfach ausführbar)
+go run ./cmd/seed -no-chunks  # dasselbe ohne Gemini; die Suche findet sie dann nicht
+go run ./cmd/seed -remove        # wieder löschen, samt Abschnitten
 ```
 
-Die Testeinträge (`internal/beispieldaten`) haben feste IDs. Andere Einträge
+Die Testeinträge (`internal/sampledata`) haben feste IDs. Andere Einträge
 bleiben unberührt. Die Abschnitte entstehen wie beim Upload: gleiches
 Zerlegen, gleiches Embedding-Modell.
 
 Zum Ausprobieren von `DELETE /eintraege/{id}` (z. B. aus der App):
 
 ```sh
-go run ./cmd/testdaten -wegwerf          # legt einen Wegwerf-Eintrag mit neuer ID an und gibt die ID aus
+go run ./cmd/seed -throwaway          # legt einen Wegwerf-Eintrag mit neuer ID an und gibt die ID aus
 curl -i -X DELETE localhost:8080/api/v1/eintraege/<ID>   # 204, ein zweites Mal 404
 ```
 
@@ -113,12 +113,12 @@ ausgegebene ID löschen, nicht die festen Testeinträge oder echte Uploads.
 ## Schwelle kalibrieren
 
 ```sh
-go run ./cmd/testdaten       # einmal, mit Abschnitten
-go run ./cmd/kalibrieren     # wertet mit kern.MinScore aus
-go run ./cmd/kalibrieren -schwelle 0.82
+go run ./cmd/seed       # einmal, mit Abschnitten
+go run ./cmd/calibrate     # wertet mit core.MinScore aus
+go run ./cmd/calibrate -threshold 0.82
 ```
 
-Stellt 45 feste Fragen (`cmd/kalibrieren/fragen.go`): 29 passende (davon 6,
+Stellt 45 feste Fragen (`cmd/calibrate/questions.go`): 29 passende (davon 6,
 deren Antwort in zwei Einträgen steht), 8 zu Gesundheit, die nicht
 drinstehen, und 8 fachfremde. Gebraucht werden die Testdaten und die
 synthetischen Demo-Daten (Lipidprofile 20.01./22.07., Orthopädie und
@@ -133,12 +133,12 @@ Sprachmodell ankommen. Danach folgt, welche Schwellen passend von fachfremd
 trennen. Kosten: ein Embedding pro Frage. Das Sprachmodell wird nicht
 aufgerufen.
 
-`testdaten/laborbefund.{txt,pdf,png}` ist ein erfundener Befund für Uploads
+`testdata/lab_report.{txt,pdf,png}` ist ein erfundener Befund für Uploads
 und Live-Tests. PDF und PNG sind aus der `.txt` erzeugt:
 
 ```sh
-cupsfilter -m application/pdf laborbefund.txt > laborbefund.pdf
-sips -s format png laborbefund.pdf --out laborbefund.png
+cupsfilter -m application/pdf lab_report.txt > lab_report.pdf
+sips -s format png lab_report.pdf --out lab_report.png
 ```
 
 ## Aufbau
@@ -146,10 +146,10 @@ sips -s format png laborbefund.pdf --out laborbefund.png
 | Paket | Aufgabe |
 |---|---|
 | `cmd/server` | Start: Konfiguration, MongoDB, HTTP-Server, sauberes Beenden |
-| `cmd/testdaten` | Synthetische Einträge einfügen oder entfernen |
-| `cmd/kalibrieren` | Scores der Vektorsuche für feste Fragen messen (Schwelle) |
-| `internal/beispieldaten` | Die erfundenen Testeinträge, gemeinsam für beide Programme |
-| `cmd/modelle` | Verfügbare Gemini-Modelle auflisten |
+| `cmd/seed` | Synthetische Einträge einfügen oder entfernen |
+| `cmd/calibrate` | Scores der Vektorsuche für feste Fragen messen (Schwelle) |
+| `internal/sampledata` | Die erfundenen Testeinträge, gemeinsam für beide Programme |
+| `cmd/models` | Verfügbare Gemini-Modelle auflisten |
 | `internal/config` | Umgebungsvariablen lesen und prüfen, Geheimnisse maskieren |
 | `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung, Dateityp, Abschnitte, Prüfung der Erkennung, Fragen, Korrekturen |
 | `internal/modell` | Austauschbare Schnittstelle zu den Modellen (`Leser`, `Einbetter`) |

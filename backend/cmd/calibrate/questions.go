@@ -6,135 +6,135 @@ import (
 	"lifelog/backend/internal/sampledata"
 )
 
-// gruppe sagt, was die Suche bei einer Frage tun soll.
-type gruppe int
+// group says what search should do for a question.
+type group int
 
 const (
-	// passend: Die Antwort steht in einem oder mehreren Einträgen. Deren
-	// Abschnitte sollen über der Schwelle liegen.
-	passend gruppe = iota
-	// nah: Gesundheitsthema, steht aber in keinem Eintrag. Die Schwelle
-	// muss sie nicht abfangen (zweite Schicht: das Sprachmodell antwortet mit
-	// dem festen Satz); die Zahlen zeigen, wie nah solche Fragen liegen.
-	nah
-	// fachfremd: Hat mit den Dokumenten nichts zu tun. Soll unter der
-	// Schwelle bleiben, damit das Sprachmodell gar nicht erst gefragt wird.
-	fachfremd
+	// relevant: the answer is in one or more entries. Their chunks should
+	// be above the threshold.
+	relevant group = iota
+	// near: a health topic, but in no entry. The threshold does not have to
+	// catch these (second layer: the language model answers with the fixed
+	// sentence); the numbers show how close such questions are.
+	near
+	// unrelated: has nothing to do with the documents. Should stay below the
+	// threshold, so the language model is not asked at all.
+	unrelated
 )
 
-func (g gruppe) String() string {
+func (g group) String() string {
 	switch g {
-	case passend:
-		return "passend"
-	case nah:
-		return "nah"
+	case relevant:
+		return "relevant"
+	case near:
+		return "near"
 	default:
-		return "fachfremd"
+		return "unrelated"
 	}
 }
 
-// ziel bezeichnet den Eintrag, in dem die Antwort steht: entweder über die
-// feste ID eines Testeintrags (cmd/testdaten) oder über das Dokumentdatum
-// plus Typ und/oder Quelle (hochgeladene Demo-Daten, deren IDs bei jedem
-// Upload neu sind). Leere Felder werden nicht verglichen. aufloesen macht
-// daraus eine ID.
-type ziel struct {
+// target names the entry that contains the answer: either by the fixed ID
+// of a test entry (cmd/seed) or by document date plus type and/or issuer
+// (uploaded demo data, whose IDs are new on every upload). Empty fields are
+// not compared. resolve turns it into an ID.
+type target struct {
 	ID     string
-	Typ    string
-	Datum  string // "YYYY-MM-DD"
-	Quelle string // genau wie im Eintrag
+	Type   string
+	Date   string // "YYYY-MM-DD"
+	Issuer string // exactly as in the entry
 }
 
-func (z ziel) String() string {
-	if z.ID != "" {
-		return "ID " + z.ID
+func (t target) String() string {
+	if t.ID != "" {
+		return "ID " + t.ID
 	}
-	s := z.Typ + " " + z.Datum
-	if z.Quelle != "" {
-		s += " (" + z.Quelle + ")"
+	s := t.Type + " " + t.Date
+	if t.Issuer != "" {
+		s += " (" + t.Issuer + ")"
 	}
 	return strings.TrimSpace(s)
 }
 
-type kalibrierfrage struct {
+type question struct {
 	Text     string
-	Gruppe   gruppe
-	Erwartet []ziel // Einträge mit der Antwort, nur bei passend; bei mehreren müssen alle ankommen
+	Group    group
+	Expected []target // entries with the answer, only for relevant; with several, all must arrive
 }
 
-// Demo-Daten (synthetisch, hochgeladen am 07./08.11.2026). Die
-// Impfbestätigung und die Text-Notizen hat das Lesemodell als sonstiges
-// eingeordnet. Die Überweisung kam als rezept an; ihr Typ wird vermutlich
-// in der App korrigiert, deshalb wird sie über die Quelle gefunden (der
-// Arztbrief am selben Tag hat eine längere Quelle).
+// Demo data (synthetic, uploaded on 2026-11-07/08). The read model
+// classified the vaccination certificate and the text notes as sonstiges.
+// The referral came in as rezept; its type will probably be corrected in the
+// app, so it is found by its issuer (the doctor's letter on the same day has
+// a longer issuer).
 var (
-	laborJanuar  = ziel{Typ: "laborbefund", Datum: "2026-01-20"}
-	laborJuli    = ziel{Typ: "laborbefund", Datum: "2026-07-22"}
-	orthopaedie  = ziel{Typ: "arztbrief", Datum: "2026-03-05"}
-	ueberweisung = ziel{Datum: "2026-03-05", Quelle: "Orthopädie am Fluss, Dr. Thomas Probe"}
-	fsme         = ziel{Typ: "sonstiges", Datum: "2026-06-10"}
-	physioEnde   = ziel{Typ: "sonstiges", Datum: "2026-08-12"}
-	blutdruck    = ziel{Typ: "sonstiges", Datum: "2026-09-23"}
+	labJanuary    = target{Type: "laborbefund", Date: "2026-01-20"}
+	labJuly       = target{Type: "laborbefund", Date: "2026-07-22"}
+	orthopedics   = target{Type: "arztbrief", Date: "2026-03-05"}
+	referral      = target{Date: "2026-03-05", Issuer: "Orthopädie am Fluss, Dr. Thomas Probe"}
+	tbe           = target{Type: "sonstiges", Date: "2026-06-10"}
+	physioEnd     = target{Type: "sonstiges", Date: "2026-08-12"}
+	bloodPressure = target{Type: "sonstiges", Date: "2026-09-23"}
 )
 
-// kalibrierfragen ist fest, damit Messungen vor und nach einer Änderung
-// (Modell, Abschnittsgröße, Präfixe) vergleichbar bleiben. Neue Fragen
-// unten anhängen.
-func kalibrierfragen() []kalibrierfrage {
-	p := func(text string, ziele ...ziel) kalibrierfrage {
-		return kalibrierfrage{Text: text, Gruppe: passend, Erwartet: ziele}
+// questions is fixed, so measurements before and after a change (model,
+// chunk size, prefixes, prompts) stay comparable. Append new questions at
+// the end. The questions are German because users ask in German.
+func questions() []question {
+	r := func(text string, targets ...target) question {
+		return question{Text: text, Group: relevant, Expected: targets}
 	}
-	n := func(text string) kalibrierfrage { return kalibrierfrage{Text: text, Gruppe: nah} }
-	f := func(text string) kalibrierfrage { return kalibrierfrage{Text: text, Gruppe: fachfremd} }
-	id := func(id string) ziel { return ziel{ID: id} }
+	n := func(text string) question { return question{Text: text, Group: near} }
+	u := func(text string) question { return question{Text: text, Group: unrelated} }
+	id := func(id string) target { return target{ID: id} }
 
-	return []kalibrierfrage{
-		// Testdaten (04.11.2026)
-		p("Welchen Hämoglobinwert hatte ich im Oktober?", id(sampledata.Laborbefund)),
-		p("Wie hoch waren meine Leukozyten?", id(sampledata.Laborbefund)),
-		p("Was stand beim CRP?", id(sampledata.Laborbefund)),
-		p("Welches Labor hat mein Blutbild gemacht?", id(sampledata.Laborbefund)),
-		p("Wie hoch war mein Blutdruck bei der Routinekontrolle?", id(sampledata.Arztbrief)),
-		p("Wann soll ich wieder zur Kontrolle bei Dr. Beispiel?", id(sampledata.Arztbrief)),
-		p("Welches Medikament wurde mir verschrieben?", id(sampledata.Rezept)),
-		p("Wie oft am Tag soll ich Beispielin nehmen?", id(sampledata.Rezept)),
-		p("Wie viele Tabletten stehen auf dem Rezept?", id(sampledata.Rezept)),
-		p("Wo liegt mein Impfpass?", id(sampledata.Notiz)),
+	return []question{
+		// Seed data (2026-11-04)
+		r("Welchen Hämoglobinwert hatte ich im Oktober?", id(sampledata.LabReport)),
+		r("Wie hoch waren meine Leukozyten?", id(sampledata.LabReport)),
+		r("Was stand beim CRP?", id(sampledata.LabReport)),
+		r("Welches Labor hat mein Blutbild gemacht?", id(sampledata.LabReport)),
+		r("Wie hoch war mein Blutdruck bei der Routinekontrolle?", id(sampledata.DoctorLetter)),
+		r("Wann soll ich wieder zur Kontrolle bei Dr. Beispiel?", id(sampledata.DoctorLetter)),
+		r("Welches Medikament wurde mir verschrieben?", id(sampledata.Prescription)),
+		r("Wie oft am Tag soll ich Beispielin nehmen?", id(sampledata.Prescription)),
+		r("Wie viele Tabletten stehen auf dem Rezept?", id(sampledata.Prescription)),
+		r("Wo liegt mein Impfpass?", id(sampledata.Note)),
 
-		// Bis 07.11. nah; seit den Lipidprofilen steht die Antwort in beiden Laborbefunden.
-		p("Wie hoch war mein Cholesterin?", laborJanuar, laborJuli),
+		// Near until 2026-11-07; since the lipid profiles the answer is in both lab reports.
+		r("Wie hoch war mein Cholesterin?", labJanuary, labJuly),
 		n("Wann hatte ich meine letzte Tetanus-Impfung?"),
 		n("Welche Allergien habe ich?"),
 
-		f("Wie wird das Wetter morgen in Salzburg?"),
-		f("Wer hat die Fußball-WM 2014 gewonnen?"),
-		f("Wie koche ich Spaghetti Carbonara?"),
-		f("Was kostet eine Zugfahrt von Salzburg nach Wien?"),
-		// Bis 07.11. fachfremd; seit der Physio-Notiz („wieder 5 km gelaufen“)
-		// gibt es einen Bezug, die Antwort für „letzte Woche“ steht aber nicht drin.
+		u("Wie wird das Wetter morgen in Salzburg?"),
+		u("Wer hat die Fußball-WM 2014 gewonnen?"),
+		u("Wie koche ich Spaghetti Carbonara?"),
+		u("Was kostet eine Zugfahrt von Salzburg nach Wien?"),
+		// Unrelated until 2026-11-07; since the physio note ("wieder 5 km
+		// gelaufen") there is a connection, but the answer for "last week" is
+		// not in it.
 		n("Wie viele Kilometer bin ich letzte Woche gelaufen?"),
 
-		// Demo-Daten (08.11.2026): ein Dokument
-		p("Wie hoch war mein LDL-Cholesterin im Januar?", laborJanuar),
-		p("Wie hoch war mein Nüchternblutzucker im Januar?", laborJanuar),
-		p("Wie hoch war mein HDL-Cholesterin bei der Kontrolle im Juli?", laborJuli),
-		p("Wie hoch waren meine Triglyceride im Juli?", laborJuli),
-		p("Warum war ich beim Orthopäden?", orthopaedie),
-		p("Was hat das Röntgen meines Knies ergeben?", orthopaedie),
-		p("Wie lange sollte ich mit dem Laufen pausieren?", orthopaedie),
-		p("An welche Physiotherapie-Praxis wurde ich überwiesen?", ueberweisung),
-		p("Wie oft pro Woche soll ich zur Physiotherapie?", ueberweisung),
-		p("Wann muss ich die FSME-Impfung auffrischen?", fsme),
-		p("Welcher Impfstoff wurde bei der FSME-Impfung verwendet?", fsme),
-		p("Wie hoch war mein Puls bei der Messung zu Hause?", blutdruck),
-		p("Wann habe ich die Physiotherapie abgeschlossen?", physioEnde),
+		// Demo data (2026-11-08): one document
+		r("Wie hoch war mein LDL-Cholesterin im Januar?", labJanuary),
+		r("Wie hoch war mein Nüchternblutzucker im Januar?", labJanuary),
+		r("Wie hoch war mein HDL-Cholesterin bei der Kontrolle im Juli?", labJuly),
+		r("Wie hoch waren meine Triglyceride im Juli?", labJuly),
+		r("Warum war ich beim Orthopäden?", orthopedics),
+		r("Was hat das Röntgen meines Knies ergeben?", orthopedics),
+		r("Wie lange sollte ich mit dem Laufen pausieren?", orthopedics),
+		r("An welche Physiotherapie-Praxis wurde ich überwiesen?", referral),
+		r("Wie oft pro Woche soll ich zur Physiotherapie?", referral),
+		r("Wann muss ich die FSME-Impfung auffrischen?", tbe),
+		r("Welcher Impfstoff wurde bei der FSME-Impfung verwendet?", tbe),
+		r("Wie hoch war mein Puls bei der Messung zu Hause?", bloodPressure),
+		r("Wann habe ich die Physiotherapie abgeschlossen?", physioEnd),
 
-		// Demo-Daten: Antwort braucht zwei Dokumente
-		p("Wie hat sich mein LDL-Cholesterin verändert?", laborJanuar, laborJuli),
-		p("Wie hat sich mein Gesamtcholesterin zwischen Januar und Juli entwickelt?", laborJanuar, laborJuli),
-		p("Warum wurde mir Physiotherapie verordnet und wie oft pro Woche?", orthopaedie, ueberweisung),
-		p("Wie lange hat es von der Überweisung bis zum Abschluss der Physiotherapie gedauert?", ueberweisung, physioEnde),
-		p("Wie hat sich mein Blutdruck seit der Routinekontrolle verändert?", id(sampledata.Arztbrief), blutdruck),
+		// Demo data: the answer needs two documents
+		r("Wie hat sich mein LDL-Cholesterin verändert?", labJanuary, labJuly),
+		r("Wie hat sich mein Gesamtcholesterin zwischen Januar und Juli entwickelt?", labJanuary, labJuly),
+		r("Warum wurde mir Physiotherapie verordnet und wie oft pro Woche?", orthopedics, referral),
+		r("Wie lange hat es von der Überweisung bis zum Abschluss der Physiotherapie gedauert?", referral, physioEnd),
+		r("Wie hat sich mein Blutdruck seit der Routinekontrolle verändert?", id(sampledata.DoctorLetter), bloodPressure),
 
 		n("Wurde bei mir schon ein MRT gemacht?"),
 		n("Wie hoch war mein HbA1c-Wert?"),
@@ -142,9 +142,9 @@ func kalibrierfragen() []kalibrierfrage {
 		n("Wann hatte ich meine letzte Covid-Impfung?"),
 		n("Welche Blutgruppe habe ich?"),
 
-		f("Hast du ein Rezept für Apfelkuchen?"),
-		f("Bis wann muss ich meine Steuererklärung abgeben?"),
-		f("Was kostet ein Flug nach Rom?"),
-		f("Wie wechsle ich einen Fahrradschlauch?"),
+		u("Hast du ein Rezept für Apfelkuchen?"),
+		u("Bis wann muss ich meine Steuererklärung abgeben?"),
+		u("Was kostet ein Flug nach Rom?"),
+		u("Wie wechsle ich einen Fahrradschlauch?"),
 	}
 }

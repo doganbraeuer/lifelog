@@ -1,4 +1,4 @@
-// Der Lifelog-Server. Start aus dem Ordner backend/:
+// The Lifelog server. Start from the backend/ directory:
 //
 //	go run ./cmd/server
 package main
@@ -20,63 +20,62 @@ import (
 )
 
 func main() {
-	if err := starten(); err != nil {
-		slog.Error("Server beendet mit Fehler", "fehler", err)
+	if err := run(); err != nil {
+		slog.Error("server stopped with an error", "error", err)
 		os.Exit(1)
 	}
 }
 
-func starten() error {
+func run() error {
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
 
-	// Strg+C (SIGINT) oder ein Stopp-Signal (SIGTERM) beenden den Server sauber.
-	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stopp()
+	// Ctrl+C (SIGINT) or a stop signal (SIGTERM) shut the server down cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
 	if err != nil {
 		return err
 	}
 	defer db.Disconnect(context.Background())
-	slog.Info("MongoDB verbunden", "datenbank", k.MongoDB)
+	slog.Info("MongoDB connected", "database", c.MongoDB)
 
 	if err := db.CreateIndexes(ctx); err != nil {
 		return err
 	}
-	// Nach IndexeAnlegen, weil die Collection "abschnitte" existieren muss.
-	// Nicht fatal: Ohne Index funktionieren Upload und Zeitleiste, nur die
-	// Suche nicht. Dann den Index in der Atlas-Oberfläche anlegen.
+	// After CreateIndexes, because the chunk collection must exist. Not
+	// fatal: without the index, upload and timeline work, only search does
+	// not. Then create the index in the Atlas UI.
 	if status, err := db.CreateVectorIndex(ctx); err != nil {
-		slog.Warn("Vektorindex fehlt, POST /fragen funktioniert erst nach dem Anlegen in Atlas (backend/README.md, Abschnitt Vektorindex)",
-			"index", store.VectorIndexName, "fehler", err)
+		slog.Warn("vector index missing, POST /fragen only works after creating it in Atlas (backend/README.md, section vector index)",
+			"index", store.VectorIndexName, "error", err)
 	} else {
-		slog.Info("Vektorindex", "index", store.VectorIndexName, "status", status)
+		slog.Info("vector index", "index", store.VectorIndexName, "status", status)
 	}
 
-	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
-	// anderes Paket unter internal/modell, das Leser, Einbetter und
-	// Antworter umsetzt.
+	// The model provider is chosen here. Another provider = another package
+	// under internal/llm that implements Reader, Embedder and Answerer.
 	g, err := gemini.New(ctx, gemini.Settings{
-		APIKey:          k.GeminiKey,
-		Model:           k.GeminiModel,
-		FallbackModel:   k.GeminiFallbackModel,
-		FallbackReserve: k.GeminiFallbackReserve,
-		EmbeddingModel:  k.GeminiEmbeddingModel,
+		APIKey:          c.GeminiKey,
+		Model:           c.GeminiModel,
+		FallbackModel:   c.GeminiFallbackModel,
+		FallbackReserve: c.GeminiFallbackReserve,
+		EmbeddingModel:  c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
 	}
-	slog.Info("Modelle", "lesen", k.GeminiModel, "ersatz", k.GeminiFallbackModel,
-		"reserve", k.GeminiFallbackReserve, "embedding", k.GeminiEmbeddingModel)
+	slog.Info("models", "read", c.GeminiModel, "fallback", c.GeminiFallbackModel,
+		"reserve", c.GeminiFallbackReserve, "embedding", c.GeminiEmbeddingModel)
 
 	server := &http.Server{
-		Addr: k.ListenAddress(),
+		Addr: c.ListenAddress(),
 		Handler: api.NewRouter(api.Dependencies{
 			DB:        db,
 			Entries:   db,
@@ -86,32 +85,32 @@ func starten() error {
 			Deleter:   service.NewDeleter(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz
-		WriteTimeout:      120 * time.Second, // Upload mit Vision-LLM dauert bis ~60 s
+		ReadTimeout:       60 * time.Second,  // upload up to 10 MB, also over a slow mobile network
+		WriteTimeout:      120 * time.Second, // upload with the vision LLM takes up to ~60 s
 		IdleTimeout:       120 * time.Second,
 	}
 
-	if !k.LocalOnly() {
-		slog.Warn("Backend ist im ganzen Netz erreichbar (ADDRESS ist nicht lokal). Nur zum Testen verwenden.",
-			"adresse", k.Address)
+	if !c.LocalOnly() {
+		slog.Warn("backend is reachable from the whole network (ADDRESS is not local). Use for testing only.",
+			"address", c.Address)
 	}
 
-	serverFehler := make(chan error, 1)
+	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("Server läuft", "adresse", "http://"+k.ListenAddress())
-		serverFehler <- server.ListenAndServe()
+		slog.Info("server running", "address", "http://"+c.ListenAddress())
+		serverErr <- server.ListenAndServe()
 	}()
 
 	select {
-	case err := <-serverFehler:
-		// z. B. Port schon belegt
+	case err := <-serverErr:
+		// e.g. port already in use
 		return err
 	case <-ctx.Done():
-		slog.Info("Server wird beendet …")
+		slog.Info("server shutting down …")
 	}
 
-	// Laufende Anfragen dürfen noch bis zu 10 s fertig werden.
-	shutdownCtx, abbrechen := context.WithTimeout(context.Background(), 10*time.Second)
-	defer abbrechen()
+	// Running requests may still finish within 10 s.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	return server.Shutdown(shutdownCtx)
 }

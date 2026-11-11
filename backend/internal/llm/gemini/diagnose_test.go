@@ -14,7 +14,7 @@ package gemini
 // More switches to compare other models:
 //
 //	LIFELOG_DIAGNOSE_MODEL=gemini-3.6-flash   instead of GEMINI_MODEL
-//	LIFELOG_DIAGNOSE_FILE=lab_report.png     instead of lab_report.pdf (or an
+//	LIFELOG_DIAGNOSE_FILE=lab_report.png      instead of lab_report.pdf (or an
 //	                                          absolute path, synthetic only!)
 //	LIFELOG_DIAGNOSE_THINKING=off             without ThinkingConfig (for models
 //	                                          without thinkingLevel)

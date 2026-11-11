@@ -1,20 +1,20 @@
-// kalibrieren misst, wie gut die Schwelle core.MinScore passende von
-// fachfremden Fragen trennt. Es stellt eine feste Liste synthetischer Fragen
-// (fragen.go), bettet jede ein wie POST /fragen und gibt pro Frage den
-// besten Score der Vektorsuche aus. Das Sprachmodell (Antworter) wird NICHT
-// aufgerufen; es kostet nur ein Embedding pro Frage.
+// calibrate measures how well the threshold core.MinScore separates
+// relevant from unrelated questions. It asks a fixed list of synthetic
+// questions (questions.go), embeds each one as POST /fragen does and prints
+// the best score of the vector search per question. The language model
+// (answerer) is NOT called; it only costs one embedding per question.
 //
-// Vorher müssen die Testdaten (go run ./cmd/testdaten, mit Abschnitten) und
-// die synthetischen Demo-Daten (Laborbefunde, Orthopädie, FSME, Notizen;
-// hochgeladen) in der Datenbank liegen. Die Demo-Einträge findet das
-// Programm über Typ und Dokumentdatum; fehlt einer oder gibt es ihn doppelt,
-// bricht es vor dem ersten Embedding ab. In der Datenbank wird nur gelesen.
+// Before, the seed data (go run ./cmd/seed, with chunks) and the synthetic
+// demo data (lab reports, orthopedics, TBE, notes; uploaded) must be in the
+// database. The program finds the demo entries by type and document date; if
+// one is missing or there twice, it stops before the first embedding. It
+// only reads from the database.
 //
-//	go run ./cmd/kalibrieren                  # mit der Schwelle core.MinScore
-//	go run ./cmd/kalibrieren -schwelle 0.82   # andere Schwelle durchrechnen
+//	go run ./cmd/calibrate                    # with the threshold core.MinScore
+//	go run ./cmd/calibrate -threshold 0.82    # compute another threshold
 //
-// Gesucht wird im Modul gesundheit über alle Abschnitte. Die Tabelle nennt
-// beim besten Treffer Typ und Dokumentdatum (MM-TT).
+// It searches the module gesundheit across all chunks. The table names type
+// and document date (MM-DD) of the best hit.
 package main
 
 import (
@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"lifelog/backend/internal/config"
@@ -31,149 +32,148 @@ import (
 	"lifelog/backend/internal/llm"
 	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/store"
-	"strings"
 )
 
 func main() {
-	schwelle := flag.Float64("schwelle", core.MinScore, "Schwelle, mit der ausgewertet wird (Atlas-Score 0 … 1)")
+	threshold := flag.Float64("threshold", core.MinScore, "threshold to evaluate with (Atlas score 0 … 1)")
 	flag.Parse()
 
-	if err := ausfuehren(*schwelle); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", err)
+	if err := run(*threshold); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func ausfuehren(schwelle float64) error {
-	if schwelle <= 0 || schwelle > 1 {
-		return fmt.Errorf("-schwelle muss zwischen 0 und 1 liegen")
+func run(threshold float64) error {
+	if threshold <= 0 || threshold > 1 {
+		return fmt.Errorf("-threshold must be between 0 and 1")
 	}
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
 
-	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stopp()
-	ctx, abbrechen := context.WithTimeout(ctx, 3*time.Minute)
-	defer abbrechen()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
 
-	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
 	if err != nil {
 		return err
 	}
 	defer db.Disconnect(context.Background())
 
-	status, gefunden, err := db.VectorIndexStatus(ctx)
+	status, found, err := db.VectorIndexStatus(ctx)
 	if err != nil {
 		return err
 	}
-	if !gefunden || status != "READY" {
-		return fmt.Errorf("Vektorindex %q ist nicht bereit (Status %q); einmal den Server starten oder backend/README.md, Abschnitt Vektorindex",
+	if !found || status != "READY" {
+		return fmt.Errorf("vector index %q is not ready (status %q); start the server once or see backend/README.md, section vector index",
 			store.VectorIndexName, status)
 	}
 
-	// Nur der Einbetter wird benutzt; Lese- und Antwortmodell bleiben unberührt.
+	// Only the embedder is used; read and answer models stay untouched.
 	g, err := gemini.New(ctx, gemini.Settings{
-		APIKey:         k.GeminiKey,
-		Model:          k.GeminiModel,
-		EmbeddingModel: k.GeminiEmbeddingModel,
+		APIKey:         c.GeminiKey,
+		Model:          c.GeminiModel,
+		EmbeddingModel: c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Nur lesend: Ziele (Typ + Dokumentdatum oder Testdaten-ID) zu IDs auflösen,
-	// bevor das erste Embedding Kontingent kostet.
-	liste, err := db.ListSummaries(ctx, "gesundheit")
+	// Read only: resolve targets (type + document date or seed ID) to IDs
+	// before the first embedding costs quota.
+	list, err := db.ListSummaries(ctx, "gesundheit")
 	if err != nil {
 		return err
 	}
-	fragen := kalibrierfragen()
-	ids, err := aufloesen(fragen, liste)
+	qs := questions()
+	ids, err := resolve(qs, list)
 	if err != nil {
-		return fmt.Errorf("Einträge zu den Fragen fehlen oder sind nicht eindeutig (Testdaten: go run ./cmd/testdaten; Demo-Daten: hochladen):\n%w", err)
+		return fmt.Errorf("entries for the questions are missing or not unique (seed data: go run ./cmd/seed; demo data: upload):\n%w", err)
 	}
-	namen := map[string]string{}
-	for _, e := range liste {
-		namen[e.ID] = kurzname(e)
+	names := map[string]string{}
+	for _, e := range list {
+		names[e.ID] = shortName(e)
 	}
 
-	fmt.Printf("%d Fragen, %d Einträge, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
-		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, core.MaxHits)
-	fmt.Println(" Nr  Gruppe     Bester  Treffer            Richtig        Frage")
+	fmt.Printf("%d questions, %d entries, embedding model %s, database %q, top %d\n\n",
+		len(qs), len(list), c.GeminiEmbeddingModel, c.MongoDB, core.MaxHits)
+	fmt.Println(" No  Group      Best    Hit                Right          Question")
 
-	messungen := make([]messung, 0, len(fragen))
-	for i, f := range fragen {
-		vektor, err := g.EmbedQuestion(ctx, f.Text)
+	measurements := make([]measurement, 0, len(qs))
+	for i, q := range qs {
+		vector, err := g.EmbedQuestion(ctx, q.Text)
 		if err != nil {
 			if errors.Is(err, llm.ErrUnavailable) {
-				return fmt.Errorf("Frage %d: Embedding-Modell nicht erreichbar, später noch einmal: %w", i+1, err)
+				return fmt.Errorf("question %d: embedding model unavailable, try again later: %w", i+1, err)
 			}
-			return fmt.Errorf("Frage %d: %w", i+1, err)
+			return fmt.Errorf("question %d: %w", i+1, err)
 		}
-		treffer, err := db.SimilarChunks(ctx, vektor, "gesundheit", core.MaxHits)
+		hits, err := db.SimilarChunks(ctx, vector, "gesundheit", core.MaxHits)
 		if err != nil {
-			return fmt.Errorf("Frage %d: %w", i+1, err)
+			return fmt.Errorf("question %d: %w", i+1, err)
 		}
 
-		erwartet := make([]string, len(f.Erwartet))
-		for j, z := range f.Erwartet {
-			erwartet[j] = ids[z]
+		expected := make([]string, len(q.Expected))
+		for j, t := range q.Expected {
+			expected[j] = ids[t]
 		}
-		m := messen(f, erwartet, treffer)
-		messungen = append(messungen, m)
+		m := measure(q, expected, hits)
+		measurements = append(measurements, m)
 		fmt.Printf("%3d  %-9s  %s   %-18s %-14s %s\n",
-			i+1, f.Gruppe, zahl(m.Bester), eintragName(namen, m.BesterEintrag), markierung(m), f.Text)
+			i+1, q.Group, score(m.Best), entryName(names, m.BestEntry), mark(m), q.Text)
 	}
 
 	fmt.Println()
-	fmt.Print(auswerten(messungen, schwelle).Zusammenfassung())
+	fmt.Print(evaluate(measurements, threshold).Summary())
 	return nil
 }
 
-// kurzname für die Tabelle, z. B. "laborbefund 07-22".
-func kurzname(e core.EntrySummary) string {
+// shortName for the table, e.g. "laborbefund 07-22".
+func shortName(e core.EntrySummary) string {
 	if e.DocumentDate == nil || len(*e.DocumentDate) != 10 {
-		return e.Type + " o. D."
+		return e.Type + " no date"
 	}
 	return e.Type + " " + (*e.DocumentDate)[5:]
 }
 
-func eintragName(namen map[string]string, id string) string {
+func entryName(names map[string]string, id string) string {
 	if id == "" {
 		return "–"
 	}
-	if n, ok := namen[id]; ok {
+	if n, ok := names[id]; ok {
 		return n
 	}
-	return "unbekannt"
+	return "unknown"
 }
 
-// markierung (nur bei passend): ✓ wenn ein erwarteter Eintrag oben steht,
-// sonst ✗; dahinter bei mehreren erwarteten Einträgen deren Scores, bei
-// einem der Score, wenn er nicht oben steht (– = nicht unter den Treffern).
-func markierung(m messung) string {
-	if m.Frage.Gruppe != passend {
+// mark (only for relevant): ✓ if an expected entry is on top, otherwise ✗;
+// after it, with several expected entries their scores, with one the score
+// if it is not on top (– = not among the hits).
+func mark(m measurement) string {
+	if m.Question.Group != relevant {
 		return ""
 	}
-	zeichen := "✗"
-	if m.RichtigOben() {
-		zeichen = "✓"
+	sign := "✗"
+	if m.RightOnTop() {
+		sign = "✓"
 	}
-	if len(m.Erwartet) == 1 && m.RichtigOben() {
-		return zeichen
+	if len(m.Expected) == 1 && m.RightOnTop() {
+		return sign
 	}
-	werte := make([]string, len(m.Erwartet))
-	for i, s := range m.Erwartet {
+	values := make([]string, len(m.Expected))
+	for i, s := range m.Expected {
 		if s == 0 {
-			werte[i] = "–"
+			values[i] = "–"
 		} else {
-			werte[i] = zahl(s)
+			values[i] = score(s)
 		}
 	}
-	return zeichen + " " + strings.Join(werte, "/")
+	return sign + " " + strings.Join(values, "/")
 }

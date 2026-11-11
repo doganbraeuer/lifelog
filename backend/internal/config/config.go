@@ -22,7 +22,7 @@ const (
 	DefaultAddress = "127.0.0.1"
 	DefaultPort    = "8080"
 
-	// Models, checked on 2026-11-04 with go run ./cmd/modelle and the pricing
+	// Models, checked on 2026-11-04 with go run ./cmd/models and the pricing
 	// page (aistudio.google.com/docs/pricing). Both can be used in the free
 	// tier; there, inputs may be used to improve the products, so only
 	// synthetic documents. The exact free-tier limits (requests per

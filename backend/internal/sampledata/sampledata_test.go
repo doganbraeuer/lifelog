@@ -8,73 +8,73 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-func TestEintraege_GueltigUndEindeutig(t *testing.T) {
+func TestEntries_ValidAndUnique(t *testing.T) {
 	ids := map[string]bool{}
-	for _, e := range Eintraege() {
+	for _, e := range Entries() {
 		for _, id := range []string{e.ID, e.File.ID} {
 			if err := core.CheckID(id); err != nil {
-				t.Errorf("%s: ungültige ID %q", e.Type, id)
+				t.Errorf("%s: invalid ID %q", e.Type, id)
 			}
 			if ids[id] {
-				t.Errorf("ID %q doppelt", id)
+				t.Errorf("ID %q twice", id)
 			}
 			ids[id] = true
 		}
 		if !core.TypeAllowed(e.Module, e.Type) {
-			t.Errorf("Typ %q im Modul %q nicht erlaubt", e.Type, e.Module)
+			t.Errorf("type %q not allowed in module %q", e.Type, e.Module)
 		}
 	}
-	for _, id := range []string{Laborbefund, Arztbrief, Notiz, Rezept} {
+	for _, id := range []string{LabReport, DoctorLetter, Note, Prescription} {
 		if !ids[id] {
-			t.Errorf("Konstante %q gehört zu keinem Eintrag", id)
+			t.Errorf("constant %q belongs to no entry", id)
 		}
 	}
 }
 
-func TestAbschnitte_WieBeimUpload(t *testing.T) {
-	for _, e := range Eintraege() {
-		a := Abschnitte(e)
-		texte := core.SplitIntoChunks(e.FullText, core.ChunkMaxChars)
-		if len(a) == 0 || len(a) != len(texte) {
-			t.Fatalf("%s: %d Abschnitte, erwartet %d (> 0)", e.Type, len(a), len(texte))
+func TestChunks_AsOnUpload(t *testing.T) {
+	for _, e := range Entries() {
+		c := Chunks(e)
+		texts := core.SplitIntoChunks(e.FullText, core.ChunkMaxChars)
+		if len(c) == 0 || len(c) != len(texts) {
+			t.Fatalf("%s: %d chunks, want %d (> 0)", e.Type, len(c), len(texts))
 		}
-		for i, ab := range a {
-			if ab.EntryID != e.ID || ab.Module != e.Module || ab.Position != i+1 || ab.Text != texte[i] {
-				t.Errorf("%s Abschnitt %d = %+v", e.Type, i, ab)
+		for i, ch := range c {
+			if ch.EntryID != e.ID || ch.Module != e.Module || ch.Position != i+1 || ch.Text != texts[i] {
+				t.Errorf("%s chunk %d = %+v", e.Type, i, ch)
 			}
 		}
 	}
 }
 
-func TestWegwerf(t *testing.T) {
-	const id, dateiID = "aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"
-	jetzt := time.Date(2026, 11, 5, 10, 0, 0, 123_456_789, time.FixedZone("MEZ", 3600))
-	e, abschnitte := Wegwerf(id, dateiID, jetzt)
+func TestThrowaway(t *testing.T) {
+	const id, fileID = "aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"
+	now := time.Date(2026, 11, 5, 10, 0, 0, 123_456_789, time.FixedZone("CET", 3600))
+	e, chunks := Throwaway(id, fileID, now)
 
-	if e.ID != id || e.File.ID != dateiID || !core.TypeAllowed(e.Module, e.Type) {
-		t.Errorf("Eintrag %+v", e)
+	if e.ID != id || e.File.ID != fileID || !core.TypeAllowed(e.Module, e.Type) {
+		t.Errorf("entry %+v", e)
 	}
 	if want := time.Date(2026, 11, 5, 9, 0, 0, 123_000_000, time.UTC); !e.ImportedAt.Equal(want) || e.ImportedAt.Location() != time.UTC {
-		t.Errorf("Importdatum %v, erwartet %v", e.ImportedAt, want)
+		t.Errorf("ImportedAt %v, want %v", e.ImportedAt, want)
 	}
 	if e.File.Size != int64(len(e.FullText)) || len(e.File.Sha256) != 64 {
-		t.Errorf("Datei %+v", e.File)
+		t.Errorf("file %+v", e.File)
 	}
 	if e.Facts == nil || e.Corrections == nil {
-		t.Error("Listen müssen [] sein, nicht nil")
+		t.Error("lists must be [], not nil")
 	}
-	if len(abschnitte) == 0 {
-		t.Fatal("keine Abschnitte")
+	if len(chunks) == 0 {
+		t.Fatal("no chunks")
 	}
-	for _, a := range abschnitte {
-		if a.EntryID != id || len(a.Embedding) != llm.EmbeddingDimensions || a.Embedding[0] != 1 {
-			t.Errorf("Abschnitt %d: eintrag %s, %d Dimensionen", a.Position, a.EntryID, len(a.Embedding))
+	for _, c := range chunks {
+		if c.EntryID != id || len(c.Embedding) != llm.EmbeddingDimensions || c.Embedding[0] != 1 {
+			t.Errorf("chunk %d: entry %s, %d dimensions", c.Position, c.EntryID, len(c.Embedding))
 		}
 	}
 
-	// Ein anderer Zeitpunkt ergibt einen anderen Hash: kein Duplikat.
-	e2, _ := Wegwerf(id, dateiID, jetzt.Add(time.Millisecond))
+	// Another time gives another hash: no duplicate.
+	e2, _ := Throwaway(id, fileID, now.Add(time.Millisecond))
 	if e2.File.Sha256 == e.File.Sha256 {
-		t.Error("gleicher Hash für verschiedene Zeitpunkte")
+		t.Error("same hash for different times")
 	}
 }

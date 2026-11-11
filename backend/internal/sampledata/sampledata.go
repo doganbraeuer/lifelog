@@ -1,7 +1,10 @@
-// Package sampledata enthält die erfundenen Testeinträge. Sie werden von
-// cmd/testdaten (einfügen, entfernen) und cmd/kalibrieren (Fragen, deren
-// Antwort in einem bestimmten Eintrag steht) gemeinsam benutzt. Alle Daten
-// sind erfunden.
+// Package sampledata contains the invented test entries. They are shared by
+// cmd/seed (insert, remove) and cmd/calibrate (questions whose answer is in
+// a certain entry). All data is invented.
+//
+// The content (full texts, facts, issuers) stays German: it imitates real
+// documents, and the calibration compares its scores across changes, so it
+// must stay byte for byte the same.
 package sampledata
 
 import (
@@ -13,81 +16,81 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Feste IDs der Testeinträge. Fest, damit cmd/testdaten genau diese wieder
-// löschen kann und cmd/kalibrieren weiß, welcher Eintrag die Antwort enthält.
+// Fixed IDs of the test entries. Fixed, so cmd/seed can delete exactly these
+// again and cmd/calibrate knows which entry contains the answer.
 const (
-	Laborbefund = "6727a1f3c2b4e5d6f7a8b9c0"
-	Arztbrief   = "6727a20bc2b4e5d6f7a8b9d4"
-	Notiz       = "6727a2a9c2b4e5d6f7a8b9e7"
-	Rezept      = "6727a2f0c2b4e5d6f7a8b9f2"
+	LabReport    = "6727a1f3c2b4e5d6f7a8b9c0"
+	DoctorLetter = "6727a20bc2b4e5d6f7a8b9d4"
+	Note         = "6727a2a9c2b4e5d6f7a8b9e7"
+	Prescription = "6727a2f0c2b4e5d6f7a8b9f2"
 )
 
-// Eintraege deckt die Fälle der Zeitleiste ab: verschiedene Typen, ein
-// Eintrag ohne Datum und ohne Quelle, zwei Einträge mit gleichem Datum.
+// Entries covers the cases of the timeline: different types, an entry
+// without date and without issuer, two entries with the same date.
 //
-// Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der
-// Volltext als text.txt.
-func Eintraege() []core.Entry {
+// The entries look like text imports: the original file is the full text as
+// text.txt.
+func Entries() []core.Entry {
 	return []core.Entry{
-		textEintrag(
-			Laborbefund, "6727a1f3c2b4e5d6f7a8b9c1", "laborbefund",
-			zeiger("2026-10-14"), zeiger("Labor Muster GmbH, Salzburg"), "2026-11-03T18:42:07Z",
+		textEntry(
+			LabReport, "6727a1f3c2b4e5d6f7a8b9c1", "laborbefund",
+			ptr("2026-10-14"), ptr("Labor Muster GmbH, Salzburg"), "2026-11-03T18:42:07Z",
 			"Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\nLaborbefund vom 14.10.2026\n"+
 				"Patient: Max Mustermann, geb. 01.01.1990\n\n"+
 				"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)\n"+
 				"CRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
 			[]core.Fact{
-				{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
-				{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: zeiger("G/l")},
-				{ID: "i3", Name: "CRP", Value: "<0,5", Unit: zeiger("mg/dl")},
+				{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+				{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: ptr("G/l")},
+				{ID: "i3", Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},
 				{ID: "i4", Name: "Befundart", Value: "Blutbild klein"},
 			},
 		),
-		textEintrag(
-			Arztbrief, "6727a20bc2b4e5d6f7a8b9d5", "arztbrief",
-			zeiger("2026-09-02"), zeiger("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T18:50:12Z",
+		textEntry(
+			DoctorLetter, "6727a20bc2b4e5d6f7a8b9d5", "arztbrief",
+			ptr("2026-09-02"), ptr("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T18:50:12Z",
 			"Dr. Erika Beispiel, Allgemeinmedizin\nBeispielgasse 7, 5020 Salzburg\n\n"+
 				"Arztbrief vom 02.09.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\n"+
 				"Vorstellung zur Routinekontrolle. Blutdruck 128/82 mmHg.\n"+
 				"Kontrolle in 6 Monaten vereinbart.",
 			[]core.Fact{
-				{ID: "i1", Name: "Blutdruck", Value: "128/82", Unit: zeiger("mmHg")},
+				{ID: "i1", Name: "Blutdruck", Value: "128/82", Unit: ptr("mmHg")},
 				{ID: "i2", Name: "Nächste Kontrolle", Value: "in 6 Monaten"},
 			},
 		),
-		textEintrag(
-			Notiz, "6727a2a9c2b4e5d6f7a8b9e8", "sonstiges",
+		textEntry(
+			Note, "6727a2a9c2b4e5d6f7a8b9e8", "sonstiges",
 			nil, nil, "2026-11-03T19:01:44Z",
 			"Notiz ohne Datum und ohne Absender.\nImpfpass liegt in der Schublade.",
 			[]core.Fact{},
 		),
-		textEintrag(
-			Rezept, "6727a2f0c2b4e5d6f7a8b9f3", "rezept",
-			zeiger("2026-10-14"), zeiger("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T19:10:00Z",
+		textEntry(
+			Prescription, "6727a2f0c2b4e5d6f7a8b9f3", "rezept",
+			ptr("2026-10-14"), ptr("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T19:10:00Z",
 			"Dr. Erika Beispiel, Allgemeinmedizin\n\nRezept vom 14.10.2026\n"+
 				"Patient: Max Mustermann\n\nBeispielin 100 mg, 1-0-0, 30 Stück",
 			[]core.Fact{
 				{ID: "i1", Name: "Präparat", Value: "Beispielin 100 mg"},
 				{ID: "i2", Name: "Dosierung", Value: "1-0-0"},
-				{ID: "i3", Name: "Menge", Value: "30", Unit: zeiger("Stück")},
+				{ID: "i3", Name: "Menge", Value: "30", Unit: ptr("Stück")},
 			},
 		),
 	}
 }
 
-// Abschnitte zerlegt den Volltext eines Eintrags wie beim Upload
-// (dienst.Hochladen): gleiche Obergrenze, Nr ab 1, Modul des Eintrags. Die
-// Embeddings fehlen noch; die setzt der Aufrufer.
-func Abschnitte(e core.Entry) []core.Chunk {
-	texte := core.SplitIntoChunks(e.FullText, core.ChunkMaxChars)
-	abschnitte := make([]core.Chunk, len(texte))
-	for i, t := range texte {
-		abschnitte[i] = core.Chunk{EntryID: e.ID, Module: e.Module, Position: i + 1, Text: t}
+// Chunks splits the full text of an entry as the upload does
+// (service.Uploader): same limit, Position from 1, module of the entry. The
+// embeddings are still missing; the caller sets them.
+func Chunks(e core.Entry) []core.Chunk {
+	texts := core.SplitIntoChunks(e.FullText, core.ChunkMaxChars)
+	chunks := make([]core.Chunk, len(texts))
+	for i, t := range texts {
+		chunks[i] = core.Chunk{EntryID: e.ID, Module: e.Module, Position: i + 1, Text: t}
 	}
-	return abschnitte
+	return chunks
 }
 
-func zeiger(s string) *string { return &s }
+func ptr(s string) *string { return &s }
 
 func utc(text string) time.Time {
 	t, err := time.Parse(time.RFC3339, text)
@@ -97,67 +100,67 @@ func utc(text string) time.Time {
 	return t
 }
 
-// textEintrag baut einen Eintrag, als wäre volltext per Text-Import gekommen.
-// Hash und Größe stimmen mit dem Text überein.
-func textEintrag(id, dateiID, typ string, datum, quelle *string, importdatum, volltext string, infos []core.Fact) core.Entry {
-	hash := sha256.Sum256([]byte(volltext))
+// textEntry builds an entry as if the full text had come in by text import.
+// Hash and size match the text.
+func textEntry(id, fileID, typ string, date, issuer *string, importedAt, fullText string, facts []core.Fact) core.Entry {
+	hash := sha256.Sum256([]byte(fullText))
 	return core.Entry{
 		ID:           id,
 		Module:       "gesundheit",
 		Type:         typ,
-		DocumentDate: datum,
-		ImportedAt:   utc(importdatum),
-		Issuer:       quelle,
-		FullText:     volltext,
-		Facts:        infos,
+		DocumentDate: date,
+		ImportedAt:   utc(importedAt),
+		Issuer:       issuer,
+		FullText:     fullText,
+		Facts:        facts,
 		File: core.File{
-			ID:       dateiID,
+			ID:       fileID,
 			FileName: "text.txt",
 			MimeType: "text/plain; charset=utf-8",
-			Size:     int64(len(volltext)),
+			Size:     int64(len(fullText)),
 			Sha256:   hex.EncodeToString(hash[:]),
 		},
 		Corrections: []core.Correction{},
 	}
 }
 
-// Wegwerf baut einen erfundenen Eintrag zum Ausprobieren von DELETE
-// (cmd/testdaten -wegwerf). Die IDs vergibt der Aufrufer neu, damit nie
-// ein fester Testeintrag oder ein hochgeladenes Dokument getroffen wird.
-// Der Zeitpunkt steht im Text, so hat jeder Wegwerf-Eintrag einen anderen
-// Hash und ist kein Duplikat.
+// Throwaway builds an invented entry for trying out DELETE
+// (cmd/seed -throwaway). The caller assigns new IDs, so it never hits a
+// fixed test entry or an uploaded document. The time is in the text, so
+// every throwaway entry has a different hash and is no duplicate.
 //
-// Die Abschnitte haben statt eines echten Embeddings einen festen
-// Einheitsvektor (1, 0, 0, …): kein Gemini-Aufruf. Sein Score zu echten
-// Fragen liegt um 0,5, weit unter core.MinScore; die Suche zeigt ihn also
-// nicht an.
-func Wegwerf(id, dateiID string, jetzt time.Time) (core.Entry, []core.Chunk) {
-	jetzt = jetzt.UTC().Truncate(time.Millisecond)
-	volltext := "Wegwerf-Eintrag zum Testen des Löschens.\n\nAngelegt am " +
-		jetzt.Format(time.RFC3339Nano) + ". Enthält keine Gesundheitsdaten."
-	hash := sha256.Sum256([]byte(volltext))
+// Instead of a real embedding, the chunks have a fixed unit vector
+// (1, 0, 0, …): no Gemini call. Its score for real questions is around 0.5,
+// far below core.MinScore, so search does not show it.
+//
+// Text, issuer and file name stay German because the app shows them.
+func Throwaway(id, fileID string, now time.Time) (core.Entry, []core.Chunk) {
+	now = now.UTC().Truncate(time.Millisecond)
+	fullText := "Wegwerf-Eintrag zum Testen des Löschens.\n\nAngelegt am " +
+		now.Format(time.RFC3339Nano) + ". Enthält keine Gesundheitsdaten."
+	hash := sha256.Sum256([]byte(fullText))
 	e := core.Entry{
 		ID:         id,
 		Module:     "gesundheit",
 		Type:       "sonstiges",
-		ImportedAt: jetzt,
-		Issuer:     zeiger("Wegwerf-Test"),
-		FullText:   volltext,
+		ImportedAt: now,
+		Issuer:     ptr("Wegwerf-Test"),
+		FullText:   fullText,
 		Facts:      []core.Fact{},
 		File: core.File{
-			ID:       dateiID,
+			ID:       fileID,
 			FileName: "wegwerf.txt",
 			MimeType: "text/plain; charset=utf-8",
-			Size:     int64(len(volltext)),
+			Size:     int64(len(fullText)),
 			Sha256:   hex.EncodeToString(hash[:]),
 		},
 		Corrections: []core.Correction{},
 	}
-	abschnitte := Abschnitte(e)
-	for i := range abschnitte {
+	chunks := Chunks(e)
+	for i := range chunks {
 		v := make([]float32, llm.EmbeddingDimensions)
 		v[0] = 1
-		abschnitte[i].Embedding = v
+		chunks[i].Embedding = v
 	}
-	return e, abschnitte
+	return e, chunks
 }

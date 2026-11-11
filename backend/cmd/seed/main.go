@@ -1,24 +1,24 @@
-// testdaten fügt synthetische Einträge in die Datenbank ein, damit Zeitleiste
-// und Suche ohne Upload und ohne Vision-LLM getestet werden können. Alle
-// Daten sind erfunden (internal/beispieldaten).
+// seed inserts synthetic entries into the database, so the timeline and
+// search can be tested without upload and without the vision LLM. All data
+// is invented (internal/sampledata).
 //
-//	go run ./cmd/testdaten                   einfügen, mit Abschnitten und Embeddings (Gemini)
-//	go run ./cmd/testdaten -ohne-abschnitte  einfügen ohne Gemini (Suche findet sie dann nicht)
-//	go run ./cmd/testdaten -entfernen        wieder löschen
-//	go run ./cmd/testdaten -wegwerf          einen Wegwerf-Eintrag zum Testen von DELETE anlegen
+//	go run ./cmd/seed               insert, with chunks and embeddings (Gemini)
+//	go run ./cmd/seed -no-chunks    insert without Gemini (search does not find them then)
+//	go run ./cmd/seed -remove       delete them again
+//	go run ./cmd/seed -throwaway    create a throwaway entry for testing DELETE
 //
-// Die Testeinträge haben feste IDs. Darum kann man das Programm beliebig oft
-// ausführen: Es löscht zuerst die eigenen Einträge und fügt sie neu ein.
-// Andere Einträge in der Datenbank bleiben unberührt.
+// The seed entries have fixed IDs. That is why the program can be run any
+// number of times: it first deletes its own entries and inserts them again.
+// Other entries in the database stay untouched.
 //
-// -wegwerf legt bei jedem Aufruf einen weiteren Eintrag mit neuer ID an
-// (ohne Gemini, siehe sampledata.Wegwerf) und gibt die ID aus. Nur diese
-// ID zum Ausprobieren von DELETE verwenden.
+// -throwaway creates one more entry with a new ID on every call (without
+// Gemini, see sampledata.Throwaway) and prints the ID. Only use this ID for
+// trying out DELETE.
 //
-// Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der Volltext
-// als text.txt in GridFS. Die Abschnitte entstehen wie beim Upload
-// (gleiches Zerlegen, gleiches Embedding-Modell), damit POST /fragen und
-// cmd/kalibrieren sie finden.
+// The entries look like text imports: the original file is the full text
+// as text.txt in GridFS. The chunks are created as on upload (same
+// splitting, same embedding model), so POST /fragen and cmd/calibrate find
+// them.
 package main
 
 import (
@@ -36,48 +36,48 @@ import (
 )
 
 func main() {
-	entfernen := flag.Bool("entfernen", false, "Testdaten nur löschen, nicht neu einfügen")
-	ohneAbschnitte := flag.Bool("ohne-abschnitte", false, "keine Abschnitte und Embeddings anlegen (ohne Gemini-Aufruf)")
-	wegwerf := flag.Bool("wegwerf", false, "nur einen Wegwerf-Eintrag mit neuer ID anlegen (zum Testen von DELETE)")
+	remove := flag.Bool("remove", false, "only delete the seed entries, do not insert them again")
+	noChunks := flag.Bool("no-chunks", false, "create no chunks and embeddings (no Gemini call)")
+	throwaway := flag.Bool("throwaway", false, "only create a throwaway entry with a new ID (for testing DELETE)")
 	flag.Parse()
 
 	var err error
-	if *wegwerf {
-		err = wegwerfAnlegen()
+	if *throwaway {
+		err = createThrowaway()
 	} else {
-		err = ausfuehren(*entfernen, *ohneAbschnitte)
+		err = run(*remove, *noChunks)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
+func run(onlyRemove, noChunks bool) error {
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
 
-	// 60 s: Embeddings bis 20 s plus Datenbank über das Netz.
-	ctx, abbrechen := context.WithTimeout(context.Background(), 60*time.Second)
-	defer abbrechen()
+	// 60 s: embeddings up to 20 s plus the database over the network.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-	eintraege := sampledata.Eintraege()
+	entries := sampledata.Entries()
 
-	// Embeddings zuerst: Scheitert Gemini, bleibt die Datenbank, wie sie war.
-	abschnitte := map[string][]core.Chunk{}
-	if !nurEntfernen && !ohneAbschnitte {
-		abschnitte, err = einbetten(ctx, k, eintraege)
+	// Embeddings first: if Gemini fails, the database stays as it was.
+	chunks := map[string][]core.Chunk{}
+	if !onlyRemove && !noChunks {
+		chunks, err = embed(ctx, c, entries)
 		if err != nil {
-			return fmt.Errorf("%w\nOhne Gemini geht es mit -ohne-abschnitte (dann findet die Suche die Testdaten nicht)", err)
+			return fmt.Errorf("%w\nWithout Gemini, use -no-chunks (then search does not find the seed data)", err)
 		}
 	}
 
-	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
 	if err != nil {
 		return err
 	}
@@ -87,8 +87,8 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 		return err
 	}
 
-	// Entfernen in der Reihenfolge aus API.md 3.7: Abschnitte, Datei, Eintrag.
-	for _, e := range eintraege {
+	// Remove in the order of API.md 3.7: chunks, file, entry.
+	for _, e := range entries {
 		if err := db.DeleteChunks(ctx, e.ID); err != nil {
 			return err
 		}
@@ -99,99 +99,98 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 			return err
 		}
 	}
-	if nurEntfernen {
-		fmt.Printf("%d Testeinträge samt Abschnitten entfernt (Datenbank %q).\n", len(eintraege), k.MongoDB)
+	if onlyRemove {
+		fmt.Printf("%d seed entries removed with their chunks (database %q).\n", len(entries), c.MongoDB)
 		return nil
 	}
 
-	// Einfügen wie beim Upload: Datei, Abschnitte, Eintrag zuletzt.
-	anzahl := 0
-	for _, e := range eintraege {
+	// Insert as on upload: file, chunks, entry last.
+	count := 0
+	for _, e := range entries {
 		if err := db.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 			return err
 		}
-		if err := db.SaveChunks(ctx, abschnitte[e.ID]); err != nil {
+		if err := db.SaveChunks(ctx, chunks[e.ID]); err != nil {
 			return err
 		}
 		if err := db.SaveEntry(ctx, e); err != nil {
 			return err
 		}
-		anzahl += len(abschnitte[e.ID])
+		count += len(chunks[e.ID])
 	}
-	fmt.Printf("%d Testeinträge mit %d Abschnitten eingefügt (Datenbank %q).\n", len(eintraege), anzahl, k.MongoDB)
-	if anzahl > 0 {
-		fmt.Println("Atlas braucht einige Sekunden, bis neue Abschnitte in der Vektorsuche auftauchen.")
+	fmt.Printf("%d seed entries with %d chunks inserted (database %q).\n", len(entries), count, c.MongoDB)
+	if count > 0 {
+		fmt.Println("Atlas needs a few seconds until new chunks show up in the vector search.")
 	}
 	return nil
 }
 
-// einbetten zerlegt alle Testeinträge und holt die Embeddings in einem
-// Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
-// Eintrag-ID.
-func einbetten(ctx context.Context, k config.Config, eintraege []core.Entry) (map[string][]core.Chunk, error) {
+// embed splits all seed entries and gets the embeddings in one go
+// (EmbedChunks splits into batches itself). Result by entry ID.
+func embed(ctx context.Context, c config.Config, entries []core.Entry) (map[string][]core.Chunk, error) {
 	g, err := gemini.New(ctx, gemini.Settings{
-		APIKey:         k.GeminiKey,
-		Model:          k.GeminiModel,
-		EmbeddingModel: k.GeminiEmbeddingModel,
+		APIKey:         c.GeminiKey,
+		Model:          c.GeminiModel,
+		EmbeddingModel: c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var alle []core.Chunk
-	var texte []string
-	for _, e := range eintraege {
-		for _, a := range sampledata.Abschnitte(e) {
-			alle = append(alle, a)
-			texte = append(texte, a.Text)
+	var all []core.Chunk
+	var texts []string
+	for _, e := range entries {
+		for _, ch := range sampledata.Chunks(e) {
+			all = append(all, ch)
+			texts = append(texts, ch.Text)
 		}
 	}
-	vektoren, err := g.EmbedChunks(ctx, texte)
+	vectors, err := g.EmbedChunks(ctx, texts)
 	if err != nil {
-		return nil, fmt.Errorf("Embeddings (%s): %w", k.GeminiEmbeddingModel, err)
+		return nil, fmt.Errorf("embeddings (%s): %w", c.GeminiEmbeddingModel, err)
 	}
-	if len(vektoren) != len(texte) {
-		return nil, fmt.Errorf("%d Embeddings für %d Abschnitte", len(vektoren), len(texte))
+	if len(vectors) != len(texts) {
+		return nil, fmt.Errorf("%d embeddings for %d chunks", len(vectors), len(texts))
 	}
 
-	ergebnis := map[string][]core.Chunk{}
-	for i, a := range alle {
-		a.Embedding = vektoren[i]
-		ergebnis[a.EntryID] = append(ergebnis[a.EntryID], a)
+	result := map[string][]core.Chunk{}
+	for i, ch := range all {
+		ch.Embedding = vectors[i]
+		result[ch.EntryID] = append(result[ch.EntryID], ch)
 	}
-	return ergebnis, nil
+	return result, nil
 }
 
-// wegwerfAnlegen speichert einen Wegwerf-Eintrag wie beim Upload (Datei,
-// Abschnitte, Eintrag zuletzt) und gibt seine ID aus. Die festen
-// Testeinträge und alle anderen Einträge bleiben unberührt.
-func wegwerfAnlegen() error {
+// createThrowaway stores a throwaway entry as on upload (file, chunks,
+// entry last) and prints its ID. The fixed seed entries and all other
+// entries stay untouched.
+func createThrowaway() error {
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
-	ctx, abbrechen := context.WithTimeout(context.Background(), 30*time.Second)
-	defer abbrechen()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	db, err := store.Connect(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
 	if err != nil {
 		return err
 	}
 	defer db.Disconnect(context.Background())
 
-	e, abschnitte := sampledata.Wegwerf(store.NewID(), store.NewID(), time.Now())
+	e, chunks := sampledata.Throwaway(store.NewID(), store.NewID(), time.Now())
 	if err := db.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 		return err
 	}
-	if err := db.SaveChunks(ctx, abschnitte); err != nil {
+	if err := db.SaveChunks(ctx, chunks); err != nil {
 		return err
 	}
 	if err := db.SaveEntry(ctx, e); err != nil {
 		return err
 	}
-	fmt.Printf("Wegwerf-Eintrag mit %d Abschnitt(en) angelegt (Datenbank %q):\n%s\n", len(abschnitte), k.MongoDB, e.ID)
+	fmt.Printf("throwaway entry with %d chunk(s) created (database %q):\n%s\n", len(chunks), c.MongoDB, e.ID)
 	return nil
 }
