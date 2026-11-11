@@ -318,15 +318,20 @@ Until 2026-11-11 outside the repository in `lifelog-demo` and
 ## Verification (OCR)
 
 Added 2026-11-11. A second, independent reader (local OCR) checks the
-values the vision LLM extracted (docs/API.md, section 2, `verification`).
+values the vision LLM extracted (docs/API.md, section 2, `verification`):
+the text layer of a PDF, or OCR for photos and scans.
 
 | German | English | Go / Dart type |
 |---|---|---|
 | Texterkennung | OCR (optical character recognition) | package `internal/ocr` |
-| OCR-Schnittstelle, erkennen | recognizer, recognize | `ocr.Recognizer`, `Recognize` |
+| OCR-Schnittstelle (ganzes Dokument), erkennen | recognizer, recognize | `ocr.Recognizer`, `Recognize` |
+| OCR-Programm für ein Bild (Tesseract, später PaddleOCR) | engine | `ocr.Engine`, `RecognizeImage` |
+| Ablauf Textebene → Rastern → OCR | pipeline | `ocr.Pipeline` |
+| Textebene (PDF) | text layer | `poppler.TextLayer` |
 | OCR-Ergebnis | OCR result | `OCRResult` |
 | erkanntes Wort | OCR word | `OCRWord` |
 | Seite / Zeile | page / line | `OCRPage`, `Page`, `Line` |
+| sichtbare Zeile (aus Positionen gebildet) | row | `arrangeRows` |
 | Rechteck (Wortposition, Pixel-unabhängig) | box | `Box` |
 | Konfidenz | confidence (0–100) | `Confidence` |
 | Fundstelle im Original | location | `Location` |
@@ -336,9 +341,9 @@ values the vision LLM extracted (docs/API.md, section 2, `verification`).
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |
 | Grund (warum nicht geprüft) | reason | |
 | Übereinstimmung in Prozent | match percent | `matchPercent` |
-| Prüfquelle | source: `ocr` (file) / `text` (text import) | |
-| OCR-Programm mit Version und Sprache | engine | `Engine` |
-| Rastern (PDF → Bild) | render | `RenderPDF` |
+| Prüfquelle | source: `pdf_text` (text layer), `ocr`, `text` (text import), `mixed` (entry only) | `Source` |
+| Programme mit Version und Sprache (Anzeige) | engine | `OCRResult.Engine` |
+| Rastern (PDF-Seite → Bild) | render | `poppler.RenderPage` |
 
 ### API (entry JSON)
 
@@ -346,7 +351,8 @@ values the vision LLM extracted (docs/API.md, section 2, `verification`).
 |---|---|
 | `verification.status` | `checked`, `unchecked` |
 | `verification.reason` | `null`, `ocr_unavailable`, `ocr_failed`, `unsupported_file_type`, `too_many_pages`, `no_text`, `not_run` |
-| `verification.source` | `ocr`, `text`, `null` |
+| `verification.source` | `pdf_text`, `ocr`, `text`, `mixed`, `null` |
+| `verification.fields[].source` | `pdf_text`, `ocr`, `text`, `null` |
 | `verification.engine`, `checkedAt`, `confirmed`, `total`, `matchPercent` | |
 | `verification.fields[].field` | `documentDate`, `issuer`, `facts.<id>` |
 | `verification.fields[].status` / `confidence` / `locations` | |

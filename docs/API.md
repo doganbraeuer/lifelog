@@ -139,24 +139,24 @@ return an entry:
   "verification": {
     "status": "checked",
     "reason": null,
-    "source": "ocr",
-    "engine": "tesseract 5.5.4 deu",
+    "source": "pdf_text",
+    "engine": "pdftotext 26.11.0",
     "checkedAt": "2026-11-03T19:05:31Z",
     "confirmed": 5,
     "total": 6,
     "matchPercent": 83,
     "fields": [
-      { "field": "documentDate", "status": "confirmed", "confidence": 96,
+      { "field": "documentDate", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.2803, "y": 0.1821, "width": 0.1105, "height": 0.0142 }] },
-      { "field": "issuer", "status": "confirmed", "confidence": 91,
+      { "field": "issuer", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.1210, "y": 0.0702, "width": 0.2104, "height": 0.0160 },
                       { "page": 1, "x": 0.3391, "y": 0.0911, "width": 0.0802, "height": 0.0139 }] },
-      { "field": "facts.f1", "status": "confirmed", "confidence": 93,
+      { "field": "facts.f1", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.3012, "y": 0.2950, "width": 0.1120, "height": 0.0145 }] },
-      { "field": "facts.f2", "status": "confirmed", "confidence": 90,
+      { "field": "facts.f2", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.3018, "y": 0.3157, "width": 0.0988, "height": 0.0143 }] },
-      { "field": "facts.f3", "status": "unconfirmed", "confidence": null, "locations": [] },
-      { "field": "facts.f4", "status": "confirmed", "confidence": 88,
+      { "field": "facts.f3", "status": "unconfirmed", "source": null, "confidence": null, "locations": [] },
+      { "field": "facts.f4", "status": "confirmed", "source": "pdf_text", "confidence": null,
         "locations": [{ "page": 1, "x": 0.2590, "y": 0.3571, "width": 0.1702, "height": 0.0151 }] }
     ]
   }
@@ -177,7 +177,7 @@ return an entry:
 | `facts` | List | Extracted facts, see below |
 | `file` | Object | Reference to the original file |
 | `corrections` | List | Corrected fields with the originally recognized value |
-| `verification` | Object | Check of the recognized values by a second reader (OCR), see [verification](#verification). Always present. |
+| `verification` | Object | Check of the recognized values by a second reader (PDF text layer or OCR), see [verification](#verification). Always present. |
 
 **`facts`**
 
@@ -229,11 +229,23 @@ These rules are deterministic and are covered by tests in the backend.
 ### Verification
 
 The vision LLM can misread or invent a value. A second, independent reader
-therefore checks the recognized values: local OCR (Tesseract, open source,
-runs in the backend, no extra model call). For each field the backend looks
-for the value in the OCR text. For a text import it looks in the entered
-text instead. The app can show which values are confirmed and jump to the
-place in the original.
+therefore checks the recognized values. It runs locally in the backend
+(open source, no extra model call) and reads the original in one of three
+ways:
+
+| Source | Used for | How |
+|---|---|---|
+| `pdf_text` | PDF pages with a text layer (digitally created PDFs) | Words and positions are read from the PDF itself (`pdftotext -bbox-layout`). Exact, no recognition errors. |
+| `ocr` | Photos (JPEG, PNG) and PDF pages without a text layer (scans) | The page is rendered as an image (`pdftoppm`) and read with OCR (Tesseract). |
+| `text` | Text import | The entered text itself |
+
+A PDF page counts as having a text layer if its text layer contains at
+least 20 characters (without whitespace). This is decided per page: a PDF
+with a digital first page and a scanned second page uses both sources.
+
+For each field the backend looks for the value in the text read this way.
+The app can show which values are confirmed, by which source, and jump to
+the place in the original.
 
 **`verification`**
 
@@ -241,8 +253,8 @@ place in the original.
 |---|---|---|
 | `status` | String | `checked` or `unchecked` |
 | `reason` | String or `null` | Only for `unchecked`, see below. `null` for `checked`. |
-| `source` | String or `null` | What was compared against: `ocr` (file) or `text` (text import). `null` for `unchecked`. |
-| `engine` | String or `null` | OCR program with version and language, e.g. `"tesseract 5.5.4 deu"`. `null` for a text import and for `unchecked`. |
+| `source` | String or `null` | What was compared against: `pdf_text`, `ocr`, `text`, or `mixed` if the pages of a PDF used both `pdf_text` and `ocr`. `null` for `unchecked`. |
+| `engine` | String or `null` | Programs with version (and language for OCR), e.g. `"pdftotext 26.11.0"`, `"tesseract 5.5.4 deu"`, for `mixed` both separated by a comma. `null` for a text import and for `unchecked`. |
 | `checkedAt` | String or `null` | Time of the last check (RFC 3339, UTC). `null` for `unchecked`. |
 | `confirmed` | Number | Number of confirmed fields |
 | `total` | Number | Number of checked fields |
@@ -254,11 +266,12 @@ place in the original.
 | Field | Type | Note |
 |---|---|---|
 | `field` | String | `documentDate`, `issuer` or `facts.<id>`. Order: date, issuer, facts in the order of `facts`. |
-| `status` | String | `confirmed`: found in the OCR text (or entered text). `unconfirmed`: not found. |
-| `confidence` | Number or `null` | Lowest OCR confidence (0–100) of the matched words. `null` for `unconfirmed` and for a text import. |
+| `status` | String | `confirmed`: found in the original. `unconfirmed`: not found. |
+| `source` | String or `null` | How the field was confirmed: `pdf_text`, `ocr` or `text` (the source of the page of the first location). `null` for `unconfirmed`. |
+| `confidence` | Number or `null` | Lowest OCR confidence (0–100) of the matched words. Only for `source: ocr`; `null` for `pdf_text`, `text` and `unconfirmed`. |
 | `locations` | List | Where the value is in the original, best match first, at most 3. `[]` for `unconfirmed`. |
 
-A location in a **file** (`source: ocr`) is a rectangle on a page:
+A location in a **file** (`pdf_text` or `ocr`) is a rectangle on a page:
 
 | Field | Type | Note |
 |---|---|---|
@@ -266,13 +279,22 @@ A location in a **file** (`source: ocr`) is a rectangle on a page:
 | `x`, `y` | Number | Top left corner as a fraction of the page width and height (0–1, origin top left) |
 | `width`, `height` | Number | Size as a fraction of the page width and height |
 
-Fractions instead of pixels, so the location does not depend on the
-resolution: the app multiplies them by the size at which it shows the page
-or photo. A value that spans several lines has one location per line.
+Fractions instead of pixels or PDF points, so the location does not depend
+on the resolution: the app multiplies them by the size at which it shows the
+page or photo. Text layer and OCR give the same kind of rectangle. A value
+that spans several lines has one location per line.
 
 A location in a **text import** (`source: text`) is a range in `fullText`:
 `{ "start": 37, "end": 47 }`. `start` is inclusive, `end` exclusive, both
 counted in Unicode code points (not bytes; in Dart `fullText.runes`).
+Punctuation at the edges is not part of the range.
+
+A field confirmed on a photo looks like this:
+
+```json
+{ "field": "facts.f1", "status": "confirmed", "source": "ocr", "confidence": 93,
+  "locations": [{ "page": 1, "x": 0.3012, "y": 0.2950, "width": 0.1120, "height": 0.0145 }] }
+```
 
 Which fields are checked:
 
@@ -280,7 +302,8 @@ Which fields are checked:
 - Every fact: its `value`, and its `unit` if it has one. A fact with a unit
   only counts as `confirmed` if value and unit are both found.
 
-How the backend compares (deterministic, covered by tests):
+How the backend compares (deterministic, covered by tests; the same for
+all three sources):
 
 1. Both sides are normalized: Unicode NFKC, lowercase, uniform dashes and
    quotation marks, punctuation at the edges of a word removed (`<`, `>`,
@@ -297,7 +320,11 @@ How the backend compares (deterministic, covered by tests):
    (`Labor Muster GmbH, Salzburg`: the name in the letterhead, the city in
    the address).
 4. A fact's `value` must appear as a whole; its `unit` must follow in the
-   same line within the next three words. A short value without a unit (at
+   same line within the next three words. "Line" means a visual row,
+   decided from the positions: lines that overlap vertically and have a
+   similar height form one row, read from left to right. Text layer and OCR
+   often read a table column by column; this way `Hämoglobin`, `14,2` and
+   `g/dl` in one table row still count as one line. A short value without a unit (at
    most 3 characters, e.g. `98`) only counts if the first word of the fact's
    `name` is in the same line, so that an unrelated number elsewhere does
    not confirm it. If a value appears several times, the match in the line
@@ -308,11 +335,11 @@ succeeds; a failed check is never an HTTP error. `reason`:
 
 | `reason` | When |
 |---|---|
-| `ocr_unavailable` | OCR is switched off or not installed on the server |
-| `ocr_failed` | OCR returned an error or took too long (30 s) |
-| `unsupported_file_type` | OCR cannot read the file type (HEIC) |
+| `ocr_unavailable` | Switched off, or a needed program (`pdftotext`, `pdftoppm`, `tesseract`) is not installed on the server |
+| `ocr_failed` | Reading returned an error (e.g. a damaged PDF) or took too long (30 s) |
+| `unsupported_file_type` | The file type cannot be read (HEIC) |
 | `too_many_pages` | PDF with more than 10 pages |
-| `no_text` | OCR found no text at all, e.g. a very blurry photo |
+| `no_text` | Neither text layer nor OCR found any text, e.g. a very blurry photo |
 | `not_run` | Entry from before 2026-11-11, never checked |
 
 `verification` describes the current values: after a correction
@@ -429,16 +456,18 @@ Hausarztpraxis Beispiel
    logs which field was missing (e.g. `facts[2].value`), **never** a value.
    The remaining facts are numbered without gaps (`f1`, `f2`, …).
 5. Check the recognized values (see [verification](#verification)). For a
-   file, OCR runs **in parallel** to step 3, so the upload does not take
-   longer; a PDF is first rendered into one image per page. For a text
-   import the values are compared against the entered text.
+   file, reading the original runs **in parallel** to step 3, so the upload
+   does not take longer: a PDF page with a text layer is read directly, a
+   page without one and a photo go through OCR. For a text import the
+   values are compared against the entered text.
 6. Split the full text into chunks and compute embeddings.
-7. Store the original file, the chunks with embeddings, the OCR words and
-   the entry.
+7. Store the original file, the chunks with embeddings, the words read
+   from the original (with positions) and the entry.
 
 If a step fails, the backend stores nothing. No half entry is left behind.
-Exception: if OCR fails, the upload still succeeds and the entry gets
-`"status": "unchecked"` with a `reason`. OCR never causes an error code.
+Exception: if reading the original fails, the upload still succeeds and
+the entry gets `"status": "unchecked"` with a `reason`. The verification
+never causes an error code.
 
 The call is **synchronous** and can take up to about 60 seconds. The app
 shows a loading indicator meanwhile and sets its HTTP timeout for this call
@@ -479,8 +508,8 @@ list (`verification` shortened here, see section 2):
   "verification": {
     "status": "checked",
     "reason": null,
-    "source": "ocr",
-    "engine": "tesseract 5.5.4 deu",
+    "source": "pdf_text",
+    "engine": "pdftotext 26.11.0",
     "checkedAt": "2026-11-03T18:42:07Z",
     "confirmed": 5,
     "total": 6,
@@ -490,7 +519,7 @@ list (`verification` shortened here, see section 2):
 }
 ```
 
-If OCR could not run, `verification` looks like this:
+If the original could not be read, `verification` looks like this:
 
 ```json
 "verification": {
@@ -742,7 +771,7 @@ chunks and embeddings for search stay unchanged because they are derived
 from `fullText`.
 
 If at least one value changed, the backend checks the entry again
-([verification](#verification)) against the OCR words stored at upload (or
+([verification](#verification)) against the words stored at upload (or
 against `fullText` for a text import). This needs no new OCR run. A
 corrected value that does not appear in the original becomes
 `unconfirmed`. An `unchecked` entry stays `unchecked`.
@@ -925,7 +954,7 @@ No body. `{id}` is the ID of the entry.
 **Processing in the backend**
 
 1. Delete the entry's chunks with their embeddings.
-2. Delete the stored OCR words.
+2. Delete the stored words of the original (collection `ocr`).
 3. Delete the original file.
 4. Delete the entry.
 
@@ -1068,7 +1097,8 @@ Planned behaviour:
 
 Answers should later link directly to the place in the original. Today a
 reference `[n]` points to `sources[n]`, i.e. to a chunk of `fullText`. Since
-upload stores the OCR words with their positions (collection `ocr`), two
+upload stores the words of the original with their positions (text layer
+or OCR, collection `ocr`), two
 levels are possible, both without a new OCR run and without a model call:
 
 1. **Chunk level:** at upload, align each chunk's text with the OCR words
@@ -1089,12 +1119,19 @@ same way with `start`/`end` in `fullText`.
 
 ### Further points on verification
 
-- **Text layer of digital PDFs:** PDFs from a portal often contain the
-  exact text with positions (`pdftotext -bbox`). It would be more accurate
-  than OCR on a rendered page. For now every PDF is rendered and read with
-  OCR, so that the measurement (`cmd/ocrcheck`, results in `docs/ocr/`)
-  really tests OCR.
-- **Tesseract or PaddleOCR:** decided after the measurement on `demo/`.
+- **Text layers made by OCR:** some scanners put an invisible OCR text
+  layer into the PDF. It counts as `pdf_text`, although its quality is
+  that of the scanner's OCR. Not distinguishable from a digital PDF in the
+  prototype.
+- **Pages with little text:** a scanned page with a small digital stamp
+  (at least 20 characters) counts as a text layer, and its scanned content
+  is not read. Raise the limit or OCR such pages additionally if this
+  happens.
+- **Rotated PDF pages** (`/Rotate`): positions are not tested with them
+  yet.
+- **Tesseract or PaddleOCR:** decided after the measurement on `demo/`
+  (`cmd/ocrcheck`, results in `docs/ocr/`). It reads PDFs both via the text
+  layer and, for comparison, via OCR.
   `internal/ocr` is an interface like `internal/llm`; another engine is a
   new subpackage.
 - **Badge in the timeline:** the short form could carry `matchPercent`.
@@ -1109,16 +1146,17 @@ same way with `start`/`end` in `fullText`.
 
 ## 5. Changes
 
-### 2026-11-11: Verification by OCR
+### 2026-11-11: Verification by text layer and OCR
 
 New field `verification` in the full entry (section 2,
 [verification](#verification)). Additive: no existing field changes, no new
 error code.
 
-1. **Upload** ([3.1](#31-upload-and-extract-a-file-or-text)): OCR runs in
-   parallel to the vision LLM and checks date, issuer and facts. A failed
-   OCR never fails the upload; the entry is then `unchecked` with a
-   `reason`.
+1. **Upload** ([3.1](#31-upload-and-extract-a-file-or-text)): reading the
+   original runs in parallel to the vision LLM and checks date, issuer and
+   facts: PDF pages with a text layer directly (`pdf_text`), scans and
+   photos with OCR (`ocr`). A failure never fails the upload; the entry is
+   then `unchecked` with a `reason`. Each field names its `source`.
 2. **Text import:** the same check against the entered text
    (`source: text`, locations as `start`/`end`).
 3. **Correcting** ([3.5](#35-correct-recognized-values)): `verification` is
