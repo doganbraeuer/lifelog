@@ -213,3 +213,39 @@ func (s *Store) DeleteOCR(ctx context.Context, entryID string) error {
 	}
 	return nil
 }
+
+// SaveVerification sets only the verification of an entry (cmd/ocrcheck
+// fills it in for entries stored before 2026-11-11). Nothing else is
+// touched. found is false if the entry does not exist (anymore).
+func (s *Store) SaveVerification(ctx context.Context, entryID string, v core.Verification) (found bool, err error) {
+	id, err := bson.ObjectIDFromHex(entryID)
+	if err != nil {
+		return false, fmt.Errorf("invalid entry ID: %w", err)
+	}
+	res, err := s.entries.UpdateOne(ctx, bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "verification", Value: toVerificationDoc(v)}}}})
+	if err != nil {
+		return false, fmt.Errorf("save verification: %w", err)
+	}
+	return res.MatchedCount > 0, nil
+}
+
+// OCRIDs returns the entry IDs of all stored words, so cmd/ocrcheck can
+// find words whose entry no longer exists.
+func (s *Store) OCRIDs(ctx context.Context) ([]string, error) {
+	cur, err := s.ocr.Find(ctx, bson.D{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("list ocr words: %w", err)
+	}
+	var docs []struct {
+		ID bson.ObjectID `bson:"_id"`
+	}
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, fmt.Errorf("list ocr words: %w", err)
+	}
+	ids := make([]string, 0, len(docs))
+	for _, d := range docs {
+		ids = append(ids, d.ID.Hex())
+	}
+	return ids, nil
+}

@@ -29,6 +29,9 @@ func TestIntegration_OCRWords(t *testing.T) {
 	if err := s.SaveOCR(ctx, id, r); err != nil {
 		t.Fatal(err)
 	}
+	if ids, err := s.OCRIDs(ctx); err != nil || len(ids) != 1 || ids[0] != id {
+		t.Errorf("OCRIDs = %v, %v", ids, err)
+	}
 	got, found, err := s.GetOCR(ctx, id)
 	if err != nil || !found || !reflect.DeepEqual(got, r) {
 		t.Fatalf("read back: found %v, %v\n%+v\nwant\n%+v", found, err, got, r)
@@ -83,5 +86,32 @@ func TestIntegration_SaveCorrectionWithVerification(t *testing.T) {
 	}
 	if !reflect.DeepEqual(read.Verification, e.Verification) {
 		t.Errorf("verification\n%+v\nwant\n%+v", read.Verification, e.Verification)
+	}
+}
+
+func TestIntegration_SaveVerification(t *testing.T) {
+	s, ctx := testStore(t)
+	e := testEntry(NewID(), NewID(), strings.Repeat("12", 32))
+	e.Verification = core.Verification{} // as an entry from before 2026-11-11
+	if err := s.SaveEntry(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	v := sampleVerification()
+	if found, err := s.SaveVerification(ctx, e.ID, v); err != nil || !found {
+		t.Fatalf("SaveVerification: %v, %v", found, err)
+	}
+	read, _, err := s.GetEntry(ctx, e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(read.Verification, v) {
+		t.Errorf("verification\n%+v\nwant\n%+v", read.Verification, v)
+	}
+	e.Verification = v
+	if !reflect.DeepEqual(read, e) {
+		t.Error("other fields changed")
+	}
+	if found, err := s.SaveVerification(ctx, NewID(), v); err != nil || found {
+		t.Errorf("unknown entry: found %v, %v", found, err)
 	}
 }

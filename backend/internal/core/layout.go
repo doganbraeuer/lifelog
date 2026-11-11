@@ -128,3 +128,19 @@ func sameRow(a, b Box) bool {
 	overlap := min(a.Y+a.H, b.Y+b.H) - max(a.Y, b.Y)
 	return overlap >= rowMinOverlap*low
 }
+
+// RowTexts returns the text of every visual row (see arrangeRows), for
+// diagnostics such as cmd/ocrcheck -values. Words of a text import are
+// grouped by their lines.
+func RowTexts(words []OCRWord) []string {
+	rows := []string{}
+	arranged := arrangeRows(words)
+	for i, w := range arranged {
+		if i > 0 && sameLine(arranged[i-1], w) {
+			rows[len(rows)-1] += " " + w.Text
+			continue
+		}
+		rows = append(rows, w.Text)
+	}
+	return rows
+}

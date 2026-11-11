@@ -295,18 +295,26 @@ func (u *Uploader) verify(e core.Entry, in input, ocrDone <-chan ocrOutcome) (co
 		return core.Unchecked(core.ReasonOCRUnavailable), nil
 	}
 	out := <-ocrDone
-	if out.err != nil {
-		reason := ocr.Reason(out.err)
+	return verificationFrom(e, out.result, out.err, now)
+}
+
+// verificationFrom turns what the second reader returned into the
+// verification, for the upload and for filling in old entries (Verifier).
+// If reading failed, the entry is unchecked with the matching reason. words
+// is what to store for later checks; nil if nothing was read.
+func verificationFrom(e core.Entry, r core.OCRResult, err error, now time.Time) (v core.Verification, words *core.OCRResult) {
+	if err != nil {
+		reason := ocr.Reason(err)
 		// The errors of Poppler and Tesseract name the program and its
 		// message, never document content.
-		slog.Warn("reading the original failed, entry stays unchecked", "reason", reason, "error", out.err)
+		slog.Warn("reading the original failed, entry stays unchecked", "reason", reason, "error", err)
 		return core.Unchecked(reason), nil
 	}
-	v := core.Verify(e, out.result, now)
+	v = core.Verify(e, r, now)
 	if v.Status != core.VerificationChecked {
 		return v, nil // no text: nothing worth storing
 	}
-	return v, &out.result
+	return v, &r
 }
 
 func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, words *core.OCRResult, data []byte) error {

@@ -127,3 +127,18 @@ func TestVerify_TableReadByColumn(t *testing.T) {
 		t.Errorf("box %+v", b)
 	}
 }
+
+func TestRowTexts(t *testing.T) {
+	words := []OCRWord{
+		cell("Hämoglobin", 0, 0.03, 0.188, 0.019),
+		cell("g/dl", 2, 0.40, 0.188, 0.019),
+		cell("14,2", 1, 0.27, 0.188, 0.019),
+		cell("Befundart:", 3, 0.03, 0.25, 0.019),
+	}
+	if got := RowTexts(words); !slices.Equal(got, []string{"Hämoglobin 14,2 g/dl", "Befundart:"}) {
+		t.Errorf("rows %q", got)
+	}
+	if got := RowTexts(nil); got == nil || len(got) != 0 {
+		t.Errorf("no words: %#v", got)
+	}
+}

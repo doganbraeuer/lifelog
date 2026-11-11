@@ -367,7 +367,8 @@ the text layer of a PDF, or OCR for photos and scans.
 |---|---|
 | collection mit den gelesenen Wörtern (Textebene oder OCR) | `ocr` (`_id` = entry ID; `engine`, `pages`, `words`) |
 | entry field in MongoDB | `verification` (missing in old entries → `unchecked`/`not_run`) |
-| Messung der OCR-Qualität | `cmd/ocrcheck` |
+| Messung der OCR-Qualität, Prüfung nachtragen | `cmd/ocrcheck` (`-write`, `-values`, `-out`, `-demo`) |
+| Prüfung nachtragen (Service) | verifier | `service.Verifier`, `Check`, `Save`, `NeedsCheck` |
 | Messergebnisse | `docs/ocr/` |
 | OCR wählen / ausschalten | env `OCR_ENGINE` (`tesseract`, `none`) |
 | Sprachpaket für Tesseract | env `TESSERACT_LANG` (default `deu`) |
