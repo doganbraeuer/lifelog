@@ -14,11 +14,11 @@ var checkTime = time.Date(2026, 11, 11, 10, 0, 0, 0, time.UTC)
 // the box x = 0.1·i, y = 0.05·l, 0.08 × 0.02 and confidence 90. All words
 // are on page 1.
 func ocrPage(lines ...string) OCRResult {
-	r := OCRResult{Engine: "test 1.0 deu", Pages: []OCRPage{{Number: 1, Width: 1000, Height: 1400}}}
+	r := OCRResult{Engine: "test 1.0 deu", Pages: []OCRPage{{Number: 1, Source: SourceOCR, Width: 1000, Height: 1400}}}
 	for l, line := range lines {
 		for i, w := range strings.Fields(line) {
 			r.Words = append(r.Words, OCRWord{
-				Text: w, Confidence: 90, Page: 1, Line: l,
+				Text: w, Source: SourceOCR, Confidence: 90, Page: 1, Line: l,
 				Box: Box{X: 0.1 * float64(i), Y: 0.05 * float64(l), W: 0.08, H: 0.02},
 			})
 		}
@@ -76,6 +76,9 @@ func TestVerify_LabReport(t *testing.T) {
 		order = append(order, f.Field)
 		if f.Status != FieldConfirmed {
 			t.Errorf("%s = %s, want confirmed", f.Field, f.Status)
+		}
+		if f.Source != SourceOCR {
+			t.Errorf("%s source = %q, want ocr", f.Field, f.Source)
 		}
 		if f.Confidence == nil || *f.Confidence != 90 {
 			t.Errorf("%s confidence = %v, want 90", f.Field, f.Confidence)
@@ -241,8 +244,8 @@ func TestVerify_MissingFieldsNotCounted(t *testing.T) {
 	if v.Total != 2 || v.Confirmed != 1 || *v.MatchPercent() != 50 {
 		t.Errorf("total/confirmed/percent = %d/%d/%v", v.Total, v.Confirmed, v.MatchPercent())
 	}
-	if fc := field(t, v, "facts.f2"); fc.Confidence != nil || fc.Locations == nil || len(fc.Locations) != 0 {
-		t.Errorf("unconfirmed: confidence %v, locations %#v; want nil and []", fc.Confidence, fc.Locations)
+	if fc := field(t, v, "facts.f2"); fc.Source != "" || fc.Confidence != nil || fc.Locations == nil || len(fc.Locations) != 0 {
+		t.Errorf("unconfirmed: source %q, confidence %v, locations %#v; want empty, nil and []", fc.Source, fc.Confidence, fc.Locations)
 	}
 }
 
@@ -304,8 +307,8 @@ func TestVerifyText(t *testing.T) {
 		t.Fatalf("got %+v", v)
 	}
 	fc := field(t, v, "facts.f1")
-	if fc.Confidence != nil {
-		t.Errorf("confidence = %v, want nil for text", *fc.Confidence)
+	if fc.Confidence != nil || fc.Source != SourceText {
+		t.Errorf("confidence %v, source %q; want nil and text", fc.Confidence, fc.Source)
 	}
 	if len(fc.Locations) != 1 {
 		t.Fatalf("locations = %+v", fc.Locations)
@@ -343,4 +346,39 @@ func deref(p *int) any {
 		return nil
 	}
 	return *p
+}
+
+// TestVerify_MixedSources: page 1 from the text layer, page 2 by OCR.
+func TestVerify_MixedSources(t *testing.T) {
+	r := ocrPage("Befunddatum 14.10.2026", "Hb 14,2 g/dl")
+	for i := range r.Words {
+		if r.Words[i].Line == 0 {
+			r.Words[i].Source, r.Words[i].Confidence = SourcePDFText, 0
+		} else {
+			r.Words[i].Page = 2
+		}
+	}
+	e := Entry{
+		DocumentDate: ptr("2026-10-14"),
+		Facts:        []Fact{{ID: "f1", Name: "Hb", Value: "14,2", Unit: ptr("g/dl")}},
+	}
+	v := Verify(e, r, checkTime)
+	if v.Source != SourceMixed {
+		t.Errorf("source = %q, want mixed", v.Source)
+	}
+	date, hb := field(t, v, "documentDate"), field(t, v, "facts.f1")
+	if date.Source != SourcePDFText || date.Confidence != nil {
+		t.Errorf("date: source %q, confidence %v; want pdf_text and nil", date.Source, date.Confidence)
+	}
+	if hb.Source != SourceOCR || hb.Confidence == nil || *hb.Confidence != 90 {
+		t.Errorf("fact: source %q, confidence %v; want ocr and 90", hb.Source, hb.Confidence)
+	}
+
+	// Only text layer: source pdf_text.
+	for i := range r.Words {
+		r.Words[i].Source = SourcePDFText
+	}
+	if v := Verify(e, r, checkTime); v.Source != SourcePDFText {
+		t.Errorf("source = %q, want pdf_text", v.Source)
+	}
 }

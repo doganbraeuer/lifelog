@@ -18,8 +18,10 @@ const (
 	FieldConfirmed   = "confirmed"
 	FieldUnconfirmed = "unconfirmed"
 
-	SourceOCR  = "ocr"  // file: compared against OCR
-	SourceText = "text" // text import: compared against the entered text
+	SourcePDFText = "pdf_text" // PDF page with a text layer: words read from the PDF itself
+	SourceOCR     = "ocr"      // photo or PDF page without a text layer: OCR
+	SourceText    = "text"     // text import: compared against the entered text
+	SourceMixed   = "mixed"    // only for the entry: a PDF whose pages used pdf_text and ocr
 
 	ReasonOCRUnavailable      = "ocr_unavailable"       // OCR switched off or not installed
 	ReasonOCRFailed           = "ocr_failed"            // error or time limit
@@ -45,8 +47,8 @@ const (
 type Verification struct {
 	Status    string     // VerificationChecked or VerificationUnchecked
 	Reason    string     // only for unchecked, e.g. ReasonOCRFailed
-	Source    string     // SourceOCR or SourceText; empty for unchecked
-	Engine    string     // e.g. "tesseract 5.5.4 deu"; empty for text and unchecked
+	Source    string     // SourcePDFText, SourceOCR, SourceText or SourceMixed; empty for unchecked
+	Engine    string     // e.g. "pdftotext 26.11.0"; empty for text and unchecked
 	CheckedAt *time.Time // nil for unchecked
 	Confirmed int
 	Total     int
@@ -67,7 +69,8 @@ func (v Verification) MatchPercent() *int {
 type FieldCheck struct {
 	Field      string // "documentDate", "issuer" or "facts.<id>"
 	Status     string // FieldConfirmed or FieldUnconfirmed
-	Confidence *int   // lowest OCR confidence of the matched words; nil if unconfirmed or text
+	Source     string // how it was confirmed: source of the first location; empty if unconfirmed
+	Confidence *int   // lowest OCR confidence of the matched OCR words; nil if there are none
 	Locations  []Location
 }
 
@@ -84,15 +87,34 @@ func Unchecked(reason string) Verification {
 	return Verification{Status: VerificationUnchecked, Reason: reason, Fields: []FieldCheck{}}
 }
 
-// Verify checks the entry's current values against the OCR result. If OCR
-// found no text at all, the entry counts as unchecked (ReasonNoText): a
-// blank OCR says nothing about whether the values are right.
+// Verify checks the entry's current values against what was read from the
+// file. If nothing was read at all, the entry counts as unchecked
+// (ReasonNoText): a blank page says nothing about whether the values are
+// right.
+//
+// The words are first arranged in visual rows (arrangeRows), so a table
+// row counts as one line even if the program read it column by column.
 func Verify(e Entry, r OCRResult, now time.Time) Verification {
-	d := newDocument(r.Words, false)
+	d := newDocument(arrangeRows(r.Words), false)
 	if len(d.tokens) == 0 {
 		return Unchecked(ReasonNoText)
 	}
-	return d.verify(e, SourceOCR, r.Engine, now)
+	return d.verify(e, d.source(), r.Engine, now)
+}
+
+// source of the whole document: the one source of all words, or
+// SourceMixed if a PDF used its text layer on some pages and OCR on others.
+func (d *document) source() string {
+	source := ""
+	for _, t := range d.tokens {
+		switch s := d.words[t.word].Source; {
+		case source == "":
+			source = s
+		case s != source:
+			return SourceMixed
+		}
+	}
+	return source
 }
 
 // VerifyText checks the entry's values against its full text (text import).
@@ -177,6 +199,7 @@ func (d *document) fieldCheck(field string, best, all []match) FieldCheck {
 		return fc
 	}
 	fc.Status = FieldConfirmed
+	fc.Source = d.words[d.tokens[all[0].first].word].Source
 	for _, m := range all {
 		for _, l := range d.locations(m) {
 			if len(fc.Locations) < maxLocations {
@@ -184,13 +207,16 @@ func (d *document) fieldCheck(field string, best, all []match) FieldCheck {
 			}
 		}
 	}
-	if !d.text {
-		lowest := math.Inf(1)
-		for _, m := range best {
-			for wi := d.tokens[m.first].word; wi <= d.tokens[m.last].word; wi++ {
-				lowest = min(lowest, d.words[wi].Confidence)
+	// Only OCR has a confidence; the text layer and entered text are exact.
+	lowest, found := math.Inf(1), false
+	for _, m := range best {
+		for wi := d.tokens[m.first].word; wi <= d.tokens[m.last].word; wi++ {
+			if w := d.words[wi]; w.Source == SourceOCR {
+				lowest, found = min(lowest, w.Confidence), true
 			}
 		}
+	}
+	if found {
 		c := int(math.Round(lowest))
 		fc.Confidence = &c
 	}

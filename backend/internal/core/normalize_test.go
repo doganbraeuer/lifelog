@@ -43,11 +43,11 @@ func TestNormalizeKey_IgnoresWhitespace(t *testing.T) {
 func TestWordsFromText(t *testing.T) {
 	words := WordsFromText("Wert: 14,2 g/dl\r\nÜbelkeit  ja")
 	want := []OCRWord{
-		{Text: "Wert:", Line: 0, Start: 0, End: 5},
-		{Text: "14,2", Line: 0, Start: 6, End: 10},
-		{Text: "g/dl", Line: 0, Start: 11, End: 15},
-		{Text: "Übelkeit", Line: 1, Start: 17, End: 25}, // "Ü" is one code point
-		{Text: "ja", Line: 1, Start: 27, End: 29},
+		{Text: "Wert:", Source: SourceText, Line: 0, Start: 0, End: 5},
+		{Text: "14,2", Source: SourceText, Line: 0, Start: 6, End: 10},
+		{Text: "g/dl", Source: SourceText, Line: 0, Start: 11, End: 15},
+		{Text: "Übelkeit", Source: SourceText, Line: 1, Start: 17, End: 25}, // "Ü" is one code point
+		{Text: "ja", Source: SourceText, Line: 1, Start: 27, End: 29},
 	}
 	if len(words) != len(want) {
 		t.Fatalf("got %d words: %+v", len(words), words)

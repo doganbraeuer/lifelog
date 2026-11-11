@@ -2,21 +2,23 @@ package core
 
 import "unicode"
 
-// OCRResult is what an OCR engine read from a file. The OCR interface
-// (package ocr) returns this type, whichever engine is behind it, just as
-// the model interface returns Extraction.
+// OCRResult is what the second reader read from a file: the text layer of
+// a PDF, or OCR for photos and scanned pages. The interface in package ocr
+// returns this type, whichever engine is behind it, just as the model
+// interface returns Extraction.
 type OCRResult struct {
-	Engine string    // program, version and language, e.g. "tesseract 5.5.4 deu"
+	Engine string    // programs with version, e.g. "pdftotext 26.11.0" or "tesseract 5.5.4 deu"
 	Pages  []OCRPage // one per page; a photo has one page
 	Words  []OCRWord // in reading order
 }
 
-// OCRPage is the size of a page as the engine saw it, in pixels. Positions
-// in OCRWord do not depend on it (fractions of the page); it is only kept
-// for diagnostics and later uses.
+// OCRPage describes a page as it was read. Positions in OCRWord do not
+// depend on its size (fractions of the page); the size is only kept for
+// diagnostics.
 type OCRPage struct {
-	Number        int // starting at 1
-	Width, Height int
+	Number        int     // starting at 1
+	Source        string  // SourcePDFText or SourceOCR
+	Width, Height float64 // pixels (OCR) or PDF points (text layer)
 }
 
 // OCRWord is a recognized word with its position.
@@ -26,7 +28,8 @@ type OCRPage struct {
 // text instead.
 type OCRWord struct {
 	Text       string
-	Confidence float64 // 0 … 100; 0 for words of a text import
+	Source     string  // SourcePDFText, SourceOCR or SourceText
+	Confidence float64 // 0 … 100, only for SourceOCR
 	Page       int
 	Line       int // increases in reading order; words with the same Line are in the same line
 	Box        Box
@@ -58,7 +61,7 @@ func WordsFromText(text string) []OCRWord {
 
 	flush := func() {
 		if start >= 0 {
-			words = append(words, OCRWord{Text: string(current), Line: line, Start: start, End: pos})
+			words = append(words, OCRWord{Text: string(current), Source: SourceText, Line: line, Start: start, End: pos})
 			current, start = current[:0], -1
 		}
 	}
