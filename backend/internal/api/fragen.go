@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -23,7 +23,7 @@ const maxFrageBody = 64 << 10
 
 // Frager beantwortet Fragen. Umgesetzt von dienst.Fragen.
 type Frager interface {
-	Ausfuehren(ctx context.Context, frage, modul string) (kern.Antwort, error)
+	Ausfuehren(ctx context.Context, frage, modul string) (core.Antwort, error)
 }
 
 type frageAnfrage struct {
@@ -47,7 +47,7 @@ type quelleJSON struct {
 	Auszug        string  `json:"auszug"`
 }
 
-func antwortZuJSON(a kern.Antwort) antwortJSON {
+func antwortZuJSON(a core.Antwort) antwortJSON {
 	quellen := make([]quelleJSON, 0, len(a.Quellen)) // nie nil
 	for _, q := range a.Quellen {
 		quellen = append(quellen, quelleJSON{
@@ -83,12 +83,12 @@ func fragenHandler(f Frager) http.HandlerFunc {
 
 func schreibeFragenFehler(w http.ResponseWriter, r *http.Request, err error, modul string) {
 	switch {
-	case errors.Is(err, kern.ErrFrageFehlt):
+	case errors.Is(err, core.ErrFrageFehlt):
 		schreibeFehler(w, http.StatusBadRequest, CodeFrageFehlt, "Bitte stelle eine Frage.", nil)
-	case errors.Is(err, kern.ErrFrageZuLang):
+	case errors.Is(err, core.ErrFrageZuLang):
 		schreibeFehler(w, http.StatusBadRequest, CodeFrageZuLang,
 			"Die Frage ist zu lang. Erlaubt sind höchstens 500 Zeichen.", nil)
-	case errors.Is(err, kern.ErrUnbekanntesModul):
+	case errors.Is(err, core.ErrUnbekanntesModul):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
 			map[string]any{"feld": "modul", "wert": modul})

@@ -1,7 +1,7 @@
-// Package kern enthält die Fachlogik ohne Datenbank, Netz oder HTTP:
+// Package core enthält die Fachlogik ohne Datenbank, Netz oder HTTP:
 // Typen, Modulkatalog, Sortierung und später Prüfregeln. Alles hier ist
 // deterministisch und wird mit Unit-Tests abgedeckt.
-package kern
+package core
 
 import (
 	"errors"

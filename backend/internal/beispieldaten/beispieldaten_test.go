@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -12,7 +12,7 @@ func TestEintraege_GueltigUndEindeutig(t *testing.T) {
 	ids := map[string]bool{}
 	for _, e := range Eintraege() {
 		for _, id := range []string{e.ID, e.Datei.ID} {
-			if err := kern.PruefeID(id); err != nil {
+			if err := core.PruefeID(id); err != nil {
 				t.Errorf("%s: ungültige ID %q", e.Typ, id)
 			}
 			if ids[id] {
@@ -20,7 +20,7 @@ func TestEintraege_GueltigUndEindeutig(t *testing.T) {
 			}
 			ids[id] = true
 		}
-		if !kern.TypErlaubt(e.Modul, e.Typ) {
+		if !core.TypErlaubt(e.Modul, e.Typ) {
 			t.Errorf("Typ %q im Modul %q nicht erlaubt", e.Typ, e.Modul)
 		}
 	}
@@ -34,7 +34,7 @@ func TestEintraege_GueltigUndEindeutig(t *testing.T) {
 func TestAbschnitte_WieBeimUpload(t *testing.T) {
 	for _, e := range Eintraege() {
 		a := Abschnitte(e)
-		texte := kern.ZerlegeInAbschnitte(e.Volltext, kern.AbschnittMaxZeichen)
+		texte := core.ZerlegeInAbschnitte(e.Volltext, core.AbschnittMaxZeichen)
 		if len(a) == 0 || len(a) != len(texte) {
 			t.Fatalf("%s: %d Abschnitte, erwartet %d (> 0)", e.Typ, len(a), len(texte))
 		}
@@ -51,7 +51,7 @@ func TestWegwerf(t *testing.T) {
 	jetzt := time.Date(2026, 11, 5, 10, 0, 0, 123_456_789, time.FixedZone("MEZ", 3600))
 	e, abschnitte := Wegwerf(id, dateiID, jetzt)
 
-	if e.ID != id || e.Datei.ID != dateiID || !kern.TypErlaubt(e.Modul, e.Typ) {
+	if e.ID != id || e.Datei.ID != dateiID || !core.TypErlaubt(e.Modul, e.Typ) {
 		t.Errorf("Eintrag %+v", e)
 	}
 	if want := time.Date(2026, 11, 5, 9, 0, 0, 123_000_000, time.UTC); !e.Importdatum.Equal(want) || e.Importdatum.Location() != time.UTC {

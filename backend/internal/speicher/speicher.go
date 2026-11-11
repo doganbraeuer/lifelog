@@ -15,7 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Namen der Collections. GridFS legt für den Bucket "dateien" selbst die
@@ -115,9 +115,9 @@ func (s *Speicher) IndexeAnlegen(ctx context.Context) error {
 }
 
 // ListeKurz liefert alle Einträge eines Moduls in Kurzform, unsortiert.
-// Sortiert wird in kern.Sortiere, weil die Regeln (null am Ende usw.) dort
+// Sortiert wird in core.Sortiere, weil die Regeln (null am Ende usw.) dort
 // getestet sind.
-func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]kern.EintragKurz, error) {
+func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]core.EintragKurz, error) {
 	cur, err := s.eintraege.Find(ctx,
 		bson.D{{Key: "modul", Value: modul}},
 		options.Find().SetProjection(kurzProjektion))
@@ -129,7 +129,7 @@ func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]kern.EintragK
 		return nil, fmt.Errorf("Einträge lesen: %w", err)
 	}
 
-	liste := make([]kern.EintragKurz, 0, len(doks))
+	liste := make([]core.EintragKurz, 0, len(doks))
 	for _, d := range doks {
 		liste = append(liste, d.zuKern())
 	}
@@ -140,17 +140,17 @@ func (s *Speicher) ListeKurz(ctx context.Context, modul string) ([]kern.EintragK
 // gültige ObjectIds sein.
 //
 // Gibt es schon einen Eintrag mit demselben datei.sha256, meldet der
-// eindeutige Index einen Fehler, und EintragSpeichern liefert kern.ErrDuplikat.
+// eindeutige Index einen Fehler, und EintragSpeichern liefert core.ErrDuplikat.
 // Das fängt den Fall ab, dass zwei gleiche Uploads gleichzeitig an der
 // Duplikat-Prüfung vorbeikommen.
-func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
+func (s *Speicher) EintragSpeichern(ctx context.Context, e core.Eintrag) error {
 	dok, err := zuEintragDok(e)
 	if err != nil {
 		return err
 	}
 	if _, err := s.eintraege.InsertOne(ctx, dok); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return kern.ErrDuplikat
+			return core.ErrDuplikat
 		}
 		return fmt.Errorf("Eintrag speichern: %w", err)
 	}
@@ -159,18 +159,18 @@ func (s *Speicher) EintragSpeichern(ctx context.Context, e kern.Eintrag) error {
 
 // EintragLesen liefert den vollständigen Eintrag. gefunden ist false, wenn
 // es keinen Eintrag mit dieser ID gibt.
-func (s *Speicher) EintragLesen(ctx context.Context, id string) (e kern.Eintrag, gefunden bool, err error) {
+func (s *Speicher) EintragLesen(ctx context.Context, id string) (e core.Eintrag, gefunden bool, err error) {
 	oid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return kern.Eintrag{}, false, kern.ErrUngueltigeID
+		return core.Eintrag{}, false, core.ErrUngueltigeID
 	}
 	var dok eintragDok
 	err = s.eintraege.FindOne(ctx, bson.D{{Key: "_id", Value: oid}}).Decode(&dok)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return kern.Eintrag{}, false, nil
+		return core.Eintrag{}, false, nil
 	}
 	if err != nil {
-		return kern.Eintrag{}, false, fmt.Errorf("Eintrag lesen: %w", err)
+		return core.Eintrag{}, false, fmt.Errorf("Eintrag lesen: %w", err)
 	}
 	return dok.zuKern(), true, nil
 }
@@ -180,15 +180,15 @@ func (s *Speicher) EintragLesen(ctx context.Context, id string) (e kern.Eintrag,
 // ganz in den Speicher geladen. Der Aufrufer muss Close aufrufen.
 //
 // ctx gilt für das ganze Lesen, nicht nur fürs Öffnen.
-// Fehlt die Datei, ist der Fehler kern.ErrOriginalFehlt.
+// Fehlt die Datei, ist der Fehler core.ErrOriginalFehlt.
 func (s *Speicher) DateiOeffnen(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error) {
 	oid, err := bson.ObjectIDFromHex(dateiID)
 	if err != nil {
-		return nil, 0, kern.ErrUngueltigeID
+		return nil, 0, core.ErrUngueltigeID
 	}
 	strom, err := s.dateien.OpenDownloadStream(ctx, oid)
 	if errors.Is(err, mongo.ErrFileNotFound) {
-		return nil, 0, kern.ErrOriginalFehlt
+		return nil, 0, core.ErrOriginalFehlt
 	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("Datei öffnen: %w", err)
@@ -248,7 +248,7 @@ func (s *Speicher) DateiLoeschen(ctx context.Context, id string) error {
 
 // AbschnitteSpeichern fügt alle Abschnitte eines Eintrags ein. Eine leere
 // Liste ist erlaubt und bewirkt nichts.
-func (s *Speicher) AbschnitteSpeichern(ctx context.Context, abschnitte []kern.Abschnitt) error {
+func (s *Speicher) AbschnitteSpeichern(ctx context.Context, abschnitte []core.Abschnitt) error {
 	if len(abschnitte) == 0 {
 		return nil
 	}
@@ -285,7 +285,7 @@ func (s *Speicher) AbschnitteLoeschen(ctx context.Context, eintragID string) err
 // auch nicht versehentlich, weil nur diese fünf Felder im $set stehen.
 //
 // gefunden ist false, wenn es den Eintrag nicht (mehr) gibt.
-func (s *Speicher) KorrekturSpeichern(ctx context.Context, e kern.Eintrag) (gefunden bool, err error) {
+func (s *Speicher) KorrekturSpeichern(ctx context.Context, e core.Eintrag) (gefunden bool, err error) {
 	// Dieselbe Umwandlung wie beim Speichern, damit Zeitpunkte (UTC),
 	// fehlende Einheiten (omitempty) und leere Listen gleich aussehen.
 	dok, err := zuEintragDok(e)

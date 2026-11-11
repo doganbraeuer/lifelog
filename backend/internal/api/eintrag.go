@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Fehlercodes für einzelne Einträge (API.md 3.3, 3.4).
@@ -39,7 +39,7 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 
 		inhalt, laenge, err := s.DateiOeffnen(r.Context(), e.Datei.ID)
 		if err != nil {
-			if errors.Is(err, kern.ErrOriginalFehlt) {
+			if errors.Is(err, core.ErrOriginalFehlt) {
 				// Darf nicht vorkommen: Eintrag ohne Datei ist ein Datenfehler.
 				slog.Error("Originaldatei fehlt", "eintrag", e.ID, "datei", e.Datei.ID)
 			}
@@ -68,20 +68,20 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 
 // ladeEintrag prüft die ID aus dem Pfad und lädt den Eintrag. Bei einem
 // Fehler ist die Antwort schon geschrieben und ok ist false.
-func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (kern.Eintrag, bool) {
+func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (core.Eintrag, bool) {
 	id := r.PathValue("id")
-	if err := kern.PruefeID(id); err != nil {
+	if err := core.PruefeID(id); err != nil {
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
-		return kern.Eintrag{}, false
+		return core.Eintrag{}, false
 	}
 	e, gefunden, err := s.EintragLesen(r.Context(), id)
 	if err != nil {
 		schreibeInternenFehler(w, r, err)
-		return kern.Eintrag{}, false
+		return core.Eintrag{}, false
 	}
 	if !gefunden {
 		schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
-		return kern.Eintrag{}, false
+		return core.Eintrag{}, false
 	}
 	return e, true
 }

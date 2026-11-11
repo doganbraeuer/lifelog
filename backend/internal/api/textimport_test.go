@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/kern"
 	"lifelog/backend/internal/modell"
 )
 
@@ -37,10 +37,10 @@ func textFormular(t *testing.T, felder ...[2]string) *http.Request {
 	return r
 }
 
-func textEintrag() kern.Eintrag {
+func textEintrag() core.Eintrag {
 	e := vollerEintrag()
 	e.Volltext = "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
-	e.Datei = kern.Datei{ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "text.txt",
+	e.Datei = core.Datei{ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "text.txt",
 		MimeTyp: "text/plain; charset=utf-8", Groesse: 42, Sha256: strings.Repeat("cd", 32)}
 	return e
 }
@@ -97,7 +97,7 @@ func TestTextImport_Formularfehler(t *testing.T) {
 	}
 }
 
-// Die Prüfungen aus kern.PruefeText, über den echten Dienst: So ist auch
+// Die Prüfungen aus core.PruefeText, über den echten Dienst: So ist auch
 // belegt, dass Zeichen und nicht Bytes zählen.
 func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
 	for _, f := range []struct {
@@ -107,9 +107,9 @@ func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
 		code    string
 		details string
 	}{
-		{"100 001 Zeichen", [][2]string{{"text", strings.Repeat("a", kern.MaxTextZeichen+1)}},
+		{"100 001 Zeichen", [][2]string{{"text", strings.Repeat("a", core.MaxTextZeichen+1)}},
 			413, CodeDateiZuGross, "map[maxZeichen:100000]"},
-		{"100 001 Umlaute", [][2]string{{"text", strings.Repeat("ü", kern.MaxTextZeichen+1)}},
+		{"100 001 Umlaute", [][2]string{{"text", strings.Repeat("ü", core.MaxTextZeichen+1)}},
 			413, CodeDateiZuGross, "map[maxZeichen:100000]"},
 		{"ungültiges UTF-8", [][2]string{{"text", "Befund \xff\xfe"}},
 			400, CodeUngueltigeAnfrage, "map[feld:text]"},
@@ -135,7 +135,7 @@ func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
 // durch.
 func TestTextImport_GrenzeErlaubt(t *testing.T) {
 	h := &hochladerAttrappe{eintrag: textEintrag()}
-	rec := hochladen(t, h, textFormular(t, [2]string{"text", strings.Repeat("ü", kern.MaxTextZeichen)}))
+	rec := hochladen(t, h, textFormular(t, [2]string{"text", strings.Repeat("ü", core.MaxTextZeichen)}))
 	if rec.Code != http.StatusCreated || h.textUpload == nil {
 		t.Errorf("Status %d", rec.Code)
 	}
@@ -149,10 +149,10 @@ func TestTextImport_FehlerDesDienstes(t *testing.T) {
 		nachricht string
 		details   string
 	}{
-		{kern.ErrDateiLeer, 400, CodeDateiFehlt, "Bitte einen Text eingeben.", "map[]"},
+		{core.ErrDateiLeer, 400, CodeDateiFehlt, "Bitte einen Text eingeben.", "map[]"},
 		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
-		{&kern.ErkennungFehler{Feld: "typ", Grund: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
+		{&core.ErkennungFehler{Feld: "typ", Grund: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
 		{fmt.Errorf("JSON kaputt: %w", modell.ErrAntwortUngueltig), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
 		{fmt.Errorf("Gemini 503: %w", modell.ErrNichtErreichbar), 503, CodeModellNichtErreichbar, "", "map[]"},
 		{fmt.Errorf("Datenbank weg"), 500, CodeInternerFehler, "", "map[]"},

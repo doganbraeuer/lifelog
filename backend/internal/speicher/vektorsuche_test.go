@@ -30,7 +30,7 @@ func TestVektorindexDefinition(t *testing.T) {
 				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, modell.EmbeddingDimensionen)
 			}
 			if f.Similarity != "cosine" {
-				t.Errorf("similarity = %q; kern.MinScore ist für cosine berechnet", f.Similarity)
+				t.Errorf("similarity = %q; core.MinScore ist für cosine berechnet", f.Similarity)
 			}
 		case f.Type == "filter" && f.Path == "modul":
 			filterModul = true

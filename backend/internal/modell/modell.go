@@ -10,7 +10,7 @@ import (
 	"context"
 	"errors"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // EmbeddingDimensionen ist die Länge jedes Embedding-Vektors. Der
@@ -19,14 +19,14 @@ import (
 const EmbeddingDimensionen = 768
 
 // Leser liest ein Dokument (Bild oder PDF) und liefert, was darin steht.
-// Das Ergebnis ist ungeprüft, prüfen muss kern.PruefeErkennung.
+// Das Ergebnis ist ungeprüft, prüfen muss core.PruefeErkennung.
 type Leser interface {
-	DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (kern.Erkennung, error)
+	DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (core.Erkennung, error)
 
 	// TextLesen ordnet einen eingegebenen Text ein (Text-Import): Datum,
 	// Quelle, Typ und Infos. Lesbar ist immer true, Volltext bleibt leer;
 	// der Volltext ist der eingegebene Text, den setzt der Aufrufer.
-	TextLesen(ctx context.Context, text string, erlaubteTypen []string) (kern.Erkennung, error)
+	TextLesen(ctx context.Context, text string, erlaubteTypen []string) (core.Erkennung, error)
 }
 
 // Einbetter berechnet Embeddings: Vektoren, deren Abstand zueinander
@@ -44,10 +44,10 @@ type Einbetter interface {
 
 // Antworter beantwortet eine Frage nur aus den übergebenen Fundstellen. Er
 // setzt Verweise wie [1], die sich auf Fundstelle.Nr beziehen, und antwortet
-// mit kern.FesterSatz, wenn die Fundstellen die Frage nicht beantworten.
-// Ob die Antwort wirklich Verweise enthält, prüft danach kern.BaueAntwort.
+// mit core.FesterSatz, wenn die Fundstellen die Frage nicht beantworten.
+// Ob die Antwort wirklich Verweise enthält, prüft danach core.BaueAntwort.
 type Antworter interface {
-	Antworten(ctx context.Context, frage string, fundstellen []kern.Fundstelle) (string, error)
+	Antworten(ctx context.Context, frage string, fundstellen []core.Fundstelle) (string, error)
 }
 
 // Fehlerarten. Jede Umsetzung übersetzt ihre eigenen Fehler in diese, damit

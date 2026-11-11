@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -51,8 +51,8 @@ func TestErkennungAusAntwort_Gueltig(t *testing.T) {
 	}
 
 	// Das Ergebnis passt zur Prüfung in kern (Zusammenspiel beider Teile).
-	if _, _, err := kern.PruefeErkennung(e, "gesundheit"); err != nil {
-		t.Errorf("kern.PruefeErkennung: %v", err)
+	if _, _, err := core.PruefeErkennung(e, "gesundheit"); err != nil {
+		t.Errorf("core.PruefeErkennung: %v", err)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestErkennungAusText_FehlerOhneInhalt(t *testing.T) {
 }
 
 func TestLeseSchema(t *testing.T) {
-	typen := kern.ErlaubteTypen("gesundheit")
+	typen := core.ErlaubteTypen("gesundheit")
 	roh, err := json.Marshal(leseSchema(typen))
 	if err != nil {
 		t.Fatal(err)

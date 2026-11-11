@@ -1,4 +1,4 @@
-// kalibrieren misst, wie gut die Schwelle kern.MinScore passende von
+// kalibrieren misst, wie gut die Schwelle core.MinScore passende von
 // fachfremden Fragen trennt. Es stellt eine feste Liste synthetischer Fragen
 // (fragen.go), bettet jede ein wie POST /fragen und gibt pro Frage den
 // besten Score der Vektorsuche aus. Das Sprachmodell (Antworter) wird NICHT
@@ -10,7 +10,7 @@
 // Programm über Typ und Dokumentdatum; fehlt einer oder gibt es ihn doppelt,
 // bricht es vor dem ersten Embedding ab. In der Datenbank wird nur gelesen.
 //
-//	go run ./cmd/kalibrieren                  # mit der Schwelle kern.MinScore
+//	go run ./cmd/kalibrieren                  # mit der Schwelle core.MinScore
 //	go run ./cmd/kalibrieren -schwelle 0.82   # andere Schwelle durchrechnen
 //
 // Gesucht wird im Modul gesundheit über alle Abschnitte. Die Tabelle nennt
@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
@@ -35,7 +35,7 @@ import (
 )
 
 func main() {
-	schwelle := flag.Float64("schwelle", kern.MinScore, "Schwelle, mit der ausgewertet wird (Atlas-Score 0 … 1)")
+	schwelle := flag.Float64("schwelle", core.MinScore, "Schwelle, mit der ausgewertet wird (Atlas-Score 0 … 1)")
 	flag.Parse()
 
 	if err := ausfuehren(*schwelle); err != nil {
@@ -103,7 +103,7 @@ func ausfuehren(schwelle float64) error {
 	}
 
 	fmt.Printf("%d Fragen, %d Einträge, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
-		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, kern.AnzahlTreffer)
+		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, core.AnzahlTreffer)
 	fmt.Println(" Nr  Gruppe     Bester  Treffer            Richtig        Frage")
 
 	messungen := make([]messung, 0, len(fragen))
@@ -115,7 +115,7 @@ func ausfuehren(schwelle float64) error {
 			}
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
-		treffer, err := db.AehnlicheAbschnitte(ctx, vektor, "gesundheit", kern.AnzahlTreffer)
+		treffer, err := db.AehnlicheAbschnitte(ctx, vektor, "gesundheit", core.AnzahlTreffer)
 		if err != nil {
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
@@ -136,7 +136,7 @@ func ausfuehren(schwelle float64) error {
 }
 
 // kurzname für die Tabelle, z. B. "laborbefund 07-22".
-func kurzname(e kern.EintragKurz) string {
+func kurzname(e core.EintragKurz) string {
 	if e.Dokumentdatum == nil || len(*e.Dokumentdatum) != 10 {
 		return e.Typ + " o. D."
 	}

@@ -4,15 +4,15 @@ import (
 	"context"
 	"log/slog"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
 // FragenSpeicher ist, was die Suche von der Datenbank braucht. Umgesetzt
 // von speicher.Speicher.
 type FragenSpeicher interface {
-	AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]kern.Treffer, error)
-	EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]kern.EintragKurz, error)
+	AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Treffer, error)
+	EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EintragKurz, error)
 }
 
 // Fragen beantwortet Fragen zu den Dokumenten (docs/API.md 3.6).
@@ -30,52 +30,52 @@ func NeuFragen(s FragenSpeicher, e modell.Einbetter, a modell.Antworter) *Fragen
 //
 //  1. Frage und Modul prüfen.
 //  2. Frage einbetten, ähnlichste Abschnitte des Moduls suchen.
-//  3. Erste Schicht: Treffer unter kern.MinScore verwerfen, ebenso
+//  3. Erste Schicht: Treffer unter core.MinScore verwerfen, ebenso
 //     Abschnitte, deren Eintrag es nicht (mehr) gibt.
 //  4. Bleibt nichts übrig: fester Satz, OHNE Aufruf des Sprachmodells.
 //  5. Sonst: Sprachmodell mit Frage und nummerierten Fundstellen.
-//  6. Zweite Schicht: kern.BaueAntwort. Ohne gültigen Verweis gilt die
+//  6. Zweite Schicht: core.BaueAntwort. Ohne gültigen Verweis gilt die
 //     Antwort als „nichts gefunden“.
 //
 // Ins Log kommen weder Frage noch Abschnittstexte, nur Zahlen.
 //
-// Fehler: kern.ErrUnbekanntesModul, kern.ErrFrageFehlt, kern.ErrFrageZuLang,
+// Fehler: core.ErrUnbekanntesModul, core.ErrFrageFehlt, core.ErrFrageZuLang,
 // modell.ErrNichtErreichbar, modell.ErrAntwortUngueltig oder intern.
-func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (kern.Antwort, error) {
-	modul, err := kern.PruefeModul(modul)
+func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Antwort, error) {
+	modul, err := core.PruefeModul(modul)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
-	frage, err = kern.PruefeFrage(frage)
+	frage, err = core.PruefeFrage(frage)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
 
 	vektor, err := f.einbetter.FrageEinbetten(ctx, frage)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
-	alle, err := f.speicher.AehnlicheAbschnitte(ctx, vektor, modul, kern.AnzahlTreffer)
+	alle, err := f.speicher.AehnlicheAbschnitte(ctx, vektor, modul, core.AnzahlTreffer)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
-	treffer := kern.UeberSchwelle(alle, kern.MinScore)
+	treffer := core.UeberSchwelle(alle, core.MinScore)
 
 	fundstellen, err := f.fundstellen(ctx, treffer, modul)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
 	slog.Info("Frage", "modul", modul, "treffer", len(alle), "ueberSchwelle", len(treffer),
 		"fundstellen", len(fundstellen), "besterScore", besterScore(alle))
 	if len(fundstellen) == 0 {
-		return kern.KeinTreffer(), nil
+		return core.KeinTreffer(), nil
 	}
 
 	text, err := f.antworter.Antworten(ctx, frage, fundstellen)
 	if err != nil {
-		return kern.Antwort{}, err
+		return core.Antwort{}, err
 	}
-	antwort := kern.BaueAntwort(text, fundstellen)
+	antwort := core.BaueAntwort(text, fundstellen)
 	if !antwort.Gefunden {
 		slog.Info("Antwort ohne gültigen Verweis, fester Satz", "fundstellen", len(fundstellen))
 	}
@@ -86,9 +86,9 @@ func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (kern.Antw
 // Angaben des Eintrags: Typ, Datum und Quelle auch dann, wenn sie
 // korrigiert wurden (API.md 3.6). Treffer ohne Eintrag fallen weg; das kann
 // kurz während eines Uploads oder Löschens vorkommen.
-func (f *Fragen) fundstellen(ctx context.Context, treffer []kern.Treffer, modul string) ([]kern.Fundstelle, error) {
+func (f *Fragen) fundstellen(ctx context.Context, treffer []core.Treffer, modul string) ([]core.Fundstelle, error) {
 	if len(treffer) == 0 {
-		return []kern.Fundstelle{}, nil
+		return []core.Fundstelle{}, nil
 	}
 	ids := make([]string, 0, len(treffer))
 	for _, t := range treffer {
@@ -99,13 +99,13 @@ func (f *Fragen) fundstellen(ctx context.Context, treffer []kern.Treffer, modul 
 		return nil, err
 	}
 
-	fundstellen := make([]kern.Fundstelle, 0, len(treffer))
+	fundstellen := make([]core.Fundstelle, 0, len(treffer))
 	for _, t := range treffer {
 		e, ok := eintraege[t.EintragID]
 		if !ok {
 			continue // verwaister Abschnitt
 		}
-		fundstellen = append(fundstellen, kern.Fundstelle{
+		fundstellen = append(fundstellen, core.Fundstelle{
 			Nr:            len(fundstellen) + 1,
 			EintragID:     t.EintragID,
 			Modul:         modul,
@@ -118,7 +118,7 @@ func (f *Fragen) fundstellen(ctx context.Context, treffer []kern.Treffer, modul 
 	return fundstellen, nil
 }
 
-func besterScore(treffer []kern.Treffer) float64 {
+func besterScore(treffer []core.Treffer) float64 {
 	if len(treffer) == 0 {
 		return 0
 	}

@@ -8,14 +8,14 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 func zeiger(s string) *string { return &s }
 
 // beispielEintrag ist synthetisch (siehe docs/API.md).
-func beispielEintrag() kern.Eintrag {
-	return kern.Eintrag{
+func beispielEintrag() core.Eintrag {
+	return core.Eintrag{
 		ID:            "6727a1f3c2b4e5d6f7a8b9c0",
 		Modul:         "gesundheit",
 		Typ:           "laborbefund",
@@ -23,15 +23,15 @@ func beispielEintrag() kern.Eintrag {
 		Importdatum:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
 		Quelle:        zeiger("Labor Muster GmbH, Salzburg"),
 		Volltext:      "Hämoglobin 14,2 g/dl",
-		Infos: []kern.Info{
+		Infos: []core.Info{
 			{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")},
 			{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"},
 		},
-		Datei: kern.Datei{
+		Datei: core.Datei{
 			ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "befund.pdf",
 			MimeTyp: "application/pdf", Groesse: 184320, Sha256: strings.Repeat("ab", 32),
 		},
-		Korrekturen: []kern.Korrektur{{
+		Korrekturen: []core.Korrektur{{
 			Feld: "infos.i1.wert", Erkannt: zeiger("14,1"), Korrigiert: zeiger("14,2"),
 			Zeitpunkt: time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC),
 		}},
@@ -122,7 +122,7 @@ func TestEintragDok_UngueltigeIDs(t *testing.T) {
 }
 
 func TestAbschnittDok_HinUndZurueck(t *testing.T) {
-	original := kern.Abschnitt{
+	original := core.Abschnitt{
 		EintragID: "6727a1f3c2b4e5d6f7a8b9c0",
 		Modul:     "gesundheit",
 		Nr:        2,
@@ -161,10 +161,10 @@ func TestAbschnittDok_HinUndZurueck(t *testing.T) {
 }
 
 func TestAbschnittDok_Ungueltig(t *testing.T) {
-	if _, err := zuAbschnittDok(kern.Abschnitt{EintragID: "x", Embedding: []float32{1}}); err == nil {
+	if _, err := zuAbschnittDok(core.Abschnitt{EintragID: "x", Embedding: []float32{1}}); err == nil {
 		t.Error("ungültige Eintrag-ID muss Fehler liefern")
 	}
-	if _, err := zuAbschnittDok(kern.Abschnitt{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
+	if _, err := zuAbschnittDok(core.Abschnitt{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
 		t.Error("Abschnitt ohne Embedding muss Fehler liefern")
 	}
 }

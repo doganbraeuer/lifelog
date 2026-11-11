@@ -23,7 +23,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 var eigeneCollections = []string{collEintraege, collAbschnitte, bucketDateien + ".files", bucketDateien + ".chunks"}
@@ -81,17 +81,17 @@ func testSpeicher(t *testing.T) (*Speicher, context.Context) {
 }
 
 // testEintrag ist synthetisch. hash bestimmt datei.sha256.
-func testEintrag(id, dateiID, hash string) kern.Eintrag {
-	return kern.Eintrag{
+func testEintrag(id, dateiID, hash string) core.Eintrag {
+	return core.Eintrag{
 		ID: id, Modul: "gesundheit", Typ: "laborbefund",
 		Dokumentdatum: zeiger("2026-10-14"),
 		Importdatum:   time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC),
 		Quelle:        zeiger("Labor Muster GmbH"),
 		Volltext:      "Hämoglobin 14,2 g/dl",
-		Infos:         []kern.Info{{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")}},
-		Datei: kern.Datei{ID: dateiID, Dateiname: "befund.pdf", MimeTyp: kern.MimePDF,
+		Infos:         []core.Info{{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")}},
+		Datei: core.Datei{ID: dateiID, Dateiname: "befund.pdf", MimeTyp: core.MimePDF,
 			Groesse: 9, Sha256: hash},
-		Korrekturen: []kern.Korrektur{},
+		Korrekturen: []core.Korrektur{},
 	}
 }
 
@@ -108,7 +108,7 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 	daten := []byte("%PDF-1.7 synthetisch")
 
 	// 1. Datei in GridFS, mit Metadaten.
-	if err := s.DateiSpeichern(ctx, dateiID, "befund.pdf", kern.MimePDF, daten); err != nil {
+	if err := s.DateiSpeichern(ctx, dateiID, "befund.pdf", core.MimePDF, daten); err != nil {
 		t.Fatal(err)
 	}
 	oid, _ := bson.ObjectIDFromHex(dateiID)
@@ -121,12 +121,12 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 	if !bytes.Equal(gelesen, daten) {
 		t.Errorf("Datei verändert: %q", gelesen)
 	}
-	if f := strom.GetFile(); f.Name != "befund.pdf" || !strings.Contains(f.Metadata.String(), kern.MimePDF) {
+	if f := strom.GetFile(); f.Name != "befund.pdf" || !strings.Contains(f.Metadata.String(), core.MimePDF) {
 		t.Errorf("Datei-Metadaten: %s / %s", f.Name, f.Metadata)
 	}
 
 	// 2. Abschnitte.
-	abschnitte := []kern.Abschnitt{
+	abschnitte := []core.Abschnitt{
 		{EintragID: eintragID, Modul: "gesundheit", Nr: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
 		{EintragID: eintragID, Modul: "gesundheit", Nr: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}
@@ -186,7 +186,7 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 		}
 	}
 	pruefeAnzahlAbschnitte(t, s, ctx, eintragID, 0)
-	if _, _, err := s.DateiOeffnen(ctx, dateiID); !errors.Is(err, kern.ErrOriginalFehlt) {
+	if _, _, err := s.DateiOeffnen(ctx, dateiID); !errors.Is(err, core.ErrOriginalFehlt) {
 		t.Errorf("nach dem Löschen: erwartet ErrOriginalFehlt, bekommen %v", err)
 	}
 	if _, gefunden, _ := s.EintragMitHash(ctx, hash); gefunden {
@@ -204,7 +204,7 @@ func TestIntegration_DuplikatUeberIndex(t *testing.T) {
 	// Zweiter Eintrag mit anderer ID, aber gleichem Hash: Der eindeutige
 	// Index muss das ablehnen, auch ohne vorherige Prüfung.
 	err := s.EintragSpeichern(ctx, testEintrag(NeueID(), NeueID(), hash))
-	if !errors.Is(err, kern.ErrDuplikat) {
+	if !errors.Is(err, core.ErrDuplikat) {
 		t.Fatalf("erwartet ErrDuplikat, bekommen %v", err)
 	}
 

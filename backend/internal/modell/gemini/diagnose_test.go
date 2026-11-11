@@ -31,7 +31,7 @@ import (
 	"unicode/utf8"
 
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 const diagnoseLimit = 120 * time.Second
@@ -77,12 +77,12 @@ func TestDiagnose_Lesen(t *testing.T) {
 	} else {
 		daten = testdatei(t, dateiname)
 	}
-	mimeTyp, err := kern.ErkenneDateityp(daten)
+	mimeTyp, err := core.ErkenneDateityp(daten)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	inhalte, cfg := leseAnfrage(daten, mimeTyp, kern.ErlaubteTypen("gesundheit"))
+	inhalte, cfg := leseAnfrage(daten, mimeTyp, core.ErlaubteTypen("gesundheit"))
 	thinking := string(cfg.ThinkingConfig.ThinkingLevel)
 	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "aus" {
 		cfg.ThinkingConfig, thinking = nil, "aus"
@@ -137,7 +137,7 @@ func TestDiagnose_Lesen(t *testing.T) {
 			t.Errorf("Antwort nicht auswertbar: %v", err)
 			return
 		}
-		eintrag, ausgelassen, err := kern.PruefeErkennung(e, "gesundheit")
+		eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
 		if err != nil {
 			t.Errorf("Prüfung: %v", err)
 			return

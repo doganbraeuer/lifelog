@@ -8,26 +8,26 @@ import (
 	"strings"
 	"testing"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/attrappe"
 )
 
 type suchAttrappe struct {
-	treffer      []kern.Treffer
-	eintraege    map[string]kern.EintragKurz
+	treffer      []core.Treffer
+	eintraege    map[string]core.EintragKurz
 	err          error
 	gefragtModul string
 	gefragtK     int
 }
 
-func (s *suchAttrappe) AehnlicheAbschnitte(_ context.Context, _ []float32, modul string, k int) ([]kern.Treffer, error) {
+func (s *suchAttrappe) AehnlicheAbschnitte(_ context.Context, _ []float32, modul string, k int) ([]core.Treffer, error) {
 	s.gefragtModul, s.gefragtK = modul, k
 	return s.treffer, s.err
 }
 
-func (s *suchAttrappe) EintraegeKurzNachIDs(_ context.Context, ids []string) (map[string]kern.EintragKurz, error) {
-	m := map[string]kern.EintragKurz{}
+func (s *suchAttrappe) EintraegeKurzNachIDs(_ context.Context, ids []string) (map[string]core.EintragKurz, error) {
+	m := map[string]core.EintragKurz{}
 	for _, id := range ids {
 		if e, ok := s.eintraege[id]; ok {
 			m[id] = e
@@ -44,13 +44,13 @@ const (
 
 func suchBestand() *suchAttrappe {
 	return &suchAttrappe{
-		treffer: []kern.Treffer{
+		treffer: []core.Treffer{
 			{EintragID: idLabor, Nr: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
 			{EintragID: idWeg, Nr: 1, Text: "verwaist", Score: 0.86},
-			{EintragID: idBrief, Nr: 1, Text: "Blutdruck 128/82", Score: kern.MinScore},              // genau auf der Schwelle
-			{EintragID: idBrief, Nr: 2, Text: "Kontrolle in 6 Monaten", Score: kern.MinScore - 0.01}, // darunter
+			{EintragID: idBrief, Nr: 1, Text: "Blutdruck 128/82", Score: core.MinScore},              // genau auf der Schwelle
+			{EintragID: idBrief, Nr: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // darunter
 		},
-		eintraege: map[string]kern.EintragKurz{
+		eintraege: map[string]core.EintragKurz{
 			idLabor: {ID: idLabor, Modul: "gesundheit", Typ: "laborbefund", Dokumentdatum: zeiger("2026-10-14"), Quelle: zeiger("Labor Muster GmbH")},
 			idBrief: {ID: idBrief, Modul: "gesundheit", Typ: "arztbrief", Dokumentdatum: zeiger("2026-09-02"), Quelle: zeiger("Dr. Erika Beispiel")},
 		},
@@ -66,7 +66,7 @@ func TestFragen_Treffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.gefragtModul != "gesundheit" || s.gefragtK != kern.AnzahlTreffer {
+	if s.gefragtModul != "gesundheit" || s.gefragtK != core.AnzahlTreffer {
 		t.Errorf("Suche mit Modul %q, k %d", s.gefragtModul, s.gefragtK)
 	}
 
@@ -88,13 +88,13 @@ func TestFragen_Treffer(t *testing.T) {
 }
 
 func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
-	s := &suchAttrappe{treffer: []kern.Treffer{{EintragID: idLabor, Score: 0.77, Text: "Wetter?"}},
+	s := &suchAttrappe{treffer: []core.Treffer{{EintragID: idLabor, Score: 0.77, Text: "Wetter?"}},
 		eintraege: suchBestand().eintraege}
 	a := &attrappe.Antworter{Text: "sollte nie kommen [1]"}
 
 	antwort, err := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
 
-	if err != nil || antwort.Gefunden || antwort.Text != kern.FesterSatz || antwort.Quellen == nil || len(antwort.Quellen) != 0 {
+	if err != nil || antwort.Gefunden || antwort.Text != core.FesterSatz || antwort.Quellen == nil || len(antwort.Quellen) != 0 {
 		t.Errorf("Antwort = %+v, %v; erwartet fester Satz", antwort, err)
 	}
 	if a.Aufrufe() != 0 {
@@ -103,7 +103,7 @@ func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
 }
 
 func TestFragen_NurVerwaisteTreffer(t *testing.T) {
-	s := &suchAttrappe{treffer: []kern.Treffer{{EintragID: idWeg, Score: 0.95}}, eintraege: map[string]kern.EintragKurz{}}
+	s := &suchAttrappe{treffer: []core.Treffer{{EintragID: idWeg, Score: 0.95}}, eintraege: map[string]core.EintragKurz{}}
 	a := &attrappe.Antworter{}
 	antwort, _ := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
 	if antwort.Gefunden || a.Aufrufe() != 0 {
@@ -114,10 +114,10 @@ func TestFragen_NurVerwaisteTreffer(t *testing.T) {
 func TestFragen_ModellOhneVerweis(t *testing.T) {
 	// Zweite Schicht: Das Modell antwortet selbst mit dem festen Satz oder
 	// ohne Quelle; beides wird zu "nichts gefunden".
-	for _, text := range []string{kern.FesterSatz, "Der Wert war 14,2."} {
+	for _, text := range []string{core.FesterSatz, "Der Wert war 14,2."} {
 		a := &attrappe.Antworter{Text: text}
 		antwort, err := NeuFragen(suchBestand(), &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
-		if err != nil || antwort.Gefunden || antwort.Text != kern.FesterSatz || len(antwort.Quellen) != 0 {
+		if err != nil || antwort.Gefunden || antwort.Text != core.FesterSatz || len(antwort.Quellen) != 0 {
 			t.Errorf("%q → %+v, %v", text, antwort, err)
 		}
 	}
@@ -133,9 +133,9 @@ func TestFragen_Fehler(t *testing.T) {
 		antworter *attrappe.Antworter
 		fehler    error
 	}{
-		{"Frage leer", "  ", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, kern.ErrFrageFehlt},
-		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, kern.ErrFrageZuLang},
-		{"Modul unbekannt", "x", "sport", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, kern.ErrUnbekanntesModul},
+		{"Frage leer", "  ", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrFrageFehlt},
+		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrFrageZuLang},
+		{"Modul unbekannt", "x", "sport", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrUnbekanntesModul},
 		{"Embedding nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, &attrappe.Antworter{}, modell.ErrNichtErreichbar},
 		{"Antworter nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
 		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &attrappe.Einbetter{}, &attrappe.Antworter{}, nil},

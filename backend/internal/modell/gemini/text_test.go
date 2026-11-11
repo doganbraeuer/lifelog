@@ -10,12 +10,12 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
 func TestTextSchema_OhneLesbarUndVolltext(t *testing.T) {
-	typen := kern.ErlaubteTypen("gesundheit")
+	typen := core.ErlaubteTypen("gesundheit")
 	roh, err := json.Marshal(textSchema(typen))
 	if err != nil {
 		t.Fatal(err)

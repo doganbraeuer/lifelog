@@ -6,19 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/kern"
 )
 
 // legeAn speichert einen vollständigen Eintrag wie der Upload: Datei,
 // zwei Abschnitte, Eintrag zuletzt.
-func legeAn(t *testing.T, s *Speicher, ctx context.Context, hash string) kern.Eintrag {
+func legeAn(t *testing.T, s *Speicher, ctx context.Context, hash string) core.Eintrag {
 	t.Helper()
 	e := testEintrag(NeueID(), NeueID(), hash)
 	if err := s.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, []byte("%PDF-1.7 synthetisch")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AbschnitteSpeichern(ctx, []kern.Abschnitt{
+	if err := s.AbschnitteSpeichern(ctx, []core.Abschnitt{
 		{EintragID: e.ID, Modul: "gesundheit", Nr: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
 		{EintragID: e.ID, Modul: "gesundheit", Nr: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}); err != nil {
@@ -40,7 +40,7 @@ func pruefeDatei(t *testing.T, s *Speicher, ctx context.Context, dateiID string,
 		if !da {
 			t.Errorf("Datei %s noch da", dateiID)
 		}
-	case errors.Is(err, kern.ErrOriginalFehlt):
+	case errors.Is(err, core.ErrOriginalFehlt):
 		if da {
 			t.Errorf("Datei %s fehlt", dateiID)
 		}
@@ -81,7 +81,7 @@ func TestIntegration_EintragLoeschen(t *testing.T) {
 	pruefeDatei(t, s, ctx, b.Datei.ID, true)
 
 	// Zweites Löschen: 404.
-	if err := l.Ausfuehren(ctx, a.ID); !errors.Is(err, kern.ErrEintragNichtGefunden) {
+	if err := l.Ausfuehren(ctx, a.ID); !errors.Is(err, core.ErrEintragNichtGefunden) {
 		t.Errorf("zweites Löschen: %v, erwartet ErrEintragNichtGefunden", err)
 	}
 }

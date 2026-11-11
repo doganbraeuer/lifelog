@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Läuft nur mit LIFELOG_MONGO_TEST=1 (siehe integration_test.go).
@@ -14,7 +14,7 @@ func TestIntegration_KorrekturSpeichern(t *testing.T) {
 	s, ctx := testSpeicher(t)
 
 	e := testEintrag(NeueID(), NeueID(), strings.Repeat("cd", 32))
-	e.Infos = append(e.Infos, kern.Info{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"})
+	e.Infos = append(e.Infos, core.Info{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"})
 	if err := s.EintragSpeichern(ctx, e); err != nil {
 		t.Fatal(err)
 	}
@@ -23,13 +23,13 @@ func TestIntegration_KorrekturSpeichern(t *testing.T) {
 	// Einheit entfernt, Einheit neu, Typ und Wert geändert.
 	jetzt := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC) // Millisekunden wie im Dienst
 	q := "Labor B"
-	neu, geaendert, err := kern.Korrigiere(e, kern.Aenderung{
+	neu, geaendert, err := core.Korrigiere(e, core.Aenderung{
 		Typ:           &[]string{"arztbrief"}[0],
-		Dokumentdatum: kern.Feld{Gesetzt: true},
-		Quelle:        kern.Feld{Gesetzt: true, Wert: &q},
-		Infos: []kern.InfoAenderung{
-			{ID: "i1", Wert: &[]string{"14,0"}[0], Einheit: kern.Feld{Gesetzt: true}},
-			{ID: "i2", Einheit: kern.Feld{Gesetzt: true, Wert: &[]string{"Stück"}[0]}},
+		Dokumentdatum: core.Feld{Gesetzt: true},
+		Quelle:        core.Feld{Gesetzt: true, Wert: &q},
+		Infos: []core.InfoAenderung{
+			{ID: "i1", Wert: &[]string{"14,0"}[0], Einheit: core.Feld{Gesetzt: true}},
+			{ID: "i2", Einheit: core.Feld{Gesetzt: true, Wert: &[]string{"Stück"}[0]}},
 		},
 	}, jetzt)
 	if err != nil || len(geaendert) != 6 {

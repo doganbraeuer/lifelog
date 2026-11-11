@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -71,7 +71,7 @@ func feldRegeln(erlaubteTypen []string, wo, wie string) string {
 
 // leseSchema ist das JSON-Schema für die Antwort. Gemini hält sich bei
 // strukturierter Ausgabe daran, wir prüfen trotzdem alles nach
-// (erkennungAusText und kern.PruefeErkennung): Ein Schema ist eine Bitte,
+// (erkennungAusText und core.PruefeErkennung): Ein Schema ist eine Bitte,
 // keine Garantie.
 //
 // "null" in der Typliste bedeutet: Das Feld darf null sein.
@@ -128,10 +128,10 @@ type erkennungJSON struct {
 
 // erkennungAusAntwort holt den JSON-Text aus der Gemini-Antwort und prüft,
 // ob die Antwort überhaupt vollständig ist.
-func erkennungAusAntwort(resp *genai.GenerateContentResponse) (kern.Erkennung, error) {
+func erkennungAusAntwort(resp *genai.GenerateContentResponse) (core.Erkennung, error) {
 	text, err := textAusAntwort(resp)
 	if err != nil {
-		return kern.Erkennung{}, err
+		return core.Erkennung{}, err
 	}
 	return erkennungAusText(text)
 }
@@ -166,13 +166,13 @@ func textAusAntwort(resp *genai.GenerateContentResponse) (string, error) {
 
 // erkennungAusText liest den JSON-Text beim Lesen einer Datei. Fehlermeldungen
 // enthalten nie Inhalte des Dokuments, nur die Art des Problems.
-func erkennungAusText(text string) (kern.Erkennung, error) {
+func erkennungAusText(text string) (core.Erkennung, error) {
 	a, err := erkennungJSONLesen(text)
 	if err != nil {
-		return kern.Erkennung{}, err
+		return core.Erkennung{}, err
 	}
 	if a.Lesbar == nil {
-		return kern.Erkennung{}, fmt.Errorf("Feld lesbar fehlt: %w", modell.ErrAntwortUngueltig)
+		return core.Erkennung{}, fmt.Errorf("Feld lesbar fehlt: %w", modell.ErrAntwortUngueltig)
 	}
 	e := a.zuErkennung()
 	e.Lesbar = *a.Lesbar
@@ -184,10 +184,10 @@ func erkennungAusText(text string) (kern.Erkennung, error) {
 // true und Volltext leer: Den Volltext setzt der Aufrufer, er ist der
 // eingegebene Text. Liefert das Modell trotzdem volltext oder lesbar, wird
 // beides ignoriert.
-func textErkennungAusText(text string) (kern.Erkennung, error) {
+func textErkennungAusText(text string) (core.Erkennung, error) {
 	a, err := erkennungJSONLesen(text)
 	if err != nil {
-		return kern.Erkennung{}, err
+		return core.Erkennung{}, err
 	}
 	e := a.zuErkennung()
 	e.Lesbar = true
@@ -211,12 +211,12 @@ func erkennungJSONLesen(text string) (erkennungJSON, error) {
 
 // zuErkennung übernimmt Datum, Quelle, Typ und Infos (ohne Lesbar und
 // Volltext).
-func (a erkennungJSON) zuErkennung() kern.Erkennung {
-	infos := make([]kern.ErkannteInfo, 0, len(a.Infos))
+func (a erkennungJSON) zuErkennung() core.Erkennung {
+	infos := make([]core.ErkannteInfo, 0, len(a.Infos))
 	for _, i := range a.Infos {
-		infos = append(infos, kern.ErkannteInfo{Name: i.Name, Wert: i.Wert, Einheit: i.Einheit})
+		infos = append(infos, core.ErkannteInfo{Name: i.Name, Wert: i.Wert, Einheit: i.Einheit})
 	}
-	return kern.Erkennung{
+	return core.Erkennung{
 		Dokumentdatum: a.Dokumentdatum,
 		Quelle:        a.Quelle,
 		Typ:           a.Typ,

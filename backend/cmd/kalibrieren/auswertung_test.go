@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/beispieldaten"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 func TestKalibrierfragen_Aufbau(t *testing.T) {
@@ -23,7 +23,7 @@ func TestKalibrierfragen_Aufbau(t *testing.T) {
 			t.Errorf("Frage doppelt: %q", f.Text)
 		}
 		texte[f.Text] = true
-		if _, err := kern.PruefeFrage(f.Text); err != nil {
+		if _, err := core.PruefeFrage(f.Text); err != nil {
 			t.Errorf("%q: %v", f.Text, err)
 		}
 		if f.Gruppe != passend {
@@ -68,7 +68,7 @@ func TestKalibrierfragen_Aufbau(t *testing.T) {
 func datum(s string) *string { return &s }
 
 func TestAufloesen(t *testing.T) {
-	liste := []kern.EintragKurz{
+	liste := []core.EintragKurz{
 		{ID: "T1", Typ: "arztbrief", Dokumentdatum: datum("2026-09-02")},
 		{ID: "D1", Typ: "laborbefund", Dokumentdatum: datum("2026-01-20")},
 		{ID: "D2", Typ: "laborbefund", Dokumentdatum: datum("2026-07-22")},
@@ -133,14 +133,14 @@ func TestAufloesen(t *testing.T) {
 func TestMessen(t *testing.T) {
 	f := kalibrierfrage{Text: "x", Gruppe: passend, Erwartet: []ziel{{ID: "B"}}}
 	// Absichtlich unsortiert; Eintrag B kommt mit zwei Abschnitten vor.
-	m := messen(f, []string{"B"}, []kern.Treffer{
+	m := messen(f, []string{"B"}, []core.Treffer{
 		{EintragID: "B", Score: 0.81}, {EintragID: "A", Score: 0.90}, {EintragID: "B", Score: 0.85},
 	})
 	if m.Bester != 0.90 || m.BesterEintrag != "A" || m.Erwartet[0] != 0.85 || m.RichtigOben() || m.massgeblich() != 0.85 {
 		t.Errorf("= %+v, RichtigOben %v", m, m.RichtigOben())
 	}
 
-	m = messen(f, []string{"B"}, []kern.Treffer{{EintragID: "B", Score: 0.88}})
+	m = messen(f, []string{"B"}, []core.Treffer{{EintragID: "B", Score: 0.88}})
 	if !m.RichtigOben() || m.Erwartet[0] != 0.88 || !m.AlleGefunden() {
 		t.Errorf("richtig oben: %+v", m)
 	}
@@ -152,20 +152,20 @@ func TestMessen(t *testing.T) {
 
 	// Zwei Einträge: maßgeblich ist der schwächere; oben genügt einer davon.
 	zwei := kalibrierfrage{Text: "z", Gruppe: passend, Erwartet: []ziel{{ID: "B"}, {ID: "C"}}}
-	m = messen(zwei, []string{"B", "C"}, []kern.Treffer{
+	m = messen(zwei, []string{"B", "C"}, []core.Treffer{
 		{EintragID: "C", Score: 0.89}, {EintragID: "A", Score: 0.86}, {EintragID: "B", Score: 0.84},
 	})
 	if !m.RichtigOben() || !m.AlleGefunden() || m.massgeblich() != 0.84 {
 		t.Errorf("zwei: %+v", m)
 	}
-	m = messen(zwei, []string{"B", "C"}, []kern.Treffer{{EintragID: "C", Score: 0.89}})
+	m = messen(zwei, []string{"B", "C"}, []core.Treffer{{EintragID: "C", Score: 0.89}})
 	if !m.RichtigOben() || m.AlleGefunden() || m.massgeblich() != 0 {
 		t.Errorf("zwei, B fehlt: %+v", m)
 	}
 
 	// Bei fachfremden Fragen gibt es keinen erwarteten Eintrag, auch wenn
 	// zufällig ein Treffer eine leere ID hätte.
-	m = messen(kalibrierfrage{Gruppe: fachfremd}, nil, []kern.Treffer{{EintragID: "", Score: 0.7}})
+	m = messen(kalibrierfrage{Gruppe: fachfremd}, nil, []core.Treffer{{EintragID: "", Score: 0.7}})
 	if len(m.Erwartet) != 0 || m.RichtigOben() || m.massgeblich() != 0.7 {
 		t.Errorf("fachfremd: %+v", m)
 	}

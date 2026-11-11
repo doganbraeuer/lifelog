@@ -9,18 +9,18 @@ import (
 	"strings"
 	"testing"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
 type fragerAttrappe struct {
-	antwort      kern.Antwort
+	antwort      core.Antwort
 	err          error
 	frage, modul string
 	aufgerufen   bool
 }
 
-func (f *fragerAttrappe) Ausfuehren(_ context.Context, frage, modul string) (kern.Antwort, error) {
+func (f *fragerAttrappe) Ausfuehren(_ context.Context, frage, modul string) (core.Antwort, error) {
 	f.aufgerufen, f.frage, f.modul = true, frage, modul
 	return f.antwort, f.err
 }
@@ -37,9 +37,9 @@ func fragen(t *testing.T, f *fragerAttrappe, body string) *httptest.ResponseReco
 
 func TestFragen_Treffer(t *testing.T) {
 	z := func(s string) *string { return &s }
-	f := &fragerAttrappe{antwort: kern.Antwort{
+	f := &fragerAttrappe{antwort: core.Antwort{
 		Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1].", Gefunden: true,
-		Quellen: []kern.Fundstelle{{Nr: 1, EintragID: "6727a1f3c2b4e5d6f7a8b9c0", Modul: "gesundheit",
+		Quellen: []core.Fundstelle{{Nr: 1, EintragID: "6727a1f3c2b4e5d6f7a8b9c0", Modul: "gesundheit",
 			Typ: "laborbefund", Quelle: z("Labor Muster GmbH, Salzburg"), Dokumentdatum: z("2026-10-14"),
 			Auszug: "Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}},
 	}}
@@ -62,7 +62,7 @@ func TestFragen_Treffer(t *testing.T) {
 
 func TestFragen_KeinTrefferIstLeereListe(t *testing.T) {
 	// Die App schickt kein modul mit; das ist erlaubt (Standard gesundheit).
-	f := &fragerAttrappe{antwort: kern.Antwort{Text: kern.FesterSatz, Quellen: nil}}
+	f := &fragerAttrappe{antwort: core.Antwort{Text: core.FesterSatz, Quellen: nil}}
 	rec := fragen(t, f, `{"frage": "Wie wird das Wetter?"}`)
 
 	want := `{"antwort":"Dazu finde ich nichts in deinen Dokumenten.","gefunden":false,"quellen":[]}`
@@ -101,9 +101,9 @@ func TestFragen_FehlerDesDienstes(t *testing.T) {
 		status int
 		code   string
 	}{
-		{kern.ErrFrageFehlt, 400, CodeFrageFehlt},
-		{kern.ErrFrageZuLang, 400, CodeFrageZuLang},
-		{kern.ErrUnbekanntesModul, 400, CodeUngueltigeAnfrage},
+		{core.ErrFrageFehlt, 400, CodeFrageFehlt},
+		{core.ErrFrageZuLang, 400, CodeFrageZuLang},
+		{core.ErrUnbekanntesModul, 400, CodeUngueltigeAnfrage},
 		{fmt.Errorf("Gemini HTTP 503: %w", modell.ErrNichtErreichbar), 503, CodeModellNichtErreichbar},
 		{fmt.Errorf("blockiert: %w", modell.ErrAntwortUngueltig), 503, CodeModellNichtErreichbar},
 		{errors.New("Vektorindex fehlt"), 500, CodeInternerFehler},
@@ -112,7 +112,7 @@ func TestFragen_FehlerDesDienstes(t *testing.T) {
 		t.Run(f.code, func(t *testing.T) {
 			rec := fragen(t, &fragerAttrappe{err: f.err}, `{"frage": "x", "modul": "sport"}`)
 			a := pruefeFehler(t, rec, f.status, f.code)
-			if errors.Is(f.err, kern.ErrUnbekanntesModul) && fmt.Sprint(a.Fehler.Details) != "map[feld:modul wert:sport]" {
+			if errors.Is(f.err, core.ErrUnbekanntesModul) && fmt.Sprint(a.Fehler.Details) != "map[feld:modul wert:sport]" {
 				t.Errorf("details = %v", a.Fehler.Details)
 			}
 			for _, intern := range []string{"Gemini", "blockiert", "Vektorindex"} {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 func speicherMitEintrag() *speicherAttrappe {
 	e := vollerEintrag() // aus hochladen_test.go, ID testID, Datei testDateiID
 	return &speicherAttrappe{
-		eintraege: map[string]kern.Eintrag{testID: e},
+		eintraege: map[string]core.Eintrag{testID: e},
 		dateien:   map[string][]byte{testDateiID: []byte("%PDF-1.7 synthetisch")},
 	}
 }

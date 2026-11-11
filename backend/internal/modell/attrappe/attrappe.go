@@ -9,13 +9,13 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
 // Leser liefert immer Erkennung bzw. Err.
 type Leser struct {
-	Erkennung kern.Erkennung
+	Erkennung core.Erkennung
 	Err       error
 
 	mu          sync.Mutex
@@ -26,7 +26,7 @@ type Leser struct {
 
 var _ modell.Leser = (*Leser)(nil)
 
-func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string) (kern.Erkennung, error) {
+func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string) (core.Erkennung, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.aufrufe++
@@ -35,7 +35,7 @@ func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string)
 
 // TextLesen liefert dieselbe Erkennung bzw. denselben Fehler wie
 // DokumentLesen, zählt aber getrennt.
-func (l *Leser) TextLesen(_ context.Context, text string, _ []string) (kern.Erkennung, error) {
+func (l *Leser) TextLesen(_ context.Context, text string, _ []string) (core.Erkennung, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.textAufrufe++
@@ -108,12 +108,12 @@ type Antworter struct {
 	mu          sync.Mutex
 	aufrufe     int
 	frage       string
-	fundstellen []kern.Fundstelle
+	fundstellen []core.Fundstelle
 }
 
 var _ modell.Antworter = (*Antworter)(nil)
 
-func (a *Antworter) Antworten(_ context.Context, frage string, f []kern.Fundstelle) (string, error) {
+func (a *Antworter) Antworten(_ context.Context, frage string, f []core.Fundstelle) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.aufrufe++
@@ -129,7 +129,7 @@ func (a *Antworter) Aufrufe() int {
 }
 
 // LetzteAnfrage: Frage und Fundstellen des letzten Aufrufs.
-func (a *Antworter) LetzteAnfrage() (string, []kern.Fundstelle) {
+func (a *Antworter) LetzteAnfrage() (string, []core.Fundstelle) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.frage, a.fundstellen

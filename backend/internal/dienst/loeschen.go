@@ -5,14 +5,14 @@ import (
 	"log/slog"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // LoeschSpeicher ist, was das Löschen von der Datenbank braucht. Umgesetzt
 // von speicher.Speicher. DateiLoeschen und AbschnitteLoeschen dürfen keinen
 // Fehler liefern, wenn es nichts (mehr) zu löschen gibt.
 type LoeschSpeicher interface {
-	EintragLesen(ctx context.Context, id string) (e kern.Eintrag, gefunden bool, err error)
+	EintragLesen(ctx context.Context, id string) (e core.Eintrag, gefunden bool, err error)
 	AbschnitteLoeschen(ctx context.Context, eintragID string) error
 	DateiLoeschen(ctx context.Context, id string) error
 	EintragLoeschen(ctx context.Context, id string) (gefunden bool, err error)
@@ -48,10 +48,10 @@ func NeuLoeschen(s LoeschSpeicher) *Loeschen {
 // ohne Datei und Abschnitte übrig bleiben, den die Zeitleiste zwar zeigt,
 // dessen Original sich aber nicht mehr öffnen lässt.
 //
-// Fehler: kern.ErrUngueltigeID, kern.ErrEintragNichtGefunden (auch beim
+// Fehler: core.ErrUngueltigeID, core.ErrEintragNichtGefunden (auch beim
 // zweiten Löschen) oder ein interner Fehler.
 func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
-	if err := kern.PruefeID(id); err != nil {
+	if err := core.PruefeID(id); err != nil {
 		return err
 	}
 	e, gefunden, err := l.speicher.EintragLesen(ctx, id)
@@ -59,7 +59,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 		return err
 	}
 	if !gefunden {
-		return kern.ErrEintragNichtGefunden
+		return core.ErrEintragNichtGefunden
 	}
 
 	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), loeschTimeout)
@@ -77,7 +77,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 	}
 	if !gefunden {
 		// Ein gleichzeitiger Aufruf war schneller.
-		return kern.ErrEintragNichtGefunden
+		return core.ErrEintragNichtGefunden
 	}
 	// Nur die ID, nie Inhalte.
 	slog.Info("Eintrag gelöscht", "eintrag", id)

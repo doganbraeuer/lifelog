@@ -13,31 +13,31 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // speicherAttrappe merkt sich, mit welchem Modul gefragt wurde.
 type speicherAttrappe struct {
-	liste        []kern.EintragKurz
+	liste        []core.EintragKurz
 	err          error
 	aufrufe      int
 	gefragtModul string
 
-	eintraege map[string]kern.Eintrag // ID → Eintrag (für GET /eintraege/{id})
+	eintraege map[string]core.Eintrag // ID → Eintrag (für GET /eintraege/{id})
 	dateien   map[string][]byte       // Datei-ID → Inhalt (für …/datei)
 	dateiErr  error                   // wenn gesetzt, scheitert DateiOeffnen damit
 }
 
-func (s *speicherAttrappe) ListeKurz(_ context.Context, modul string) ([]kern.EintragKurz, error) {
+func (s *speicherAttrappe) ListeKurz(_ context.Context, modul string) ([]core.EintragKurz, error) {
 	s.aufrufe++
 	s.gefragtModul = modul
 	return slices.Clone(s.liste), s.err
 }
 
-func (s *speicherAttrappe) EintragLesen(_ context.Context, id string) (kern.Eintrag, bool, error) {
+func (s *speicherAttrappe) EintragLesen(_ context.Context, id string) (core.Eintrag, bool, error) {
 	s.aufrufe++
 	if s.err != nil {
-		return kern.Eintrag{}, false, s.err
+		return core.Eintrag{}, false, s.err
 	}
 	e, ok := s.eintraege[id]
 	return e, ok, nil
@@ -49,13 +49,13 @@ func (s *speicherAttrappe) DateiOeffnen(_ context.Context, dateiID string) (io.R
 	}
 	d, ok := s.dateien[dateiID]
 	if !ok {
-		return nil, 0, kern.ErrOriginalFehlt
+		return nil, 0, core.ErrOriginalFehlt
 	}
 	return io.NopCloser(bytes.NewReader(d)), int64(len(d)), nil
 }
 
-func kurz(id, datum string, importMinute int) kern.EintragKurz {
-	k := kern.EintragKurz{
+func kurz(id, datum string, importMinute int) core.EintragKurz {
+	k := core.EintragKurz{
 		ID: id, Modul: "gesundheit", Typ: "laborbefund",
 		Importdatum: time.Date(2026, 11, 3, 18, importMinute, 7, 0, time.UTC),
 	}
@@ -87,7 +87,7 @@ func TestListe_LeerIstLeeresArray(t *testing.T) {
 }
 
 func TestListe_StandardwerteUndFormat(t *testing.T) {
-	s := &speicherAttrappe{liste: []kern.EintragKurz{
+	s := &speicherAttrappe{liste: []core.EintragKurz{
 		kurz("aaaaaaaaaaaaaaaaaaaaaaaa", "", 30),
 		kurz("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
 		kurz("cccccccccccccccccccccccc", "2026-10-14", 10),
@@ -146,7 +146,7 @@ func TestListe_StandardwerteUndFormat(t *testing.T) {
 }
 
 func TestListe_ParameterWerdenAngewendet(t *testing.T) {
-	s := &speicherAttrappe{liste: []kern.EintragKurz{
+	s := &speicherAttrappe{liste: []core.EintragKurz{
 		kurz("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-10-14", 30),
 		kurz("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
 	}}

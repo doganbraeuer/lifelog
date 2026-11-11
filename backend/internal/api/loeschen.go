@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Loescher löscht einen Eintrag. Umgesetzt von dienst.Loeschen.
@@ -21,9 +21,9 @@ func loeschenHandler(l Loescher) http.HandlerFunc {
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusNoContent)
-		case errors.Is(err, kern.ErrUngueltigeID):
+		case errors.Is(err, core.ErrUngueltigeID):
 			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
-		case errors.Is(err, kern.ErrEintragNichtGefunden):
+		case errors.Is(err, core.ErrEintragNichtGefunden):
 			schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
 		case errors.Is(err, context.Canceled):
 			// Die App hat vor dem Löschen aufgegeben; niemand liest die Antwort.

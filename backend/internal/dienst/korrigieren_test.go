@@ -9,32 +9,32 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // korrekturAttrappe hält einen Eintrag im Speicher und merkt sich, was
 // geschrieben wurde.
 type korrekturAttrappe struct {
-	eintrag      *kern.Eintrag // nil: Eintrag gibt es nicht
+	eintrag      *core.Eintrag // nil: Eintrag gibt es nicht
 	lesenErr     error
 	speichernErr error
 	weg          bool // Eintrag verschwindet zwischen Lesen und Schreiben
 	gelesen      int
-	gespeichert  []kern.Eintrag
+	gespeichert  []core.Eintrag
 }
 
-func (s *korrekturAttrappe) EintragLesen(_ context.Context, id string) (kern.Eintrag, bool, error) {
+func (s *korrekturAttrappe) EintragLesen(_ context.Context, id string) (core.Eintrag, bool, error) {
 	s.gelesen++
 	if s.lesenErr != nil {
-		return kern.Eintrag{}, false, s.lesenErr
+		return core.Eintrag{}, false, s.lesenErr
 	}
 	if s.eintrag == nil || s.eintrag.ID != id {
-		return kern.Eintrag{}, false, nil
+		return core.Eintrag{}, false, nil
 	}
 	return *s.eintrag, true, nil
 }
 
-func (s *korrekturAttrappe) KorrekturSpeichern(_ context.Context, e kern.Eintrag) (bool, error) {
+func (s *korrekturAttrappe) KorrekturSpeichern(_ context.Context, e core.Eintrag) (bool, error) {
 	if s.speichernErr != nil {
 		return false, s.speichernErr
 	}
@@ -48,11 +48,11 @@ func (s *korrekturAttrappe) KorrekturSpeichern(_ context.Context, e kern.Eintrag
 func zd(s string) *string { return &s }
 
 func korrekturBestand() *korrekturAttrappe {
-	return &korrekturAttrappe{eintrag: &kern.Eintrag{
+	return &korrekturAttrappe{eintrag: &core.Eintrag{
 		ID: idLabor, Modul: "gesundheit", Typ: "laborbefund",
 		Dokumentdatum: zd("2026-10-14"), Quelle: zd("Labor Muster GmbH"),
-		Infos:       []kern.Info{{ID: "i2", Name: "Leukozyten", Wert: "6,3", Einheit: zd("G/l")}},
-		Korrekturen: []kern.Korrektur{},
+		Infos:       []core.Info{{ID: "i2", Name: "Leukozyten", Wert: "6,3", Einheit: zd("G/l")}},
+		Korrekturen: []core.Korrektur{},
 	}}
 }
 
@@ -69,7 +69,7 @@ func neuKorrigierenFest(s KorrekturSpeicher) *Korrigieren {
 func TestKorrigieren_Erfolg(t *testing.T) {
 	s := korrekturBestand()
 	e, err := neuKorrigierenFest(s).Ausfuehren(context.Background(), idLabor,
-		kern.Aenderung{Infos: []kern.InfoAenderung{{ID: "i2", Wert: zd("6,8")}}})
+		core.Aenderung{Infos: []core.InfoAenderung{{ID: "i2", Wert: zd("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestKorrigieren_Erfolg(t *testing.T) {
 func TestKorrigieren_OhneAenderungKeinSchreiben(t *testing.T) {
 	s := korrekturBestand()
 	e, err := neuKorrigierenFest(s).Ausfuehren(context.Background(), idLabor,
-		kern.Aenderung{Quelle: kern.Feld{Gesetzt: true, Wert: zd("Labor Muster GmbH")}})
+		core.Aenderung{Quelle: core.Feld{Gesetzt: true, Wert: zd("Labor Muster GmbH")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,25 +102,25 @@ func TestKorrigieren_OhneAenderungKeinSchreiben(t *testing.T) {
 
 func TestKorrigieren_Fehler(t *testing.T) {
 	intern := errors.New("Datenbank weg")
-	gueltig := kern.Aenderung{Typ: zd("arztbrief")}
+	gueltig := core.Aenderung{Typ: zd("arztbrief")}
 	faelle := []struct {
 		name    string
 		s       *korrekturAttrappe
 		id      string
-		a       kern.Aenderung
+		a       core.Aenderung
 		err     error
 		gelesen int
 	}{
-		{"ungültige ID", korrekturBestand(), "abc", gueltig, kern.ErrUngueltigeID, 0},
-		{"nicht gefunden", korrekturBestand(), idBrief, gueltig, kern.ErrEintragNichtGefunden, 1},
+		{"ungültige ID", korrekturBestand(), "abc", gueltig, core.ErrUngueltigeID, 0},
+		{"nicht gefunden", korrekturBestand(), idBrief, gueltig, core.ErrEintragNichtGefunden, 1},
 		{"lesen scheitert", &korrekturAttrappe{lesenErr: intern}, idLabor, gueltig, intern, 1},
-		{"korrektur ungültig", korrekturBestand(), idLabor, kern.Aenderung{Typ: zd("befund")}, kern.ErrKorrekturUngueltig, 1},
+		{"korrektur ungültig", korrekturBestand(), idLabor, core.Aenderung{Typ: zd("befund")}, core.ErrKorrekturUngueltig, 1},
 		{"info unbekannt", korrekturBestand(), idLabor,
-			kern.Aenderung{Infos: []kern.InfoAenderung{{ID: "i9", Wert: zd("1")}}}, kern.ErrInfoNichtGefunden, 1},
+			core.Aenderung{Infos: []core.InfoAenderung{{ID: "i9", Wert: zd("1")}}}, core.ErrInfoNichtGefunden, 1},
 		{"speichern scheitert", func() *korrekturAttrappe { s := korrekturBestand(); s.speichernErr = intern; return s }(),
 			idLabor, gueltig, intern, 1},
 		{"zwischendurch gelöscht", func() *korrekturAttrappe { s := korrekturBestand(); s.weg = true; return s }(),
-			idLabor, gueltig, kern.ErrEintragNichtGefunden, 1},
+			idLabor, gueltig, core.ErrEintragNichtGefunden, 1},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -144,9 +144,9 @@ func TestKorrigieren_LogOhneWerte(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(alt) })
 
-	_, err := neuKorrigierenFest(korrekturBestand()).Ausfuehren(context.Background(), idLabor, kern.Aenderung{
-		Quelle: kern.Feld{Gesetzt: true, Wert: zd("Dr. Geheim")},
-		Infos:  []kern.InfoAenderung{{ID: "i2", Wert: zd("7,7")}},
+	_, err := neuKorrigierenFest(korrekturBestand()).Ausfuehren(context.Background(), idLabor, core.Aenderung{
+		Quelle: core.Feld{Gesetzt: true, Wert: zd("Dr. Geheim")},
+		Infos:  []core.InfoAenderung{{ID: "i2", Wert: zd("7,7")}},
 	})
 	if err != nil {
 		t.Fatal(err)

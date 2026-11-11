@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -66,12 +66,12 @@ func testdatei(t *testing.T, name string) []byte {
 
 func TestLive_DokumentLesen(t *testing.T) {
 	g := liveGemini(t)
-	typen := kern.ErlaubteTypen("gesundheit")
+	typen := core.ErlaubteTypen("gesundheit")
 
 	for _, name := range []string{"laborbefund.pdf", "laborbefund.png"} {
 		t.Run(name, func(t *testing.T) {
 			daten := testdatei(t, name)
-			mime, err := kern.PruefeDatei(daten)
+			mime, err := core.PruefeDatei(daten)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +84,7 @@ func TestLive_DokumentLesen(t *testing.T) {
 			}
 			t.Logf("Dauer %v", dauer.Round(time.Millisecond))
 
-			eintrag, ausgelassen, err := kern.PruefeErkennung(e, "gesundheit")
+			eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
 			if err != nil {
 				t.Fatalf("Prüfung: %v", err)
 			}
@@ -130,7 +130,7 @@ func TestLive_TextLesen(t *testing.T) {
 	text := string(testdatei(t, "laborbefund.txt"))
 
 	start := time.Now()
-	e, err := g.TextLesen(context.Background(), text, kern.ErlaubteTypen("gesundheit"))
+	e, err := g.TextLesen(context.Background(), text, core.ErlaubteTypen("gesundheit"))
 	dauer := time.Since(start).Round(time.Millisecond)
 	if err != nil {
 		t.Fatalf("nach %v: %v", dauer, err)
@@ -139,7 +139,7 @@ func TestLive_TextLesen(t *testing.T) {
 
 	// Wie im Dienst: Volltext ist der eingegebene Text.
 	e.Volltext = text
-	eintrag, ausgelassen, err := kern.PruefeErkennung(e, "gesundheit")
+	eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
 	if err != nil {
 		t.Fatalf("Prüfung: %v", err)
 	}
@@ -180,11 +180,11 @@ func TestLive_LeereSeiteIstNichtLesbar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, err := g.DokumentLesen(context.Background(), buf.Bytes(), kern.MimePNG, kern.ErlaubteTypen("gesundheit"))
+	e, err := g.DokumentLesen(context.Background(), buf.Bytes(), core.MimePNG, core.ErlaubteTypen("gesundheit"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := kern.PruefeErkennung(e, "gesundheit"); !errors.Is(err, kern.ErrNichtLesbar) {
+	if _, _, err := core.PruefeErkennung(e, "gesundheit"); !errors.Is(err, core.ErrNichtLesbar) {
 		t.Errorf("leere Seite: erwartet ErrNichtLesbar, bekommen %v (lesbar=%v)", err, e.Lesbar)
 	}
 }

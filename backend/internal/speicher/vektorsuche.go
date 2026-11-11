@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // VektorindexName ist der Name des Atlas-Vector-Search-Index auf der
@@ -89,8 +89,8 @@ type trefferDok struct {
 // Vektor am ähnlichsten ist, absteigend nach Score.
 //
 // Der Score ist der vectorSearchScore von Atlas, bei cosine (1 + cos) / 2.
-// Gefiltert nach Schwelle wird nicht hier, sondern im Dienst (kern.MinScore).
-func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]kern.Treffer, error) {
+// Gefiltert nach Schwelle wird nicht hier, sondern im Dienst (core.MinScore).
+func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Treffer, error) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$vectorSearch", Value: bson.D{
 			{Key: "index", Value: VektorindexName},
@@ -117,9 +117,9 @@ func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, mo
 	if err := cur.All(ctx, &doks); err != nil {
 		return nil, fmt.Errorf("Vektorsuche: %w", err)
 	}
-	treffer := make([]kern.Treffer, 0, len(doks))
+	treffer := make([]core.Treffer, 0, len(doks))
 	for _, d := range doks {
-		treffer = append(treffer, kern.Treffer{EintragID: d.EintragID.Hex(), Nr: d.Nr, Text: d.Text, Score: d.Score})
+		treffer = append(treffer, core.Treffer{EintragID: d.EintragID.Hex(), Nr: d.Nr, Text: d.Text, Score: d.Score})
 	}
 	return treffer, nil
 }
@@ -127,16 +127,16 @@ func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, mo
 // EintraegeKurzNachIDs lädt die Kurzform mehrerer Einträge auf einmal.
 // Einträge, die es nicht (mehr) gibt, fehlen einfach in der Map; der Dienst
 // verwirft dann die zugehörigen Abschnitte.
-func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]kern.EintragKurz, error) {
+func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EintragKurz, error) {
 	oids := make([]bson.ObjectID, 0, len(ids))
 	for _, id := range ids {
 		oid, err := bson.ObjectIDFromHex(id)
 		if err != nil {
-			return nil, kern.ErrUngueltigeID
+			return nil, core.ErrUngueltigeID
 		}
 		oids = append(oids, oid)
 	}
-	ergebnis := map[string]kern.EintragKurz{}
+	ergebnis := map[string]core.EintragKurz{}
 	if len(oids) == 0 {
 		return ergebnis, nil
 	}

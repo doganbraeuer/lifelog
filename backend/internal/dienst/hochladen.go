@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -25,9 +25,9 @@ type UploadSpeicher interface {
 	EintragMitHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error)
 	DateiSpeichern(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error
 	DateiLoeschen(ctx context.Context, id string) error
-	AbschnitteSpeichern(ctx context.Context, abschnitte []kern.Abschnitt) error
+	AbschnitteSpeichern(ctx context.Context, abschnitte []core.Abschnitt) error
 	AbschnitteLoeschen(ctx context.Context, eintragID string) error
-	EintragSpeichern(ctx context.Context, e kern.Eintrag) error
+	EintragSpeichern(ctx context.Context, e core.Eintrag) error
 }
 
 // Upload ist eine hochgeladene Datei.
@@ -50,7 +50,7 @@ type eingang struct {
 	daten     []byte // wird gespeichert und gehasht
 	dateiname string
 	mimeTyp   string
-	lesen     func(ctx context.Context) (kern.Erkennung, error)
+	lesen     func(ctx context.Context) (core.Erkennung, error)
 }
 
 // DuplikatFehler: Genau diese Datei gibt es schon. EintragID nennt den
@@ -59,8 +59,8 @@ type DuplikatFehler struct{ EintragID string }
 
 func (d *DuplikatFehler) Error() string { return "Duplikat von Eintrag " + d.EintragID }
 
-// Is: errors.Is(err, kern.ErrDuplikat) trifft auch auf DuplikatFehler zu.
-func (d *DuplikatFehler) Is(ziel error) bool { return ziel == kern.ErrDuplikat }
+// Is: errors.Is(err, core.ErrDuplikat) trifft auch auf DuplikatFehler zu.
+func (d *DuplikatFehler) Is(ziel error) bool { return ziel == core.ErrDuplikat }
 
 // Hochladen führt den Upload aus (docs/API.md 3.1).
 type Hochladen struct {
@@ -87,25 +87,25 @@ const aufraeumTimeout = 10 * time.Second
 //  1. Modul, Größe und Typ prüfen.
 //  2. Hash berechnen, Duplikat prüfen, VOR dem Modellaufruf.
 //  3. Vision-LLM lesen lassen.
-//  4. Erkennung prüfen (kern.PruefeErkennung).
+//  4. Erkennung prüfen (core.PruefeErkennung).
 //  5. Volltext in Abschnitte zerlegen und einbetten.
 //  6. Datei → Abschnitte → Eintrag speichern. Der Eintrag kommt zuletzt;
 //     scheitert ein Schritt, werden die schon gespeicherten Teile wieder
 //     entfernt. So bleibt kein halber Eintrag zurück.
 //
-// Fehler: kern.ErrUnbekanntesModul, kern.ErrDateiLeer, kern.ErrDateiZuGross,
-// kern.ErrDateitypNichtUnterstuetzt, *DuplikatFehler, kern.ErrNichtLesbar,
-// kern.ErrErkennungUngueltig, modell.ErrAntwortUngueltig,
+// Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrDateiZuGross,
+// core.ErrDateitypNichtUnterstuetzt, *DuplikatFehler, core.ErrNichtLesbar,
+// core.ErrErkennungUngueltig, modell.ErrAntwortUngueltig,
 // modell.ErrNichtErreichbar oder ein sonstiger (interner) Fehler.
-func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, error) {
+func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (core.Eintrag, error) {
 	// 1. Prüfen, ohne Netz und ohne Datenbank.
-	modul, err := kern.PruefeModul(u.Modul)
+	modul, err := core.PruefeModul(u.Modul)
 	if err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
-	mimeTyp, err := kern.PruefeDatei(u.Daten)
+	mimeTyp, err := core.PruefeDatei(u.Daten)
 	if err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
 
 	return h.verarbeiten(ctx, eingang{
@@ -113,8 +113,8 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 		daten:     u.Daten,
 		dateiname: dateiname(u.Dateiname),
 		mimeTyp:   mimeTyp,
-		lesen: func(ctx context.Context) (kern.Erkennung, error) {
-			return h.leser.DokumentLesen(ctx, u.Daten, mimeTyp, kern.ErlaubteTypen(modul))
+		lesen: func(ctx context.Context) (core.Erkennung, error) {
+			return h.leser.DokumentLesen(ctx, u.Daten, mimeTyp, core.ErlaubteTypen(modul))
 		},
 	})
 }
@@ -122,7 +122,7 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 // TextAusfuehren importiert einen eingegebenen Text. Ablauf wie bei
 // Ausfuehren, mit drei Unterschieden (API.md 3.1):
 //
-//   - Statt Größe und Typ prüft kern.PruefeText (leer, UTF-8, 100 000
+//   - Statt Größe und Typ prüft core.PruefeText (leer, UTF-8, 100 000
 //     Zeichen).
 //   - Gespeichert und gehasht werden die UTF-8-Bytes des Texts, als
 //     text.txt mit text/plain; charset=utf-8.
@@ -130,27 +130,27 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (kern.Eintrag, err
 //     und Infos. volltext ist der eingegebene Text, unverändert, und ein
 //     Text gilt immer als lesbar.
 //
-// Fehler: kern.ErrUnbekanntesModul, kern.ErrDateiLeer, kern.ErrTextKeinUTF8,
-// kern.ErrTextZuLang, *DuplikatFehler, kern.ErrErkennungUngueltig,
+// Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrTextKeinUTF8,
+// core.ErrTextZuLang, *DuplikatFehler, core.ErrErkennungUngueltig,
 // modell.ErrAntwortUngueltig, modell.ErrNichtErreichbar oder ein interner
 // Fehler.
-func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (kern.Eintrag, error) {
-	modul, err := kern.PruefeModul(u.Modul)
+func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (core.Eintrag, error) {
+	modul, err := core.PruefeModul(u.Modul)
 	if err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
-	if err := kern.PruefeText(u.Text); err != nil {
-		return kern.Eintrag{}, err
+	if err := core.PruefeText(u.Text); err != nil {
+		return core.Eintrag{}, err
 	}
 	return h.verarbeiten(ctx, eingang{
 		modul:     modul,
 		daten:     []byte(u.Text), // Go-Strings sind UTF-8: genau diese Bytes
-		dateiname: kern.TextDateiname,
-		mimeTyp:   kern.MimeText,
-		lesen: func(ctx context.Context) (kern.Erkennung, error) {
-			e, err := h.leser.TextLesen(ctx, u.Text, kern.ErlaubteTypen(modul))
+		dateiname: core.TextDateiname,
+		mimeTyp:   core.MimeText,
+		lesen: func(ctx context.Context) (core.Erkennung, error) {
+			e, err := h.leser.TextLesen(ctx, u.Text, core.ErlaubteTypen(modul))
 			if err != nil {
-				return kern.Erkennung{}, err
+				return core.Erkennung{}, err
 			}
 			e.Lesbar = true
 			e.Volltext = u.Text
@@ -160,45 +160,45 @@ func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (kern.Eint
 }
 
 // verarbeiten führt die Schritte 2–6 aus, gleich für Datei und Text.
-func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (kern.Eintrag, error) {
+func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Eintrag, error) {
 	modul := ein.modul
 
 	// 2. Duplikat prüfen, bevor ein Modellaufruf etwas kostet.
 	summe := sha256.Sum256(ein.daten)
 	hash := hex.EncodeToString(summe[:])
 	if id, gefunden, err := h.speicher.EintragMitHash(ctx, hash); err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	} else if gefunden {
-		return kern.Eintrag{}, &DuplikatFehler{EintragID: id}
+		return core.Eintrag{}, &DuplikatFehler{EintragID: id}
 	}
 
 	// 3. Lesen.
 	erkennung, err := ein.lesen(ctx)
 	if err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
 
 	// 4. Prüfen. Ins Log kommen nur Feldnamen, nie Werte (Gesundheitsdaten).
-	eintrag, ausgelassen, err := kern.PruefeErkennung(erkennung, modul)
+	eintrag, ausgelassen, err := core.PruefeErkennung(erkennung, modul)
 	if len(ausgelassen) > 0 {
 		slog.Warn("unvollständige Infos weggelassen", "felder", ausgelassen)
 	}
 	if err != nil {
-		var ef *kern.ErkennungFehler
+		var ef *core.ErkennungFehler
 		if errors.As(err, &ef) {
 			slog.Warn("Erkennung ungültig", "feld", ef.Feld, "grund", ef.Grund)
 		}
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
 
 	// 5. Abschnitte und Embeddings.
-	texte := kern.ZerlegeInAbschnitte(eintrag.Volltext, kern.AbschnittMaxZeichen)
+	texte := core.ZerlegeInAbschnitte(eintrag.Volltext, core.AbschnittMaxZeichen)
 	vektoren, err := h.einbetter.AbschnitteEinbetten(ctx, texte)
 	if err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
 	if len(vektoren) != len(texte) {
-		return kern.Eintrag{}, fmt.Errorf("%d Embeddings für %d Abschnitte: %w",
+		return core.Eintrag{}, fmt.Errorf("%d Embeddings für %d Abschnitte: %w",
 			len(vektoren), len(texte), modell.ErrAntwortUngueltig)
 	}
 
@@ -206,28 +206,28 @@ func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (kern.Eintrag,
 	// genau speichert: Antwort und spätere Abfrage zeigen dann dasselbe.
 	eintrag.ID = h.neueID()
 	eintrag.Importdatum = h.jetzt().UTC().Truncate(time.Millisecond)
-	eintrag.Datei = kern.Datei{
+	eintrag.Datei = core.Datei{
 		ID:        h.neueID(),
 		Dateiname: ein.dateiname,
 		MimeTyp:   ein.mimeTyp,
 		Groesse:   int64(len(ein.daten)),
 		Sha256:    hash,
 	}
-	abschnitte := make([]kern.Abschnitt, len(texte))
+	abschnitte := make([]core.Abschnitt, len(texte))
 	for i, t := range texte {
-		abschnitte[i] = kern.Abschnitt{
+		abschnitte[i] = core.Abschnitt{
 			EintragID: eintrag.ID, Modul: modul, Nr: i + 1, Text: t, Embedding: vektoren[i],
 		}
 	}
 
 	// 6. Speichern, Eintrag zuletzt.
 	if err := h.speichern(ctx, eintrag, abschnitte, ein.daten); err != nil {
-		return kern.Eintrag{}, err
+		return core.Eintrag{}, err
 	}
 	return eintrag, nil
 }
 
-func (h *Hochladen) speichern(ctx context.Context, e kern.Eintrag, abschnitte []kern.Abschnitt, daten []byte) error {
+func (h *Hochladen) speichern(ctx context.Context, e core.Eintrag, abschnitte []core.Abschnitt, daten []byte) error {
 	if err := h.speicher.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, daten); err != nil {
 		h.aufraeumen(ctx, e, false)
 		return err
@@ -242,7 +242,7 @@ func (h *Hochladen) speichern(ctx context.Context, e kern.Eintrag, abschnitte []
 	}
 	h.aufraeumen(ctx, e, true)
 
-	if errors.Is(err, kern.ErrDuplikat) {
+	if errors.Is(err, core.ErrDuplikat) {
 		// Jemand hat dieselbe Datei gleichzeitig hochgeladen und war
 		// schneller. Den vorhandenen Eintrag nennen wie bei Schritt 2.
 		if id, gefunden, ferr := h.speicher.EintragMitHash(ctx, e.Datei.Sha256); ferr == nil && gefunden {
@@ -257,7 +257,7 @@ func (h *Hochladen) speichern(ctx context.Context, e kern.Eintrag, abschnitte []
 // DateiSpeichern gelöscht: GridFS kann schon einzelne Stücke geschrieben
 // haben. Scheitert das Aufräumen, steht es im Log; der Eintrag selbst
 // existiert ja nicht, die App sieht also nichts Halbes.
-func (h *Hochladen) aufraeumen(ctx context.Context, e kern.Eintrag, abschnitteAuch bool) {
+func (h *Hochladen) aufraeumen(ctx context.Context, e core.Eintrag, abschnitteAuch bool) {
 	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), aufraeumTimeout)
 	defer abbrechen()
 

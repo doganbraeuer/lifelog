@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/attrappe"
 )
@@ -20,17 +20,17 @@ import (
 // bytegenau so gespeichert werden, wie er ankommt.
 const eingabe = "  Hausarztpraxis Beispiel\r\nÜberweisung vom 21.10.2026\n\nDiagnose: Rückenschmerzen \n"
 
-func textErkennung() kern.Erkennung {
+func textErkennung() core.Erkennung {
 	// Wie die Attrappe sie liefert. Volltext und Lesbar setzt das Modell beim
 	// Text nicht; der Dienst muss sie selbst setzen und Abweichungen
 	// überschreiben.
-	return kern.Erkennung{
+	return core.Erkennung{
 		Lesbar:        false,
 		Volltext:      "vom Modell erfunden",
 		Dokumentdatum: zeiger("2026-10-21"),
 		Quelle:        zeiger("Hausarztpraxis Beispiel"),
 		Typ:           "arztbrief",
-		Infos:         []kern.ErkannteInfo{{Name: "Diagnose", Wert: "Rückenschmerzen"}},
+		Infos:         []core.ErkannteInfo{{Name: "Diagnose", Wert: "Rückenschmerzen"}},
 	}
 }
 
@@ -58,7 +58,7 @@ func TestTextImport_Erfolg(t *testing.T) {
 		t.Errorf("Volltext = %q", e.Volltext)
 	}
 	summe := sha256.Sum256([]byte(eingabe))
-	want := kern.Datei{
+	want := core.Datei{
 		ID: e.Datei.ID, Dateiname: "text.txt", MimeTyp: "text/plain; charset=utf-8",
 		Groesse: int64(len(eingabe)), Sha256: hex.EncodeToString(summe[:]),
 	}
@@ -117,11 +117,11 @@ func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
 		upload TextUpload
 		fehler error
 	}{
-		{"leer", TextUpload{Text: ""}, kern.ErrDateiLeer},
-		{"nur Leerraum", TextUpload{Text: " \r\n\t"}, kern.ErrDateiLeer},
-		{"ungültiges UTF-8", TextUpload{Text: "Befund \xff"}, kern.ErrTextKeinUTF8},
-		{"zu lang", TextUpload{Text: strings.Repeat("ä", kern.MaxTextZeichen+1)}, kern.ErrTextZuLang},
-		{"unbekanntes Modul", TextUpload{Text: eingabe, Modul: "sport"}, kern.ErrUnbekanntesModul},
+		{"leer", TextUpload{Text: ""}, core.ErrDateiLeer},
+		{"nur Leerraum", TextUpload{Text: " \r\n\t"}, core.ErrDateiLeer},
+		{"ungültiges UTF-8", TextUpload{Text: "Befund \xff"}, core.ErrTextKeinUTF8},
+		{"zu lang", TextUpload{Text: strings.Repeat("ä", core.MaxTextZeichen+1)}, core.ErrTextZuLang},
+		{"unbekanntes Modul", TextUpload{Text: eingabe, Modul: "sport"}, core.ErrUnbekanntesModul},
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			a := textAufbau()
@@ -139,12 +139,12 @@ func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
 // Genau 100 000 Zeichen mit Umlauten (200 000 Bytes) sind erlaubt.
 func TestTextImport_GrenzeInZeichen(t *testing.T) {
 	a := textAufbau()
-	text := strings.Repeat("ü", kern.MaxTextZeichen)
+	text := strings.Repeat("ü", core.MaxTextZeichen)
 	e, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Datei.Groesse != 2*kern.MaxTextZeichen {
+	if e.Datei.Groesse != 2*core.MaxTextZeichen {
 		t.Errorf("Größe %d", e.Datei.Groesse)
 	}
 }
@@ -178,7 +178,7 @@ func TestTextImport_TypNichtErlaubt(t *testing.T) {
 	e.Typ = "kochrezept"
 	a.leser.Erkennung = e
 	_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
-	if !errors.Is(err, kern.ErrErkennungUngueltig) || errors.Is(err, kern.ErrNichtLesbar) {
+	if !errors.Is(err, core.ErrErkennungUngueltig) || errors.Is(err, core.ErrNichtLesbar) {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -203,7 +203,7 @@ func TestTextImport_TextNichtImLog(t *testing.T) {
 
 	a := textAufbau()
 	e := textErkennung()
-	e.Infos = append(e.Infos, kern.ErkannteInfo{Name: "Dosis", Wert: ""}) // wird ausgelassen und geloggt
+	e.Infos = append(e.Infos, core.ErkannteInfo{Name: "Dosis", Wert: ""}) // wird ausgelassen und geloggt
 	a.leser.Erkennung = e
 	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe}); err != nil {
 		t.Fatal(err)

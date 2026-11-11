@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 )
 
@@ -27,7 +27,7 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	defer abbrechen()
 
 	eintragA, eintragB, eintragSport := NeueID(), NeueID(), NeueID()
-	abschnitte := []kern.Abschnitt{
+	abschnitte := []core.Abschnitt{
 		{EintragID: eintragA, Modul: "gesundheit", Nr: 1, Text: "Hämoglobin 14,2 g/dl", Embedding: einheitsvektor(0)},
 		{EintragID: eintragB, Modul: "gesundheit", Nr: 1, Text: "Blutdruck 128/82", Embedding: einheitsvektor(1)},
 		// Gleicher Vektor wie A, aber anderes Modul: Der Filter muss ihn ausschließen.
@@ -48,14 +48,14 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	}
 
 	// Warten, bis der Index fertig ist und die Abschnitte gefunden werden.
-	var treffer []kern.Treffer
+	var treffer []core.Treffer
 	for {
 		status, _, err := s.VektorindexStatus(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if status == "READY" {
-			treffer, err = s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "gesundheit", kern.AnzahlTreffer)
+			treffer, err = s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "gesundheit", core.AnzahlTreffer)
 			if err != nil {
 				t.Fatalf("Vektorsuche: %v", err)
 			}
@@ -80,13 +80,13 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 		t.Errorf("bester Treffer = %+v, erwartet Abschnitt von A", treffer[0])
 	}
 	// Gleicher Vektor: cos 1 → Score 1. Senkrecht: cos 0 → Score 0,5.
-	// Das bestätigt die Umrechnung (1 + cos) / 2, auf der kern.MinScore beruht.
+	// Das bestätigt die Umrechnung (1 + cos) / 2, auf der core.MinScore beruht.
 	if math.Abs(treffer[0].Score-1) > 1e-3 || math.Abs(treffer[1].Score-0.5) > 1e-3 {
 		t.Errorf("Scores = %.4f / %.4f, erwartet 1 / 0,5", treffer[0].Score, treffer[1].Score)
 	}
 
 	// Im Modul sport gibt es nur den einen Abschnitt.
-	sport, err := s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "sport", kern.AnzahlTreffer)
+	sport, err := s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "sport", core.AnzahlTreffer)
 	if err != nil || len(sport) != 1 || sport[0].EintragID != eintragSport {
 		t.Errorf("Modul sport: %+v, %v", sport, err)
 	}

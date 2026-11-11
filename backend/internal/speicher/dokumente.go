@@ -6,7 +6,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Die *Dok-Typen beschreiben, wie ein Eintrag in MongoDB aussieht. Sie sind
@@ -74,7 +74,7 @@ var kurzProjektion = bson.D{
 	{Key: "quelle", Value: 1},
 }
 
-func zuEintragDok(e kern.Eintrag) (eintragDok, error) {
+func zuEintragDok(e core.Eintrag) (eintragDok, error) {
 	id, err := bson.ObjectIDFromHex(e.ID)
 	if err != nil {
 		return eintragDok{}, fmt.Errorf("ungültige Eintrag-ID: %w", err)
@@ -114,16 +114,16 @@ func zuEintragDok(e kern.Eintrag) (eintragDok, error) {
 	}, nil
 }
 
-func (d eintragDok) zuKern() kern.Eintrag {
-	infos := make([]kern.Info, 0, len(d.Infos))
+func (d eintragDok) zuKern() core.Eintrag {
+	infos := make([]core.Info, 0, len(d.Infos))
 	for _, i := range d.Infos {
-		infos = append(infos, kern.Info(i))
+		infos = append(infos, core.Info(i))
 	}
-	korrekturen := make([]kern.Korrektur, 0, len(d.Korrekturen))
+	korrekturen := make([]core.Korrektur, 0, len(d.Korrekturen))
 	for _, k := range d.Korrekturen {
-		korrekturen = append(korrekturen, kern.Korrektur(k))
+		korrekturen = append(korrekturen, core.Korrektur(k))
 	}
-	return kern.Eintrag{
+	return core.Eintrag{
 		ID:            d.ID.Hex(),
 		Modul:         d.Modul,
 		Typ:           d.Typ,
@@ -132,7 +132,7 @@ func (d eintragDok) zuKern() kern.Eintrag {
 		Quelle:        d.Quelle,
 		Volltext:      d.Volltext,
 		Infos:         infos,
-		Datei: kern.Datei{
+		Datei: core.Datei{
 			ID:        d.Datei.ID.Hex(),
 			Dateiname: d.Datei.Dateiname,
 			MimeTyp:   d.Datei.MimeTyp,
@@ -143,8 +143,8 @@ func (d eintragDok) zuKern() kern.Eintrag {
 	}
 }
 
-func (d eintragKurzDok) zuKern() kern.EintragKurz {
-	return kern.EintragKurz{
+func (d eintragKurzDok) zuKern() core.EintragKurz {
+	return core.EintragKurz{
 		ID:            d.ID.Hex(),
 		Modul:         d.Modul,
 		Typ:           d.Typ,
@@ -168,7 +168,7 @@ type abschnittDok struct {
 	Embedding []float32     `bson:"embedding"`
 }
 
-func zuAbschnittDok(a kern.Abschnitt) (abschnittDok, error) {
+func zuAbschnittDok(a core.Abschnitt) (abschnittDok, error) {
 	eintragID, err := bson.ObjectIDFromHex(a.EintragID)
 	if err != nil {
 		return abschnittDok{}, fmt.Errorf("ungültige Eintrag-ID im Abschnitt: %w", err)
@@ -186,8 +186,8 @@ func zuAbschnittDok(a kern.Abschnitt) (abschnittDok, error) {
 	}, nil
 }
 
-func (d abschnittDok) zuKern() kern.Abschnitt {
-	return kern.Abschnitt{
+func (d abschnittDok) zuKern() core.Abschnitt {
+	return core.Abschnitt{
 		EintragID: d.EintragID.Hex(),
 		Modul:     d.Modul,
 		Nr:        d.Nr,

@@ -30,7 +30,7 @@ import (
 
 	"lifelog/backend/internal/beispieldaten"
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell/gemini"
 	"lifelog/backend/internal/speicher"
 )
@@ -69,7 +69,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 	eintraege := beispieldaten.Eintraege()
 
 	// Embeddings zuerst: Scheitert Gemini, bleibt die Datenbank, wie sie war.
-	abschnitte := map[string][]kern.Abschnitt{}
+	abschnitte := map[string][]core.Abschnitt{}
 	if !nurEntfernen && !ohneAbschnitte {
 		abschnitte, err = einbetten(ctx, k, eintraege)
 		if err != nil {
@@ -128,7 +128,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 // einbetten zerlegt alle Testeinträge und holt die Embeddings in einem
 // Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
 // Eintrag-ID.
-func einbetten(ctx context.Context, k config.Config, eintraege []kern.Eintrag) (map[string][]kern.Abschnitt, error) {
+func einbetten(ctx context.Context, k config.Config, eintraege []core.Eintrag) (map[string][]core.Abschnitt, error) {
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
 		Modell:          k.GeminiModel,
@@ -138,7 +138,7 @@ func einbetten(ctx context.Context, k config.Config, eintraege []kern.Eintrag) (
 		return nil, err
 	}
 
-	var alle []kern.Abschnitt
+	var alle []core.Abschnitt
 	var texte []string
 	for _, e := range eintraege {
 		for _, a := range beispieldaten.Abschnitte(e) {
@@ -154,7 +154,7 @@ func einbetten(ctx context.Context, k config.Config, eintraege []kern.Eintrag) (
 		return nil, fmt.Errorf("%d Embeddings für %d Abschnitte", len(vektoren), len(texte))
 	}
 
-	ergebnis := map[string][]kern.Abschnitt{}
+	ergebnis := map[string][]core.Abschnitt{}
 	for i, a := range alle {
 		a.Embedding = vektoren[i]
 		ergebnis[a.EintragID] = append(ergebnis[a.EintragID], a)

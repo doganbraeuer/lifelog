@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"slices"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Fehlercodes für Korrekturen (API.md 3.5).
@@ -24,7 +24,7 @@ const maxKorrekturBody = 64 << 10
 
 // Korrigierer korrigiert einen Eintrag. Umgesetzt von dienst.Korrigieren.
 type Korrigierer interface {
-	Ausfuehren(ctx context.Context, id string, a kern.Aenderung) (kern.Eintrag, error)
+	Ausfuehren(ctx context.Context, id string, a core.Aenderung) (core.Eintrag, error)
 }
 
 // Felder des Eintrags, die es gibt, aber nicht korrigiert werden dürfen.
@@ -36,7 +36,7 @@ func korrigierenHandler(k Korrigierer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		// ID vor dem Body prüfen: "/eintraege/abc" ist immer UNGUELTIGE_ID.
-		if err := kern.PruefeID(id); err != nil {
+		if err := core.PruefeID(id); err != nil {
 			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
 			return
 		}
@@ -63,20 +63,20 @@ func korrigierenHandler(k Korrigierer) http.HandlerFunc {
 }
 
 func schreibeKorrekturFehler(w http.ResponseWriter, r *http.Request, err error) {
-	var kf *kern.KorrekturFehler
+	var kf *core.KorrekturFehler
 	switch {
 	case errors.As(err, &kf):
 		status, code := http.StatusBadRequest, CodeUngueltigeAnfrage
 		switch {
-		case errors.Is(err, kern.ErrFeldNichtKorrigierbar):
+		case errors.Is(err, core.ErrFeldNichtKorrigierbar):
 			code = CodeFeldNichtKorrigierbar
-		case errors.Is(err, kern.ErrInfoNichtGefunden):
+		case errors.Is(err, core.ErrInfoNichtGefunden):
 			status, code = http.StatusNotFound, CodeInfoNichtGefunden
 		}
 		schreibeFehler(w, status, code, kf.Nachricht, korrekturDetails(kf))
-	case errors.Is(err, kern.ErrUngueltigeID):
+	case errors.Is(err, core.ErrUngueltigeID):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
-	case errors.Is(err, kern.ErrEintragNichtGefunden):
+	case errors.Is(err, core.ErrEintragNichtGefunden):
 		schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
 	case errors.Is(err, context.Canceled):
 		// Die App hat aufgegeben; niemand liest die Antwort.
@@ -87,7 +87,7 @@ func schreibeKorrekturFehler(w http.ResponseWriter, r *http.Request, err error) 
 
 // korrekturDetails: feld, wert und infoId, soweit vorhanden (API.md 3.5).
 // Der Wert geht nur an die App zurück, die ihn geschickt hat, nie ins Log.
-func korrekturDetails(kf *kern.KorrekturFehler) map[string]any {
+func korrekturDetails(kf *core.KorrekturFehler) map[string]any {
 	d := map[string]any{}
 	if kf.Feld != "" {
 		d["feld"] = kf.Feld
@@ -104,20 +104,20 @@ func korrekturDetails(kf *kern.KorrekturFehler) map[string]any {
 	return d
 }
 
-// leseAenderung übersetzt den JSON-Body in eine kern.Aenderung. Hier fällt
+// leseAenderung übersetzt den JSON-Body in eine core.Aenderung. Hier fällt
 // alles auf, was am JSON selbst nicht stimmt (falscher Typ, unbekanntes
 // Feld, null, wo keins erlaubt ist). Was den Eintrag braucht (Typ im Modul,
-// gültiges Datum, Info vorhanden), prüft kern.Korrigiere.
+// gültiges Datum, Info vorhanden), prüft core.Korrigiere.
 //
 // Warum nicht einfach in ein struct dekodieren? Dann wären "feld fehlt" und
 // "feld": null beide nil. Über json.RawMessage sehen wir den Unterschied.
 //
 // Felder werden alphabetisch geprüft, damit dieselbe Anfrage immer
 // denselben Fehler liefert (eine Go-Map hat keine feste Reihenfolge).
-func leseAenderung(body []byte) (kern.Aenderung, error) {
+func leseAenderung(body []byte) (core.Aenderung, error) {
 	var felder map[string]json.RawMessage
 	if err := json.Unmarshal(body, &felder); err != nil || felder == nil {
-		return kern.Aenderung{}, kern.Ungueltig(
+		return core.Aenderung{}, core.Ungueltig(
 			"Bitte die Änderung als JSON-Objekt schicken, z. B. {\"quelle\": \"…\"}.", "", nil)
 	}
 
@@ -125,24 +125,24 @@ func leseAenderung(body []byte) (kern.Aenderung, error) {
 	for _, name := range namen {
 		switch {
 		case slices.Contains(nichtKorrigierbar, name):
-			return kern.Aenderung{}, kern.NichtKorrigierbar(name)
+			return core.Aenderung{}, core.NichtKorrigierbar(name)
 		case !slices.Contains([]string{"dokumentdatum", "infos", "quelle", "typ"}, name):
-			return kern.Aenderung{}, kern.Ungueltig("Unbekanntes Feld: "+name+".", name, nil)
+			return core.Aenderung{}, core.Ungueltig("Unbekanntes Feld: "+name+".", name, nil)
 		}
 	}
 
-	var a kern.Aenderung
+	var a core.Aenderung
 	if roh, ok := felder["typ"]; ok {
 		typ, ist := alsText(roh)
 		if !ist {
-			return kern.Aenderung{}, kern.Ungueltig("Der Typ muss ein Text sein.", "typ", alsWert(roh))
+			return core.Aenderung{}, core.Ungueltig("Der Typ muss ein Text sein.", "typ", alsWert(roh))
 		}
 		a.Typ = &typ
 	}
 	if roh, ok := felder["dokumentdatum"]; ok {
 		f, ok := alsFeld(roh)
 		if !ok {
-			return kern.Aenderung{}, kern.Ungueltig("Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.",
+			return core.Aenderung{}, core.Ungueltig("Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.",
 				"dokumentdatum", alsWert(roh))
 		}
 		a.Dokumentdatum = f
@@ -150,14 +150,14 @@ func leseAenderung(body []byte) (kern.Aenderung, error) {
 	if roh, ok := felder["quelle"]; ok {
 		f, ok := alsFeld(roh)
 		if !ok {
-			return kern.Aenderung{}, kern.Ungueltig("Die Quelle muss ein Text oder null sein.", "quelle", alsWert(roh))
+			return core.Aenderung{}, core.Ungueltig("Die Quelle muss ein Text oder null sein.", "quelle", alsWert(roh))
 		}
 		a.Quelle = f
 	}
 	if roh, ok := felder["infos"]; ok {
 		infos, err := leseInfos(roh)
 		if err != nil {
-			return kern.Aenderung{}, err
+			return core.Aenderung{}, err
 		}
 		a.Infos = infos
 	}
@@ -166,20 +166,20 @@ func leseAenderung(body []byte) (kern.Aenderung, error) {
 
 // leseInfos: "infos" muss eine Liste von Objekten mit id und wert und/oder
 // einheit sein. Das Ergebnis ist nie nil, auch bei "infos": [].
-func leseInfos(roh json.RawMessage) ([]kern.InfoAenderung, error) {
+func leseInfos(roh json.RawMessage) ([]core.InfoAenderung, error) {
 	var liste []json.RawMessage
 	if err := json.Unmarshal(roh, &liste); err != nil || liste == nil {
-		return nil, kern.Ungueltig("\"infos\" muss eine Liste sein.", "infos", nil)
+		return nil, core.Ungueltig("\"infos\" muss eine Liste sein.", "infos", nil)
 	}
-	infos := make([]kern.InfoAenderung, 0, len(liste))
+	infos := make([]core.InfoAenderung, 0, len(liste))
 	for _, element := range liste {
 		var felder map[string]json.RawMessage
 		if err := json.Unmarshal(element, &felder); err != nil || felder == nil {
-			return nil, kern.Ungueltig("Jede Info muss ein Objekt sein.", "infos", nil)
+			return nil, core.Ungueltig("Jede Info muss ein Objekt sein.", "infos", nil)
 		}
 		id, ist := alsText(felder["id"])
 		if !ist || id == "" {
-			return nil, kern.Ungueltig("Jede Info braucht eine id.", "infos", nil)
+			return nil, core.Ungueltig("Jede Info braucht eine id.", "infos", nil)
 		}
 		pfad := "infos." + id + "."
 
@@ -187,24 +187,24 @@ func leseInfos(roh json.RawMessage) ([]kern.InfoAenderung, error) {
 			switch name {
 			case "id", "wert", "einheit":
 			case "name":
-				return nil, kern.NichtKorrigierbar(pfad + "name")
+				return nil, core.NichtKorrigierbar(pfad + "name")
 			default:
-				return nil, kern.Ungueltig("Unbekanntes Feld: "+pfad+name+".", pfad+name, nil)
+				return nil, core.Ungueltig("Unbekanntes Feld: "+pfad+name+".", pfad+name, nil)
 			}
 		}
 
-		info := kern.InfoAenderung{ID: id}
+		info := core.InfoAenderung{ID: id}
 		if roh, ok := felder["wert"]; ok {
 			wert, ist := alsText(roh)
 			if !ist {
-				return nil, kern.Ungueltig("Der Wert muss ein Text sein.", pfad+"wert", alsWert(roh))
+				return nil, core.Ungueltig("Der Wert muss ein Text sein.", pfad+"wert", alsWert(roh))
 			}
 			info.Wert = &wert
 		}
 		if roh, ok := felder["einheit"]; ok {
 			f, ok := alsFeld(roh)
 			if !ok {
-				return nil, kern.Ungueltig("Die Einheit muss ein Text oder null sein.", pfad+"einheit", alsWert(roh))
+				return nil, core.Ungueltig("Die Einheit muss ein Text oder null sein.", pfad+"einheit", alsWert(roh))
 			}
 			info.Einheit = f
 		}
@@ -223,15 +223,15 @@ func alsText(roh json.RawMessage) (string, bool) {
 }
 
 // alsFeld: null oder ein String, für Felder, die entfernt werden dürfen.
-func alsFeld(roh json.RawMessage) (kern.Feld, bool) {
+func alsFeld(roh json.RawMessage) (core.Feld, bool) {
 	if bytes.Equal(bytes.TrimSpace(roh), []byte("null")) {
-		return kern.Feld{Gesetzt: true}, true
+		return core.Feld{Gesetzt: true}, true
 	}
 	s, ok := alsText(roh)
 	if !ok {
-		return kern.Feld{}, false
+		return core.Feld{}, false
 	}
-	return kern.Feld{Gesetzt: true, Wert: &s}, true
+	return core.Feld{Gesetzt: true, Wert: &s}, true
 }
 
 // alsWert dekodiert einen abgelehnten Wert für details.wert. null ergibt

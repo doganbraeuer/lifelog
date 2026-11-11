@@ -3,7 +3,7 @@ package api
 import (
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 )
 
 // Die JSON-Typen der API. Sie werden nur über die zuJSON-Funktionen gebaut.
@@ -30,7 +30,7 @@ func zeitpunktJSON(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func eintragKurzZuJSON(e kern.EintragKurz) eintragKurzJSON {
+func eintragKurzZuJSON(e core.EintragKurz) eintragKurzJSON {
 	return eintragKurzJSON{
 		ID:            e.ID,
 		Modul:         e.Modul,
@@ -77,7 +77,7 @@ type korrekturJSON struct {
 	Zeitpunkt  string  `json:"zeitpunkt"`
 }
 
-func eintragZuJSON(e kern.Eintrag) eintragJSON {
+func eintragZuJSON(e core.Eintrag) eintragJSON {
 	infos := make([]infoJSON, 0, len(e.Infos)) // nie nil
 	for _, i := range e.Infos {
 		infos = append(infos, infoJSON{ID: i.ID, Name: i.Name, Wert: i.Wert, Einheit: i.Einheit})
@@ -105,7 +105,7 @@ func eintragZuJSON(e kern.Eintrag) eintragJSON {
 	}
 }
 
-func eintraegeListeZuJSON(liste []kern.EintragKurz) eintraegeListeJSON {
+func eintraegeListeZuJSON(liste []core.EintragKurz) eintraegeListeJSON {
 	out := make([]eintragKurzJSON, 0, len(liste)) // nie nil
 	for _, e := range liste {
 		out = append(out, eintragKurzZuJSON(e))

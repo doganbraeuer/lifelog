@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"lifelog/backend/internal/kern"
+	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/modell"
 	"lifelog/backend/internal/modell/attrappe"
 )
@@ -22,8 +22,8 @@ type speicherAttrappe struct {
 	hashes     map[string]string // sha256 → Eintrag-ID (vorhandene Einträge)
 	fehler     map[string]error  // Methodenname → Fehler
 	protokoll  []string
-	eintraege  []kern.Eintrag
-	abschnitte []kern.Abschnitt
+	eintraege  []core.Eintrag
+	abschnitte []core.Abschnitt
 	dateien    map[string][]byte
 }
 
@@ -55,7 +55,7 @@ func (s *speicherAttrappe) DateiLoeschen(_ context.Context, id string) error {
 	return nil
 }
 
-func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []kern.Abschnitt) error {
+func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Abschnitt) error {
 	s.protokoll = append(s.protokoll, "AbschnitteSpeichern")
 	if err := s.fehler["AbschnitteSpeichern"]; err != nil {
 		return err
@@ -66,14 +66,14 @@ func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []kern.Absch
 
 func (s *speicherAttrappe) AbschnitteLoeschen(_ context.Context, eintragID string) error {
 	s.protokoll = append(s.protokoll, "AbschnitteLoeschen")
-	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a kern.Abschnitt) bool { return a.EintragID == eintragID })
+	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a core.Abschnitt) bool { return a.EintragID == eintragID })
 	return nil
 }
 
-func (s *speicherAttrappe) EintragSpeichern(_ context.Context, e kern.Eintrag) error {
+func (s *speicherAttrappe) EintragSpeichern(_ context.Context, e core.Eintrag) error {
 	s.protokoll = append(s.protokoll, "EintragSpeichern")
 	if err := s.fehler["EintragSpeichern"]; err != nil {
-		if errors.Is(err, kern.ErrDuplikat) {
+		if errors.Is(err, core.ErrDuplikat) {
 			// Wie bei einem gleichzeitigen Upload: Jetzt existiert der andere.
 			s.hashes[e.Datei.Sha256] = "aaaaaaaaaaaaaaaaaaaaaaaa"
 		}
@@ -92,14 +92,14 @@ func zeiger(s string) *string { return &s }
 
 const pdf = "%PDF-1.7\nsynthetischer Befund"
 
-func erkennung() kern.Erkennung {
-	return kern.Erkennung{
+func erkennung() core.Erkennung {
+	return core.Erkennung{
 		Lesbar:        true,
 		Dokumentdatum: zeiger("2026-10-14"),
 		Quelle:        zeiger("Labor Muster GmbH"),
 		Typ:           "laborbefund",
 		Volltext:      "Labor Muster GmbH\n\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/dl",
-		Infos: []kern.ErkannteInfo{
+		Infos: []core.ErkannteInfo{
 			{Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")},
 			{Name: "CRP", Wert: "<0,5", Einheit: zeiger("mg/dl")},
 		},
@@ -151,7 +151,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 		t.Errorf("Importdatum = %v, erwartet auf Millisekunden gekürzt", e.Importdatum)
 	}
 	d := e.Datei
-	if d.MimeTyp != kern.MimePDF || d.Groesse != int64(len(pdf)) || d.Dateiname != "befund.pdf" || len(d.Sha256) != 64 {
+	if d.MimeTyp != core.MimePDF || d.Groesse != int64(len(pdf)) || d.Dateiname != "befund.pdf" || len(d.Sha256) != 64 {
 		t.Errorf("Datei = %+v", d)
 	}
 	if e.Korrekturen == nil || len(e.Korrekturen) != 0 {
@@ -194,8 +194,8 @@ func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
 	if !errors.As(err, &df) || df.EintragID != vorhanden.ID {
 		t.Fatalf("erwartet DuplikatFehler mit %q, bekommen %v", vorhanden.ID, err)
 	}
-	if !errors.Is(err, kern.ErrDuplikat) {
-		t.Error("DuplikatFehler muss auch kern.ErrDuplikat sein")
+	if !errors.Is(err, core.ErrDuplikat) {
+		t.Error("DuplikatFehler muss auch core.ErrDuplikat sein")
 	}
 	if a.leser.Aufrufe() != leserVorher || a.einbetter.Aufrufe() != einbetterVorher {
 		t.Error("bei einem Duplikat darf kein Modell aufgerufen werden")
@@ -211,10 +211,10 @@ func TestHochladen_PruefungenVorJedemAufruf(t *testing.T) {
 		upload Upload
 		fehler error
 	}{
-		{"leere Datei", Upload{Daten: nil}, kern.ErrDateiLeer},
-		{"zu groß", Upload{Daten: append([]byte("%PDF-"), make([]byte, kern.MaxDateiBytes)...)}, kern.ErrDateiZuGross},
-		{"falscher Typ", Upload{Daten: []byte("nur Text")}, kern.ErrDateitypNichtUnterstuetzt},
-		{"unbekanntes Modul", Upload{Daten: []byte(pdf), Modul: "sport"}, kern.ErrUnbekanntesModul},
+		{"leere Datei", Upload{Daten: nil}, core.ErrDateiLeer},
+		{"zu groß", Upload{Daten: append([]byte("%PDF-"), make([]byte, core.MaxDateiBytes)...)}, core.ErrDateiZuGross},
+		{"falscher Typ", Upload{Daten: []byte("nur Text")}, core.ErrDateitypNichtUnterstuetzt},
+		{"unbekanntes Modul", Upload{Daten: []byte(pdf), Modul: "sport"}, core.ErrUnbekanntesModul},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -244,8 +244,8 @@ func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
 	}{
 		{"Vision-LLM nicht erreichbar", &attrappe.Leser{Err: modell.ErrNichtErreichbar}, &attrappe.Einbetter{}, modell.ErrNichtErreichbar},
 		{"Antwort ungültig", &attrappe.Leser{Err: modell.ErrAntwortUngueltig}, &attrappe.Einbetter{}, modell.ErrAntwortUngueltig},
-		{"nicht lesbar", &attrappe.Leser{Erkennung: nichtLesbar}, &attrappe.Einbetter{}, kern.ErrNichtLesbar},
-		{"Erkennung ungültig", &attrappe.Leser{Erkennung: falscherTyp}, &attrappe.Einbetter{}, kern.ErrErkennungUngueltig},
+		{"nicht lesbar", &attrappe.Leser{Erkennung: nichtLesbar}, &attrappe.Einbetter{}, core.ErrNichtLesbar},
+		{"Erkennung ungültig", &attrappe.Leser{Erkennung: falscherTyp}, &attrappe.Einbetter{}, core.ErrErkennungUngueltig},
 		{"Embedding nicht erreichbar", &attrappe.Leser{Erkennung: erkennung()}, &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
 	}
 	for _, f := range faelle {
@@ -303,7 +303,7 @@ func TestHochladen_GleichzeitigesDuplikat(t *testing.T) {
 	// Beide Uploads kommen an der Prüfung in Schritt 2 vorbei; erst der
 	// eindeutige Index beim Speichern merkt es.
 	a := neuerAufbau()
-	a.speicher.fehler["EintragSpeichern"] = kern.ErrDuplikat
+	a.speicher.fehler["EintragSpeichern"] = core.ErrDuplikat
 
 	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
 
@@ -342,7 +342,7 @@ func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(alt) })
 
 	e := erkennung()
-	e.Infos = append(e.Infos, kern.ErkannteInfo{Name: "", Wert: "GEHEIMER-WERT-42"})
+	e.Infos = append(e.Infos, core.ErkannteInfo{Name: "", Wert: "GEHEIMER-WERT-42"})
 	a := neuerAufbau()
 	a.dienst.leser = &attrappe.Leser{Erkennung: e}
 
