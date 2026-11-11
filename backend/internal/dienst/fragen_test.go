@@ -59,8 +59,8 @@ func suchBestand() *suchAttrappe {
 
 func TestFragen_Treffer(t *testing.T) {
 	s := suchBestand()
-	a := &fake.Antworter{Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1]."}
-	f := NeuFragen(s, &fake.Einbetter{}, a)
+	a := &fake.Answerer{Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1]."}
+	f := NeuFragen(s, &fake.Embedder{}, a)
 
 	antwort, err := f.Ausfuehren(context.Background(), "  Wie hoch war mein Hb?  ", "")
 	if err != nil {
@@ -71,7 +71,7 @@ func TestFragen_Treffer(t *testing.T) {
 	}
 
 	// Ans Modell gingen nur Treffer ≥ MinScore mit vorhandenem Eintrag, neu nummeriert.
-	frage, fs := a.LetzteAnfrage()
+	frage, fs := a.LastRequest()
 	if frage != "Wie hoch war mein Hb?" {
 		t.Errorf("Frage = %q, erwartet ohne Leerraum", frage)
 	}
@@ -90,24 +90,24 @@ func TestFragen_Treffer(t *testing.T) {
 func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
 	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idLabor, Score: 0.77, Text: "Wetter?"}},
 		eintraege: suchBestand().eintraege}
-	a := &fake.Antworter{Text: "sollte nie kommen [1]"}
+	a := &fake.Answerer{Text: "sollte nie kommen [1]"}
 
-	antwort, err := NeuFragen(s, &fake.Einbetter{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
+	antwort, err := NeuFragen(s, &fake.Embedder{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
 
 	if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || antwort.Sources == nil || len(antwort.Sources) != 0 {
 		t.Errorf("Antwort = %+v, %v; erwartet fester Satz", antwort, err)
 	}
-	if a.Aufrufe() != 0 {
+	if a.Calls() != 0 {
 		t.Error("ohne Treffer über der Schwelle darf das Sprachmodell nicht gefragt werden")
 	}
 }
 
 func TestFragen_NurVerwaisteTreffer(t *testing.T) {
 	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idWeg, Score: 0.95}}, eintraege: map[string]core.EntrySummary{}}
-	a := &fake.Antworter{}
-	antwort, _ := NeuFragen(s, &fake.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
-	if antwort.Found || a.Aufrufe() != 0 {
-		t.Errorf("verwaiste Abschnitte dürfen nicht ans Modell: %+v, %d Aufrufe", antwort, a.Aufrufe())
+	a := &fake.Answerer{}
+	antwort, _ := NeuFragen(s, &fake.Embedder{}, a).Ausfuehren(context.Background(), "x", "")
+	if antwort.Found || a.Calls() != 0 {
+		t.Errorf("verwaiste Abschnitte dürfen nicht ans Modell: %+v, %d Aufrufe", antwort, a.Calls())
 	}
 }
 
@@ -115,8 +115,8 @@ func TestFragen_ModellOhneVerweis(t *testing.T) {
 	// Zweite Schicht: Das Modell antwortet selbst mit dem festen Satz oder
 	// ohne Quelle; beides wird zu "nichts gefunden".
 	for _, text := range []string{core.NotFoundAnswer, "Der Wert war 14,2."} {
-		a := &fake.Antworter{Text: text}
-		antwort, err := NeuFragen(suchBestand(), &fake.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
+		a := &fake.Answerer{Text: text}
+		antwort, err := NeuFragen(suchBestand(), &fake.Embedder{}, a).Ausfuehren(context.Background(), "x", "")
 		if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || len(antwort.Sources) != 0 {
 			t.Errorf("%q → %+v, %v", text, antwort, err)
 		}
@@ -129,16 +129,16 @@ func TestFragen_Fehler(t *testing.T) {
 		frage     string
 		modul     string
 		suche     *suchAttrappe
-		einbetter *fake.Einbetter
-		antworter *fake.Antworter
+		einbetter *fake.Embedder
+		antworter *fake.Answerer
 		fehler    error
 	}{
-		{"Frage leer", "  ", "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrQuestionMissing},
-		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrQuestionTooLong},
-		{"Modul unbekannt", "x", "sport", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrUnknownModule},
-		{"Embedding nicht erreichbar", "x", "", suchBestand(), &fake.Einbetter{Err: llm.ErrNichtErreichbar}, &fake.Antworter{}, llm.ErrNichtErreichbar},
-		{"Antworter nicht erreichbar", "x", "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{Err: llm.ErrNichtErreichbar}, llm.ErrNichtErreichbar},
-		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &fake.Einbetter{}, &fake.Antworter{}, nil},
+		{"Frage leer", "  ", "", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionMissing},
+		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionTooLong},
+		{"Modul unbekannt", "x", "sport", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrUnknownModule},
+		{"Embedding nicht erreichbar", "x", "", suchBestand(), &fake.Embedder{Err: llm.ErrUnavailable}, &fake.Answerer{}, llm.ErrUnavailable},
+		{"Antworter nicht erreichbar", "x", "", suchBestand(), &fake.Embedder{}, &fake.Answerer{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
+		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &fake.Embedder{}, &fake.Answerer{}, nil},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -159,8 +159,8 @@ func TestFragen_FrageUndTexteNichtImLog(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(alt) })
 
-	a := &fake.Antworter{Text: "GEHEIME-ANTWORT [1]"}
-	_, _ = NeuFragen(suchBestand(), &fake.Einbetter{}, a).Ausfuehren(context.Background(), "GEHEIME-FRAGE", "")
+	a := &fake.Answerer{Text: "GEHEIME-ANTWORT [1]"}
+	_, _ = NeuFragen(suchBestand(), &fake.Embedder{}, a).Ausfuehren(context.Background(), "GEHEIME-FRAGE", "")
 
 	for _, geheim := range []string{"GEHEIME-FRAGE", "GEHEIME-ANTWORT", "Hämoglobin"} {
 		if strings.Contains(log.String(), geheim) {

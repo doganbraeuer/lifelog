@@ -154,11 +154,11 @@ func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a a
 	case errors.Is(err, core.ErrUnreadable):
 		schreibeFehler(w, http.StatusUnprocessableEntity, CodeNichtLesbar,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)
-	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, llm.ErrAntwortUngueltig):
+	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, llm.ErrInvalidResponse):
 		slog.Warn("Auslesen fehlgeschlagen", "fehler", err)
 		schreibeFehler(w, http.StatusBadGateway, CodeAuslesenFehlgeschlagen,
 			"Das Dokument konnte nicht ausgelesen werden. Bitte versuche es noch einmal.", nil)
-	case errors.Is(err, llm.ErrNichtErreichbar):
+	case errors.Is(err, llm.ErrUnavailable):
 		slog.Warn("Modell nicht erreichbar", "fehler", err)
 		schreibeFehler(w, http.StatusServiceUnavailable, CodeModellNichtErreichbar,
 			"Die Texterkennung ist gerade nicht erreichbar. Bitte versuche es später noch einmal.", nil)

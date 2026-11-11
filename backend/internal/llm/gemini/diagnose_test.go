@@ -1,25 +1,25 @@
 package gemini
 
-// Diagnose: ein einzelner Leseaufruf, ohne Wiederholung und ohne Ersatz,
-// mit Dauer, Abbruchgrund und Token-Verbrauch.
+// Diagnosis: a single read call, without retries and without fallback, with
+// duration, finish reason and token usage.
 //
-//	LIFELOG_DIAGNOSE=1 LIFELOG_DIAGNOSE_VARIANT=voll go test ./internal/modell/gemini/ -run Diagnose -v
+//	LIFELOG_DIAGNOSE=1 LIFELOG_DIAGNOSE_VARIANT=full go test ./internal/llm/gemini/ -run Diagnose -v
 //
-// Varianten (bauen aufeinander auf):
+// Variants (each builds on the previous one):
 //
-//	voll         genau die Anfrage des Servers (leseAnfrage)
-//	ohne-schema  ohne JSON-Schema und ohne JSON-Modus ("ohne Structured Output")
-//	ohne-system  zusätzlich ohne Systemanweisung (wie der Playground-Test)
+//	full       exactly the server's request (readRequest)
+//	no-schema  without JSON schema and without JSON mode ("no structured output")
+//	no-system  additionally without system instruction (like the playground test)
 //
-// Weitere Schalter, um andere Modelle zu vergleichen:
+// More switches to compare other models:
 //
-//	LIFELOG_DIAGNOSE_MODEL=gemini-3.6-flash   statt GEMINI_MODEL
-//	LIFELOG_DIAGNOSE_FILE=laborbefund.png     statt laborbefund.pdf (oder ein
-//	                                           absoluter Pfad, nur synthetisch!)
-//	LIFELOG_DIAGNOSE_THINKING=aus              ohne ThinkingConfig (für Modelle
-//	                                           ohne thinkingLevel)
+//	LIFELOG_DIAGNOSE_MODEL=gemini-3.6-flash   instead of GEMINI_MODEL
+//	LIFELOG_DIAGNOSE_FILE=laborbefund.png     instead of laborbefund.pdf (or an
+//	                                          absolute path, synthetic only!)
+//	LIFELOG_DIAGNOSE_THINKING=off             without ThinkingConfig (for models
+//	                                          without thinkingLevel)
 //
-// Schickt nur synthetische Dateien aus testdaten/.
+// Sends only synthetic files from testdaten/.
 
 import (
 	"context"
@@ -36,128 +36,128 @@ import (
 
 const diagnoseLimit = 120 * time.Second
 
-func TestDiagnose_Lesen(t *testing.T) {
+func TestDiagnose_Read(t *testing.T) {
 	if os.Getenv("LIFELOG_DIAGNOSE") != "1" {
-		t.Skip("Diagnose übersprungen (LIFELOG_DIAGNOSE=1 setzen)")
+		t.Skip("diagnosis skipped (set LIFELOG_DIAGNOSE=1)")
 	}
-	variante := os.Getenv("LIFELOG_DIAGNOSE_VARIANT")
-	if variante == "" {
-		variante = "voll"
+	variant := os.Getenv("LIFELOG_DIAGNOSE_VARIANT")
+	if variant == "" {
+		variant = "full"
 	}
 
 	if err := config.FindDotenv(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := Neu(context.Background(), Einstellungen{
-		Schluessel: k.GeminiKey, Modell: k.GeminiModel, EmbeddingModell: k.GeminiEmbeddingModel,
+	g, err := New(context.Background(), Settings{
+		APIKey: c.GeminiKey, Model: c.GeminiModel, EmbeddingModel: c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	modellName := k.GeminiModel
+	model := c.GeminiModel
 	if m := os.Getenv("LIFELOG_DIAGNOSE_MODEL"); m != "" {
-		modellName = m
+		model = m
 	}
-	dateiname := os.Getenv("LIFELOG_DIAGNOSE_FILE")
-	if dateiname == "" {
-		dateiname = "laborbefund.pdf"
+	fileName := os.Getenv("LIFELOG_DIAGNOSE_FILE")
+	if fileName == "" {
+		fileName = "laborbefund.pdf"
 	}
-	// Ein absoluter Pfad erlaubt umgewandelte Varianten außerhalb des Repos
-	// (z. B. dieselbe Seite als JPEG); sonst eine Datei aus testdaten/.
-	var daten []byte
-	if filepath.IsAbs(dateiname) {
-		if daten, err = os.ReadFile(dateiname); err != nil {
+	// An absolute path allows converted variants outside the repository
+	// (e.g. the same page as JPEG); otherwise a file from testdaten/.
+	var data []byte
+	if filepath.IsAbs(fileName) {
+		if data, err = os.ReadFile(fileName); err != nil {
 			t.Fatal(err)
 		}
 	} else {
-		daten = testdatei(t, dateiname)
+		data = testFile(t, fileName)
 	}
-	mimeTyp, err := core.DetectFileType(daten)
+	mimeType, err := core.DetectFileType(data)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	inhalte, cfg := leseAnfrage(daten, mimeTyp, core.AllowedTypes("gesundheit"))
+	contents, cfg := readRequest(data, mimeType, core.AllowedTypes("gesundheit"))
 	thinking := string(cfg.ThinkingConfig.ThinkingLevel)
-	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "aus" {
-		cfg.ThinkingConfig, thinking = nil, "aus"
+	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "off" {
+		cfg.ThinkingConfig, thinking = nil, "off"
 	}
-	switch variante {
-	case "voll":
-	case "ohne-schema":
+	switch variant {
+	case "full":
+	case "no-schema":
 		cfg.ResponseJsonSchema, cfg.ResponseMIMEType = nil, ""
-	case "ohne-system":
+	case "no-system":
 		cfg.ResponseJsonSchema, cfg.ResponseMIMEType = nil, ""
 		cfg.SystemInstruction = nil
 	default:
-		t.Fatalf("unbekannte Variante %q", variante)
+		t.Fatalf("unknown variant %q", variant)
 	}
-	t.Logf("Modell %s, Variante %s, Thinking %s, Limit %v, %s (%s, %d Bytes)",
-		modellName, variante, thinking, diagnoseLimit, dateiname, mimeTyp, len(daten))
+	t.Logf("model %s, variant %s, thinking %s, limit %v, %s (%s, %d bytes)",
+		model, variant, thinking, diagnoseLimit, fileName, mimeType, len(data))
 
-	ctx, abbrechen := context.WithTimeout(context.Background(), diagnoseLimit)
-	defer abbrechen()
+	ctx, cancel := context.WithTimeout(context.Background(), diagnoseLimit)
+	defer cancel()
 
 	start := time.Now()
-	resp, err := g.erzeugen(ctx, modellName, inhalte, cfg)
-	dauer := time.Since(start).Round(time.Millisecond)
+	resp, err := g.generate(ctx, model, contents, cfg)
+	duration := time.Since(start).Round(time.Millisecond)
 
 	if err != nil {
-		t.Fatalf("nach %v: %v", dauer, uebersetzeFehler(err, k.GeminiKey))
+		t.Fatalf("after %v: %v", duration, translateError(err, c.GeminiKey))
 	}
 
-	t.Logf("Dauer: %v", dauer)
-	t.Logf("Modellversion: %s", resp.ModelVersion)
+	t.Logf("duration: %v", duration)
+	t.Logf("model version: %s", resp.ModelVersion)
 	if len(resp.Candidates) > 0 && resp.Candidates[0] != nil {
-		t.Logf("Abbruchgrund: %q", resp.Candidates[0].FinishReason)
+		t.Logf("finish reason: %q", resp.Candidates[0].FinishReason)
 	}
 	if fb := resp.PromptFeedback; fb != nil && fb.BlockReason != "" {
-		t.Logf("Blockiert: %s", fb.BlockReason)
+		t.Logf("blocked: %s", fb.BlockReason)
 	}
 	if u := resp.UsageMetadata; u != nil {
-		t.Logf("Tokens: Eingabe %d, Nachdenken %d, Ausgabe %d, gesamt %d",
+		t.Logf("tokens: input %d, thinking %d, output %d, total %d",
 			u.PromptTokenCount, u.ThoughtsTokenCount, u.CandidatesTokenCount, u.TotalTokenCount)
 	}
 
 	text := resp.Text()
-	t.Logf("Antwort: %d Zeichen", utf8.RuneCountInString(text))
-	t.Logf("Anfang:\n%s", kuerzen(text, 400, false))
+	t.Logf("response: %d characters", utf8.RuneCountInString(text))
+	t.Logf("start:\n%s", shorten(text, 400, false))
 	if utf8.RuneCountInString(text) > 800 {
-		t.Logf("Ende:\n%s", kuerzen(text, 300, true))
+		t.Logf("end:\n%s", shorten(text, 300, true))
 	}
 
-	if variante == "voll" {
-		e, err := erkennungAusAntwort(resp)
+	if variant == "full" {
+		x, err := extractionFromResponse(resp)
 		if err != nil {
-			t.Errorf("Antwort nicht auswertbar: %v", err)
+			t.Errorf("response not usable: %v", err)
 			return
 		}
-		eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
+		entry, dropped, err := core.CheckExtraction(x, "gesundheit")
 		if err != nil {
-			t.Errorf("Prüfung: %v", err)
+			t.Errorf("check: %v", err)
 			return
 		}
-		t.Logf("Geprüft: typ=%s datum=%s quelle=%s, %d Infos, ausgelassen %v",
-			eintrag.Type, deref(eintrag.DocumentDate), deref(eintrag.Issuer), len(eintrag.Facts), ausgelassen)
-		// Die Werte sind synthetisch (testdaten/), dürfen also ins Testlog.
-		for _, i := range eintrag.Facts {
-			t.Logf("  %s = %q %s", i.Name, i.Value, deref(i.Unit))
+		t.Logf("checked: type=%s date=%s issuer=%s, %d facts, dropped %v",
+			entry.Type, deref(entry.DocumentDate), deref(entry.Issuer), len(entry.Facts), dropped)
+		// The values are synthetic (testdaten/), so they may go into the test log.
+		for _, f := range entry.Facts {
+			t.Logf("  %s = %q %s", f.Name, f.Value, deref(f.Unit))
 		}
 	}
 }
 
-// kuerzen liefert die ersten (oder letzten) n Zeichen.
-func kuerzen(s string, n int, ende bool) string {
+// shorten returns the first (or last) n characters.
+func shorten(s string, n int, end bool) string {
 	r := []rune(strings.TrimSpace(s))
 	if len(r) <= n {
 		return string(r)
 	}
-	if ende {
+	if end {
 		return "…" + string(r[len(r)-n:])
 	}
 	return string(r[:n]) + "…"

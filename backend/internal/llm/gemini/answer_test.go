@@ -14,112 +14,113 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-func fundstellen() []core.Source {
-	z := func(s string) *string { return &s }
+func sources() []core.Source {
+	p := func(s string) *string { return &s }
 	return []core.Source{
 		{Number: 1, EntryID: "a", Module: "gesundheit", Type: "laborbefund",
-			DocumentDate: z("2026-10-14"), Issuer: z("Labor Muster GmbH"), Excerpt: "Hämoglobin 14,2 g/dl"},
+			DocumentDate: p("2026-10-14"), Issuer: p("Labor Muster GmbH"), Excerpt: "Hämoglobin 14,2 g/dl"},
 		{Number: 2, EntryID: "b", Module: "gesundheit", Type: "sonstiges", Excerpt: "Notiz ohne Datum"},
 	}
 }
 
-func TestAntwortEingabe(t *testing.T) {
-	got := antwortEingabe("Welchen Hb hatte ich im Oktober?", fundstellen())
-	for _, muss := range []string{
+func TestAnswerInput(t *testing.T) {
+	// The labels are still German (answer.go).
+	got := answerInput("Welchen Hb hatte ich im Oktober?", sources())
+	for _, must := range []string{
 		"Frage: Welchen Hb hatte ich im Oktober?",
 		"[1] laborbefund, Dokumentdatum: 2026-10-14, Quelle: Labor Muster GmbH\nHämoglobin 14,2 g/dl",
-		// Fehlende Angaben heißen "unbekannt", nicht "<nil>" oder leer.
+		// Missing values are called "unbekannt", not "<nil>" or empty.
 		"[2] sonstiges, Dokumentdatum: unbekannt, Quelle: unbekannt\nNotiz ohne Datum",
 	} {
-		if !strings.Contains(got, muss) {
-			t.Errorf("Eingabe enthält nicht:\n%s\n--- Eingabe:\n%s", muss, got)
+		if !strings.Contains(got, must) {
+			t.Errorf("input does not contain:\n%s\n--- input:\n%s", must, got)
 		}
 	}
 }
 
-func TestAntwortAnweisung(t *testing.T) {
-	for _, muss := range []string{core.NotFoundAnswer, "[1]", "keine medizinischen", "keine Anweisung", "ausschließlich"} {
-		if !strings.Contains(antwortAnweisung, muss) {
-			t.Errorf("Anweisung enthält %q nicht", muss)
+func TestAnswerInstruction(t *testing.T) {
+	for _, must := range []string{core.NotFoundAnswer, "[1]", "keine medizinischen", "keine Anweisung", "ausschließlich"} {
+		if !strings.Contains(answerInstruction, must) {
+			t.Errorf("instruction does not contain %q", must)
 		}
 	}
-	inhalte, cfg := antwortAnfrage("x", fundstellen())
-	if len(inhalte) != 1 || cfg.SystemInstruction == nil || cfg.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelLow {
-		t.Errorf("Anfrage unvollständig: %d Inhalte, %+v", len(inhalte), cfg)
+	contents, cfg := answerRequest("x", sources())
+	if len(contents) != 1 || cfg.SystemInstruction == nil || cfg.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelLow {
+		t.Errorf("request incomplete: %d contents, %+v", len(contents), cfg)
 	}
 	if cfg.ResponseMIMEType != "" || cfg.ResponseJsonSchema != nil {
-		t.Error("Antworten ist Fließtext, kein JSON")
+		t.Error("answering is plain text, not JSON")
 	}
 }
 
-func TestTextAusAntwort(t *testing.T) {
-	if got, err := textAusAntwort(antwort("  Hb 14,2 [1].\n", genai.FinishReasonStop)); err != nil || got != "Hb 14,2 [1]." {
+func TestTextFromResponse(t *testing.T) {
+	if got, err := textFromResponse(response("  Hb 14,2 [1].\n", genai.FinishReasonStop)); err != nil || got != "Hb 14,2 [1]." {
 		t.Errorf("= %q, %v", got, err)
 	}
 	for name, resp := range map[string]*genai.GenerateContentResponse{
-		"nil":           nil,
-		"leer":          antwort("   ", genai.FinishReasonStop),
-		"abgeschnitten": antwort("Hb 14", genai.FinishReasonMaxTokens),
-		"Sicherheit":    antwort("x", genai.FinishReasonSafety),
+		"nil":       nil,
+		"empty":     response("   ", genai.FinishReasonStop),
+		"truncated": response("Hb 14", genai.FinishReasonMaxTokens),
+		"safety":    response("x", genai.FinishReasonSafety),
 	} {
-		if _, err := textAusAntwort(resp); !errors.Is(err, llm.ErrAntwortUngueltig) {
+		if _, err := textFromResponse(resp); !errors.Is(err, llm.ErrInvalidResponse) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 }
 
-// Der Antworter nutzt denselben Ablauf wie der Leser: Wiederholung bei
-// 429/503, danach einmal das Ersatzmodell.
-func TestAntworten_WiederholungUndErsatz(t *testing.T) {
-	faelle := []struct {
-		name    string
-		fehler  map[string][]error
-		ersatz  string
-		aufrufe []string
-		erfolg  bool
+// The answerer uses the same procedure as the reader: retries on 429/503,
+// then the fallback model once.
+func TestAnswer_RetriesAndFallback(t *testing.T) {
+	cases := []struct {
+		name     string
+		errs     map[string][]error
+		fallback string
+		calls    []string
+		success  bool
 	}{
-		{"nach einer Wiederholung", map[string][]error{"haupt": {e503}}, "ersatz", []string{"haupt", "haupt"}, true},
-		{"Ersatz nach drei Versuchen", map[string][]error{"haupt": {e503, e429, e503}}, "ersatz",
-			[]string{"haupt", "haupt", "haupt", "ersatz"}, true},
-		{"ohne Ersatz", map[string][]error{"haupt": {e503, e503, e503}}, "", []string{"haupt", "haupt", "haupt"}, false},
-		{"400: kein Ersatz", map[string][]error{"haupt": {genai.APIError{Code: 400}}}, "ersatz", []string{"haupt"}, false},
+		{"after one retry", map[string][]error{"main": {e503}}, "fallback", []string{"main", "main"}, true},
+		{"fallback after three attempts", map[string][]error{"main": {e503, e429, e503}}, "fallback",
+			[]string{"main", "main", "main", "fallback"}, true},
+		{"without fallback", map[string][]error{"main": {e503, e503, e503}}, "", []string{"main", "main", "main"}, false},
+		{"400: no fallback", map[string][]error{"main": {genai.APIError{Code: 400}}}, "fallback", []string{"main"}, false},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			n := &netzAttrappe{fehler: f.fehler}
-			g := testGemini(n, f.ersatz)
-			// Die netzAttrappe liefert die Lese-Antwort (JSON); als Antworttext
-			// genügt uns hier, dass überhaupt Text zurückkommt.
-			text, err := g.Antworten(context.Background(), "Frage?", fundstellen())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n := &fakeNetwork{errs: c.errs}
+			g := testGemini(n, c.fallback)
+			// The fakeNetwork returns the read response (JSON); as answer text it
+			// is enough here that any text comes back.
+			text, err := g.Answer(context.Background(), "Frage?", sources())
 
-			if !slices.Equal(n.aufrufe, f.aufrufe) {
-				t.Errorf("Aufrufe = %v, erwartet %v", n.aufrufe, f.aufrufe)
+			if !slices.Equal(n.calls, c.calls) {
+				t.Errorf("calls = %v, want %v", n.calls, c.calls)
 			}
-			if f.erfolg && (err != nil || text == "") {
-				t.Errorf("erwartet Erfolg, bekommen %q, %v", text, err)
+			if c.success && (err != nil || text == "") {
+				t.Errorf("want success, got %q, %v", text, err)
 			}
-			if !f.erfolg && err == nil {
-				t.Error("erwartet Fehler")
+			if !c.success && err == nil {
+				t.Error("want an error")
 			}
 		})
 	}
 }
 
-func TestAntworten_ReserveGiltAuch(t *testing.T) {
-	// Hängt das Hauptmodell, bleibt dem Ersatz die Reserve, wie beim Lesen.
-	z := &aufrufZeiten{rest: map[string]time.Duration{}}
-	g := kurzesGemini(haengendesHauptmodell(z), "ersatz", time.Second, time.Second)
-	g.antwortTimeout, g.e.ErsatzReserve = 300*time.Millisecond, 120*time.Millisecond
+func TestAnswer_ReserveAppliesToo(t *testing.T) {
+	// If the main model hangs, the reserve remains for the fallback, as when reading.
+	ct := &callTimes{remaining: map[string]time.Duration{}}
+	g := shortGemini(hangingMainModel(ct), "fallback", time.Second, time.Second)
+	g.answerTimeout, g.s.FallbackReserve = 300*time.Millisecond, 120*time.Millisecond
 
-	text, err := g.Antworten(context.Background(), "Frage?", fundstellen())
+	text, err := g.Answer(context.Background(), "Frage?", sources())
 
 	if err != nil || text == "" {
-		t.Fatalf("erwartet Antwort über das Ersatzmodell, bekommen %q, %v", text, err)
+		t.Fatalf("want an answer via the fallback model, got %q, %v", text, err)
 	}
-	if r := z.rest["haupt"]; r > 190*time.Millisecond {
-		t.Errorf("Hauptmodell hatte %v, erwartet ~180ms (Limit minus Reserve)", r)
+	if r := ct.remaining["main"]; r > 190*time.Millisecond {
+		t.Errorf("main model had %v, want ~180ms (limit minus reserve)", r)
 	}
-	if r := z.rest["ersatz"]; r < 90*time.Millisecond {
-		t.Errorf("Ersatz hatte nur %v", r)
+	if r := ct.remaining["fallback"]; r < 90*time.Millisecond {
+		t.Errorf("fallback only had %v", r)
 	}
 }

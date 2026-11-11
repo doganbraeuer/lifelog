@@ -1,6 +1,6 @@
-// Package fake ersetzt die Modelle in Tests: kein Netz, keine Kosten,
-// vorhersagbare Antworten. Die Attrappen zählen ihre Aufrufe, damit Tests
-// prüfen können, dass z. B. bei einem Duplikat kein Modell gefragt wurde.
+// Package fake replaces the models in tests: no network, no cost,
+// predictable answers. The fakes count their calls, so tests can check that,
+// e.g., no model was asked for a duplicate.
 package fake
 
 import (
@@ -13,133 +13,132 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Leser liefert immer Erkennung bzw. Err.
-type Leser struct {
-	Erkennung core.Extraction
-	Err       error
+// Reader always returns Extraction or Err.
+type Reader struct {
+	Extraction core.Extraction
+	Err        error
 
-	mu          sync.Mutex
-	aufrufe     int
-	textAufrufe int
-	letzterText string
+	mu        sync.Mutex
+	calls     int
+	textCalls int
+	lastText  string
 }
 
-var _ llm.Leser = (*Leser)(nil)
+var _ llm.Reader = (*Reader)(nil)
 
-func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string) (core.Extraction, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.aufrufe++
-	return l.Erkennung, l.Err
+func (r *Reader) ReadDocument(_ context.Context, _ []byte, _ string, _ []string) (core.Extraction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	return r.Extraction, r.Err
 }
 
-// TextLesen liefert dieselbe Erkennung bzw. denselben Fehler wie
-// DokumentLesen, zählt aber getrennt.
-func (l *Leser) TextLesen(_ context.Context, text string, _ []string) (core.Extraction, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.textAufrufe++
-	l.letzterText = text
-	return l.Erkennung, l.Err
+// ReadText returns the same extraction or error as ReadDocument, but counts
+// separately.
+func (r *Reader) ReadText(_ context.Context, text string, _ []string) (core.Extraction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.textCalls++
+	r.lastText = text
+	return r.Extraction, r.Err
 }
 
-// TextAufrufe: wie oft TextLesen aufgerufen wurde, und mit welchem Text
-// zuletzt.
-func (l *Leser) TextAufrufe() (int, string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.textAufrufe, l.letzterText
+// TextCalls: how often ReadText was called, and with which text last.
+func (r *Reader) TextCalls() (int, string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.textCalls, r.lastText
 }
 
-// Aufrufe: wie oft DokumentLesen aufgerufen wurde.
-func (l *Leser) Aufrufe() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.aufrufe
+// Calls: how often ReadDocument was called.
+func (r *Reader) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
-// Einbetter liefert für jeden Text einen festen Vektor, der nur vom Text
-// abhängt: gleicher Text, gleicher Vektor. Mit Err scheitert jeder Aufruf.
-type Einbetter struct {
+// Embedder returns a fixed vector for every text that only depends on the
+// text: same text, same vector. With Err every call fails.
+type Embedder struct {
 	Err error
 
-	mu      sync.Mutex
-	aufrufe int
+	mu    sync.Mutex
+	calls int
 }
 
-var _ llm.Einbetter = (*Einbetter)(nil)
+var _ llm.Embedder = (*Embedder)(nil)
 
-func (e *Einbetter) AbschnitteEinbetten(_ context.Context, texte []string) ([][]float32, error) {
+func (e *Embedder) EmbedChunks(_ context.Context, texts []string) ([][]float32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.aufrufe++
+	e.calls++
 	if e.Err != nil {
 		return nil, e.Err
 	}
-	vektoren := make([][]float32, len(texte))
-	for i, t := range texte {
-		vektoren[i] = Vektor(t)
+	vectors := make([][]float32, len(texts))
+	for i, t := range texts {
+		vectors[i] = Vector(t)
 	}
-	return vektoren, nil
+	return vectors, nil
 }
 
-func (e *Einbetter) FrageEinbetten(_ context.Context, frage string) ([]float32, error) {
+func (e *Embedder) EmbedQuestion(_ context.Context, question string) ([]float32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.aufrufe++
+	e.calls++
 	if e.Err != nil {
 		return nil, e.Err
 	}
-	return Vektor(frage), nil
+	return Vector(question), nil
 }
 
-// Aufrufe: wie oft eine der beiden Methoden aufgerufen wurde.
-func (e *Einbetter) Aufrufe() int {
+// Calls: how often one of the two methods was called.
+func (e *Embedder) Calls() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.aufrufe
+	return e.calls
 }
 
-// Antworter liefert immer Text bzw. Err und merkt sich die letzte Anfrage.
-type Antworter struct {
+// Answerer always returns Text or Err and remembers the last request.
+type Answerer struct {
 	Text string
 	Err  error
 
-	mu          sync.Mutex
-	aufrufe     int
-	frage       string
-	fundstellen []core.Source
+	mu       sync.Mutex
+	calls    int
+	question string
+	sources  []core.Source
 }
 
-var _ llm.Antworter = (*Antworter)(nil)
+var _ llm.Answerer = (*Answerer)(nil)
 
-func (a *Antworter) Antworten(_ context.Context, frage string, f []core.Source) (string, error) {
+func (a *Answerer) Answer(_ context.Context, question string, s []core.Source) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.aufrufe++
-	a.frage, a.fundstellen = frage, f
+	a.calls++
+	a.question, a.sources = question, s
 	return a.Text, a.Err
 }
 
-// Aufrufe: wie oft Antworten aufgerufen wurde.
-func (a *Antworter) Aufrufe() int {
+// Calls: how often Answer was called.
+func (a *Answerer) Calls() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.aufrufe
+	return a.calls
 }
 
-// LetzteAnfrage: Frage und Fundstellen des letzten Aufrufs.
-func (a *Antworter) LetzteAnfrage() (string, []core.Source) {
+// LastRequest: question and sources of the last call.
+func (a *Answerer) LastRequest() (string, []core.Source) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.frage, a.fundstellen
+	return a.question, a.sources
 }
 
-// Vektor erzeugt aus einem Text einen festen Pseudo-Vektor mit
-// llm.EmbeddingDimensionen Einträgen. Er hat keine Bedeutung, ist aber
-// deterministisch, das reicht für Tests.
-func Vektor(text string) []float32 {
-	v := make([]float32, llm.EmbeddingDimensionen)
+// Vector turns a text into a fixed pseudo vector with
+// llm.EmbeddingDimensions entries. It has no meaning but is deterministic,
+// which is enough for tests.
+func Vector(text string) []float32 {
+	v := make([]float32, llm.EmbeddingDimensions)
 	block := sha256.Sum256([]byte(text))
 	for i := range v {
 		if i%8 == 0 && i > 0 {

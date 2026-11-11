@@ -15,149 +15,149 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Die Tests hier arbeiten mit echten, aber kurzen Fristen (Millisekunden
-// statt 50 s), weil es genau um das Zusammenspiel der Fristen geht.
+// The tests here work with real but short deadlines (milliseconds instead of
+// 50 s), because they are exactly about how the deadlines interact.
 
-// aufrufZeiten merkt sich pro Modell, wie viel Zeit bis zur Frist blieb, als
-// es aufgerufen wurde.
-type aufrufZeiten struct {
-	mu   sync.Mutex
-	rest map[string]time.Duration
+// callTimes remembers per model how much time was left until the deadline
+// when it was called.
+type callTimes struct {
+	mu        sync.Mutex
+	remaining map[string]time.Duration
 }
 
-func (a *aufrufZeiten) merken(ctx context.Context, modellName string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if frist, ok := ctx.Deadline(); ok {
-		a.rest[modellName] = time.Until(frist)
+func (c *callTimes) record(ctx context.Context, model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if deadline, ok := ctx.Deadline(); ok {
+		c.remaining[model] = time.Until(deadline)
 	}
 }
 
-// haengendesHauptmodell: "haupt" antwortet nie (wartet bis zur Frist),
-// "ersatz" antwortet sofort mit einer gültigen Erkennung.
-func haengendesHauptmodell(z *aufrufZeiten) erzeugenFunk {
+// hangingMainModel: "main" never answers (waits until the deadline),
+// "fallback" answers immediately with a valid extraction.
+func hangingMainModel(ct *callTimes) generateFunc {
 	return func(ctx context.Context, m string, _ []*genai.Content, _ *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-		z.merken(ctx, m)
-		if m == "haupt" {
+		ct.record(ctx, m)
+		if m == "main" {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}
-		return antwort(gueltigeAntwort, genai.FinishReasonStop), nil
+		return response(validResponse, genai.FinishReasonStop), nil
 	}
 }
 
-func kurzesGemini(erzeugen erzeugenFunk, ersatz string, limit, reserve time.Duration) *Gemini {
-	g := testGemini(&netzAttrappe{fehler: map[string][]error{}}, ersatz)
-	g.erzeugen = erzeugen
-	g.leseTimeout = limit
-	g.e.ErsatzReserve = reserve
+func shortGemini(generate generateFunc, fallback string, limit, reserve time.Duration) *Gemini {
+	g := testGemini(&fakeNetwork{errs: map[string][]error{}}, fallback)
+	g.generate = generate
+	g.readTimeout = limit
+	g.s.FallbackReserve = reserve
 	return g
 }
 
-func TestReserve_HaengendesHauptmodellLaesstZeitFuerErsatz(t *testing.T) {
-	z := &aufrufZeiten{rest: map[string]time.Duration{}}
-	g := kurzesGemini(haengendesHauptmodell(z), "ersatz", 300*time.Millisecond, 120*time.Millisecond)
+func TestReserve_HangingMainModelLeavesTimeForFallback(t *testing.T) {
+	ct := &callTimes{remaining: map[string]time.Duration{}}
+	g := shortGemini(hangingMainModel(ct), "fallback", 300*time.Millisecond, 120*time.Millisecond)
 
 	start := time.Now()
-	e, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
-	dauer := time.Since(start)
+	x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	duration := time.Since(start)
 
-	if err != nil || e.Type != "laborbefund" {
-		t.Fatalf("erwartet Erfolg über das Ersatzmodell, bekommen %+v, %v", e, err)
+	if err != nil || x.Type != "laborbefund" {
+		t.Fatalf("want success via the fallback model, got %+v, %v", x, err)
 	}
-	// Das Hauptmodell sah eine Frist von ~180 ms (300 − 120), nicht 300 ms.
-	if r := z.rest["haupt"]; r > 190*time.Millisecond || r < 150*time.Millisecond {
-		t.Errorf("Hauptmodell hatte %v bis zur Frist, erwartet ~180ms", r)
+	// The main model saw a deadline of ~180 ms (300 − 120), not 300 ms.
+	if r := ct.remaining["main"]; r > 190*time.Millisecond || r < 150*time.Millisecond {
+		t.Errorf("main model had %v until the deadline, want ~180ms", r)
 	}
-	// Dem Ersatz blieb ungefähr die Reserve.
-	if r := z.rest["ersatz"]; r < 90*time.Millisecond {
-		t.Errorf("Ersatzmodell hatte nur %v, erwartet ~120ms Reserve", r)
+	// About the reserve remained for the fallback.
+	if r := ct.remaining["fallback"]; r < 90*time.Millisecond {
+		t.Errorf("fallback model only had %v, want ~120ms reserve", r)
 	}
-	if dauer > 300*time.Millisecond {
-		t.Errorf("Gesamtdauer %v überschreitet das Limit", dauer)
+	if duration > 300*time.Millisecond {
+		t.Errorf("total duration %v exceeds the limit", duration)
 	}
 }
 
-func TestReserve_OhneErsatzBekommtHauptmodellDasGanzeLimit(t *testing.T) {
-	z := &aufrufZeiten{rest: map[string]time.Duration{}}
-	g := kurzesGemini(haengendesHauptmodell(z), "", 300*time.Millisecond, 120*time.Millisecond)
+func TestReserve_WithoutFallbackMainModelGetsTheWholeLimit(t *testing.T) {
+	ct := &callTimes{remaining: map[string]time.Duration{}}
+	g := shortGemini(hangingMainModel(ct), "", 300*time.Millisecond, 120*time.Millisecond)
 
-	_, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 
-	if !errors.Is(err, llm.ErrNichtErreichbar) {
+	if !errors.Is(err, llm.ErrUnavailable) {
 		t.Errorf("err = %v", err)
 	}
-	if r := z.rest["haupt"]; r < 280*time.Millisecond {
-		t.Errorf("ohne Ersatzmodell darf es keine Reserve geben: Hauptmodell hatte nur %v", r)
+	if r := ct.remaining["main"]; r < 280*time.Millisecond {
+		t.Errorf("without a fallback model there must be no reserve: main model only had %v", r)
 	}
-	if _, aufgerufen := z.rest["ersatz"]; aufgerufen {
-		t.Error("Ersatzmodell aufgerufen, obwohl keins eingestellt ist")
+	if _, called := ct.remaining["fallback"]; called {
+		t.Error("fallback model called although none is configured")
 	}
 }
 
-func TestReserve_NullHeisstKeinErsatzBeimHaengen(t *testing.T) {
-	// Genau das Problem vom 04.11.: Ohne Reserve verbraucht das hängende
-	// Hauptmodell alles, der Ersatz kommt nicht mehr zum Zug.
-	z := &aufrufZeiten{rest: map[string]time.Duration{}}
-	g := kurzesGemini(haengendesHauptmodell(z), "ersatz", 200*time.Millisecond, 0)
+func TestReserve_ZeroMeansNoFallbackWhenHanging(t *testing.T) {
+	// Exactly the problem of 2026-11-04: without a reserve the hanging main
+	// model uses up everything and the fallback never gets its turn.
+	ct := &callTimes{remaining: map[string]time.Duration{}}
+	g := shortGemini(hangingMainModel(ct), "fallback", 200*time.Millisecond, 0)
 
-	_, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 
-	if !errors.Is(err, llm.ErrNichtErreichbar) {
+	if !errors.Is(err, llm.ErrUnavailable) {
 		t.Errorf("err = %v", err)
 	}
-	if _, aufgerufen := z.rest["ersatz"]; aufgerufen {
-		t.Error("Ersatz ohne Restzeit aufgerufen")
+	if _, called := ct.remaining["fallback"]; called {
+		t.Error("fallback called without remaining time")
 	}
 }
 
-func TestReserve_FehlerDesHauptmodellsImLog(t *testing.T) {
+func TestReserve_MainModelErrorInLog(t *testing.T) {
 	var log bytes.Buffer
-	alt := slog.Default()
+	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	t.Cleanup(func() { slog.SetDefault(alt) })
+	t.Cleanup(func() { slog.SetDefault(old) })
 
-	n := &netzAttrappe{fehler: map[string][]error{"haupt": {e503, e503, e503}}}
-	g := testGemini(n, "ersatz")
-	if _, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"}); err != nil {
+	n := &fakeNetwork{errs: map[string][]error{"main": {e503, e503, e503}}}
+	g := testGemini(n, "fallback")
+	if _, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"}); err != nil {
 		t.Fatal(err)
 	}
 
-	var zeile string
-	for _, z := range strings.Split(log.String(), "\n") {
-		if strings.Contains(z, "Ersatzmodell wird einmal versucht") {
-			zeile = z
+	var line string
+	for _, l := range strings.Split(log.String(), "\n") {
+		if strings.Contains(l, "trying the fallback model once") {
+			line = l
 		}
 	}
-	if zeile == "" {
-		t.Fatalf("keine Logzeile zum Ersatz:\n%s", log.String())
+	if line == "" {
+		t.Fatalf("no log line about the fallback:\n%s", log.String())
 	}
-	for _, muss := range []string{"modell=haupt", "ersatz=ersatz", "HTTP 503", "restzeit="} {
-		if !strings.Contains(zeile, muss) {
-			t.Errorf("Logzeile enthält %q nicht: %s", muss, zeile)
+	for _, must := range []string{"model=main", "fallback=fallback", "HTTP 503", "remaining="} {
+		if !strings.Contains(line, must) {
+			t.Errorf("log line does not contain %q: %s", must, line)
 		}
 	}
-	if strings.Contains(log.String(), "GEHEIM") {
-		t.Error("Schlüssel im Log")
+	if strings.Contains(log.String(), "SECRET") {
+		t.Error("key in the log")
 	}
 }
 
-func TestNeu_ReserveGrenzen(t *testing.T) {
-	neu := func(reserve time.Duration) error {
-		_, err := Neu(context.Background(), Einstellungen{
-			Schluessel: "x", Modell: "a", ErsatzModell: "b", EmbeddingModell: "e", ErsatzReserve: reserve,
+func TestNew_ReserveLimits(t *testing.T) {
+	newWith := func(reserve time.Duration) error {
+		_, err := New(context.Background(), Settings{
+			APIKey: "x", Model: "a", FallbackModel: "b", EmbeddingModel: "e", FallbackReserve: reserve,
 		})
 		return err
 	}
-	// Grenze: kürzeres Limit (Antworten 45 s) minus 10 s Mindestzeit = 35 s.
+	// Limit: shorter limit (answering 45 s) minus 10 s minimum time = 35 s.
 	for _, ok := range []time.Duration{0, 20 * time.Second, 35 * time.Second} {
-		if err := neu(ok); err != nil {
-			t.Errorf("Reserve %v: %v", ok, err)
+		if err := newWith(ok); err != nil {
+			t.Errorf("reserve %v: %v", ok, err)
 		}
 	}
-	for _, falsch := range []time.Duration{-time.Second, 36 * time.Second, 50 * time.Second} {
-		if err := neu(falsch); err == nil {
-			t.Errorf("Reserve %v: erwartet Fehler", falsch)
+	for _, invalid := range []time.Duration{-time.Second, 36 * time.Second, 50 * time.Second} {
+		if err := newWith(invalid); err == nil {
+			t.Errorf("reserve %v: want error", invalid)
 		}
 	}
 }

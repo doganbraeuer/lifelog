@@ -1,5 +1,5 @@
-// Package gemini setzt die Schnittstellen aus internal/modell mit Googles
-// Gemini-API um. Nur dieses Paket kennt das Gemini-SDK.
+// Package gemini implements the interfaces of internal/llm with Google's
+// Gemini API. Only this package knows the Gemini SDK.
 package gemini
 
 import (
@@ -15,264 +15,263 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Gesamtlimits je Vorgang, inklusive Wiederholungen und Ersatzmodell.
+// Total limits per operation, including retries and the fallback model.
 //
-//	Upload (App wartet 90 s): Lesen 50 s + Abschnitte einbetten 20 s
-//	Frage  (App wartet 60 s): Frage einbetten 10 s + Antworten 45 s
+//	upload   (app waits 90 s): read 50 s + embed chunks 20 s
+//	question (app waits 60 s): embed question 10 s + answer 45 s
 const (
-	leseTimeout           = 50 * time.Second
-	einbettenTimeout      = 20 * time.Second
-	frageEinbettenTimeout = 10 * time.Second
-	antwortTimeout        = 45 * time.Second
+	readTimeout          = 50 * time.Second
+	embedTimeout         = 20 * time.Second
+	embedQuestionTimeout = 10 * time.Second
+	answerTimeout        = 45 * time.Second
 
-	// mindestHauptzeit: So viel Zeit bleibt dem Hauptmodell mindestens,
-	// egal wie groß die Reserve für den Ersatz eingestellt ist.
-	mindestHauptzeit = 10 * time.Second
+	// minMainTime: at least this much time remains for the main model, no
+	// matter how large the reserve for the fallback is set.
+	minMainTime = 10 * time.Second
 )
 
-// maxErsatzReserve: Die Reserve gilt fürs Lesen und fürs Antworten; sie muss
-// zum kürzeren der beiden Limits passen.
-const maxErsatzReserve = min(leseTimeout, antwortTimeout) - mindestHauptzeit
+// maxFallbackReserve: the reserve applies to reading and answering; it must
+// fit the shorter of the two limits.
+const maxFallbackReserve = min(readTimeout, answerTimeout) - minMainTime
 
-// Einstellungen für Neu.
-type Einstellungen struct {
-	Schluessel      string
-	Modell          string // Hauptmodell zum Lesen
-	ErsatzModell    string // optional: wird einmal versucht, wenn Modell nicht erreichbar bleibt
-	EmbeddingModell string // ohne Ersatz: Embeddings verschiedener Modelle passen nicht zusammen
+// Settings for New.
+type Settings struct {
+	APIKey         string
+	Model          string // main model for reading
+	FallbackModel  string // optional: tried once if Model stays unavailable
+	EmbeddingModel string // no fallback: embeddings of different models do not match
 
-	// ErsatzReserve: Dieser Teil des Limits (Lesen und Antworten) ist dem
-	// Ersatzmodell vorbehalten. Das Hauptmodell muss samt Wiederholungen
-	// vorher fertig sein. Gilt nur, wenn ErsatzModell gesetzt ist.
-	ErsatzReserve time.Duration
+	// FallbackReserve: this part of the limit (reading and answering) is
+	// reserved for the fallback model. The main model, including retries,
+	// must finish before. Only applies if FallbackModel is set.
+	FallbackReserve time.Duration
 }
 
-// Die beiden Aufrufe, die wirklich ins Netz gehen. Als Funktionen, damit
-// Tests sie ersetzen und Wiederholung und Ersatzmodell ohne Netz prüfen
-// können.
+// The two calls that really go to the network. As functions, so tests can
+// replace them and check retries and the fallback model without network.
 type (
-	erzeugenFunk  func(ctx context.Context, modell string, inhalte []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error)
-	einbettenFunk func(ctx context.Context, modell string, inhalte []*genai.Content, cfg *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error)
+	generateFunc func(ctx context.Context, model string, contents []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error)
+	embedFunc    func(ctx context.Context, model string, contents []*genai.Content, cfg *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error)
 )
 
-// Gemini ist die Verbindung zur Gemini-API.
+// Gemini is the connection to the Gemini API.
 type Gemini struct {
-	e              Einstellungen
-	erzeugen       erzeugenFunk
-	einbettenAPI   einbettenFunk
-	neuWiederholer func(beschreibung string) wiederholer
-	leseTimeout    time.Duration // Felder statt Konstanten, damit Tests nicht 50 s warten
-	antwortTimeout time.Duration
+	s             Settings
+	generate      generateFunc
+	embedAPI      embedFunc
+	newRetrier    func(label string) retrier
+	readTimeout   time.Duration // fields instead of constants, so tests do not wait 50 s
+	answerTimeout time.Duration
 }
 
 var (
-	_ llm.Leser     = (*Gemini)(nil)
-	_ llm.Einbetter = (*Gemini)(nil)
-	_ llm.Antworter = (*Gemini)(nil)
+	_ llm.Reader   = (*Gemini)(nil)
+	_ llm.Embedder = (*Gemini)(nil)
+	_ llm.Answerer = (*Gemini)(nil)
 )
 
-// Neu erstellt den Client. Es findet noch kein Netzwerkaufruf statt.
-func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
+// New creates the client. No network call happens yet.
+func New(ctx context.Context, s Settings) (*Gemini, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  e.Schluessel,
+		APIKey:  s.APIKey,
 		Backend: genai.BackendGeminiAPI,
-		// Keine RetryOptions im SDK: Wiederholungen steuern wir selbst
-		// (wiederholung.go), damit sie nur bei 429/503 greifen und das
-		// Gesamtlimit einhalten.
+		// No RetryOptions in the SDK: we control retries ourselves
+		// (retry.go), so they only apply to 429/503 and respect the total
+		// limit.
 	})
 	if err != nil {
-		return nil, uebersetzeFehler(err, e.Schluessel)
+		return nil, translateError(err, s.APIKey)
 	}
-	if e.ErsatzModell == e.Modell {
-		e.ErsatzModell = "" // derselbe Name wäre nur ein vierter Versuch
+	if s.FallbackModel == s.Model {
+		s.FallbackModel = "" // the same name would only be a fourth attempt
 	}
-	if e.ErsatzReserve < 0 || e.ErsatzReserve > maxErsatzReserve {
-		return nil, fmt.Errorf("GEMINI_FALLBACK_RESERVE_SECONDS muss zwischen 0 und %d liegen (Limits: Lesen %v, Antworten %v; Hauptmodell braucht mindestens %v)",
-			int(maxErsatzReserve.Seconds()), leseTimeout, antwortTimeout, mindestHauptzeit)
+	if s.FallbackReserve < 0 || s.FallbackReserve > maxFallbackReserve {
+		return nil, fmt.Errorf("GEMINI_FALLBACK_RESERVE_SECONDS must be between 0 and %d (limits: read %v, answer %v; the main model needs at least %v)",
+			int(maxFallbackReserve.Seconds()), readTimeout, answerTimeout, minMainTime)
 	}
 	return &Gemini{
-		e:              e,
-		erzeugen:       client.Models.GenerateContent,
-		einbettenAPI:   client.Models.EmbedContent,
-		neuWiederholer: standardWiederholer,
-		leseTimeout:    leseTimeout,
-		antwortTimeout: antwortTimeout,
+		s:             s,
+		generate:      client.Models.GenerateContent,
+		embedAPI:      client.Models.EmbedContent,
+		newRetrier:    defaultRetrier,
+		readTimeout:   readTimeout,
+		answerTimeout: answerTimeout,
 	}, nil
 }
 
-// DokumentLesen schickt das Dokument an das Vision-LLM und liefert die
-// ungeprüfte Erkennung. Wiederholung und Ersatz: siehe erzeugenMitErsatz.
-func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (core.Extraction, error) {
-	inhalte, cfg := leseAnfrage(daten, mimeTyp, erlaubteTypen)
-	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Lesen", inhalte, cfg)
+// ReadDocument sends the document to the vision LLM and returns the
+// unchecked extraction. Retries and fallback: see generateWithFallback.
+func (g *Gemini) ReadDocument(ctx context.Context, data []byte, mimeType string, allowedTypes []string) (core.Extraction, error) {
+	contents, cfg := readRequest(data, mimeType, allowedTypes)
+	resp, err := g.generateWithFallback(ctx, g.readTimeout, "read", contents, cfg)
 	if err != nil {
 		return core.Extraction{}, err
 	}
-	return erkennungAusAntwort(resp)
+	return extractionFromResponse(resp)
 }
 
-// TextLesen ordnet einen eingegebenen Text ein (Text-Import, API.md 3.1):
-// Datum, Quelle, Typ und Infos. Volltext bleibt leer und Lesbar ist true;
-// der Volltext ist der eingegebene Text, den setzt der Aufrufer. Gleiche
-// Wiederholung, gleicher Ersatz und gleiches Limit wie DokumentLesen.
-func (g *Gemini) TextLesen(ctx context.Context, text string, erlaubteTypen []string) (core.Extraction, error) {
-	inhalte, cfg := textAnfrage(text, erlaubteTypen)
-	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Text lesen", inhalte, cfg)
+// ReadText classifies an entered text (text import, API.md 3.1): date,
+// issuer, type and facts. FullText stays empty and Readable is true; the
+// full text is the entered text, which the caller sets. Same retries, same
+// fallback and same limit as ReadDocument.
+func (g *Gemini) ReadText(ctx context.Context, text string, allowedTypes []string) (core.Extraction, error) {
+	contents, cfg := textRequest(text, allowedTypes)
+	resp, err := g.generateWithFallback(ctx, g.readTimeout, "read text", contents, cfg)
 	if err != nil {
 		return core.Extraction{}, err
 	}
-	antwort, err := textAusAntwort(resp)
+	answer, err := textFromResponse(resp)
 	if err != nil {
 		return core.Extraction{}, err
 	}
-	return textErkennungAusText(antwort)
+	return textExtractionFromText(answer)
 }
 
-// Antworten beantwortet eine Frage nur aus den Fundstellen (Schritt 5).
-// Gleiche Wiederholung und gleicher Ersatz wie beim Lesen.
-func (g *Gemini) Antworten(ctx context.Context, frage string, fundstellen []core.Source) (string, error) {
-	inhalte, cfg := antwortAnfrage(frage, fundstellen)
-	resp, err := g.erzeugenMitErsatz(ctx, g.antwortTimeout, "Antworten", inhalte, cfg)
+// Answer answers a question only from the sources. Same retries and same
+// fallback as reading.
+func (g *Gemini) Answer(ctx context.Context, question string, sources []core.Source) (string, error) {
+	contents, cfg := answerRequest(question, sources)
+	resp, err := g.generateWithFallback(ctx, g.answerTimeout, "answer", contents, cfg)
 	if err != nil {
 		return "", err
 	}
-	return textAusAntwort(resp)
+	return textFromResponse(resp)
 }
 
-// erzeugenMitErsatz ist der gemeinsame Ablauf fürs Lesen und Antworten:
-// Hauptmodell, bei 429/503 bis zu zwei Wiederholungen. Bleibt es nicht
-// erreichbar und ist ein Ersatzmodell eingestellt, wird dieses einmal
-// versucht. Alles innerhalb von limit.
+// generateWithFallback is the shared procedure for reading and answering:
+// main model, up to two retries on 429/503. If it stays unavailable and a
+// fallback model is configured, that one is tried once. Everything within
+// limit.
 //
-// Zeitaufteilung mit Ersatzmodell (Lesen, Standard 30 s + 20 s):
+// Time split with a fallback model (reading, default 30 s + 20 s):
 //
-//	|---- Hauptmodell + Wiederholungen ----|---- Reserve: Ersatz ----|
-//	0                                     30 s                     50 s
+//	|---- main model + retries ----|---- reserve: fallback ----|
+//	0                             30 s                        50 s
 //
-// Ohne diese Aufteilung könnte ein hängendes Hauptmodell das ganze Limit
-// verbrauchen, und der Ersatz käme nie zum Zug.
-func (g *Gemini) erzeugenMitErsatz(ctx context.Context, limit time.Duration, aufgabe string,
-	inhalte []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, limit)
-	defer abbrechen()
+// Without this split, a hanging main model could use up the whole limit,
+// and the fallback would never get its turn.
+func (g *Gemini) generateWithFallback(ctx context.Context, limit time.Duration, task string,
+	contents []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 
-	hauptCtx := ctx
-	if g.e.ErsatzModell != "" && g.e.ErsatzReserve > 0 {
-		frist, _ := ctx.Deadline() // durch WithTimeout immer gesetzt
-		var hauptAbbrechen context.CancelFunc
-		hauptCtx, hauptAbbrechen = context.WithDeadline(ctx, frist.Add(-g.e.ErsatzReserve))
-		defer hauptAbbrechen()
+	mainCtx := ctx
+	if g.s.FallbackModel != "" && g.s.FallbackReserve > 0 {
+		deadline, _ := ctx.Deadline() // always set by WithTimeout
+		var mainCancel context.CancelFunc
+		mainCtx, mainCancel = context.WithDeadline(ctx, deadline.Add(-g.s.FallbackReserve))
+		defer mainCancel()
 	}
 
 	var resp *genai.GenerateContentResponse
-	err := g.neuWiederholer(aufgabe+" "+g.e.Modell).ausfuehren(hauptCtx, func(ctx context.Context) error {
+	err := g.newRetrier(task+" "+g.s.Model).run(mainCtx, func(ctx context.Context) error {
 		var err error
-		resp, err = g.erzeugen(ctx, g.e.Modell, inhalte, cfg)
+		resp, err = g.generate(ctx, g.s.Model, contents, cfg)
 		return err
 	})
-	err = uebersetzeFehler(err, g.e.Schluessel)
+	err = translateError(err, g.s.APIKey)
 
-	// ctx.Err() == nil: Das Gesamtlimit läuft noch und die App ist noch da.
-	// (Abgelaufen sein darf nur hauptCtx, dann ist die Reserve übrig.)
-	if errors.Is(err, llm.ErrNichtErreichbar) && g.e.ErsatzModell != "" && ctx.Err() == nil {
-		rest := time.Duration(0)
-		if frist, ok := ctx.Deadline(); ok {
-			rest = time.Until(frist).Round(time.Millisecond)
+	// ctx.Err() == nil: the total limit is still running and the app is
+	// still there. (Only mainCtx may have expired; then the reserve is left.)
+	if errors.Is(err, llm.ErrUnavailable) && g.s.FallbackModel != "" && ctx.Err() == nil {
+		remaining := time.Duration(0)
+		if deadline, ok := ctx.Deadline(); ok {
+			remaining = time.Until(deadline).Round(time.Millisecond)
 		}
-		// Der Fehler des Hauptmodells ist schon übersetzt und maskiert.
-		slog.Warn("Hauptmodell nicht erreichbar, Ersatzmodell wird einmal versucht",
-			"aufgabe", aufgabe, "modell", g.e.Modell, "fehler", err, "ersatz", g.e.ErsatzModell, "restzeit", rest)
-		resp, err = g.erzeugen(ctx, g.e.ErsatzModell, inhalte, cfg)
-		err = uebersetzeFehler(err, g.e.Schluessel)
+		// The main model's error is already translated and masked.
+		slog.Warn("main model unavailable, trying the fallback model once",
+			"task", task, "model", g.s.Model, "error", err, "fallback", g.s.FallbackModel, "remaining", remaining)
+		resp, err = g.generate(ctx, g.s.FallbackModel, contents, cfg)
+		err = translateError(err, g.s.APIKey)
 	}
 	return resp, err
 }
 
-// leseAnfrage baut Inhalt und Konfiguration für das Lesen eines Dokuments.
-// Eigene Funktion, damit der Diagnose-Test (diagnose_test.go) genau
-// dieselbe Anfrage schickt wie der Server.
-func leseAnfrage(daten []byte, mimeTyp string, erlaubteTypen []string) ([]*genai.Content, *genai.GenerateContentConfig) {
-	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
-		genai.NewPartFromBytes(daten, mimeTyp),
+// readRequest builds the content and configuration for reading a document.
+// A function of its own, so the diagnostic test (diagnose_test.go) sends
+// exactly the same request as the server.
+func readRequest(data []byte, mimeType string, allowedTypes []string) ([]*genai.Content, *genai.GenerateContentConfig) {
+	contents := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
+		genai.NewPartFromBytes(data, mimeType),
 		genai.NewPartFromText("Übertrage dieses Dokument nach den Regeln in JSON."),
 	}, genai.RoleUser)}
 	cfg := &genai.GenerateContentConfig{
-		SystemInstruction:  genai.NewContentFromText(leseAnweisung(erlaubteTypen), genai.RoleUser),
+		SystemInstruction:  genai.NewContentFromText(readInstruction(allowedTypes), genai.RoleUser),
 		ResponseMIMEType:   "application/json",
-		ResponseJsonSchema: leseSchema(erlaubteTypen),
-		// Abschreiben braucht wenig „Nachdenken“. Im AI Studio Playground
-		// (04.11.2026, gleiches PDF): LOW 3,4 s, MEDIUM 5,9 s.
+		ResponseJsonSchema: readSchema(allowedTypes),
+		// Transcribing needs little "thinking". In the AI Studio playground
+		// (2026-11-04, same PDF): LOW 3.4 s, MEDIUM 5.9 s.
 		ThinkingConfig: &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
 	}
-	return inhalte, cfg
+	return contents, cfg
 }
 
-// textAnfrage baut Inhalt und Konfiguration für den Text-Import. Der Text
-// ist ein eigener Teil der Nachricht, getrennt vom Auftrag; die
-// Systemanweisung sagt, dass er Inhalt ist und keine Anweisung.
-func textAnfrage(text string, erlaubteTypen []string) ([]*genai.Content, *genai.GenerateContentConfig) {
-	inhalte := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
+// textRequest builds the content and configuration for the text import. The
+// text is a separate part of the message, apart from the task; the system
+// instruction says that it is content and not an instruction.
+func textRequest(text string, allowedTypes []string) ([]*genai.Content, *genai.GenerateContentConfig) {
+	contents := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
 		genai.NewPartFromText("Ordne den folgenden Text nach den Regeln in JSON ein."),
 		genai.NewPartFromText(text),
 	}, genai.RoleUser)}
 	cfg := &genai.GenerateContentConfig{
-		SystemInstruction:  genai.NewContentFromText(textAnweisung(erlaubteTypen), genai.RoleUser),
+		SystemInstruction:  genai.NewContentFromText(textInstruction(allowedTypes), genai.RoleUser),
 		ResponseMIMEType:   "application/json",
-		ResponseJsonSchema: textSchema(erlaubteTypen),
+		ResponseJsonSchema: textSchema(allowedTypes),
 		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},
 	}
-	return inhalte, cfg
+	return contents, cfg
 }
 
-// AbschnitteEinbetten berechnet einen Vektor pro Abschnitt, in Stapeln.
-// Das Gesamtlimit gilt für alle Stapel zusammen.
-func (g *Gemini) AbschnitteEinbetten(ctx context.Context, texte []string) ([][]float32, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, einbettenTimeout)
-	defer abbrechen()
+// EmbedChunks computes one vector per chunk, in batches. The total limit
+// applies to all batches together.
+func (g *Gemini) EmbedChunks(ctx context.Context, texts []string) ([][]float32, error) {
+	ctx, cancel := context.WithTimeout(ctx, embedTimeout)
+	defer cancel()
 
-	vektoren := make([][]float32, 0, len(texte))
-	for _, b := range stapel(len(texte), stapelGroesse) {
-		eingaben := make([]string, 0, b[1]-b[0])
-		for _, t := range texte[b[0]:b[1]] {
-			eingaben = append(eingaben, dokumentEingabe(t))
+	vectors := make([][]float32, 0, len(texts))
+	for _, b := range batches(len(texts), batchSize) {
+		inputs := make([]string, 0, b[1]-b[0])
+		for _, t := range texts[b[0]:b[1]] {
+			inputs = append(inputs, documentInput(t))
 		}
-		v, err := g.einbetten(ctx, eingaben)
+		v, err := g.embed(ctx, inputs)
 		if err != nil {
 			return nil, err
 		}
-		vektoren = append(vektoren, v...)
+		vectors = append(vectors, v...)
 	}
-	return vektoren, nil
+	return vectors, nil
 }
 
-// FrageEinbetten berechnet den Vektor für eine Suchfrage. Wiederholung bei
-// 429/503 ja, Ersatzmodell nie (Vektorräume verschiedener Modelle passen
-// nicht zusammen).
-func (g *Gemini) FrageEinbetten(ctx context.Context, frage string) ([]float32, error) {
-	ctx, abbrechen := context.WithTimeout(ctx, frageEinbettenTimeout)
-	defer abbrechen()
+// EmbedQuestion computes the vector for a search question. Retries on
+// 429/503 yes, fallback model never (the vector spaces of different models
+// do not match).
+func (g *Gemini) EmbedQuestion(ctx context.Context, question string) ([]float32, error) {
+	ctx, cancel := context.WithTimeout(ctx, embedQuestionTimeout)
+	defer cancel()
 
-	v, err := g.einbetten(ctx, []string{frageEingabe(frage)})
+	v, err := g.embed(ctx, []string{questionInput(question)})
 	if err != nil {
 		return nil, err
 	}
 	return v[0], nil
 }
 
-// einbetten: ein Aufruf mit Wiederholung bei 429/503, ohne Ersatzmodell.
-func (g *Gemini) einbetten(ctx context.Context, eingaben []string) ([][]float32, error) {
-	dimensionen := int32(llm.EmbeddingDimensionen)
-	cfg := &genai.EmbedContentConfig{OutputDimensionality: &dimensionen}
-	inhalte := embeddingInhalte(eingaben)
+// embed: one call with retries on 429/503, without fallback model.
+func (g *Gemini) embed(ctx context.Context, inputs []string) ([][]float32, error) {
+	dimensions := int32(llm.EmbeddingDimensions)
+	cfg := &genai.EmbedContentConfig{OutputDimensionality: &dimensions}
+	contents := embeddingContents(inputs)
 
 	var resp *genai.EmbedContentResponse
-	err := g.neuWiederholer("Einbetten "+g.e.EmbeddingModell).ausfuehren(ctx, func(ctx context.Context) error {
+	err := g.newRetrier("embed "+g.s.EmbeddingModel).run(ctx, func(ctx context.Context) error {
 		var err error
-		resp, err = g.einbettenAPI(ctx, g.e.EmbeddingModell, inhalte, cfg)
+		resp, err = g.embedAPI(ctx, g.s.EmbeddingModel, contents, cfg)
 		return err
 	})
 	if err != nil {
-		return nil, uebersetzeFehler(err, g.e.Schluessel)
+		return nil, translateError(err, g.s.APIKey)
 	}
-	return vektorenAusAntwort(resp, len(eingaben))
+	return vectorsFromResponse(resp, len(inputs))
 }

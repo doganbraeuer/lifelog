@@ -65,15 +65,15 @@ func (d *DuplikatFehler) Is(ziel error) bool { return ziel == core.ErrDuplicate 
 // Hochladen führt den Upload aus (docs/API.md 3.1).
 type Hochladen struct {
 	speicher  UploadSpeicher
-	leser     llm.Leser
-	einbetter llm.Einbetter
+	leser     llm.Reader
+	einbetter llm.Embedder
 	neueID    func() string
 	jetzt     func() time.Time
 }
 
 // NeuHochladen erstellt den Dienst. neueID vergibt ObjectIds
 // (speicher.NeueID).
-func NeuHochladen(s UploadSpeicher, l llm.Leser, e llm.Einbetter, neueID func() string) *Hochladen {
+func NeuHochladen(s UploadSpeicher, l llm.Reader, e llm.Embedder, neueID func() string) *Hochladen {
 	return &Hochladen{speicher: s, leser: l, einbetter: e, neueID: neueID, jetzt: time.Now}
 }
 
@@ -114,7 +114,7 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (core.Entry, error
 		dateiname: dateiname(u.Dateiname),
 		mimeTyp:   mimeTyp,
 		lesen: func(ctx context.Context) (core.Extraction, error) {
-			return h.leser.DokumentLesen(ctx, u.Daten, mimeTyp, core.AllowedTypes(modul))
+			return h.leser.ReadDocument(ctx, u.Daten, mimeTyp, core.AllowedTypes(modul))
 		},
 	})
 }
@@ -148,7 +148,7 @@ func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (core.Entr
 		dateiname: core.TextFileName,
 		mimeTyp:   core.MimeText,
 		lesen: func(ctx context.Context) (core.Extraction, error) {
-			e, err := h.leser.TextLesen(ctx, u.Text, core.AllowedTypes(modul))
+			e, err := h.leser.ReadText(ctx, u.Text, core.AllowedTypes(modul))
 			if err != nil {
 				return core.Extraction{}, err
 			}
@@ -193,13 +193,13 @@ func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Entry, e
 
 	// 5. Abschnitte und Embeddings.
 	texte := core.SplitIntoChunks(eintrag.FullText, core.ChunkMaxChars)
-	vektoren, err := h.einbetter.AbschnitteEinbetten(ctx, texte)
+	vektoren, err := h.einbetter.EmbedChunks(ctx, texte)
 	if err != nil {
 		return core.Entry{}, err
 	}
 	if len(vektoren) != len(texte) {
 		return core.Entry{}, fmt.Errorf("%d Embeddings für %d Abschnitte: %w",
-			len(vektoren), len(texte), llm.ErrAntwortUngueltig)
+			len(vektoren), len(texte), llm.ErrInvalidResponse)
 	}
 
 	// IDs und Metadaten vergeben. Millisekunden, weil MongoDB Zeitpunkte so

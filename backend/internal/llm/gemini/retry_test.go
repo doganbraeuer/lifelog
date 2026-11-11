@@ -13,38 +13,38 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// uhr ist eine virtuelle Uhr: schlafen stellt sie nur vor und merkt sich
-// die Wartezeiten. So dauern Tests keine echten Sekunden.
-type uhr struct {
-	jetzt   time.Time
-	wartete []time.Duration
-	fehler  error // wenn gesetzt, scheitert schlafen damit
+// clock is a virtual clock: sleep only moves it forward and records the
+// waits. This way tests take no real seconds.
+type clock struct {
+	now    time.Time
+	waited []time.Duration
+	err    error // if set, sleep fails with it
 }
 
-func (u *uhr) wiederholer() wiederholer {
-	w := standardWiederholer("Test")
-	w.jetzt = func() time.Time { return u.jetzt }
-	w.schlafen = func(_ context.Context, d time.Duration) error {
-		if u.fehler != nil {
-			return u.fehler
+func (c *clock) retrier() retrier {
+	r := defaultRetrier("test")
+	r.now = func() time.Time { return c.now }
+	r.sleep = func(_ context.Context, d time.Duration) error {
+		if c.err != nil {
+			return c.err
 		}
-		u.wartete = append(u.wartete, d)
-		u.jetzt = u.jetzt.Add(d)
+		c.waited = append(c.waited, d)
+		c.now = c.now.Add(d)
 		return nil
 	}
-	return w
+	return r
 }
 
-// skript liefert der Reihe nach die Fehler (nil = Erfolg) und zählt Aufrufe.
-type skript struct {
-	fehler  []error
-	aufrufe int
+// script returns the errors in order (nil = success) and counts calls.
+type script struct {
+	errs  []error
+	calls int
 }
 
-func (s *skript) aufruf(context.Context) error {
-	s.aufrufe++
-	if s.aufrufe <= len(s.fehler) {
-		return s.fehler[s.aufrufe-1]
+func (s *script) call(context.Context) error {
+	s.calls++
+	if s.calls <= len(s.errs) {
+		return s.errs[s.calls-1]
 	}
 	return nil
 }
@@ -54,237 +54,237 @@ var (
 	e503 = genai.APIError{Code: 503, Message: "high demand"}
 )
 
-// mitFrist liefert einen Kontext, dessen Frist rest nach u.jetzt liegt.
-func mitFrist(t *testing.T, u *uhr, rest time.Duration) context.Context {
-	ctx, abbrechen := context.WithDeadline(context.Background(), u.jetzt.Add(rest))
-	t.Cleanup(abbrechen)
+// withDeadline returns a context whose deadline lies `remaining` after c.now.
+func withDeadline(t *testing.T, c *clock, remaining time.Duration) context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), c.now.Add(remaining))
+	t.Cleanup(cancel)
 	return ctx
 }
 
-func TestWiederholer(t *testing.T) {
-	faelle := []struct {
-		name     string
-		fehler   []error
-		rest     time.Duration // 0 = keine Frist
-		aufrufe  int
-		wartete  []time.Duration
-		ergebnis error // nil = Erfolg
+func TestRetrier(t *testing.T) {
+	cases := []struct {
+		name      string
+		errs      []error
+		remaining time.Duration // 0 = no deadline
+		calls     int
+		waited    []time.Duration
+		result    error // nil = success
 	}{
-		{"Erfolg sofort", nil, 50 * time.Second, 1, nil, nil},
-		{"503, 503, dann Erfolg", []error{e503, e503}, 50 * time.Second, 3,
+		{"immediate success", nil, 50 * time.Second, 1, nil, nil},
+		{"503, 503, then success", []error{e503, e503}, 50 * time.Second, 3,
 			[]time.Duration{time.Second, 2 * time.Second}, nil},
-		{"429 dreimal: aufgeben nach zwei Wiederholungen", []error{e429, e429, e429}, 50 * time.Second, 3,
+		{"429 three times: give up after two retries", []error{e429, e429, e429}, 50 * time.Second, 3,
 			[]time.Duration{time.Second, 2 * time.Second}, e429},
-		{"gemischt 429 und 503", []error{e429, e503}, 50 * time.Second, 3,
+		{"mixed 429 and 503", []error{e429, e503}, 50 * time.Second, 3,
 			[]time.Duration{time.Second, 2 * time.Second}, nil},
-		{"500 wird nicht wiederholt", []error{genai.APIError{Code: 500}}, 50 * time.Second, 1, nil, genai.APIError{Code: 500}},
-		{"504 wird nicht wiederholt", []error{genai.APIError{Code: 504}}, 50 * time.Second, 1, nil, genai.APIError{Code: 504}},
-		{"400 wird nicht wiederholt", []error{genai.APIError{Code: 400}}, 50 * time.Second, 1, nil, genai.APIError{Code: 400}},
-		{"Netzwerkfehler wird nicht wiederholt", []error{&net.DNSError{Err: "x"}}, 50 * time.Second, 1, nil, &net.DNSError{Err: "x"}},
-		{"ohne Frist wird wiederholt", []error{e503}, 0, 2, []time.Duration{time.Second}, nil},
-		// Gesamtlimit: Nach dem Warten müssen noch 5 s bleiben.
-		{"Frist 5,5 s: 1 s Warten + 5 s Rest passt nicht", []error{e503, e503}, 5500 * time.Millisecond, 1, nil, e503},
-		{"Frist 7,5 s: erste Wiederholung ja, zweite (2 s + 5 s bei 6,5 s Rest) nein",
+		{"500 is not retried", []error{genai.APIError{Code: 500}}, 50 * time.Second, 1, nil, genai.APIError{Code: 500}},
+		{"504 is not retried", []error{genai.APIError{Code: 504}}, 50 * time.Second, 1, nil, genai.APIError{Code: 504}},
+		{"400 is not retried", []error{genai.APIError{Code: 400}}, 50 * time.Second, 1, nil, genai.APIError{Code: 400}},
+		{"network error is not retried", []error{&net.DNSError{Err: "x"}}, 50 * time.Second, 1, nil, &net.DNSError{Err: "x"}},
+		{"retried without deadline", []error{e503}, 0, 2, []time.Duration{time.Second}, nil},
+		// Total limit: 5 s must remain after waiting.
+		{"deadline 5.5 s: 1 s wait + 5 s remaining does not fit", []error{e503, e503}, 5500 * time.Millisecond, 1, nil, e503},
+		{"deadline 7.5 s: first retry yes, second (2 s + 5 s with 6.5 s left) no",
 			[]error{e503, e503, e503}, 7500 * time.Millisecond, 2, []time.Duration{time.Second}, e503},
-		{"Frist genau 6 s: 1 s + 5 s passt gerade", []error{e503}, 6 * time.Second, 2, []time.Duration{time.Second}, nil},
+		{"deadline exactly 6 s: 1 s + 5 s just fits", []error{e503}, 6 * time.Second, 2, []time.Duration{time.Second}, nil},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			u := &uhr{jetzt: time.Now()}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cl := &clock{now: time.Now()}
 			ctx := context.Background()
-			if f.rest > 0 {
-				ctx = mitFrist(t, u, f.rest)
+			if c.remaining > 0 {
+				ctx = withDeadline(t, cl, c.remaining)
 			}
-			s := &skript{fehler: f.fehler}
+			s := &script{errs: c.errs}
 
-			err := u.wiederholer().ausfuehren(ctx, s.aufruf)
+			err := cl.retrier().run(ctx, s.call)
 
-			if s.aufrufe != f.aufrufe {
-				t.Errorf("Aufrufe = %d, erwartet %d", s.aufrufe, f.aufrufe)
+			if s.calls != c.calls {
+				t.Errorf("calls = %d, want %d", s.calls, c.calls)
 			}
-			if !slices.Equal(u.wartete, f.wartete) {
-				t.Errorf("Wartezeiten = %v, erwartet %v", u.wartete, f.wartete)
+			if !slices.Equal(cl.waited, c.waited) {
+				t.Errorf("waits = %v, want %v", cl.waited, c.waited)
 			}
-			if f.ergebnis == nil && err != nil {
-				t.Errorf("erwartet Erfolg, bekommen %v", err)
+			if c.result == nil && err != nil {
+				t.Errorf("want success, got %v", err)
 			}
-			if f.ergebnis != nil && (err == nil || err.Error() != f.ergebnis.Error()) {
-				t.Errorf("Fehler = %v, erwartet %v", err, f.ergebnis)
+			if c.result != nil && (err == nil || err.Error() != c.result.Error()) {
+				t.Errorf("error = %v, want %v", err, c.result)
 			}
 		})
 	}
 }
 
-func TestWiederholer_AbbruchWaehrendDesWartens(t *testing.T) {
-	u := &uhr{jetzt: time.Now(), fehler: context.Canceled}
-	s := &skript{fehler: []error{e503, e503}}
+func TestRetrier_CanceledWhileWaiting(t *testing.T) {
+	cl := &clock{now: time.Now(), err: context.Canceled}
+	s := &script{errs: []error{e503, e503}}
 
-	err := u.wiederholer().ausfuehren(context.Background(), s.aufruf)
+	err := cl.retrier().run(context.Background(), s.call)
 
-	if !errors.Is(err, context.Canceled) || s.aufrufe != 1 {
-		t.Errorf("err = %v, Aufrufe = %d; erwartet Canceled nach 1 Aufruf", err, s.aufrufe)
+	if !errors.Is(err, context.Canceled) || s.calls != 1 {
+		t.Errorf("err = %v, calls = %d; want Canceled after 1 call", err, s.calls)
 	}
 }
 
-func TestSchlafenMitKontext(t *testing.T) {
-	if err := schlafenMitKontext(context.Background(), time.Millisecond); err != nil {
-		t.Errorf("normales Schlafen: %v", err)
+func TestSleepWithContext(t *testing.T) {
+	if err := sleepWithContext(context.Background(), time.Millisecond); err != nil {
+		t.Errorf("normal sleep: %v", err)
 	}
-	ctx, abbrechen := context.WithCancel(context.Background())
-	abbrechen()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	start := time.Now()
-	if err := schlafenMitKontext(ctx, time.Hour); !errors.Is(err, context.Canceled) {
-		t.Errorf("abgebrochen: %v", err)
+	if err := sleepWithContext(ctx, time.Hour); !errors.Is(err, context.Canceled) {
+		t.Errorf("canceled: %v", err)
 	}
 	if time.Since(start) > time.Second {
-		t.Error("Schlafen hat trotz Abbruch gewartet")
+		t.Error("sleep waited despite cancellation")
 	}
 }
 
-// --- Zusammenspiel in Gemini: Wiederholung und Ersatzmodell ---
+// --- In Gemini: retries and fallback model working together ---
 
-// netzAttrappe ersetzt die beiden SDK-Aufrufe. Pro Modellname eine Liste von
-// Fehlern (nil = Erfolg), die der Reihe nach geliefert werden.
-type netzAttrappe struct {
-	fehler  map[string][]error
-	aufrufe []string // Modellnamen in Aufrufreihenfolge
+// fakeNetwork replaces the two SDK calls. Per model name a list of errors
+// (nil = success) that are returned in order.
+type fakeNetwork struct {
+	errs  map[string][]error
+	calls []string // model names in call order
 }
 
-func (n *netzAttrappe) naechster(modellName string) error {
-	n.aufrufe = append(n.aufrufe, modellName)
-	liste := n.fehler[modellName]
-	if len(liste) == 0 {
+func (n *fakeNetwork) next(model string) error {
+	n.calls = append(n.calls, model)
+	list := n.errs[model]
+	if len(list) == 0 {
 		return nil
 	}
-	n.fehler[modellName] = liste[1:]
-	return liste[0]
+	n.errs[model] = list[1:]
+	return list[0]
 }
 
-func (n *netzAttrappe) erzeugen(_ context.Context, m string, _ []*genai.Content, _ *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-	if err := n.naechster(m); err != nil {
+func (n *fakeNetwork) generate(_ context.Context, m string, _ []*genai.Content, _ *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+	if err := n.next(m); err != nil {
 		return nil, err
 	}
-	return antwort(gueltigeAntwort, genai.FinishReasonStop), nil
+	return response(validResponse, genai.FinishReasonStop), nil
 }
 
-func (n *netzAttrappe) einbetten(_ context.Context, m string, inhalte []*genai.Content, _ *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error) {
-	if err := n.naechster(m); err != nil {
+func (n *fakeNetwork) embed(_ context.Context, m string, contents []*genai.Content, _ *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error) {
+	if err := n.next(m); err != nil {
 		return nil, err
 	}
 	resp := &genai.EmbedContentResponse{}
-	for range inhalte {
-		resp.Embeddings = append(resp.Embeddings, &genai.ContentEmbedding{Values: make([]float32, llm.EmbeddingDimensionen)})
+	for range contents {
+		resp.Embeddings = append(resp.Embeddings, &genai.ContentEmbedding{Values: make([]float32, llm.EmbeddingDimensions)})
 	}
 	return resp, nil
 }
 
-func testGemini(n *netzAttrappe, ersatz string) *Gemini {
+func testGemini(n *fakeNetwork, fallback string) *Gemini {
 	return &Gemini{
-		e: Einstellungen{
-			Schluessel: "GEHEIM", Modell: "haupt", ErsatzModell: ersatz, EmbeddingModell: "embed",
-			ErsatzReserve: 20 * time.Second,
+		s: Settings{
+			APIKey: "SECRET", Model: "main", FallbackModel: fallback, EmbeddingModel: "embed",
+			FallbackReserve: 20 * time.Second,
 		},
-		erzeugen:       n.erzeugen,
-		einbettenAPI:   n.einbetten,
-		leseTimeout:    leseTimeout,
-		antwortTimeout: antwortTimeout,
-		neuWiederholer: func(b string) wiederholer {
-			w := standardWiederholer(b)
-			w.schlafen = func(context.Context, time.Duration) error { return nil } // nicht wirklich warten
-			return w
+		generate:      n.generate,
+		embedAPI:      n.embed,
+		readTimeout:   readTimeout,
+		answerTimeout: answerTimeout,
+		newRetrier: func(label string) retrier {
+			r := defaultRetrier(label)
+			r.sleep = func(context.Context, time.Duration) error { return nil } // do not really wait
+			return r
 		},
 	}
 }
 
-func TestDokumentLesen_WiederholungUndErsatz(t *testing.T) {
-	faelle := []struct {
-		name            string
-		fehler          map[string][]error
-		ersatz          string
-		aufrufe         []string
-		nichtErreichbar bool // erwartetes Ergebnis; sonst Erfolg oder anderer Fehler
-		erfolg          bool
+func TestReadDocument_RetriesAndFallback(t *testing.T) {
+	cases := []struct {
+		name        string
+		errs        map[string][]error
+		fallback    string
+		calls       []string
+		unavailable bool // expected result; otherwise success or another error
+		success     bool
 	}{
-		{"Hauptmodell klappt nach einer Wiederholung",
-			map[string][]error{"haupt": {e503}}, "ersatz",
-			[]string{"haupt", "haupt"}, false, true},
-		{"Hauptmodell bleibt überlastet, Ersatz klappt",
-			map[string][]error{"haupt": {e503, e429, e503}}, "ersatz",
-			[]string{"haupt", "haupt", "haupt", "ersatz"}, false, true},
-		{"Ersatz wird nur einmal versucht, nicht wiederholt",
-			map[string][]error{"haupt": {e503, e503, e503}, "ersatz": {e503, e503}}, "ersatz",
-			[]string{"haupt", "haupt", "haupt", "ersatz"}, true, false},
-		{"ohne Ersatzmodell: nach drei Versuchen nicht erreichbar",
-			map[string][]error{"haupt": {e503, e503, e503}}, "",
-			[]string{"haupt", "haupt", "haupt"}, true, false},
-		{"504 wird nicht wiederholt, aber Ersatz greift",
-			map[string][]error{"haupt": {genai.APIError{Code: 504}}}, "ersatz",
-			[]string{"haupt", "ersatz"}, false, true},
-		{"400 ist kein Erreichbarkeitsproblem: kein Ersatz",
-			map[string][]error{"haupt": {genai.APIError{Code: 400}}}, "ersatz",
-			[]string{"haupt"}, false, false},
+		{"main model works after one retry",
+			map[string][]error{"main": {e503}}, "fallback",
+			[]string{"main", "main"}, false, true},
+		{"main model stays overloaded, fallback works",
+			map[string][]error{"main": {e503, e429, e503}}, "fallback",
+			[]string{"main", "main", "main", "fallback"}, false, true},
+		{"fallback is tried only once, not retried",
+			map[string][]error{"main": {e503, e503, e503}, "fallback": {e503, e503}}, "fallback",
+			[]string{"main", "main", "main", "fallback"}, true, false},
+		{"without fallback model: unavailable after three attempts",
+			map[string][]error{"main": {e503, e503, e503}}, "",
+			[]string{"main", "main", "main"}, true, false},
+		{"504 is not retried, but the fallback applies",
+			map[string][]error{"main": {genai.APIError{Code: 504}}}, "fallback",
+			[]string{"main", "fallback"}, false, true},
+		{"400 is no availability problem: no fallback",
+			map[string][]error{"main": {genai.APIError{Code: 400}}}, "fallback",
+			[]string{"main"}, false, false},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			n := &netzAttrappe{fehler: f.fehler}
-			g := testGemini(n, f.ersatz)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n := &fakeNetwork{errs: c.errs}
+			g := testGemini(n, c.fallback)
 
-			e, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+			x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 
-			if !slices.Equal(n.aufrufe, f.aufrufe) {
-				t.Errorf("Aufrufe = %v, erwartet %v", n.aufrufe, f.aufrufe)
+			if !slices.Equal(n.calls, c.calls) {
+				t.Errorf("calls = %v, want %v", n.calls, c.calls)
 			}
-			if got := errors.Is(err, llm.ErrNichtErreichbar); got != f.nichtErreichbar {
-				t.Errorf("ErrNichtErreichbar = %v, erwartet %v (%v)", got, f.nichtErreichbar, err)
+			if got := errors.Is(err, llm.ErrUnavailable); got != c.unavailable {
+				t.Errorf("ErrUnavailable = %v, want %v (%v)", got, c.unavailable, err)
 			}
-			if f.erfolg && (err != nil || e.Type != "laborbefund") {
-				t.Errorf("erwartet Erfolg, bekommen %+v, %v", e, err)
+			if c.success && (err != nil || x.Type != "laborbefund") {
+				t.Errorf("want success, got %+v, %v", x, err)
 			}
-			if !f.erfolg && err == nil {
-				t.Error("erwartet einen Fehler")
+			if !c.success && err == nil {
+				t.Error("want an error")
 			}
 		})
 	}
 }
 
-func TestEinbetten_WiederholungOhneErsatz(t *testing.T) {
-	n := &netzAttrappe{fehler: map[string][]error{"embed": {e429}}}
-	g := testGemini(n, "ersatz")
-	v, err := g.AbschnitteEinbetten(context.Background(), []string{"a", "b"})
+func TestEmbed_RetriesWithoutFallback(t *testing.T) {
+	n := &fakeNetwork{errs: map[string][]error{"embed": {e429}}}
+	g := testGemini(n, "fallback")
+	v, err := g.EmbedChunks(context.Background(), []string{"a", "b"})
 	if err != nil || len(v) != 2 {
 		t.Fatalf("v = %d, err = %v", len(v), err)
 	}
-	if !slices.Equal(n.aufrufe, []string{"embed", "embed"}) {
-		t.Errorf("Aufrufe = %v", n.aufrufe)
+	if !slices.Equal(n.calls, []string{"embed", "embed"}) {
+		t.Errorf("calls = %v", n.calls)
 	}
 
-	// Bleibt das Embedding-Modell überlastet, gibt es keinen Ersatz.
-	n = &netzAttrappe{fehler: map[string][]error{"embed": {e503, e503, e503}}}
-	g = testGemini(n, "ersatz")
-	if _, err := g.FrageEinbetten(context.Background(), "x"); !errors.Is(err, llm.ErrNichtErreichbar) {
+	// If the embedding model stays overloaded, there is no fallback.
+	n = &fakeNetwork{errs: map[string][]error{"embed": {e503, e503, e503}}}
+	g = testGemini(n, "fallback")
+	if _, err := g.EmbedQuestion(context.Background(), "x"); !errors.Is(err, llm.ErrUnavailable) {
 		t.Errorf("err = %v", err)
 	}
-	if !slices.Equal(n.aufrufe, []string{"embed", "embed", "embed"}) {
-		t.Errorf("Aufrufe = %v (kein anderes Modell erlaubt)", n.aufrufe)
+	if !slices.Equal(n.calls, []string{"embed", "embed", "embed"}) {
+		t.Errorf("calls = %v (no other model allowed)", n.calls)
 	}
 }
 
-func TestEinbetten_LeereListeOhneAufruf(t *testing.T) {
-	n := &netzAttrappe{fehler: map[string][]error{}}
-	v, err := testGemini(n, "").AbschnitteEinbetten(context.Background(), nil)
-	if err != nil || v == nil || len(v) != 0 || len(n.aufrufe) != 0 {
-		t.Errorf("v = %#v, err = %v, Aufrufe = %v", v, err, n.aufrufe)
+func TestEmbed_EmptyListWithoutCall(t *testing.T) {
+	n := &fakeNetwork{errs: map[string][]error{}}
+	v, err := testGemini(n, "").EmbedChunks(context.Background(), nil)
+	if err != nil || v == nil || len(v) != 0 || len(n.calls) != 0 {
+		t.Errorf("v = %#v, err = %v, calls = %v", v, err, n.calls)
 	}
 }
 
-func TestNeu_ErsatzGleichHauptWirdIgnoriert(t *testing.T) {
-	g, err := Neu(context.Background(), Einstellungen{
-		Schluessel: "x", Modell: "gemini-3.8-flash", ErsatzModell: "gemini-3.8-flash", EmbeddingModell: "e",
+func TestNew_FallbackEqualToMainIsIgnored(t *testing.T) {
+	g, err := New(context.Background(), Settings{
+		APIKey: "x", Model: "gemini-3.8-flash", FallbackModel: "gemini-3.8-flash", EmbeddingModel: "e",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.e.ErsatzModell != "" {
-		t.Errorf("Ersatz = %q, erwartet leer", g.e.ErsatzModell)
+	if g.s.FallbackModel != "" {
+		t.Errorf("fallback = %q, want empty", g.s.FallbackModel)
 	}
 }

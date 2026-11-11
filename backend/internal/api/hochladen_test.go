@@ -186,8 +186,8 @@ func TestHochladen_FehlerDesDienstes(t *testing.T) {
 			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
 		{core.ErrUnreadable, 422, CodeNichtLesbar, nil},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},
-		{fmt.Errorf("JSON kaputt: %w", llm.ErrAntwortUngueltig), 502, CodeAuslesenFehlgeschlagen, nil},
-		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrNichtErreichbar), 503, CodeModellNichtErreichbar, nil},
+		{fmt.Errorf("JSON kaputt: %w", llm.ErrInvalidResponse), 502, CodeAuslesenFehlgeschlagen, nil},
+		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModellNichtErreichbar, nil},
 		{errors.New("Datenbank weg"), 500, CodeInternerFehler, nil},
 	}
 	for _, f := range faelle {

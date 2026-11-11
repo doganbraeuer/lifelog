@@ -62,12 +62,12 @@ func starten() error {
 	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
 	// anderes Paket unter internal/modell, das Leser, Einbetter und
 	// Antworter umsetzt.
-	g, err := gemini.Neu(ctx, gemini.Einstellungen{
-		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModel,
-		ErsatzModell:    k.GeminiFallbackModel,
-		ErsatzReserve:   k.GeminiFallbackReserve,
-		EmbeddingModell: k.GeminiEmbeddingModel,
+	g, err := gemini.New(ctx, gemini.Settings{
+		APIKey:          k.GeminiKey,
+		Model:           k.GeminiModel,
+		FallbackModel:   k.GeminiFallbackModel,
+		FallbackReserve: k.GeminiFallbackReserve,
+		EmbeddingModel:  k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err

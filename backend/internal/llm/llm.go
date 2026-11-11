@@ -1,9 +1,9 @@
-// Package llm ist die einzige Stelle, über die das Backend Sprach-,
-// Vision- und Embedding-Modelle aufruft (CLAUDE.md: „Anbieter austauschbar“).
+// Package llm is the only place through which the backend calls language,
+// vision and embedding models (CLAUDE.md: "provider stays replaceable").
 //
-// Der Rest des Backends kennt nur diese Schnittstellen. Ein anderer Anbieter
-// bedeutet: ein neues Unterpaket neben gemini/, das sie umsetzt, und eine
-// Zeile in cmd/server/main.go.
+// The rest of the backend only knows these interfaces. Another provider
+// means: a new subpackage next to gemini/ that implements them, and one line
+// in cmd/server/main.go.
 package llm
 
 import (
@@ -13,51 +13,51 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// EmbeddingDimensionen ist die Länge jedes Embedding-Vektors. Der
-// Vektorindex in Atlas (Schritt 5) ist auf genau diese Zahl festgelegt.
-// Ändert sie sich, müssen alle Abschnitte neu eingebettet werden.
-const EmbeddingDimensionen = 768
+// EmbeddingDimensions is the length of every embedding vector. The vector
+// index in Atlas is fixed to exactly this number. If it changes, all chunks
+// must be re-embedded.
+const EmbeddingDimensions = 768
 
-// Leser liest ein Dokument (Bild oder PDF) und liefert, was darin steht.
-// Das Ergebnis ist ungeprüft, prüfen muss core.PruefeErkennung.
-type Leser interface {
-	DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (core.Extraction, error)
+// Reader reads a document (image or PDF) and returns what is in it. The
+// result is unchecked; core.CheckExtraction must check it.
+type Reader interface {
+	ReadDocument(ctx context.Context, data []byte, mimeType string, allowedTypes []string) (core.Extraction, error)
 
-	// TextLesen ordnet einen eingegebenen Text ein (Text-Import): Datum,
-	// Quelle, Typ und Infos. Lesbar ist immer true, Volltext bleibt leer;
-	// der Volltext ist der eingegebene Text, den setzt der Aufrufer.
-	TextLesen(ctx context.Context, text string, erlaubteTypen []string) (core.Extraction, error)
+	// ReadText classifies an entered text (text import): date, issuer, type
+	// and facts. Readable is always true and FullText stays empty; the full
+	// text is the entered text, which the caller sets.
+	ReadText(ctx context.Context, text string, allowedTypes []string) (core.Extraction, error)
 }
 
-// Einbetter berechnet Embeddings: Vektoren, deren Abstand zueinander
-// ausdrückt, wie ähnlich sich zwei Texte inhaltlich sind.
+// Embedder computes embeddings: vectors whose distance expresses how similar
+// two texts are in content.
 //
-// Abschnitte und Fragen werden getrennt eingebettet, weil manche Modelle
-// beide unterschiedlich behandeln („Dokument“ vs. „Suchanfrage“). Beide
-// Methoden liefern Vektoren mit EmbeddingDimensionen Einträgen.
-type Einbetter interface {
-	// AbschnitteEinbetten liefert genau einen Vektor pro Text, in derselben
-	// Reihenfolge.
-	AbschnitteEinbetten(ctx context.Context, texte []string) ([][]float32, error)
-	FrageEinbetten(ctx context.Context, frage string) ([]float32, error)
+// Chunks and questions are embedded separately, because some models treat
+// them differently ("document" vs. "search query"). Both methods return
+// vectors with EmbeddingDimensions entries.
+type Embedder interface {
+	// EmbedChunks returns exactly one vector per text, in the same order.
+	EmbedChunks(ctx context.Context, texts []string) ([][]float32, error)
+	EmbedQuestion(ctx context.Context, question string) ([]float32, error)
 }
 
-// Antworter beantwortet eine Frage nur aus den übergebenen Fundstellen. Er
-// setzt Verweise wie [1], die sich auf Fundstelle.Nr beziehen, und antwortet
-// mit core.FesterSatz, wenn die Fundstellen die Frage nicht beantworten.
-// Ob die Antwort wirklich Verweise enthält, prüft danach core.BaueAntwort.
-type Antworter interface {
-	Antworten(ctx context.Context, frage string, fundstellen []core.Source) (string, error)
+// Answerer answers a question only from the given sources. It sets
+// references like [1] that refer to Source.Number, and answers with
+// core.NotFoundAnswer if the sources do not answer the question. Whether the
+// answer really contains references is checked afterwards by
+// core.BuildAnswer.
+type Answerer interface {
+	Answer(ctx context.Context, question string, sources []core.Source) (string, error)
 }
 
-// Fehlerarten. Jede Umsetzung übersetzt ihre eigenen Fehler in diese, damit
-// die HTTP-Schicht den richtigen Code wählen kann, egal welcher Anbieter.
+// Kinds of errors. Every implementation translates its own errors into
+// these, so the HTTP layer can choose the right code, whatever the provider.
 var (
-	// ErrNichtErreichbar: Netzwerk, Zeitüberschreitung, Limit (429) oder
-	// Serverfehler des Anbieters (→ 503 MODELL_NICHT_ERREICHBAR).
-	ErrNichtErreichbar = errors.New("Modell nicht erreichbar")
+	// ErrUnavailable: network, timeout, limit (429) or server error of the
+	// provider (→ 503 MODELL_NICHT_ERREICHBAR).
+	ErrUnavailable = errors.New("model unavailable")
 
-	// ErrAntwortUngueltig: Das Modell hat geantwortet, aber nicht in der
-	// erwarteten Form (→ 502 AUSLESEN_FEHLGESCHLAGEN).
-	ErrAntwortUngueltig = errors.New("Antwort des Modells ungültig")
+	// ErrInvalidResponse: the model answered, but not in the expected form
+	// (→ 502 AUSLESEN_FEHLGESCHLAGEN).
+	ErrInvalidResponse = errors.New("invalid model response")
 )

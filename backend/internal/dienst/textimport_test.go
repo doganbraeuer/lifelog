@@ -36,7 +36,7 @@ func textErkennung() core.Extraction {
 
 func textAufbau() aufbau {
 	a := neuerAufbau()
-	a.leser.Erkennung = textErkennung()
+	a.leser.Extraction = textErkennung()
 	return a
 }
 
@@ -48,9 +48,9 @@ func TestTextImport_Erfolg(t *testing.T) {
 	}
 
 	// Nur TextLesen, nie DokumentLesen, und mit dem Text unverändert.
-	n, gesendet := a.leser.TextAufrufe()
-	if n != 1 || a.leser.Aufrufe() != 0 || gesendet != eingabe {
-		t.Errorf("TextLesen %d×, DokumentLesen %d×, Text %q", n, a.leser.Aufrufe(), gesendet)
+	n, gesendet := a.leser.TextCalls()
+	if n != 1 || a.leser.Calls() != 0 || gesendet != eingabe {
+		t.Errorf("TextLesen %d×, DokumentLesen %d×, Text %q", n, a.leser.Calls(), gesendet)
 	}
 
 	// volltext ist der eingegebene Text, nicht der des Modells.
@@ -96,8 +96,8 @@ func TestTextImport_DuplikatVorModellaufruf(t *testing.T) {
 	if !errors.As(err, &dup) || dup.EintragID != "bbbbbbbbbbbbbbbbbbbbbbbb" {
 		t.Fatalf("err = %v", err)
 	}
-	if n, _ := a.leser.TextAufrufe(); n != 0 || a.einbetter.Aufrufe() != 0 {
-		t.Errorf("Modell trotz Duplikat aufgerufen: Lesen %d, Einbetten %d", n, a.einbetter.Aufrufe())
+	if n, _ := a.leser.TextCalls(); n != 0 || a.einbetter.Calls() != 0 {
+		t.Errorf("Modell trotz Duplikat aufgerufen: Lesen %d, Einbetten %d", n, a.einbetter.Calls())
 	}
 }
 
@@ -129,7 +129,7 @@ func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
 			if !errors.Is(err, f.fehler) {
 				t.Errorf("err = %v, erwartet %v", err, f.fehler)
 			}
-			if n, _ := a.leser.TextAufrufe(); n != 0 || len(a.speicher.protokoll) != 0 {
+			if n, _ := a.leser.TextCalls(); n != 0 || len(a.speicher.protokoll) != 0 {
 				t.Errorf("Aufrufe trotz Fehler: Lesen %d, Speicher %v", n, a.speicher.protokoll)
 			}
 		})
@@ -154,12 +154,12 @@ func TestTextImport_ModellFehlerSpeichertNichts(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"nicht erreichbar", llm.ErrNichtErreichbar},
-		{"Antwort ungültig", llm.ErrAntwortUngueltig},
+		{"nicht erreichbar", llm.ErrUnavailable},
+		{"Antwort ungültig", llm.ErrInvalidResponse},
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			a := textAufbau()
-			a.dienst.leser = &fake.Leser{Err: f.err}
+			a.dienst.leser = &fake.Reader{Err: f.err}
 			_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
 			if !errors.Is(err, f.err) {
 				t.Errorf("err = %v", err)
@@ -176,7 +176,7 @@ func TestTextImport_TypNichtErlaubt(t *testing.T) {
 	a := textAufbau()
 	e := textErkennung()
 	e.Type = "kochrezept"
-	a.leser.Erkennung = e
+	a.leser.Extraction = e
 	_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
 	if !errors.Is(err, core.ErrInvalidExtraction) || errors.Is(err, core.ErrUnreadable) {
 		t.Errorf("err = %v", err)
@@ -204,7 +204,7 @@ func TestTextImport_TextNichtImLog(t *testing.T) {
 	a := textAufbau()
 	e := textErkennung()
 	e.Facts = append(e.Facts, core.ExtractedFact{Name: "Dosis", Value: ""}) // wird ausgelassen und geloggt
-	a.leser.Erkennung = e
+	a.leser.Extraction = e
 	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe}); err != nil {
 		t.Fatal(err)
 	}

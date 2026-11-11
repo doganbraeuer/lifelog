@@ -129,10 +129,10 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 // Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
 // Eintrag-ID.
 func einbetten(ctx context.Context, k config.Config, eintraege []core.Entry) (map[string][]core.Chunk, error) {
-	g, err := gemini.Neu(ctx, gemini.Einstellungen{
-		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModel,
-		EmbeddingModell: k.GeminiEmbeddingModel,
+	g, err := gemini.New(ctx, gemini.Settings{
+		APIKey:         k.GeminiKey,
+		Model:          k.GeminiModel,
+		EmbeddingModel: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func einbetten(ctx context.Context, k config.Config, eintraege []core.Entry) (ma
 			texte = append(texte, a.Text)
 		}
 	}
-	vektoren, err := g.AbschnitteEinbetten(ctx, texte)
+	vektoren, err := g.EmbedChunks(ctx, texte)
 	if err != nil {
 		return nil, fmt.Errorf("Embeddings (%s): %w", k.GeminiEmbeddingModel, err)
 	}

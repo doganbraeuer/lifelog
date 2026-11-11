@@ -26,8 +26,8 @@ func TestVektorindexDefinition(t *testing.T) {
 		switch {
 		case f.Type == "vector" && f.Path == "embedding":
 			vektor = true
-			if f.NumDimensions != llm.EmbeddingDimensionen {
-				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, llm.EmbeddingDimensionen)
+			if f.NumDimensions != llm.EmbeddingDimensions {
+				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, llm.EmbeddingDimensions)
 			}
 			if f.Similarity != "cosine" {
 				t.Errorf("similarity = %q; core.MinScore ist für cosine berechnet", f.Similarity)

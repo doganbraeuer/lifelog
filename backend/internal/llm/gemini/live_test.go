@@ -1,12 +1,12 @@
 package gemini
 
-// Live-Tests gegen die echte Gemini-API. Sie laufen nur mit
+// Live tests against the real Gemini API. They only run with
 //
-//	LIFELOG_LIVE=1 go test ./internal/modell/gemini/ -run Live -v
+//	LIFELOG_LIVE=1 go test ./internal/llm/gemini/ -run Live -v
 //
-// Sie kosten Anfragen aus dem Kontingent und schicken ausschließlich das
-// synthetische Dokument aus backend/testdaten/ an Google. Der API-Schlüssel
-// kommt aus der .env im Repo-Wurzelverzeichnis und wird nie ausgegeben.
+// They cost requests from the quota and send only the synthetic document
+// from backend/testdaten/ to Google. The API key comes from the .env in the
+// repository root and is never printed.
 
 import (
 	"bytes"
@@ -32,226 +32,227 @@ import (
 func liveGemini(t *testing.T) *Gemini {
 	t.Helper()
 	if os.Getenv("LIFELOG_LIVE") != "1" {
-		t.Skip("Live-Test übersprungen (LIFELOG_LIVE=1 setzen)")
+		t.Skip("live test skipped (set LIFELOG_LIVE=1)")
 	}
 	if err := config.FindDotenv(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := config.Load(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := Neu(context.Background(), Einstellungen{
-		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModel,
-		ErsatzModell:    k.GeminiFallbackModel,
-		ErsatzReserve:   k.GeminiFallbackReserve,
-		EmbeddingModell: k.GeminiEmbeddingModel,
+	g, err := New(context.Background(), Settings{
+		APIKey:          c.GeminiKey,
+		Model:           c.GeminiModel,
+		FallbackModel:   c.GeminiFallbackModel,
+		FallbackReserve: c.GeminiFallbackReserve,
+		EmbeddingModel:  c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("Modelle: %s (Ersatz %q, Reserve %v) / %s", k.GeminiModel, g.e.ErsatzModell, k.GeminiFallbackReserve, k.GeminiEmbeddingModel)
+	t.Logf("models: %s (fallback %q, reserve %v) / %s", c.GeminiModel, g.s.FallbackModel, c.GeminiFallbackReserve, c.GeminiEmbeddingModel)
 	return g
 }
 
-func testdatei(t *testing.T, name string) []byte {
+func testFile(t *testing.T, name string) []byte {
 	t.Helper()
-	daten, err := os.ReadFile(filepath.Join("..", "..", "..", "testdaten", name))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "testdaten", name))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return daten
+	return data
 }
 
-func TestLive_DokumentLesen(t *testing.T) {
+func TestLive_ReadDocument(t *testing.T) {
 	g := liveGemini(t)
-	typen := core.AllowedTypes("gesundheit")
+	types := core.AllowedTypes("gesundheit")
 
 	for _, name := range []string{"laborbefund.pdf", "laborbefund.png"} {
 		t.Run(name, func(t *testing.T) {
-			daten := testdatei(t, name)
-			mime, err := core.CheckFile(daten)
+			data := testFile(t, name)
+			mime, err := core.CheckFile(data)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			start := time.Now()
-			e, err := g.DokumentLesen(context.Background(), daten, mime, typen)
-			dauer := time.Since(start)
+			x, err := g.ReadDocument(context.Background(), data, mime, types)
+			duration := time.Since(start)
 			if err != nil {
-				t.Fatalf("nach %v: %v", dauer.Round(time.Millisecond), err)
+				t.Fatalf("after %v: %v", duration.Round(time.Millisecond), err)
 			}
-			t.Logf("Dauer %v", dauer.Round(time.Millisecond))
+			t.Logf("duration %v", duration.Round(time.Millisecond))
 
-			eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
+			entry, dropped, err := core.CheckExtraction(x, "gesundheit")
 			if err != nil {
-				t.Fatalf("Prüfung: %v", err)
+				t.Fatalf("check: %v", err)
 			}
-			if len(ausgelassen) > 0 {
-				t.Logf("ausgelassen: %v", ausgelassen)
-			}
-
-			if eintrag.Type != "laborbefund" {
-				t.Errorf("typ = %q", eintrag.Type)
-			}
-			if eintrag.DocumentDate == nil || *eintrag.DocumentDate != "2026-10-14" {
-				t.Errorf("dokumentdatum = %v (Geburtsdatum verwechselt?)", deref(eintrag.DocumentDate))
-			}
-			if eintrag.Issuer == nil || !strings.Contains(*eintrag.Issuer, "Labor Muster") {
-				t.Errorf("quelle = %v", deref(eintrag.Issuer))
-			}
-			if !strings.Contains(eintrag.FullText, "Hämoglobin") {
-				t.Error("volltext enthält Hämoglobin nicht (Umlaut verloren?)")
+			if len(dropped) > 0 {
+				t.Logf("dropped: %v", dropped)
 			}
 
-			erwartet := map[string][2]string{ // Name → Wert, Einheit
+			if entry.Type != "laborbefund" {
+				t.Errorf("type = %q", entry.Type)
+			}
+			if entry.DocumentDate == nil || *entry.DocumentDate != "2026-10-14" {
+				t.Errorf("document date = %v (confused with the date of birth?)", deref(entry.DocumentDate))
+			}
+			if entry.Issuer == nil || !strings.Contains(*entry.Issuer, "Labor Muster") {
+				t.Errorf("issuer = %v", deref(entry.Issuer))
+			}
+			if !strings.Contains(entry.FullText, "Hämoglobin") {
+				t.Error("full text does not contain Hämoglobin (umlaut lost?)")
+			}
+
+			want := map[string][2]string{ // name → value, unit
 				"Hämoglobin": {"14,2", "g/dl"},
 				"CRP":        {"<0,5", "mg/dl"},
 			}
-			for _, info := range eintrag.Facts {
-				t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Value, deref(info.Unit))
-				if w, ok := erwartet[info.Name]; ok {
-					if info.Value != w[0] || deref(info.Unit) != w[1] {
-						t.Errorf("%s = %q %s, erwartet %q %s", info.Name, info.Value, deref(info.Unit), w[0], w[1])
+			for _, f := range entry.Facts {
+				t.Logf("  %s: %s = %q %s", f.ID, f.Name, f.Value, deref(f.Unit))
+				if w, ok := want[f.Name]; ok {
+					if f.Value != w[0] || deref(f.Unit) != w[1] {
+						t.Errorf("%s = %q %s, want %q %s", f.Name, f.Value, deref(f.Unit), w[0], w[1])
 					}
-					delete(erwartet, info.Name)
+					delete(want, f.Name)
 				}
 			}
-			for name := range erwartet {
-				t.Errorf("Info %s fehlt", name)
+			for name := range want {
+				t.Errorf("fact %s missing", name)
 			}
 		})
 	}
 }
 
-func TestLive_TextLesen(t *testing.T) {
+func TestLive_ReadText(t *testing.T) {
 	g := liveGemini(t)
-	text := string(testdatei(t, "laborbefund.txt"))
+	text := string(testFile(t, "laborbefund.txt"))
 
 	start := time.Now()
-	e, err := g.TextLesen(context.Background(), text, core.AllowedTypes("gesundheit"))
-	dauer := time.Since(start).Round(time.Millisecond)
+	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("gesundheit"))
+	duration := time.Since(start).Round(time.Millisecond)
 	if err != nil {
-		t.Fatalf("nach %v: %v", dauer, err)
+		t.Fatalf("after %v: %v", duration, err)
 	}
-	t.Logf("Dauer %v", dauer)
+	t.Logf("duration %v", duration)
 
-	// Wie im Dienst: Volltext ist der eingegebene Text.
-	e.FullText = text
-	eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
+	// As in the service: the full text is the entered text.
+	x.FullText = text
+	entry, dropped, err := core.CheckExtraction(x, "gesundheit")
 	if err != nil {
-		t.Fatalf("Prüfung: %v", err)
+		t.Fatalf("check: %v", err)
 	}
-	if len(ausgelassen) > 0 {
-		t.Logf("ausgelassen: %v", ausgelassen)
+	if len(dropped) > 0 {
+		t.Logf("dropped: %v", dropped)
 	}
-	if eintrag.Type != "laborbefund" {
-		t.Errorf("typ = %q", eintrag.Type)
+	if entry.Type != "laborbefund" {
+		t.Errorf("type = %q", entry.Type)
 	}
-	if deref(eintrag.DocumentDate) != "2026-10-14" {
-		t.Errorf("dokumentdatum = %v", deref(eintrag.DocumentDate))
+	if deref(entry.DocumentDate) != "2026-10-14" {
+		t.Errorf("document date = %v", deref(entry.DocumentDate))
 	}
-	if !strings.Contains(deref(eintrag.Issuer), "Labor Muster") {
-		t.Errorf("quelle = %v", deref(eintrag.Issuer))
+	if !strings.Contains(deref(entry.Issuer), "Labor Muster") {
+		t.Errorf("issuer = %v", deref(entry.Issuer))
 	}
 	hb := false
-	for _, info := range eintrag.Facts {
-		t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Value, deref(info.Unit))
-		hb = hb || (info.Name == "Hämoglobin" && info.Value == "14,2" && deref(info.Unit) == "g/dl")
+	for _, f := range entry.Facts {
+		t.Logf("  %s: %s = %q %s", f.ID, f.Name, f.Value, deref(f.Unit))
+		hb = hb || (f.Name == "Hämoglobin" && f.Value == "14,2" && deref(f.Unit) == "g/dl")
 	}
 	if !hb {
-		t.Error("Hämoglobin 14,2 g/dl fehlt")
+		t.Error("Hämoglobin 14,2 g/dl missing")
 	}
 }
 
-func TestLive_LeereSeiteIstNichtLesbar(t *testing.T) {
+func TestLive_BlankPageIsUnreadable(t *testing.T) {
 	g := liveGemini(t)
 
-	// Ein rein weißes Bild, im Speicher erzeugt.
-	bild := image.NewRGBA(image.Rect(0, 0, 400, 400))
+	// A plain white image, generated in memory.
+	img := image.NewRGBA(image.Rect(0, 0, 400, 400))
 	for x := range 400 {
 		for y := range 400 {
-			bild.Set(x, y, color.White)
+			img.Set(x, y, color.White)
 		}
 	}
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, bild); err != nil {
+	if err := png.Encode(&buf, img); err != nil {
 		t.Fatal(err)
 	}
 
-	e, err := g.DokumentLesen(context.Background(), buf.Bytes(), core.MimePNG, core.AllowedTypes("gesundheit"))
+	x, err := g.ReadDocument(context.Background(), buf.Bytes(), core.MimePNG, core.AllowedTypes("gesundheit"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := core.CheckExtraction(e, "gesundheit"); !errors.Is(err, core.ErrUnreadable) {
-		t.Errorf("leere Seite: erwartet ErrNichtLesbar, bekommen %v (lesbar=%v)", err, e.Readable)
+	if _, _, err := core.CheckExtraction(x, "gesundheit"); !errors.Is(err, core.ErrUnreadable) {
+		t.Errorf("blank page: want ErrUnreadable, got %v (readable=%v)", err, x.Readable)
 	}
 }
 
-func TestLive_Einbetten(t *testing.T) {
+func TestLive_Embed(t *testing.T) {
 	g := liveGemini(t)
 	ctx := context.Background()
 
-	abschnitte := []string{
+	// Synthetic German document content and questions, as users write them.
+	chunks := []string{
 		"Laborbefund vom 14.10.2026\nHämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l",
 		"Arztbrief vom 02.09.2026\nVorstellung zur Routinekontrolle. Blutdruck 128/82 mmHg.",
 		"Rezept vom 14.10.2026\nBeispielin 100 mg, 1-0-0, 30 Stück",
 	}
-	vektoren, err := g.AbschnitteEinbetten(ctx, abschnitte)
+	vectors, err := g.EmbedChunks(ctx, chunks)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(vektoren) != len(abschnitte) {
-		t.Fatalf("%d Vektoren für %d Abschnitte", len(vektoren), len(abschnitte))
+	if len(vectors) != len(chunks) {
+		t.Fatalf("%d vectors for %d chunks", len(vectors), len(chunks))
 	}
-	for i, v := range vektoren {
-		if len(v) != llm.EmbeddingDimensionen {
-			t.Errorf("Vektor %d hat %d Dimensionen", i, len(v))
+	for i, v := range vectors {
+		if len(v) != llm.EmbeddingDimensions {
+			t.Errorf("vector %d has %d dimensions", i, len(v))
 		}
-		t.Logf("Vektor %d: Länge (Norm) %.4f", i, norm(v))
+		t.Logf("vector %d: length (norm) %.4f", i, norm(v))
 	}
-	if slices.Equal(vektoren[0], vektoren[1]) {
-		t.Fatal("verschiedene Abschnitte ergeben denselben Vektor (zusammengefasst statt einzeln?)")
+	if slices.Equal(vectors[0], vectors[1]) {
+		t.Fatal("different chunks give the same vector (merged instead of separate?)")
 	}
 
-	fragen := []struct {
-		frage    string
-		erwartet int // Index des passendsten Abschnitts, -1 = keiner passt
+	questions := []struct {
+		question string
+		want     int // index of the best-matching chunk, -1 = none fits
 	}{
 		{"Welchen Hämoglobinwert hatte ich im Oktober?", 0},
 		{"Wie hoch war mein Blutdruck?", 1},
 		{"Welches Medikament wurde mir verschrieben?", 2},
 		{"Wie wird morgen das Wetter in Salzburg?", -1},
 	}
-	for _, f := range fragen {
-		fv, err := g.FrageEinbetten(ctx, f.frage)
+	for _, q := range questions {
+		qv, err := g.EmbedQuestion(ctx, q.question)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bester, besterWert := -1, -2.0
-		var werte []string
-		for i, v := range vektoren {
-			c := kosinus(fv, v)
-			werte = append(werte, formatWerte(c))
-			if c > besterWert {
-				bester, besterWert = i, c
+		best, bestValue := -1, -2.0
+		var values []string
+		for i, v := range vectors {
+			c := cosine(qv, v)
+			values = append(values, formatScores(c))
+			if c > bestValue {
+				best, bestValue = i, c
 			}
 		}
-		t.Logf("%-46q → %s", f.frage, strings.Join(werte, " | "))
-		if f.erwartet >= 0 && bester != f.erwartet {
-			t.Errorf("%q: bester Abschnitt %d, erwartet %d", f.frage, bester, f.erwartet)
+		t.Logf("%-46q → %s", q.question, strings.Join(values, " | "))
+		if q.want >= 0 && best != q.want {
+			t.Errorf("%q: best chunk %d, want %d", q.question, best, q.want)
 		}
 	}
 }
 
-// formatWerte zeigt Kosinus-Ähnlichkeit und den Score, den Atlas Vector
-// Search bei similarity "cosine" meldet: (1 + cos) / 2.
-func formatWerte(c float64) string {
+// formatScores shows the cosine similarity and the score that Atlas Vector
+// Search reports with similarity "cosine": (1 + cos) / 2.
+func formatScores(c float64) string {
 	return fmt.Sprintf("cos %.3f / Atlas %.3f", c, (1+c)/2)
 }
 
-func kosinus(a, b []float32) float64 {
+func cosine(a, b []float32) float64 {
 	var s, na, nb float64
 	for i := range a {
 		s += float64(a[i]) * float64(b[i])

@@ -153,8 +153,8 @@ func TestTextImport_FehlerDesDienstes(t *testing.T) {
 		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
-		{fmt.Errorf("JSON kaputt: %w", llm.ErrAntwortUngueltig), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
-		{fmt.Errorf("Gemini 503: %w", llm.ErrNichtErreichbar), 503, CodeModellNichtErreichbar, "", "map[]"},
+		{fmt.Errorf("JSON kaputt: %w", llm.ErrInvalidResponse), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
+		{fmt.Errorf("Gemini 503: %w", llm.ErrUnavailable), 503, CodeModellNichtErreichbar, "", "map[]"},
 		{fmt.Errorf("Datenbank weg"), 500, CodeInternerFehler, "", "map[]"},
 	} {
 		t.Run(f.code, func(t *testing.T) {

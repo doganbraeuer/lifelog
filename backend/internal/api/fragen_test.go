@@ -104,8 +104,8 @@ func TestFragen_FehlerDesDienstes(t *testing.T) {
 		{core.ErrQuestionMissing, 400, CodeFrageFehlt},
 		{core.ErrQuestionTooLong, 400, CodeFrageZuLang},
 		{core.ErrUnknownModule, 400, CodeUngueltigeAnfrage},
-		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrNichtErreichbar), 503, CodeModellNichtErreichbar},
-		{fmt.Errorf("blockiert: %w", llm.ErrAntwortUngueltig), 503, CodeModellNichtErreichbar},
+		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModellNichtErreichbar},
+		{fmt.Errorf("blockiert: %w", llm.ErrInvalidResponse), 503, CodeModellNichtErreichbar},
 		{errors.New("Vektorindex fehlt"), 500, CodeInternerFehler},
 	}
 	for _, f := range faelle {

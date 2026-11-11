@@ -18,11 +18,11 @@ type FragenSpeicher interface {
 // Fragen beantwortet Fragen zu den Dokumenten (docs/API.md 3.6).
 type Fragen struct {
 	speicher  FragenSpeicher
-	einbetter llm.Einbetter
-	antworter llm.Antworter
+	einbetter llm.Embedder
+	antworter llm.Answerer
 }
 
-func NeuFragen(s FragenSpeicher, e llm.Einbetter, a llm.Antworter) *Fragen {
+func NeuFragen(s FragenSpeicher, e llm.Embedder, a llm.Answerer) *Fragen {
 	return &Fragen{speicher: s, einbetter: e, antworter: a}
 }
 
@@ -51,7 +51,7 @@ func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Answ
 		return core.Answer{}, err
 	}
 
-	vektor, err := f.einbetter.FrageEinbetten(ctx, frage)
+	vektor, err := f.einbetter.EmbedQuestion(ctx, frage)
 	if err != nil {
 		return core.Answer{}, err
 	}
@@ -71,7 +71,7 @@ func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Answ
 		return core.NoHit(), nil
 	}
 
-	text, err := f.antworter.Antworten(ctx, frage, fundstellen)
+	text, err := f.antworter.Answer(ctx, frage, fundstellen)
 	if err != nil {
 		return core.Answer{}, err
 	}

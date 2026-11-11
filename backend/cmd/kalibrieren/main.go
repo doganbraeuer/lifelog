@@ -77,10 +77,10 @@ func ausfuehren(schwelle float64) error {
 	}
 
 	// Nur der Einbetter wird benutzt; Lese- und Antwortmodell bleiben unberührt.
-	g, err := gemini.Neu(ctx, gemini.Einstellungen{
-		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModel,
-		EmbeddingModell: k.GeminiEmbeddingModel,
+	g, err := gemini.New(ctx, gemini.Settings{
+		APIKey:         k.GeminiKey,
+		Model:          k.GeminiModel,
+		EmbeddingModel: k.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
@@ -108,9 +108,9 @@ func ausfuehren(schwelle float64) error {
 
 	messungen := make([]messung, 0, len(fragen))
 	for i, f := range fragen {
-		vektor, err := g.FrageEinbetten(ctx, f.Text)
+		vektor, err := g.EmbedQuestion(ctx, f.Text)
 		if err != nil {
-			if errors.Is(err, llm.ErrNichtErreichbar) {
+			if errors.Is(err, llm.ErrUnavailable) {
 				return fmt.Errorf("Frage %d: Embedding-Modell nicht erreichbar, später noch einmal: %w", i+1, err)
 			}
 			return fmt.Errorf("Frage %d: %w", i+1, err)

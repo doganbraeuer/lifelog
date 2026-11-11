@@ -108,16 +108,16 @@ func erkennung() core.Extraction {
 
 type aufbau struct {
 	speicher  *speicherAttrappe
-	leser     *fake.Leser
-	einbetter *fake.Einbetter
+	leser     *fake.Reader
+	einbetter *fake.Embedder
 	dienst    *Hochladen
 }
 
 func neuerAufbau() aufbau {
 	a := aufbau{
 		speicher:  neuerSpeicher(),
-		leser:     &fake.Leser{Erkennung: erkennung()},
-		einbetter: &fake.Einbetter{},
+		leser:     &fake.Reader{Extraction: erkennung()},
+		einbetter: &fake.Embedder{},
 	}
 	n := 0
 	a.dienst = NeuHochladen(a.speicher, a.leser, a.einbetter, func() string {
@@ -167,7 +167,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 		t.Fatal("keine Abschnitte gespeichert")
 	}
 	for i, x := range ab {
-		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != llm.EmbeddingDimensionen {
+		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != llm.EmbeddingDimensions {
 			t.Errorf("Abschnitt %d = %+v", i, x)
 		}
 	}
@@ -186,7 +186,7 @@ func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
 	}
 	vorhanden := a.speicher.eintraege[0]
 	a.speicher.hashes[vorhanden.File.Sha256] = vorhanden.ID
-	leserVorher, einbetterVorher := a.leser.Aufrufe(), a.einbetter.Aufrufe()
+	leserVorher, einbetterVorher := a.leser.Calls(), a.einbetter.Calls()
 
 	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
 
@@ -197,7 +197,7 @@ func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
 	if !errors.Is(err, core.ErrDuplicate) {
 		t.Error("DuplikatFehler muss auch core.ErrDuplikat sein")
 	}
-	if a.leser.Aufrufe() != leserVorher || a.einbetter.Aufrufe() != einbetterVorher {
+	if a.leser.Calls() != leserVorher || a.einbetter.Calls() != einbetterVorher {
 		t.Error("bei einem Duplikat darf kein Modell aufgerufen werden")
 	}
 	if len(a.speicher.eintraege) != 1 {
@@ -223,7 +223,7 @@ func TestHochladen_PruefungenVorJedemAufruf(t *testing.T) {
 			if !errors.Is(err, f.fehler) {
 				t.Errorf("erwartet %v, bekommen %v", f.fehler, err)
 			}
-			if len(a.speicher.protokoll) != 0 || a.leser.Aufrufe() != 0 {
+			if len(a.speicher.protokoll) != 0 || a.leser.Calls() != 0 {
 				t.Errorf("vor bestandener Prüfung darf nichts aufgerufen werden: %v", a.speicher.protokoll)
 			}
 		})
@@ -238,15 +238,15 @@ func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
 
 	faelle := []struct {
 		name      string
-		leser     *fake.Leser
-		einbetter *fake.Einbetter
+		leser     *fake.Reader
+		einbetter *fake.Embedder
 		fehler    error
 	}{
-		{"Vision-LLM nicht erreichbar", &fake.Leser{Err: llm.ErrNichtErreichbar}, &fake.Einbetter{}, llm.ErrNichtErreichbar},
-		{"Antwort ungültig", &fake.Leser{Err: llm.ErrAntwortUngueltig}, &fake.Einbetter{}, llm.ErrAntwortUngueltig},
-		{"nicht lesbar", &fake.Leser{Erkennung: nichtLesbar}, &fake.Einbetter{}, core.ErrUnreadable},
-		{"Erkennung ungültig", &fake.Leser{Erkennung: falscherTyp}, &fake.Einbetter{}, core.ErrInvalidExtraction},
-		{"Embedding nicht erreichbar", &fake.Leser{Erkennung: erkennung()}, &fake.Einbetter{Err: llm.ErrNichtErreichbar}, llm.ErrNichtErreichbar},
+		{"Vision-LLM nicht erreichbar", &fake.Reader{Err: llm.ErrUnavailable}, &fake.Embedder{}, llm.ErrUnavailable},
+		{"Antwort ungültig", &fake.Reader{Err: llm.ErrInvalidResponse}, &fake.Embedder{}, llm.ErrInvalidResponse},
+		{"nicht lesbar", &fake.Reader{Extraction: nichtLesbar}, &fake.Embedder{}, core.ErrUnreadable},
+		{"Erkennung ungültig", &fake.Reader{Extraction: falscherTyp}, &fake.Embedder{}, core.ErrInvalidExtraction},
+		{"Embedding nicht erreichbar", &fake.Reader{Extraction: erkennung()}, &fake.Embedder{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -344,7 +344,7 @@ func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
 	e := erkennung()
 	e.Facts = append(e.Facts, core.ExtractedFact{Name: "", Value: "GEHEIMER-WERT-42"})
 	a := neuerAufbau()
-	a.dienst.leser = &fake.Leser{Erkennung: e}
+	a.dienst.leser = &fake.Reader{Extraction: e}
 
 	eintrag, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
 	if err != nil {

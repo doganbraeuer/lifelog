@@ -8,62 +8,65 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// gemini-embedding-2 kennt kein task_type. Stattdessen sagt ein Präfix im
-// Text, ob es sich um ein Dokument oder um eine Suchanfrage handelt
-// (Formate aus aistudio.google.com/docs/embeddings, geprüft 04.11.2026).
-// Unsere Abschnitte haben keinen eigenen Titel, laut Doku dann "none".
-func dokumentEingabe(text string) string { return "title: none | text: " + text }
-func frageEingabe(frage string) string   { return "task: search result | query: " + frage }
+// gemini-embedding-2 has no task_type. Instead, a prefix in the text says
+// whether it is a document or a search query (formats from
+// aistudio.google.com/docs/embeddings, checked 2026-11-04). Our chunks have
+// no title of their own, which according to the docs means "none".
+//
+// CAUTION: these prefixes go into every vector. Changing them changes all
+// scores, so all chunks would have to be re-embedded and the threshold
+// recalibrated (core.MinScore).
+func documentInput(text string) string     { return "title: none | text: " + text }
+func questionInput(question string) string { return "task: search result | query: " + question }
 
-// stapelGroesse: so viele Texte gehen höchstens in einen Aufruf. Ein langer
-// Volltext (100 000 Zeichen / 500) hat ~200 Abschnitte, das sind dann
-// mehrere Aufrufe statt eines riesigen.
-const stapelGroesse = 100
+// batchSize: at most this many texts go into one call. A long full text
+// (100,000 characters / 500) has ~200 chunks; that becomes several calls
+// instead of one huge one.
+const batchSize = 100
 
-// stapel teilt n Elemente in Bereiche [von, bis) mit höchstens groesse
-// Elementen.
-func stapel(n, groesse int) [][2]int {
-	bereiche := [][2]int{}
-	for von := 0; von < n; von += groesse {
-		bereiche = append(bereiche, [2]int{von, min(von+groesse, n)})
+// batches splits n elements into ranges [from, to) with at most size
+// elements.
+func batches(n, size int) [][2]int {
+	ranges := [][2]int{}
+	for from := 0; from < n; from += size {
+		ranges = append(ranges, [2]int{from, min(from+size, n)})
 	}
-	return bereiche
+	return ranges
 }
 
-// embeddingInhalte macht aus jedem Text ein eigenes Content-Objekt.
-// Wichtig: gemini-embedding-2 fasst mehrere Teile EINES Contents zu einem
-// einzigen Vektor zusammen. Nur getrennte Contents ergeben einen Vektor pro
-// Text.
-func embeddingInhalte(eingaben []string) []*genai.Content {
-	inhalte := make([]*genai.Content, len(eingaben))
-	for i, e := range eingaben {
-		inhalte[i] = genai.NewContentFromText(e, genai.RoleUser)
+// embeddingContents makes a separate Content object from every text.
+// Important: gemini-embedding-2 merges several parts of ONE Content into a
+// single vector. Only separate Contents give one vector per text.
+func embeddingContents(inputs []string) []*genai.Content {
+	contents := make([]*genai.Content, len(inputs))
+	for i, in := range inputs {
+		contents[i] = genai.NewContentFromText(in, genai.RoleUser)
 	}
-	return inhalte
+	return contents
 }
 
-// vektorenAusAntwort prüft, dass genau anzahl Vektoren mit der richtigen
-// Länge zurückkamen. Ein falsch langer Vektor würde später beim Speichern
-// oder im Vektorindex scheitern, das fangen wir hier früh ab.
-func vektorenAusAntwort(resp *genai.EmbedContentResponse, anzahl int) ([][]float32, error) {
-	if resp == nil || len(resp.Embeddings) != anzahl {
-		erhalten := 0
+// vectorsFromResponse checks that exactly count vectors of the right length
+// came back. A vector of the wrong length would fail later when storing or
+// in the vector index; we catch that early here.
+func vectorsFromResponse(resp *genai.EmbedContentResponse, count int) ([][]float32, error) {
+	if resp == nil || len(resp.Embeddings) != count {
+		got := 0
 		if resp != nil {
-			erhalten = len(resp.Embeddings)
+			got = len(resp.Embeddings)
 		}
-		return nil, fmt.Errorf("%d Embeddings erwartet, %d erhalten: %w", anzahl, erhalten, llm.ErrAntwortUngueltig)
+		return nil, fmt.Errorf("expected %d embeddings, got %d: %w", count, got, llm.ErrInvalidResponse)
 	}
-	vektoren := make([][]float32, anzahl)
+	vectors := make([][]float32, count)
 	for i, e := range resp.Embeddings {
-		if e == nil || len(e.Values) != llm.EmbeddingDimensionen {
-			laenge := 0
+		if e == nil || len(e.Values) != llm.EmbeddingDimensions {
+			length := 0
 			if e != nil {
-				laenge = len(e.Values)
+				length = len(e.Values)
 			}
-			return nil, fmt.Errorf("Embedding %d hat %d statt %d Dimensionen: %w",
-				i, laenge, llm.EmbeddingDimensionen, llm.ErrAntwortUngueltig)
+			return nil, fmt.Errorf("embedding %d has %d instead of %d dimensions: %w",
+				i, length, llm.EmbeddingDimensions, llm.ErrInvalidResponse)
 		}
-		vektoren[i] = e.Values
+		vectors[i] = e.Values
 	}
-	return vektoren, nil
+	return vectors, nil
 }

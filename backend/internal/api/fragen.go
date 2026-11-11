@@ -92,7 +92,7 @@ func schreibeFragenFehler(w http.ResponseWriter, r *http.Request, err error, mod
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
 			map[string]any{"feld": "modul", "wert": modul})
-	case errors.Is(err, llm.ErrNichtErreichbar), errors.Is(err, llm.ErrAntwortUngueltig):
+	case errors.Is(err, llm.ErrUnavailable), errors.Is(err, llm.ErrInvalidResponse):
 		slog.Warn("Frage: Modell nicht erreichbar oder Antwort unbrauchbar", "fehler", err)
 		schreibeFehler(w, http.StatusServiceUnavailable, CodeModellNichtErreichbar,
 			"Die Suche ist gerade nicht erreichbar. Bitte versuche es später noch einmal.", nil)
