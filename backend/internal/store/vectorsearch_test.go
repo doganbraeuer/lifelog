@@ -19,7 +19,7 @@ func TestVectorIndexDefinition(t *testing.T) {
 		} `json:"fields"`
 	}
 	if err := json.Unmarshal(vectorIndexDefinition, &d); err != nil {
-		t.Fatalf("abschnitte_vektor.json is not valid JSON: %v", err)
+		t.Fatalf("chunks_vector.json is not valid JSON: %v", err)
 	}
 	var vector, moduleFilter bool
 	for _, f := range d.Fields {
@@ -32,11 +32,11 @@ func TestVectorIndexDefinition(t *testing.T) {
 			if f.Similarity != "cosine" {
 				t.Errorf("similarity = %q; core.MinScore is computed for cosine", f.Similarity)
 			}
-		case f.Type == "filter" && f.Path == "modul":
+		case f.Type == "filter" && f.Path == "module":
 			moduleFilter = true
 		}
 	}
 	if !vector || !moduleFilter {
-		t.Errorf("vector field embedding: %v, filter field modul: %v", vector, moduleFilter)
+		t.Errorf("vector field embedding: %v, filter field module: %v", vector, moduleFilter)
 	}
 }

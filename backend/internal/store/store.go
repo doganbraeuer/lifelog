@@ -18,14 +18,14 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Names of the collections. For the bucket "dateien", GridFS creates the
-// collections dateien.files (metadata) and dateien.chunks (data in pieces of
-// 255 KB) itself. The names are still German; they change when the database
-// is refilled (plan step B9).
+// Names of the collections. For the bucket "originals", GridFS creates the
+// collections originals.files (metadata) and originals.chunks (data in
+// pieces of 255 KB) itself. The bucket is not called "files", so that
+// "files.chunks" does not stand next to the collection "chunks".
 const (
-	collEntries = "eintraege"
-	collChunks  = "abschnitte"
-	bucketFiles = "dateien"
+	collEntries = "entries"
+	collChunks  = "chunks"
+	bucketFiles = "originals"
 )
 
 // Store is the connection to a Lifelog database.
@@ -91,24 +91,24 @@ func (s *Store) CreateIndexes(ctx context.Context) error {
 		{
 			// Duplicate detection (API.md 3.1): the unique index also catches
 			// two simultaneous uploads of the same file.
-			Keys:    bson.D{{Key: "datei.sha256", Value: 1}},
-			Options: options.Index().SetName("datei_sha256_eindeutig").SetUnique(true),
+			Keys:    bson.D{{Key: "file.sha256", Value: 1}},
+			Options: options.Index().SetName("file_sha256_unique").SetUnique(true),
 		},
 		{
 			// The timeline always filters by module.
-			Keys:    bson.D{{Key: "modul", Value: 1}},
-			Options: options.Index().SetName("modul"),
+			Keys:    bson.D{{Key: "module", Value: 1}},
+			Options: options.Index().SetName("module"),
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("create indexes: %w", err)
 	}
 
-	// Deleting an entry removes its chunks via eintragId. Without an index,
+	// Deleting an entry removes its chunks via entryId. Without an index,
 	// MongoDB would have to scan all chunks for that.
 	_, err = s.chunks.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "eintragId", Value: 1}},
-		Options: options.Index().SetName("eintragId"),
+		Keys:    bson.D{{Key: "entryId", Value: 1}},
+		Options: options.Index().SetName("entryId"),
 	})
 	if err != nil {
 		return fmt.Errorf("create indexes: %w", err)
@@ -121,7 +121,7 @@ func (s *Store) CreateIndexes(ctx context.Context) error {
 // etc.) are tested there.
 func (s *Store) ListSummaries(ctx context.Context, module string) ([]core.EntrySummary, error) {
 	cur, err := s.entries.Find(ctx,
-		bson.D{{Key: "modul", Value: module}},
+		bson.D{{Key: "module", Value: module}},
 		options.Find().SetProjection(summaryProjection))
 	if err != nil {
 		return nil, fmt.Errorf("read entries: %w", err)
@@ -203,7 +203,7 @@ func (s *Store) EntryByHash(ctx context.Context, sha256 string) (id string, foun
 		ID bson.ObjectID `bson:"_id"`
 	}
 	err = s.entries.FindOne(ctx,
-		bson.D{{Key: "datei.sha256", Value: sha256}},
+		bson.D{{Key: "file.sha256", Value: sha256}},
 		options.FindOne().SetProjection(bson.D{{Key: "_id", Value: 1}}),
 	).Decode(&hit)
 	if errors.Is(err, mongo.ErrNoDocuments) {
@@ -225,7 +225,7 @@ func (s *Store) SaveFile(ctx context.Context, id, fileName, mimeType string, dat
 		return fmt.Errorf("invalid file ID: %w", err)
 	}
 	err = s.files.UploadFromStreamWithID(ctx, oid, fileName, bytes.NewReader(data),
-		options.GridFSUpload().SetMetadata(bson.D{{Key: "mimeTyp", Value: mimeType}}))
+		options.GridFSUpload().SetMetadata(bson.D{{Key: "mimeType", Value: mimeType}}))
 	if err != nil {
 		return fmt.Errorf("save file: %w", err)
 	}
@@ -273,7 +273,7 @@ func (s *Store) DeleteChunks(ctx context.Context, entryID string) error {
 	if err != nil {
 		return fmt.Errorf("invalid entry ID: %w", err)
 	}
-	if _, err := s.chunks.DeleteMany(ctx, bson.D{{Key: "eintragId", Value: oid}}); err != nil {
+	if _, err := s.chunks.DeleteMany(ctx, bson.D{{Key: "entryId", Value: oid}}); err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}
 	return nil
@@ -295,11 +295,11 @@ func (s *Store) SaveCorrection(ctx context.Context, e core.Entry) (found bool, e
 	res, err := s.entries.UpdateOne(ctx,
 		bson.D{{Key: "_id", Value: doc.ID}},
 		bson.D{{Key: "$set", Value: bson.D{
-			{Key: "typ", Value: doc.Type},
-			{Key: "dokumentdatum", Value: doc.DocumentDate},
-			{Key: "quelle", Value: doc.Issuer},
-			{Key: "infos", Value: doc.Facts},
-			{Key: "korrekturen", Value: doc.Corrections},
+			{Key: "type", Value: doc.Type},
+			{Key: "documentDate", Value: doc.DocumentDate},
+			{Key: "issuer", Value: doc.Issuer},
+			{Key: "facts", Value: doc.Facts},
+			{Key: "corrections", Value: doc.Corrections},
 		}}},
 	)
 	if err != nil {

@@ -14,25 +14,24 @@ import (
 //
 // Stored are:
 //   - _id as ObjectId
-//   - dokumentdatum as string "YYYY-MM-DD" or null. A string instead of a
+//   - documentDate as string "YYYY-MM-DD" or null. A string instead of a
 //     BSON date, so no time zone can shift the date.
-//   - importdatum as BSON date (UTC)
+//   - importedAt as BSON date (UTC)
 //   - lists always as array, never as null
 //
-// The BSON field names are still German; they change when the database is
-// refilled (plan step B9).
+// The BSON field names are the same as the JSON names of the API.
 
 type entryDoc struct {
 	ID           bson.ObjectID   `bson:"_id"`
-	Module       string          `bson:"modul"`
-	Type         string          `bson:"typ"`
-	DocumentDate *string         `bson:"dokumentdatum"`
-	ImportedAt   time.Time       `bson:"importdatum"`
-	Issuer       *string         `bson:"quelle"`
-	FullText     string          `bson:"volltext"`
-	Facts        []factDoc       `bson:"infos"`
-	File         fileDoc         `bson:"datei"`
-	Corrections  []correctionDoc `bson:"korrekturen"`
+	Module       string          `bson:"module"`
+	Type         string          `bson:"type"`
+	DocumentDate *string         `bson:"documentDate"`
+	ImportedAt   time.Time       `bson:"importedAt"`
+	Issuer       *string         `bson:"issuer"`
+	FullText     string          `bson:"fullText"`
+	Facts        []factDoc       `bson:"facts"`
+	File         fileDoc         `bson:"file"`
+	Corrections  []correctionDoc `bson:"corrections"`
 }
 
 // factDoc and correctionDoc have exactly the field names of core.Fact and
@@ -40,43 +39,43 @@ type entryDoc struct {
 type factDoc struct {
 	ID    string  `bson:"id"`
 	Name  string  `bson:"name"`
-	Value string  `bson:"wert"`
-	Unit  *string `bson:"einheit,omitempty"`
+	Value string  `bson:"value"`
+	Unit  *string `bson:"unit,omitempty"`
 }
 
 type fileDoc struct {
 	ID       bson.ObjectID `bson:"id"`
-	FileName string        `bson:"dateiname"`
-	MimeType string        `bson:"mimeTyp"`
-	Size     int64         `bson:"groesse"`
+	FileName string        `bson:"fileName"`
+	MimeType string        `bson:"mimeType"`
+	Size     int64         `bson:"size"`
 	Sha256   string        `bson:"sha256"`
 }
 
 type correctionDoc struct {
-	Field       string    `bson:"feld"`
-	Recognized  *string   `bson:"erkannt"`
-	Corrected   *string   `bson:"korrigiert"`
-	CorrectedAt time.Time `bson:"zeitpunkt"`
+	Field       string    `bson:"field"`
+	Recognized  *string   `bson:"recognized"`
+	Corrected   *string   `bson:"corrected"`
+	CorrectedAt time.Time `bson:"correctedAt"`
 }
 
 // entrySummaryDoc only reads the fields the timeline needs.
 type entrySummaryDoc struct {
 	ID           bson.ObjectID `bson:"_id"`
-	Module       string        `bson:"modul"`
-	Type         string        `bson:"typ"`
-	DocumentDate *string       `bson:"dokumentdatum"`
-	ImportedAt   time.Time     `bson:"importdatum"`
-	Issuer       *string       `bson:"quelle"`
+	Module       string        `bson:"module"`
+	Type         string        `bson:"type"`
+	DocumentDate *string       `bson:"documentDate"`
+	ImportedAt   time.Time     `bson:"importedAt"`
+	Issuer       *string       `bson:"issuer"`
 }
 
 // summaryProjection tells MongoDB which fields to send for the list. Full
 // text, facts etc. stay in the database, the response stays small.
 var summaryProjection = bson.D{
-	{Key: "modul", Value: 1},
-	{Key: "typ", Value: 1},
-	{Key: "dokumentdatum", Value: 1},
-	{Key: "importdatum", Value: 1},
-	{Key: "quelle", Value: 1},
+	{Key: "module", Value: 1},
+	{Key: "type", Value: 1},
+	{Key: "documentDate", Value: 1},
+	{Key: "importedAt", Value: 1},
+	{Key: "issuer", Value: 1},
 }
 
 func toEntryDoc(e core.Entry) (entryDoc, error) {
@@ -159,16 +158,16 @@ func (d entrySummaryDoc) toCore() core.EntrySummary {
 	}
 }
 
-// chunkDoc is a chunk in the collection "abschnitte".
+// chunkDoc is a chunk in the collection "chunks".
 //
 // The embedding is stored as a plain array of numbers (768 numbers). Atlas
-// Vector Search reads exactly this field (path "embedding"), and "modul" is
+// Vector Search reads exactly this field (path "embedding"), and "module" is
 // registered there as a filter field.
 type chunkDoc struct {
 	ID        bson.ObjectID `bson:"_id"`
-	EntryID   bson.ObjectID `bson:"eintragId"`
-	Module    string        `bson:"modul"`
-	Position  int           `bson:"nr"`
+	EntryID   bson.ObjectID `bson:"entryId"`
+	Module    string        `bson:"module"`
+	Position  int           `bson:"position"`
 	Text      string        `bson:"text"`
 	Embedding []float32     `bson:"embedding"`
 }

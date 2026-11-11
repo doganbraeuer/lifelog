@@ -106,7 +106,7 @@ func LoadDotenv() error {
 
 // FindDotenv loads the first .env found from the current directory upwards.
 // For tests: go test runs in the package directory (e.g.
-// backend/internal/speicher), the .env lives in the repository root. Not
+// backend/internal/store), the .env lives in the repository root. Not
 // finding a .env is not an error.
 func FindDotenv() error {
 	dir, err := os.Getwd()

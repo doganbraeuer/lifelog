@@ -5,7 +5,7 @@ package store
 //	LIFELOG_MONGO_TEST=1 go test ./internal/store/ -run Integration -v
 //
 // They do NOT use the database from MONGODB_DB but a database of their own,
-// "<MONGODB_DB>_integrationstest", and drop it again at the end. If there
+// "<MONGODB_DB>_integration_test", and drop it again at the end. If there
 // are collections that do not come from this test, the test stops instead of
 // deleting anything.
 
@@ -44,7 +44,7 @@ func testStore(t *testing.T) (*Store, context.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	t.Cleanup(cancel)
 
-	name := c.MongoDB + "_integrationstest"
+	name := c.MongoDB + "_integration_test"
 	s, err := Connect(ctx, c.MongoURI, name)
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestIntegration_DuplicateViaIndex(t *testing.T) {
 func checkChunkCount(t *testing.T, s *Store, ctx context.Context, entryID string, want int64) {
 	t.Helper()
 	oid, _ := bson.ObjectIDFromHex(entryID)
-	n, err := s.chunks.CountDocuments(ctx, bson.D{{Key: "eintragId", Value: oid}})
+	n, err := s.chunks.CountDocuments(ctx, bson.D{{Key: "entryId", Value: oid}})
 	if err != nil {
 		t.Fatal(err)
 	}

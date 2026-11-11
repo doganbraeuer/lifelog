@@ -13,13 +13,13 @@ import (
 )
 
 // VectorIndexName is the name of the Atlas Vector Search index on the
-// collection "abschnitte".
-const VectorIndexName = "abschnitte_vektor"
+// collection "chunks".
+const VectorIndexName = "chunks_vector"
 
 // vectorIndexDefinition: "embedding" as vector (768 dimensions, cosine),
-// "modul" as filter field, so the search only looks in the chosen module.
+// "module" as filter field, so the search only looks in the chosen module.
 // The same file is pasted when creating the index in the Atlas UI
-// (backend/README.md, "Vektorindex").
+// (backend/README.md, section vector index).
 //
 //go:embed chunks_vector.json
 var vectorIndexDefinition []byte
@@ -38,8 +38,8 @@ const numCandidates = 100
 // returns the error; the server still starts, and the index can be created
 // in the Atlas UI.
 //
-// Precondition: the collection "abschnitte" exists. CreateIndexes creates it
-// with the index on eintragId, so call that first.
+// Precondition: the collection "chunks" exists. CreateIndexes creates it
+// with the index on entryId, so call that first.
 func (s *Store) CreateVectorIndex(ctx context.Context) (status string, err error) {
 	status, found, err := s.VectorIndexStatus(ctx)
 	if err != nil || found {
@@ -80,8 +80,8 @@ func (s *Store) VectorIndexStatus(ctx context.Context) (status string, found boo
 
 // hitDoc is a result of $vectorSearch.
 type hitDoc struct {
-	EntryID  bson.ObjectID `bson:"eintragId"`
-	Position int           `bson:"nr"`
+	EntryID  bson.ObjectID `bson:"entryId"`
+	Position int           `bson:"position"`
 	Text     string        `bson:"text"`
 	Score    float64       `bson:"score"`
 }
@@ -99,13 +99,13 @@ func (s *Store) SimilarChunks(ctx context.Context, vector []float32, module stri
 			{Key: "queryVector", Value: vector},
 			{Key: "numCandidates", Value: numCandidates},
 			{Key: "limit", Value: k},
-			// Only possible because "modul" is registered as a filter field in the index.
-			{Key: "filter", Value: bson.D{{Key: "modul", Value: bson.D{{Key: "$eq", Value: module}}}}},
+			// Only possible because "module" is registered as a filter field in the index.
+			{Key: "filter", Value: bson.D{{Key: "module", Value: bson.D{{Key: "$eq", Value: module}}}}},
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
-			{Key: "eintragId", Value: 1},
-			{Key: "nr", Value: 1},
+			{Key: "entryId", Value: 1},
+			{Key: "position", Value: 1},
 			{Key: "text", Value: 1},
 			{Key: "score", Value: bson.D{{Key: "$meta", Value: "vectorSearchScore"}}},
 		}}},

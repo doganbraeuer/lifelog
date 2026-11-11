@@ -78,13 +78,13 @@ func TestEntryDoc_NullAndEmptyLists(t *testing.T) {
 	}
 
 	// Date and issuer are stored as null in the database (field present).
-	for _, field := range []string{"dokumentdatum", "quelle"} {
+	for _, field := range []string{"documentDate", "issuer"} {
 		if v, ok := m[field]; !ok || v != nil {
 			t.Errorf("%s = %v (present: %v), want null", field, v, ok)
 		}
 	}
 	// Lists are empty arrays, not null.
-	for _, field := range []string{"infos", "korrekturen"} {
+	for _, field := range []string{"facts", "corrections"} {
 		if _, ok := m[field].(bson.A); !ok {
 			t.Errorf("%s is %T, want an array", field, m[field])
 		}
@@ -103,8 +103,8 @@ func TestEntryDoc_UnitMissingWhenNil(t *testing.T) {
 	raw, _ := bson.Marshal(doc.Facts[1])
 	var m bson.M
 	_ = bson.Unmarshal(raw, &m)
-	if _, ok := m["einheit"]; ok {
-		t.Errorf("einheit should be missing when nil: %v", m)
+	if _, ok := m["unit"]; ok {
+		t.Errorf("unit should be missing when nil: %v", m)
 	}
 }
 
@@ -144,8 +144,8 @@ func TestChunkDoc_RoundTrip(t *testing.T) {
 	}
 	var m bson.M
 	_ = bson.Unmarshal(raw, &m)
-	if _, ok := m["eintragId"].(bson.ObjectID); !ok {
-		t.Errorf("eintragId is %T, want ObjectID (otherwise DeleteChunks finds nothing)", m["eintragId"])
+	if _, ok := m["entryId"].(bson.ObjectID); !ok {
+		t.Errorf("entryId is %T, want ObjectID (otherwise DeleteChunks finds nothing)", m["entryId"])
 	}
 	if _, ok := m["embedding"].(bson.A); !ok {
 		t.Errorf("embedding is %T, want array (Atlas Vector Search)", m["embedding"])
