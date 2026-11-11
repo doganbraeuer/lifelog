@@ -108,13 +108,13 @@ func TestCheckExtraction_Errors(t *testing.T) {
 		module string
 		field  string
 	}{
-		{"unknown type", func(x *Extraction) { x.Type = "kochrezept" }, "health", "typ"},
-		{"empty type", func(x *Extraction) { x.Type = "" }, "health", "typ"},
-		{"type in another module", func(x *Extraction) {}, "sport", "typ"},
-		{"empty full text", func(x *Extraction) { x.FullText = " \n " }, "health", "volltext"},
-		{"German date format", func(x *Extraction) { x.DocumentDate = ptr("14.10.2026") }, "health", "dokumentdatum"},
-		{"date does not exist", func(x *Extraction) { x.DocumentDate = ptr("2026-02-31") }, "health", "dokumentdatum"},
-		{"date with time", func(x *Extraction) { x.DocumentDate = ptr("2026-10-14T00:00:00Z") }, "health", "dokumentdatum"},
+		{"unknown type", func(x *Extraction) { x.Type = "kochrezept" }, "health", "type"},
+		{"empty type", func(x *Extraction) { x.Type = "" }, "health", "type"},
+		{"type in another module", func(x *Extraction) {}, "sport", "type"},
+		{"empty full text", func(x *Extraction) { x.FullText = " \n " }, "health", "fullText"},
+		{"German date format", func(x *Extraction) { x.DocumentDate = ptr("14.10.2026") }, "health", "documentDate"},
+		{"date does not exist", func(x *Extraction) { x.DocumentDate = ptr("2026-02-31") }, "health", "documentDate"},
+		{"date with time", func(x *Extraction) { x.DocumentDate = ptr("2026-10-14T00:00:00Z") }, "health", "documentDate"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -167,7 +167,7 @@ func TestCheckExtraction_IncompleteFactsAreDropped(t *testing.T) {
 	}
 
 	// Only field paths with the index from the model's list are reported.
-	want := []string{"infos[1].name", "infos[2].wert", "infos[3].name", "infos[3].wert"}
+	want := []string{"facts[1].name", "facts[2].value", "facts[3].name", "facts[3].value"}
 	if !slices.Equal(dropped, want) {
 		t.Errorf("dropped = %q, want %q", dropped, want)
 	}
@@ -189,7 +189,7 @@ func TestCheckExtraction_AllFactsIncomplete(t *testing.T) {
 	if e.Facts == nil || len(e.Facts) != 0 {
 		t.Errorf("facts = %#v, want empty list", e.Facts)
 	}
-	if !slices.Equal(dropped, []string{"infos[0].name"}) {
+	if !slices.Equal(dropped, []string{"facts[0].name"}) {
 		t.Errorf("dropped = %q", dropped)
 	}
 }

@@ -193,7 +193,7 @@ func (g *Gemini) generateWithFallback(ctx context.Context, limit time.Duration, 
 func readRequest(data []byte, mimeType string, allowedTypes []string) ([]*genai.Content, *genai.GenerateContentConfig) {
 	contents := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
 		genai.NewPartFromBytes(data, mimeType),
-		genai.NewPartFromText("Übertrage dieses Dokument nach den Regeln in JSON."),
+		genai.NewPartFromText("Transcribe this document into JSON following the rules."),
 	}, genai.RoleUser)}
 	cfg := &genai.GenerateContentConfig{
 		SystemInstruction:  genai.NewContentFromText(readInstruction(allowedTypes), genai.RoleUser),
@@ -211,7 +211,7 @@ func readRequest(data []byte, mimeType string, allowedTypes []string) ([]*genai.
 // instruction says that it is content and not an instruction.
 func textRequest(text string, allowedTypes []string) ([]*genai.Content, *genai.GenerateContentConfig) {
 	contents := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
-		genai.NewPartFromText("Ordne den folgenden Text nach den Regeln in JSON ein."),
+		genai.NewPartFromText("Classify the following text into JSON following the rules."),
 		genai.NewPartFromText(text),
 	}, genai.RoleUser)}
 	cfg := &genai.GenerateContentConfig{

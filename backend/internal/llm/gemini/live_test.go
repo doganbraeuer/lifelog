@@ -104,6 +104,18 @@ func TestLive_ReadDocument(t *testing.T) {
 			if !strings.Contains(entry.FullText, "Hämoglobin") {
 				t.Error("full text does not contain Hämoglobin (umlaut lost?)")
 			}
+			// The prompt is English, the document German: the full text must
+			// stay German, otherwise chunks and vectors change.
+			for _, word := range []string{"LABORBEFUND", "Befunddatum", "Leukozyten", "Befundart: Blutbild klein"} {
+				if !strings.Contains(entry.FullText, word) {
+					t.Errorf("full text does not contain %q (translated?)", word)
+				}
+			}
+			for _, word := range []string{"Hemoglobin", "Leukocytes", "LAB REPORT"} {
+				if strings.Contains(entry.FullText, word) {
+					t.Errorf("full text contains %q: translated", word)
+				}
+			}
 
 			want := map[string][2]string{ // name → value, unit
 				"Hämoglobin": {"14,2", "g/dl"},
@@ -162,6 +174,42 @@ func TestLive_ReadText(t *testing.T) {
 	}
 	if !hb {
 		t.Error("Hämoglobin 14,2 g/dl missing")
+	}
+}
+
+// TestLive_Answer: the answer prompt is English, but answers must be German,
+// with references, and the fixed sentence must come verbatim.
+func TestLive_Answer(t *testing.T) {
+	g := liveGemini(t)
+	p := func(s string) *string { return &s }
+	excerpts := []core.Source{{Number: 1, EntryID: "a", Module: "health", Type: "lab_report",
+		DocumentDate: p("2026-10-14"), Issuer: p("Labor Muster GmbH, Salzburg"),
+		Excerpt: "Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)"}}
+
+	text, err := g.Answer(context.Background(), "Welchen Hämoglobinwert hatte ich im Oktober?", excerpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("answer: %s", text)
+	if !strings.Contains(text, "14,2") || !strings.Contains(text, "[1]") {
+		t.Error("answer must name 14,2 with reference [1]")
+	}
+	if !strings.Contains(text, "Hämoglobin") {
+		t.Error("answer is not German (Hämoglobin missing)")
+	}
+	for _, word := range []string{" the ", "The ", " was ", "hemoglobin"} {
+		if strings.Contains(text, word) {
+			t.Errorf("answer contains %q: English", word)
+		}
+	}
+
+	text, err = g.Answer(context.Background(), "Welche Allergien habe ich?", excerpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("answer: %s", text)
+	if strings.TrimSpace(text) != core.NotFoundAnswer {
+		t.Errorf("want the fixed sentence verbatim, got %q", text)
 	}
 }
 

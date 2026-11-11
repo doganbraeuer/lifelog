@@ -27,31 +27,30 @@ func TestTextSchema_WithoutLesbarAndVolltext(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"dokumentdatum", "quelle", "typ", "infos"}; !slices.Equal(s.Required, want) {
+	if want := []string{"documentDate", "issuer", "type", "facts"}; !slices.Equal(s.Required, want) {
 		t.Errorf("required = %v, want %v", s.Required, want)
 	}
-	for _, field := range []string{"lesbar", "volltext"} {
+	for _, field := range []string{"readable", "fullText"} {
 		if _, ok := s.Properties[field]; ok {
 			t.Errorf("%s must not be in the schema for text", field)
 		}
 	}
 	// readSchema builds on textSchema but must not change it.
 	_ = readSchema(types)
-	if _, ok := textSchema(types)["properties"].(map[string]any)["volltext"]; ok {
+	if _, ok := textSchema(types)["properties"].(map[string]any)["fullText"]; ok {
 		t.Error("readSchema changed textSchema")
 	}
 }
 
 func TestTextInstruction(t *testing.T) {
-	// The prompt is still German (read.go), so the checked phrases are too.
 	a := textInstruction([]string{"doctor_letter", "lab_report", "other"})
-	for _, must := range []string{"eingegeben", "doctor_letter, lab_report, other", `"other"`,
-		"keine medizinischen", "keine Anweisung", "JJJJ-MM-TT", "Geburtsdatum"} {
+	for _, must := range []string{"entered", "doctor_letter, lab_report, other", `"other"`,
+		"no medical", "not an instruction", "YYYY-MM-DD", "date of birth", "Do not translate"} {
 		if !strings.Contains(a, must) {
 			t.Errorf("instruction does not contain %q", must)
 		}
 	}
-	for _, not := range []string{"lesbar", "volltext", "Foto"} {
+	for _, not := range []string{"readable", "fullText", "photo"} {
 		if strings.Contains(a, not) {
 			t.Errorf("instruction mentions %q", not)
 		}
@@ -79,11 +78,11 @@ func TestTextRequest_TextUnchangedAndSeparate(t *testing.T) {
 }
 
 func TestTextExtractionFromText(t *testing.T) {
-	// Even if the model sends lesbar=false and a full text: for a text import
+	// Even if the model sends readable=false and a full text: for a text import
 	// it is always readable, and the full text comes from the caller.
-	x, err := textExtractionFromText(`{"lesbar": false, "volltext": "erfunden",
-		"dokumentdatum": "2026-10-21", "quelle": null, "typ": "doctor_letter",
-		"infos": [{"name": "Diagnose", "wert": "Rückenschmerzen", "einheit": null}]}`)
+	x, err := textExtractionFromText(`{"readable": false, "fullText": "erfunden",
+		"documentDate": "2026-10-21", "issuer": null, "type": "doctor_letter",
+		"facts": [{"name": "Diagnose", "value": "Rückenschmerzen", "unit": null}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,12 +93,12 @@ func TestTextExtractionFromText(t *testing.T) {
 		t.Errorf("facts %+v", x.Facts)
 	}
 
-	// Without lesbar the response is valid, with a code block too.
-	if _, err := textExtractionFromText("```json\n{\"typ\": \"other\", \"infos\": []}\n```"); err != nil {
-		t.Errorf("without lesbar/code block: %v", err)
+	// Without readable the response is valid, with a code block too.
+	if _, err := textExtractionFromText("```json\n{\"type\": \"other\", \"facts\": []}\n```"); err != nil {
+		t.Errorf("without readable/code block: %v", err)
 	}
 
-	for _, broken := range []string{"", "kein JSON", `{"typ": 3}`, `{"infos": [{"wert": 14.2}]}`} {
+	for _, broken := range []string{"", "kein JSON", `{"type": 3}`, `{"facts": [{"value": 14.2}]}`} {
 		_, err := textExtractionFromText(broken)
 		if !errors.Is(err, llm.ErrInvalidResponse) {
 			t.Errorf("%q: %v, want ErrInvalidResponse", broken, err)
@@ -133,7 +132,7 @@ func TestReadText_RetriesAndFallback(t *testing.T) {
 				t.Errorf("calls = %v, want %v", n.calls, c.calls)
 			}
 			if c.success {
-				// validResponse contains a volltext; ReadText ignores it.
+				// validResponse contains a fullText; ReadText ignores it.
 				if err != nil || x.Type != "lab_report" || !x.Readable || x.FullText != "" {
 					t.Errorf("want success without full text: %+v, %v", x, err)
 				}
@@ -152,7 +151,7 @@ func TestReadText_SendsTextRequest(t *testing.T) {
 	g := testGemini(&fakeNetwork{}, "")
 	g.generate = func(_ context.Context, _ string, contents []*genai.Content, cfg *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 		sent, sentCfg = contents, cfg
-		return response(`{"dokumentdatum": null, "quelle": null, "typ": "other", "infos": []}`, genai.FinishReasonStop), nil
+		return response(`{"documentDate": null, "issuer": null, "type": "other", "facts": []}`, genai.FinishReasonStop), nil
 	}
 	text := "Notiz\n"
 	if _, err := g.ReadText(context.Background(), text, []string{"other"}); err != nil {
@@ -161,13 +160,13 @@ func TestReadText_SendsTextRequest(t *testing.T) {
 	if sent[0].Parts[1].Text != text {
 		t.Errorf("text = %q", sent[0].Parts[1].Text)
 	}
-	if _, withFullText := sentCfg.ResponseJsonSchema.(map[string]any)["properties"].(map[string]any)["volltext"]; withFullText {
+	if _, withFullText := sentCfg.ResponseJsonSchema.(map[string]any)["properties"].(map[string]any)["fullText"]; withFullText {
 		t.Error("schema for reading files was sent")
 	}
 
 	// Truncated response: invalid, not unavailable.
 	g.generate = func(context.Context, string, []*genai.Content, *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
-		return response(`{"typ": "sonst`, genai.FinishReasonMaxTokens), nil
+		return response(`{"type": "sonst`, genai.FinishReasonMaxTokens), nil
 	}
 	if _, err := g.ReadText(context.Background(), text, []string{"other"}); !errors.Is(err, llm.ErrInvalidResponse) {
 		t.Errorf("truncated: %v", err)

@@ -37,7 +37,7 @@ var ErrInvalidExtraction = errors.New("invalid extraction")
 // contains the value itself, because it ends up in the log and values can be
 // health data.
 type ExtractionError struct {
-	Field  string // e.g. "dokumentdatum" or "infos[2].name"
+	Field  string // e.g. "documentDate" or "facts[2].name"
 	Reason string
 }
 
@@ -107,7 +107,7 @@ func isDateFormat(s string) bool {
 //     ("<0,5" stays "<0,5").
 //
 // dropped names the missing fields of the dropped facts, e.g.
-// "infos[2].wert". The index refers to the model's list. The list never
+// "facts[2].value". The index refers to the model's list. The list never
 // contains values, so the caller may log it. It is never nil.
 func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string, err error) {
 	dropped = []string{}
@@ -115,16 +115,16 @@ func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string
 		return Entry{}, dropped, ErrUnreadable
 	}
 	if !TypeAllowed(module, x.Type) {
-		return Entry{}, dropped, &ExtractionError{Field: "typ", Reason: "not allowed in module " + module}
+		return Entry{}, dropped, &ExtractionError{Field: "type", Reason: "not allowed in module " + module}
 	}
 	if strings.TrimSpace(x.FullText) == "" {
-		return Entry{}, dropped, &ExtractionError{Field: "volltext", Reason: "empty"}
+		return Entry{}, dropped, &ExtractionError{Field: "fullText", Reason: "empty"}
 	}
 
 	date := trimmedOrNil(x.DocumentDate)
 	if date != nil {
 		if err := CheckDate(*date); err != nil {
-			return Entry{}, dropped, &ExtractionError{Field: "dokumentdatum", Reason: "not a valid date in the format YYYY-MM-DD"}
+			return Entry{}, dropped, &ExtractionError{Field: "documentDate", Reason: "not a valid date in the format YYYY-MM-DD"}
 		}
 	}
 
@@ -134,10 +134,10 @@ func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string
 		value := strings.TrimSpace(xf.Value)
 		if name == "" || value == "" {
 			if name == "" {
-				dropped = append(dropped, fmt.Sprintf("infos[%d].name", i))
+				dropped = append(dropped, fmt.Sprintf("facts[%d].name", i))
 			}
 			if value == "" {
-				dropped = append(dropped, fmt.Sprintf("infos[%d].wert", i))
+				dropped = append(dropped, fmt.Sprintf("facts[%d].value", i))
 			}
 			continue
 		}

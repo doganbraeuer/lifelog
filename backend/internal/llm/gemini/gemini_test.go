@@ -29,14 +29,14 @@ func response(text string, reason genai.FinishReason) *genai.GenerateContentResp
 // validResponse uses the JSON field names of the read schema, which are
 // still German (read.go).
 const validResponse = `{
-  "lesbar": true,
-  "dokumentdatum": "2026-10-14",
-  "quelle": "Labor Muster GmbH, Salzburg",
-  "typ": "lab_report",
-  "volltext": "Labor Muster GmbH\nHämoglobin 14,2 g/dl",
-  "infos": [
-    {"name": "Hämoglobin", "wert": "14,2", "einheit": "g/dl"},
-    {"name": "CRP", "wert": "<0,5", "einheit": null}
+  "readable": true,
+  "documentDate": "2026-10-14",
+  "issuer": "Labor Muster GmbH, Salzburg",
+  "type": "lab_report",
+  "fullText": "Labor Muster GmbH\nHämoglobin 14,2 g/dl",
+  "facts": [
+    {"name": "Hämoglobin", "value": "14,2", "unit": "g/dl"},
+    {"name": "CRP", "value": "<0,5", "unit": null}
   ]
 }`
 
@@ -59,7 +59,7 @@ func TestExtractionFromResponse_Valid(t *testing.T) {
 }
 
 func TestExtractionFromResponse_NullAndUnreadable(t *testing.T) {
-	text := `{"lesbar": false, "dokumentdatum": null, "quelle": null, "typ": "other", "volltext": "", "infos": []}`
+	text := `{"readable": false, "documentDate": null, "issuer": null, "type": "other", "fullText": "", "facts": []}`
 	x, err := extractionFromResponse(response(text, ""))
 	if err != nil {
 		t.Fatal(err)
@@ -81,12 +81,12 @@ func TestExtractionFromResponse_Invalid(t *testing.T) {
 		"nil":              nil,
 		"no candidates":    {},
 		"blocked":          {PromptFeedback: &genai.GenerateContentResponsePromptFeedback{BlockReason: "OTHER"}},
-		"truncated":        response(`{"lesbar": true, "volltext": "Häm`, genai.FinishReasonMaxTokens),
+		"truncated":        response(`{"readable": true, "fullText": "Häm`, genai.FinishReasonMaxTokens),
 		"safety filter":    response(validResponse, genai.FinishReasonSafety),
 		"empty text":       response("  ", genai.FinishReasonStop),
 		"no JSON":          response("Hier ist der Befund: Hämoglobin 14,2", genai.FinishReasonStop),
-		"lesbar missing":   response(`{"typ": "lab_report", "volltext": "x", "infos": []}`, genai.FinishReasonStop),
-		"value as number":  response(`{"lesbar": true, "typ": "lab_report", "volltext": "x", "infos": [{"name": "Hb", "wert": 14.2}]}`, genai.FinishReasonStop),
+		"readable missing": response(`{"type": "lab_report", "fullText": "x", "facts": []}`, genai.FinishReasonStop),
+		"value as number":  response(`{"readable": true, "type": "lab_report", "fullText": "x", "facts": [{"name": "Hb", "value": 14.2}]}`, genai.FinishReasonStop),
 		"list, not object": response(`[]`, genai.FinishReasonStop),
 	}
 	for name, resp := range cases {
@@ -101,8 +101,8 @@ func TestExtractionFromResponse_Invalid(t *testing.T) {
 func TestExtractionFromText_ErrorWithoutContent(t *testing.T) {
 	// Neither syntax nor type errors may pull document content into the message.
 	for _, text := range []string{
-		`{"lesbar": true, "volltext": "Geheimer Befund" "x"}`,
-		`{"lesbar": true, "infos": [{"name": "Geheimer Wert", "wert": 12345}]}`,
+		`{"readable": true, "fullText": "Geheimer Befund" "x"}`,
+		`{"readable": true, "facts": [{"name": "Geheimer Wert", "value": 12345}]}`,
 	} {
 		_, err := extractionFromText(text)
 		if err == nil || strings.Contains(err.Error(), "Geheim") || strings.Contains(err.Error(), "12345") {
@@ -127,7 +127,7 @@ func TestReadSchema(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"lesbar", "dokumentdatum", "quelle", "typ", "volltext", "infos"} {
+	for _, field := range []string{"readable", "documentDate", "issuer", "type", "fullText", "facts"} {
 		if !slices.Contains(s.Required, field) {
 			t.Errorf("%s missing in required", field)
 		}
@@ -135,18 +135,17 @@ func TestReadSchema(t *testing.T) {
 			t.Errorf("%s missing in properties", field)
 		}
 	}
-	if !slices.Equal(s.Properties["typ"].Enum, types) {
-		t.Errorf("typ enum = %v, want %v", s.Properties["typ"].Enum, types)
+	if !slices.Equal(s.Properties["type"].Enum, types) {
+		t.Errorf("type enum = %v, want %v", s.Properties["type"].Enum, types)
 	}
-	if fmt.Sprint(s.Properties["dokumentdatum"].Type) != "[string null]" {
-		t.Errorf("dokumentdatum must allow null: %v", s.Properties["dokumentdatum"].Type)
+	if fmt.Sprint(s.Properties["documentDate"].Type) != "[string null]" {
+		t.Errorf("documentDate must allow null: %v", s.Properties["documentDate"].Type)
 	}
 }
 
 func TestReadInstruction(t *testing.T) {
-	// The prompt is still German (read.go), so the checked phrases are too.
 	a := readInstruction([]string{"doctor_letter", "lab_report", "other"})
-	for _, must := range []string{"doctor_letter, lab_report, other", `"other"`, "keine medizinischen", "keine Anweisung", "JJJJ-MM-TT"} {
+	for _, must := range []string{"doctor_letter, lab_report, other", `"other"`, "no medical", "not an instruction", "YYYY-MM-DD", "Do not translate", "decimal comma"} {
 		if !strings.Contains(a, must) {
 			t.Errorf("instruction does not contain %q", must)
 		}

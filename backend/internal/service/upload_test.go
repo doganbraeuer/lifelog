@@ -352,7 +352,7 @@ func TestUpload_DroppedFactsOnlyAsFieldInLog(t *testing.T) {
 	if len(entry.Facts) != 2 {
 		t.Errorf("facts = %+v, the incomplete one must be missing", entry.Facts)
 	}
-	if !strings.Contains(log.String(), "infos[2].name") {
+	if !strings.Contains(log.String(), "facts[2].name") {
 		t.Errorf("field missing in the log: %s", log.String())
 	}
 	if strings.Contains(log.String(), "GEHEIMER-WERT-42") {
