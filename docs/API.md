@@ -81,7 +81,7 @@ depends on the code.
 | 404 | `FACT_NOT_FOUND` | Correction refers to an unknown fact ID |
 | 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded |
 | 413 | `FILE_TOO_LARGE` | File larger than 10 MB or text longer than 100,000 characters |
-| 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC or PDF |
+| 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC, WebP or PDF |
 | 422 | `UNREADABLE` | The vision LLM recognizes no document in the file |
 | 500 | `INTERNAL_ERROR` | Unexpected error in the backend, e.g. database unreachable |
 | 502 | `EXTRACTION_FAILED` | The vision LLM returns a response that does not match the expected JSON |
@@ -286,6 +286,15 @@ on the resolution: the app multiplies them by the size at which it shows the
 page or photo. Text layer and OCR give the same kind of rectangle. A value
 that spans several lines has one location per line.
 
+For a **photo**, the page is the photo **as it is shown upright**: the
+backend applies the rotation stored in the file before OCR (EXIF
+orientation in a JPEG, the rotation in a HEIC file), like image viewers do.
+An iPhone stores a portrait photo as a landscape image plus "rotate by
+90°"; the locations refer to the portrait view. The app must therefore
+show the photo with this rotation applied (Flutter's `Image` does this for
+JPEG; HEIC is decoded by the platform, which also applies it). The stored
+original file is not changed.
+
 A location in a **text import** (`source: text`) is a range in `fullText`:
 `{ "start": 37, "end": 47 }`. `start` is inclusive, `end` exclusive, both
 counted in Unicode code points (not bytes; in Dart `fullText.runes`).
@@ -339,8 +348,9 @@ succeeds; a failed check is never an HTTP error. `reason`:
 |---|---|
 | `ocr_unavailable` | Switched off, or a needed program (`pdftotext`, `pdftoppm`, `tesseract`) is not installed on the server |
 | `ocr_failed` | Reading returned an error (e.g. a damaged PDF) or took too long (30 s) |
-| `unsupported_file_type` | The file type cannot be read (HEIC) |
+| `unsupported_file_type` | The file type cannot be read by OCR. Every allowed type can be read, so this does not happen at the moment. |
 | `too_many_pages` | PDF with more than 10 pages |
+| `image_too_large` | Image with more than 50 megapixels; it is not decoded, to protect the server's memory |
 | `no_text` | Neither text layer nor OCR found any text, e.g. a very blurry photo |
 | `not_run` | Entry from before 2026-11-11, never checked |
 
@@ -402,7 +412,8 @@ Content-Type: multipart/form-data; boundary=----lifelog
 
 For `file`:
 
-- Allowed types: `image/jpeg`, `image/png`, `image/heic`, `application/pdf`.
+- Allowed types: `image/jpeg`, `image/png`, `image/heic`, `image/webp`,
+  `application/pdf`. (`image/webp` since 2026-11-11.)
   The backend checks the type from the file content, not just the extension.
 - Maximum size: 10 MB.
 
@@ -466,7 +477,9 @@ Hausarztpraxis Beispiel
 5. Check the recognized values (see [verification](#verification)). For a
    file, reading the original runs **in parallel** to step 3, so the upload
    does not take longer: a PDF page with a text layer is read directly, a
-   page without one and a photo go through OCR. For a text import the
+   page without one and a photo go through OCR. A photo (JPEG, PNG, HEIC,
+   WebP) is first prepared: turned upright and scaled to a long side
+   between 2500 and 4096 pixels. For a text import the
    values are compared against the entered text.
 6. Split the full text into chunks and compute embeddings.
 7. Store the original file, the chunks with embeddings, the words read
@@ -553,7 +566,7 @@ If the original could not be read, `verification` looks like this:
 | 400 | `INVALID_REQUEST` | `file` and `text` together, more than one file or more than one `text` field, `text` not valid UTF-8 (`details.field`: `text`), or unknown `module` (`details.field`, `details.value`) |
 | 409 | `DUPLICATE` | A file or text with the same SHA-256 hash exists. `details.entryId` names the existing entry. |
 | 413 | `FILE_TOO_LARGE` | File over 10 MB or text over 100,000 characters (then `details.maxChars`: `100000`) |
-| 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC or PDF |
+| 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC, WebP or PDF |
 | 422 | `UNREADABLE` | No document recognizable, e.g. blurry photo (only for `file`) |
 | 502 | `EXTRACTION_FAILED` | Response of the vision LLM does not match the expected JSON |
 | 503 | `MODEL_UNAVAILABLE` | Vision LLM or embedding model unreachable |
@@ -1148,10 +1161,12 @@ same way with `start`/`end` in `fullText`.
   pixels, at most twice the size): photos 93 %, every value read, 86 % of
   the facts with unit (the rest are misread units, which stay
   unconfirmed). The comparison stays strict (no tolerance for OCR
-  confusions). A real phone photo of a printed demo document
-  (`demo/phone/`, iPhone, 2268 × 4032) reached 100 %. Decision: Tesseract
-  is enough for now; PaddleOCR only if further real photos do clearly
-  worse.
+  confusions). Two real iPhone photos of lab report 01 (`demo/phone/`,
+  both taken of a screen, not of paper): the JPEG reached 100 %, the HEIC
+  (at an angle, with moiré) 57 %, with every value but two units read
+  wrongly; Apple's own decoder gives the same text, so it is the photo.
+  Decision: Tesseract is enough for now; PaddleOCR only if further real
+  photos (of paper) do clearly worse.
 - **Old entries:** entries stored before 2026-11-11 are `not_run`.
   `go run ./cmd/ocrcheck -write` fills in their verification (without
   `-write` it only shows what it would store). After a change to OCR or
@@ -1160,15 +1175,36 @@ same way with `start`/`end` in `fullText`.
   new subpackage.
 - **Badge in the timeline:** the short form could carry `matchPercent`.
   Only if the app needs it.
-- **EXIF orientation:** a JPEG from a camera can carry its rotation in EXIF.
-  OCR reads the stored pixels; if the app shows the photo rotated, the
-  rectangles do not fit. The app's image picker re-encodes, so this has not
-  happened yet.
-- **HEIC** is not checked (`unsupported_file_type`).
+- **Remove location and other metadata from uploaded photos:** a phone
+  photo carries EXIF data with the GPS position (latitude, longitude,
+  altitude, direction), the camera model and the time it was taken. Gemini
+  gets the file as it is, and `GET /entries/{id}/file` returns it as it
+  is, so real users would store where they took the photo. Proposal: the
+  backend removes these segments before it stores the file (JPEG: APP1
+  EXIF/XMP, without decoding the image; HEIC: the Exif item; PNG and WebP:
+  `eXIf`/`EXIF` chunks), keeps only the orientation (or applies it), and
+  computes `sha256` from the cleaned file. To be decided: whether the app
+  should already remove it before the upload (image_picker on iOS keeps
+  EXIF by default).
+- **Orientation in PNG and WebP:** only JPEG (EXIF) and HEIC (rotation in
+  the file) are turned upright. PNG and WebP can carry EXIF too, but
+  phones do not write it; these images are read as they are stored.
 
 ---
 
 ## 5. Changes
+
+### 2026-11-11: WebP upload, HEIC and photo orientation in the verification
+
+1. **Upload** ([3.1](#31-upload-and-extract-a-file-or-text)): `image/webp`
+   is allowed. The app can allow WebP in its file picker and in its own
+   type check; the 415 message names WebP.
+2. **HEIC is checked** like every other photo, no longer `unchecked` with
+   `unsupported_file_type`.
+3. **Orientation** ([verification](#verification)): photos are turned
+   upright before OCR (EXIF in JPEG, rotation in HEIC). The locations
+   refer to the upright photo, as shown by the app.
+4. **New `reason`:** `image_too_large` (more than 50 megapixels).
 
 ### 2026-11-11: Verification by text layer and OCR
 

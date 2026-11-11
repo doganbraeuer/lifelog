@@ -32,6 +32,7 @@ contract; this glossary only lists names.
 | Name, Wert, Einheit | name, value, unit | |
 | Datei, Originaldatei | file, original file | `File` |
 | Dateiname, MIME-Typ, Größe | file name, MIME type, size | |
+| erlaubte Dateitypen beim Upload | `image/jpeg`, `image/png`, `image/heic`, `image/webp` (since 2026-11-11), `application/pdf` | `MimeJPEG`, `MimePNG`, `MimeHEIC`, `MimeWebP`, `MimePDF` |
 | Korrektur / Korrekturen | correction / corrections | `Correction` |
 | Feld, erkannt, korrigiert, Zeitpunkt | field, recognized, corrected, corrected at | |
 | Erkennung (Ergebnis des Lesens) | extraction | `Extraction` |
@@ -345,15 +346,20 @@ the text layer of a PDF, or OCR for photos and scans.
 | Prüfquelle | source: `pdf_text` (text layer), `ocr`, `text` (text import), `mixed` (entry only) | `Source` |
 | Programme mit Version und Sprache (Anzeige) | engine | `OCRResult.Engine` |
 | Rastern (PDF-Seite → Bild) | render | `poppler.RenderPage` |
-| Hochskalieren kleiner Bilder vor OCR | upscale | `tesseract.MinLongSide`, `DefaultMinLongSide`; `cmd/ocrcheck -upscale` |
-| echtes Handyfoto eines ausgedruckten Demo-Dokuments | phone photo, suffix `_phone` | `demo/phone/`, `cmd/ocrcheck -extra` |
+| Bild für OCR aufbereiten (einlesen, aufrichten, Größe anpassen, als RGB-PNG an das OCR-Programm) | prepare image | `ocr.PrepareImage`, `ocr.ImageOptions`, `DefaultImageOptions` |
+| Auflösung, die Tesseract mitgeteilt wird | dpi | `tesseract.DPI` (300, `--dpi`) |
+| Ausrichtung (EXIF bei JPEG, Drehung in der HEIC-Datei) | orientation | `ocr.Orientation`, `exifOrientation` |
+| Hochskalieren kleiner Bilder vor OCR | upscale | `ImageOptions.MinLongSide`, `DefaultMinLongSide`; `cmd/ocrcheck -upscale` |
+| Verkleinern großer Bilder vor OCR | downscale | `ImageOptions.MaxLongSide`, `DefaultMaxLongSide`; `cmd/ocrcheck -downscale` |
+| Bild zu groß zum Einlesen (Pixelzahl) | image too large | `ImageOptions.MaxPixels`, `ocr.ErrImageTooLarge`, reason `image_too_large` |
+| echtes Handyfoto eines Demo-Dokuments | phone photo, suffix `_phone` | `demo/phone/`, `cmd/ocrcheck -extra` |
 
 ### API (entry JSON)
 
 | Field | Values |
 |---|---|
 | `verification.status` | `checked`, `unchecked` |
-| `verification.reason` | `null`, `ocr_unavailable`, `ocr_failed`, `unsupported_file_type`, `too_many_pages`, `no_text`, `not_run` |
+| `verification.reason` | `null`, `ocr_unavailable`, `ocr_failed`, `unsupported_file_type`, `too_many_pages`, `image_too_large`, `no_text`, `not_run` |
 | `verification.source` | `pdf_text`, `ocr`, `text`, `mixed`, `null` |
 | `verification.fields[].source` | `pdf_text`, `ocr`, `text`, `null` |
 | `verification.engine`, `checkedAt`, `confirmed`, `corrected`, `total`, `matchPercent` | |
@@ -369,7 +375,7 @@ the text layer of a PDF, or OCR for photos and scans.
 |---|---|
 | collection mit den gelesenen Wörtern (Textebene oder OCR) | `ocr` (`_id` = entry ID; `engine`, `pages`, `words`) |
 | entry field in MongoDB | `verification` (missing in old entries → `unchecked`/`not_run`) |
-| Messung der OCR-Qualität, Prüfung nachtragen | `cmd/ocrcheck` (`-write`, `-values`, `-out`, `-demo`) |
+| Messung der OCR-Qualität, Prüfung nachtragen | `cmd/ocrcheck` (`-write`, `-values`, `-out`, `-demo`, `-upscale`, `-downscale`, `-extra`) |
 | alle Einträge neu prüfen | recheck | `cmd/ocrcheck -recheck` (stores only with `-write`) |
 | Prüfung nachtragen (Service) | verifier | `service.Verifier`, `Check`, `Save`, `NeedsCheck` |
 | Messergebnisse | `docs/ocr/` |
