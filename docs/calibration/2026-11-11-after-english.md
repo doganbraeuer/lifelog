@@ -36,6 +36,24 @@ questions get the fixed sentence without a model call (0.3–0.4 s).
 "Vitamin-D-Wert" is answered from the lab report of 2026-10-28 (L1, uploaded
 on 2026-11-09), so it is no longer a "near" question.
 
+## Change after this measurement: question 39 is relevant
+
+Decision (Dogan, 2026-11-11): question 39 „Wie hoch war mein Vitamin-D-Wert?“
+moves from near to relevant, target `L1_lab_report_2026-10-28.pdf`. The
+scores do not change; only the groups do. The measurement below and the
+baseline still count it as near, so compare near and relevant with these
+counts in mind. Re-evaluated with the same database (embeddings only):
+
+```
+  relevant   30 questions, score 0.830 … 0.902, 30/30 sources get through (should: all)
+    multiple  6 questions, score 0.850 … 0.866,  6/6 of them with several entries, all get through
+  near        7 questions, score 0.823 … 0.861,  7/7 go to the language model (allowed, it answers with the fixed sentence)
+  unrelated   8 questions, score 0.758 … 0.808,  0/8 go to the language model (should: none)
+Separable: every threshold above 0.808 up to and including 0.830 separates relevant from unrelated.
+```
+
+## Measurement (before the change of question 39)
+
 ```
 45 questions, 15 entries, embedding model gemini-embedding-2, database "lifelog", top 5
 

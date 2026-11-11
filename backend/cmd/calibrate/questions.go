@@ -69,6 +69,7 @@ var (
 	tbe           = target{FileName: "05_vaccination_tbe_2026-06-10.pdf"}
 	physioEnd     = target{FileName: "text.txt", Date: "2026-08-12"}
 	bloodPressure = target{FileName: "text.txt", Date: "2026-09-23"}
+	labOctober    = target{FileName: "L1_lab_report_2026-10-28.pdf"}
 )
 
 // questions is fixed, so measurements before and after a change (model,
@@ -133,7 +134,9 @@ func questions() []question {
 
 		n("Wurde bei mir schon ein MRT gemacht?"),
 		n("Wie hoch war mein HbA1c-Wert?"),
-		n("Wie hoch war mein Vitamin-D-Wert?"),
+		// Near until 2026-11-11; since the upload of L1 (2026-11-09) the
+		// answer is in the lab report of 2026-10-28.
+		r("Wie hoch war mein Vitamin-D-Wert?", labOctober),
 		n("Wann hatte ich meine letzte Covid-Impfung?"),
 		n("Welche Blutgruppe habe ich?"),
 

@@ -133,8 +133,8 @@ go run ./cmd/calibrate                  # evaluates with core.MinScore
 go run ./cmd/calibrate -threshold 0.82
 ```
 
-Asks 45 fixed questions (`cmd/calibrate/questions.go`): 29 relevant ones (6
-of them with the answer in two entries), 8 health questions whose answer is
+Asks 45 fixed questions (`cmd/calibrate/questions.go`): 30 relevant ones (6
+of them with the answer in two entries), 7 health questions whose answer is
 in no document ("near"), and 8 unrelated ones. The questions are German,
 because users ask in German. The program finds the seed entries by their
 fixed IDs and the demo uploads by the file name of the original; the two
