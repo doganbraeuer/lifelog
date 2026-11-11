@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/dienst"
+	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
 )
 
@@ -22,16 +22,16 @@ import (
 type hochladerAttrappe struct {
 	eintrag    core.Entry
 	err        error
-	upload     *dienst.Upload
-	textUpload *dienst.TextUpload
+	upload     *service.Upload
+	textUpload *service.TextUpload
 }
 
-func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u dienst.Upload) (core.Entry, error) {
+func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u service.Upload) (core.Entry, error) {
 	h.upload = &u
 	return h.eintrag, h.err
 }
 
-func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u dienst.TextUpload) (core.Entry, error) {
+func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u service.TextUpload) (core.Entry, error) {
 	h.textUpload = &u
 	return h.eintrag, h.err
 }
@@ -182,7 +182,7 @@ func TestHochladen_FehlerDesDienstes(t *testing.T) {
 		{core.ErrFileEmpty, 400, CodeDateiFehlt, nil},
 		{core.ErrFileTooLarge, 413, CodeDateiZuGross, nil},
 		{core.ErrUnsupportedFileType, 415, CodeDateitypNichtUnterstuetzt, nil},
-		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
+		{&service.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
 		{core.ErrUnreadable, 422, CodeNichtLesbar, nil},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},

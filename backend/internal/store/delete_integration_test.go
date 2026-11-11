@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/dienst"
+	"lifelog/backend/internal/service"
 )
 
 // create stores a full entry like the upload does: file, two chunks, entry
@@ -53,7 +53,7 @@ func checkFile(t *testing.T, s *Store, ctx context.Context, fileID string, exist
 // service against a real MongoDB (API.md 3.7).
 func TestIntegration_DeleteEntry(t *testing.T) {
 	s, ctx := testStore(t)
-	d := dienst.NeuLoeschen(s)
+	d := service.NeuLoeschen(s)
 
 	a := create(t, s, ctx, strings.Repeat("a1", 32))
 	b := create(t, s, ctx, strings.Repeat("b2", 32))
@@ -98,7 +98,7 @@ func TestIntegration_DeleteAfterInterruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := dienst.NeuLoeschen(s).Ausfuehren(ctx, e.ID); err != nil {
+	if err := service.NeuLoeschen(s).Ausfuehren(ctx, e.ID); err != nil {
 		t.Fatalf("delete with missing file: %v", err)
 	}
 	if _, exists, err := s.GetEntry(ctx, e.ID); err != nil || exists {

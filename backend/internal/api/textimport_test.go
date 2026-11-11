@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/dienst"
+	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
 )
 
@@ -118,7 +118,7 @@ func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			// Dienst ohne Speicher und Modelle: Die Prüfung kommt vor allem anderen.
-			d := dienst.NeuHochladen(nil, nil, nil, nil)
+			d := service.NeuHochladen(nil, nil, nil, nil)
 			router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Hochladen: d})
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, textFormular(t, f.felder...))
@@ -150,7 +150,7 @@ func TestTextImport_FehlerDesDienstes(t *testing.T) {
 		details   string
 	}{
 		{core.ErrFileEmpty, 400, CodeDateiFehlt, "Bitte einen Text eingeben.", "map[]"},
-		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
+		{&service.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
 		{fmt.Errorf("JSON kaputt: %w", llm.ErrInvalidResponse), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},

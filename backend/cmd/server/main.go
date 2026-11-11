@@ -14,8 +14,8 @@ import (
 
 	"lifelog/backend/internal/api"
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/dienst"
 	"lifelog/backend/internal/llm/gemini"
+	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/store"
 )
 
@@ -80,10 +80,10 @@ func starten() error {
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:          db,
 			Eintraege:   db,
-			Hochladen:   dienst.NeuHochladen(db, g, g, store.NewID),
-			Fragen:      dienst.NeuFragen(db, g, g),
-			Korrigieren: dienst.NeuKorrigieren(db),
-			Loeschen:    dienst.NeuLoeschen(db),
+			Hochladen:   service.NeuHochladen(db, g, g, store.NewID),
+			Fragen:      service.NeuFragen(db, g, g),
+			Korrigieren: service.NeuKorrigieren(db),
+			Loeschen:    service.NeuLoeschen(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz

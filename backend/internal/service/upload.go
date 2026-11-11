@@ -1,9 +1,9 @@
-// Package dienst enthält die Abläufe des Backends (Upload, später Fragen,
+// Package service enthält die Abläufe des Backends (Upload, später Fragen,
 // Löschen, Korrigieren). Ein Dienst verbindet Fachlogik (kern), Modelle
 // (modell) und Speicher, kennt aber weder HTTP noch MongoDB oder Gemini
 // direkt, nur deren Schnittstellen. Deshalb lässt er sich vollständig mit
 // Attrappen testen.
-package dienst
+package service
 
 import (
 	"context"

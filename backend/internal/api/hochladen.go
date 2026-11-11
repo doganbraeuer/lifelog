@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/dienst"
+	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
 )
 
@@ -32,10 +32,10 @@ const (
 const formularPuffer = 1 << 20 // 1 MiB
 
 // Hochlader führt den Upload bzw. Text-Import aus. Umgesetzt von
-// dienst.Hochladen.
+// service.Hochladen.
 type Hochlader interface {
-	Ausfuehren(ctx context.Context, u dienst.Upload) (core.Entry, error)
-	TextAusfuehren(ctx context.Context, u dienst.TextUpload) (core.Entry, error)
+	Ausfuehren(ctx context.Context, u service.Upload) (core.Entry, error)
+	TextAusfuehren(ctx context.Context, u service.TextUpload) (core.Entry, error)
 }
 
 // art: Datei-Upload oder Text-Import. Bestimmt nur die Fehlermeldungen.
@@ -85,7 +85,7 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 			return
 		case hatText:
 			// Der Text geht unverändert weiter, nicht getrimmt.
-			eintrag, err := h.TextAusfuehren(r.Context(), dienst.TextUpload{Text: texte[0], Modul: modul})
+			eintrag, err := h.TextAusfuehren(r.Context(), service.TextUpload{Text: texte[0], Modul: modul})
 			schreibeErgebnis(w, r, eintrag, err, artText, modul)
 			return
 		case len(dateien) == 0 && len(texte) == 1:
@@ -104,7 +104,7 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 			schreibeInternenFehler(w, r, err)
 			return
 		}
-		eintrag, err := h.Ausfuehren(r.Context(), dienst.Upload{
+		eintrag, err := h.Ausfuehren(r.Context(), service.Upload{
 			Daten: daten, Dateiname: dateien[0].Filename, Modul: modul,
 		})
 		schreibeErgebnis(w, r, eintrag, err, artDatei, modul)
@@ -124,7 +124,7 @@ func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Entry
 // schreibeUploadFehler ordnet jedem Fehler des Dienstes den Code aus
 // API.md 3.1 zu.
 func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a art, modul string) {
-	var duplikat *dienst.DuplikatFehler
+	var duplikat *service.DuplikatFehler
 	switch {
 	case a == artText && errors.Is(err, core.ErrFileEmpty):
 		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
