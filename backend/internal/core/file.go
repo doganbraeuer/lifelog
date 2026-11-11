@@ -30,7 +30,7 @@ var (
 // Content-Type of the upload. The app (or anyone else) can set both freely,
 // but not the first bytes of a file.
 //
-// Errors: ErrFileEmpty (→ 400 DATEI_FEHLT), ErrFileTooLarge (→ 413),
+// Errors: ErrFileEmpty (→ 400 FILE_MISSING), ErrFileTooLarge (→ 413),
 // ErrUnsupportedFileType (→ 415).
 func CheckFile(data []byte) (string, error) {
 	if len(data) == 0 {

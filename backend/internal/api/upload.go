@@ -16,18 +16,18 @@ import (
 
 // Error codes for the upload (API.md 3.1).
 const (
-	CodeInvalidRequest      = "UNGUELTIGE_ANFRAGE"
-	CodeFileMissing         = "DATEI_FEHLT"
-	CodeDuplicate           = "DUPLIKAT"
-	CodeFileTooLarge        = "DATEI_ZU_GROSS"
-	CodeUnsupportedFileType = "DATEITYP_NICHT_UNTERSTUETZT"
-	CodeUnreadable          = "NICHT_LESBAR"
-	CodeExtractionFailed    = "AUSLESEN_FEHLGESCHLAGEN"
-	CodeModelUnavailable    = "MODELL_NICHT_ERREICHBAR"
+	CodeInvalidRequest      = "INVALID_REQUEST"
+	CodeFileMissing         = "FILE_MISSING"
+	CodeDuplicate           = "DUPLICATE"
+	CodeFileTooLarge        = "FILE_TOO_LARGE"
+	CodeUnsupportedFileType = "UNSUPPORTED_FILE_TYPE"
+	CodeUnreadable          = "UNREADABLE"
+	CodeExtractionFailed    = "EXTRACTION_FAILED"
+	CodeModelUnavailable    = "MODEL_UNAVAILABLE"
 )
 
 // formOverhead: room for the form overhead (boundaries, headers, field
-// modul) in addition to the file. If the file itself is over 10 MB,
+// module) in addition to the file. If the file itself is over 10 MB,
 // core.CheckFile reports that precisely; anything beyond breaks off while
 // reading.
 const formOverhead = 1 << 20 // 1 MiB
@@ -46,7 +46,7 @@ const (
 	kindText
 )
 
-// uploadHandler answers POST /api/v1/eintraege (API.md 3.1).
+// uploadHandler answers POST /api/v1/entries (API.md 3.1).
 func uploadHandler(u Uploader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formOverhead)
@@ -61,7 +61,7 @@ func uploadHandler(u Uploader) http.HandlerFunc {
 				writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge, "Die Datei ist größer als 10 MB.", nil)
 			case errors.Is(err, http.ErrNotMultipart):
 				writeError(w, http.StatusBadRequest, CodeInvalidRequest,
-					"Bitte die Datei als multipart/form-data im Feld datei schicken.", nil)
+					"Bitte die Datei als multipart/form-data im Feld file schicken.", nil)
 			default:
 				writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Das Formular ist nicht lesbar.", nil)
 			}
@@ -69,11 +69,11 @@ func uploadHandler(u Uploader) http.HandlerFunc {
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 
-		files := r.MultipartForm.File["datei"]
+		files := r.MultipartForm.File["file"]
 		texts := r.MultipartForm.Value["text"]
 		// Empty or only whitespace counts as missing (API.md 3.1).
 		hasText := len(texts) > 0 && strings.TrimSpace(texts[0]) != ""
-		module := firstValue(r.MultipartForm.Value["modul"])
+		module := firstValue(r.MultipartForm.Value["module"])
 		switch {
 		case len(texts) > 1:
 			writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Bitte genau einen Text schicken.", nil)
@@ -116,7 +116,7 @@ func writeUploadResult(w http.ResponseWriter, r *http.Request, entry core.Entry,
 		writeUploadError(w, r, err, kind, module)
 		return
 	}
-	w.Header().Set("Location", "/api/v1/eintraege/"+entry.ID)
+	w.Header().Set("Location", "/api/v1/entries/"+entry.ID)
 	writeJSON(w, http.StatusCreated, entryToJSON(entry))
 }
 
@@ -129,17 +129,17 @@ func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind up
 		writeError(w, http.StatusBadRequest, CodeFileMissing, "Bitte einen Text eingeben.", nil)
 	case errors.Is(err, core.ErrTextNotUTF8):
 		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
-			"Der Text ist kein gültiges UTF-8.", map[string]any{"feld": "text"})
+			"Der Text ist kein gültiges UTF-8.", map[string]any{"field": "text"})
 	case errors.Is(err, core.ErrTextTooLong):
 		writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge,
-			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": core.MaxTextChars})
+			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxChars": core.MaxTextChars})
 	case kind == kindText && errors.As(err, &duplicate):
 		writeError(w, http.StatusConflict, CodeDuplicate, "Diesen Text hast du schon importiert.",
-			map[string]any{"eintragId": duplicate.EntryID})
+			map[string]any{"entryId": duplicate.EntryID})
 	case errors.Is(err, core.ErrUnknownModule):
 		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
-			map[string]any{"feld": "modul", "wert": module})
+			map[string]any{"field": "module", "value": module})
 	case errors.Is(err, core.ErrFileEmpty):
 		writeError(w, http.StatusBadRequest, CodeFileMissing, "Die Datei ist leer.", nil)
 	case errors.Is(err, core.ErrFileTooLarge):
@@ -149,7 +149,7 @@ func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind up
 			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC und PDF.", nil)
 	case errors.As(err, &duplicate):
 		writeError(w, http.StatusConflict, CodeDuplicate, "Diese Datei hast du schon hochgeladen.",
-			map[string]any{"eintragId": duplicate.EntryID})
+			map[string]any{"entryId": duplicate.EntryID})
 	case errors.Is(err, core.ErrUnreadable):
 		writeError(w, http.StatusUnprocessableEntity, CodeUnreadable,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)

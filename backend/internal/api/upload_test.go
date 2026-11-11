@@ -42,7 +42,7 @@ func form(t *testing.T, files map[string][]byte, fields map[string]string) *http
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	for name, content := range files {
-		fw, err := mw.CreateFormFile("datei", name)
+		fw, err := mw.CreateFormFile("file", name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +52,7 @@ func form(t *testing.T, files map[string][]byte, fields map[string]string) *http
 		mw.WriteField(k, v)
 	}
 	mw.Close()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/eintraege", &body)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/entries", &body)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	return r
 }
@@ -74,8 +74,8 @@ func fullEntry() core.Entry {
 		Issuer:       p("Labor Muster GmbH, Salzburg"),
 		FullText:     "Hämoglobin 14,2 g/dl",
 		Facts: []core.Fact{
-			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: p("g/dl")},
-			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
+			{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: p("g/dl")},
+			{ID: "f2", Name: "Befundart", Value: "Blutbild klein"},
 		},
 		File: core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund.pdf",
 			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32)},
@@ -87,12 +87,12 @@ func TestUpload_Success(t *testing.T) {
 	u := &fakeUploader{entry: fullEntry()}
 	rec := upload(t, u, form(t,
 		map[string][]byte{"befund.pdf": []byte("%PDF-1.7")},
-		map[string]string{"modul": "gesundheit"}))
+		map[string]string{"module": "gesundheit"}))
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0" {
+	if loc := rec.Header().Get("Location"); loc != "/api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", loc)
 	}
 	if u.upload == nil || string(u.upload.Data) != "%PDF-1.7" || u.upload.FileName != "befund.pdf" || u.upload.Module != "gesundheit" {
@@ -101,11 +101,11 @@ func TestUpload_Success(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, must := range []string{
-		`"korrekturen":[]`,
-		`"importdatum":"2026-11-03T18:42:07Z"`,
-		`"mimeTyp":"application/pdf"`,
-		`{"id":"i2","name":"Befundart","wert":"Blutbild klein"}`, // without einheit
-		`"volltext":"Hämoglobin 14,2 g/dl"`,
+		`"corrections":[]`,
+		`"importedAt":"2026-11-03T18:42:07Z"`,
+		`"mimeType":"application/pdf"`,
+		`{"id":"f2","name":"Befundart","value":"Blutbild klein"}`, // without unit
+		`"fullText":"Hämoglobin 14,2 g/dl"`,
 	} {
 		if !strings.Contains(body, must) {
 			t.Errorf("response does not contain %s:\n%s", must, body)
@@ -130,12 +130,12 @@ func TestUpload_FormErrors(t *testing.T) {
 		code    string
 	}{
 		{"not multipart", func(t *testing.T) *http.Request {
-			r := httptest.NewRequest(http.MethodPost, "/api/v1/eintraege", strings.NewReader(`{"datei":"x"}`))
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/entries", strings.NewReader(`{"file":"x"}`))
 			r.Header.Set("Content-Type", "application/json")
 			return r
 		}, 400, CodeInvalidRequest},
 		{"without file", func(t *testing.T) *http.Request {
-			return form(t, nil, map[string]string{"modul": "gesundheit"})
+			return form(t, nil, map[string]string{"module": "gesundheit"})
 		}, 400, CodeFileMissing},
 		{"file and text", func(t *testing.T) *http.Request {
 			return form(t, map[string][]byte{"a.pdf": pdf}, map[string]string{"text": "Befund"})
@@ -178,14 +178,14 @@ func TestUpload_ServiceErrors(t *testing.T) {
 		code    string
 		details map[string]any
 	}{
-		{core.ErrUnknownModule, 400, CodeInvalidRequest, map[string]any{"feld": "modul", "wert": "sport"}},
+		{core.ErrUnknownModule, 400, CodeInvalidRequest, map[string]any{"field": "module", "value": "sport"}},
 		{core.ErrFileEmpty, 400, CodeFileMissing, nil},
 		{core.ErrFileTooLarge, 413, CodeFileTooLarge, nil},
 		{core.ErrUnsupportedFileType, 415, CodeUnsupportedFileType, nil},
 		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplicate,
-			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
+			map[string]any{"entryId": "6727a1f3c2b4e5d6f7a8b9c0"}},
 		{core.ErrUnreadable, 422, CodeUnreadable, nil},
-		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeExtractionFailed, nil},
+		{&core.ExtractionError{Field: "type", Reason: "x"}, 502, CodeExtractionFailed, nil},
 		{fmt.Errorf("broken JSON: %w", llm.ErrInvalidResponse), 502, CodeExtractionFailed, nil},
 		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModelUnavailable, nil},
 		{errors.New("database gone"), 500, CodeInternalError, nil},
@@ -194,7 +194,7 @@ func TestUpload_ServiceErrors(t *testing.T) {
 		t.Run(c.code, func(t *testing.T) {
 			u := &fakeUploader{err: c.err}
 			rec := upload(t, u, form(t,
-				map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"modul": "sport"}))
+				map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"module": "sport"}))
 
 			a := checkError(t, rec, c.status, c.code)
 			if c.details != nil && fmt.Sprint(a.Error.Details) != fmt.Sprint(c.details) {

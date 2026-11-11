@@ -53,7 +53,7 @@ func run() error {
 	// fatal: without the index, upload and timeline work, only search does
 	// not. Then create the index in the Atlas UI.
 	if status, err := db.CreateVectorIndex(ctx); err != nil {
-		slog.Warn("vector index missing, POST /fragen only works after creating it in Atlas (backend/README.md, section vector index)",
+		slog.Warn("vector index missing, POST /questions only works after creating it in Atlas (backend/README.md, section vector index)",
 			"index", store.VectorIndexName, "error", err)
 	} else {
 		slog.Info("vector index", "index", store.VectorIndexName, "status", status)

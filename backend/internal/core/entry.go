@@ -13,7 +13,7 @@ import (
 var ErrDuplicate = errors.New("duplicate: file already exists")
 
 // ErrEntryNotFound: there is no entry with this ID
-// (→ 404 EINTRAG_NICHT_GEFUNDEN).
+// (→ 404 ENTRY_NOT_FOUND).
 var ErrEntryNotFound = errors.New("entry not found")
 
 // ErrInvalidID: the ID is not an ObjectId (24 hex characters).
@@ -25,7 +25,7 @@ var ErrInvalidID = errors.New("invalid ID")
 var ErrOriginalMissing = errors.New("original file missing")
 
 // CheckID checks whether id looks like an ObjectId: exactly 24 hex
-// characters. This way the API answers "/eintraege/abc" with 400 instead of
+// characters. This way the API answers "/entries/abc" with 400 instead of
 // 404, and the database is not even asked.
 func CheckID(id string) error {
 	if len(id) != 24 {
@@ -56,7 +56,7 @@ type Entry struct {
 // Fact is an extracted fact. Value always stays a string, exactly as on the
 // document ("14,2", "<0,5"), so nothing is lost by conversion.
 type Fact struct {
-	ID    string // "i1", "i2", …
+	ID    string // "f1", "f2", …
 	Name  string
 	Value string
 	Unit  *string // nil if the document names no unit
@@ -91,7 +91,7 @@ type EntrySummary struct {
 }
 
 // Chunk is a piece of the full text with its embedding, the basis of search
-// (POST /fragen). The module is stored in the chunk itself so the vector
+// (POST /questions). The module is stored in the chunk itself so the vector
 // search can filter by it directly.
 type Chunk struct {
 	EntryID   string

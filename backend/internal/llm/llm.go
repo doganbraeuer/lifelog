@@ -54,10 +54,10 @@ type Answerer interface {
 // these, so the HTTP layer can choose the right code, whatever the provider.
 var (
 	// ErrUnavailable: network, timeout, limit (429) or server error of the
-	// provider (→ 503 MODELL_NICHT_ERREICHBAR).
+	// provider (→ 503 MODEL_UNAVAILABLE).
 	ErrUnavailable = errors.New("model unavailable")
 
 	// ErrInvalidResponse: the model answered, but not in the expected form
-	// (→ 502 AUSLESEN_FEHLGESCHLAGEN).
+	// (→ 502 EXTRACTION_FAILED).
 	ErrInvalidResponse = errors.New("invalid model response")
 )

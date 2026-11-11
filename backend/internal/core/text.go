@@ -22,8 +22,8 @@ var (
 // is stored and hashed.
 //
 // Errors, in this order: ErrFileEmpty (empty or only whitespace, →
-// 400 DATEI_FEHLT), ErrTextNotUTF8 (→ 400 UNGUELTIGE_ANFRAGE),
-// ErrTextTooLong (→ 413 DATEI_ZU_GROSS).
+// 400 FILE_MISSING), ErrTextNotUTF8 (→ 400 INVALID_REQUEST),
+// ErrTextTooLong (→ 413 FILE_TOO_LARGE).
 func CheckText(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return ErrFileEmpty

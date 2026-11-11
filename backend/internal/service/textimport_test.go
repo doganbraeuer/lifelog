@@ -72,7 +72,7 @@ func TestTextImport_Success(t *testing.T) {
 		t.Errorf("stored file = %q", got)
 	}
 
-	if e.Module != "gesundheit" || e.Type != "arztbrief" || len(e.Facts) != 1 || e.Facts[0].ID != "i1" {
+	if e.Module != "gesundheit" || e.Type != "arztbrief" || len(e.Facts) != 1 || e.Facts[0].ID != "f1" {
 		t.Errorf("entry %+v", e)
 	}
 	if len(s.store.entries) != 1 || s.store.entries[0].FullText != enteredText {

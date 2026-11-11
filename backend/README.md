@@ -20,8 +20,8 @@ verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
 Hochladen von Hand (nur synthetische Dokumente):
 
 ```sh
-curl -F datei=@testdata/lab_report.pdf localhost:8080/api/v1/eintraege   # Datei
-curl -F "text=<meintext.txt" localhost:8080/api/v1/eintraege               # Text-Import
+curl -F file=@testdata/lab_report.pdf localhost:8080/api/v1/entries   # Datei
+curl -F "text=<meintext.txt" localhost:8080/api/v1/entries            # Text-Import
 ```
 
 Beim Text-Import liest `curl` mit `<` den Inhalt der Datei als Formularfeld
@@ -62,7 +62,7 @@ Dafür sind vom Lese-Limit (50 s) standardmäßig 20 s reserviert
 
 ## Vektorindex
 
-Die Suche (`POST /api/v1/fragen`) braucht in Atlas den Vector-Search-Index
+Die Suche (`POST /api/v1/questions`) braucht in Atlas den Vector-Search-Index
 `abschnitte_vektor` auf der Collection `abschnitte`. Die Definition steht in
 [`internal/speicher/abschnitte_vektor.json`](internal/speicher/abschnitte_vektor.json):
 `embedding` als Vektor (768 Dimensionen, cosine), `modul` als Filterfeld.
@@ -99,11 +99,11 @@ Die Testeinträge (`internal/sampledata`) haben feste IDs. Andere Einträge
 bleiben unberührt. Die Abschnitte entstehen wie beim Upload: gleiches
 Zerlegen, gleiches Embedding-Modell.
 
-Zum Ausprobieren von `DELETE /eintraege/{id}` (z. B. aus der App):
+Zum Ausprobieren von `DELETE /entries/{id}` (z. B. aus der App):
 
 ```sh
 go run ./cmd/seed -throwaway          # legt einen Wegwerf-Eintrag mit neuer ID an und gibt die ID aus
-curl -i -X DELETE localhost:8080/api/v1/eintraege/<ID>   # 204, ein zweites Mal 404
+curl -i -X DELETE localhost:8080/api/v1/entries/<ID>   # 204, ein zweites Mal 404
 ```
 
 Der Wegwerf-Eintrag braucht kein Gemini: Sein Abschnitt hat einen festen

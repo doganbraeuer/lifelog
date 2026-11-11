@@ -152,14 +152,14 @@ func TestSortEntries_IndependentOfInputOrder(t *testing.T) {
 }
 
 func TestParseSort(t *testing.T) {
-	cases := map[string]Sort{"": ByDocumentDate, "dokumentdatum": ByDocumentDate, "importdatum": ByImportedAt}
+	cases := map[string]Sort{"": ByDocumentDate, "documentDate": ByDocumentDate, "importedAt": ByImportedAt}
 	for value, want := range cases {
 		got, err := ParseSort(value)
 		if err != nil || got != want {
 			t.Errorf("ParseSort(%q) = %q, %v", value, got, err)
 		}
 	}
-	for _, value := range []string{"quelle", "Dokumentdatum", " importdatum"} {
+	for _, value := range []string{"issuer", "dokumentdatum", "DocumentDate", " importedAt"} {
 		if _, err := ParseSort(value); !errors.Is(err, ErrUnknownValue) {
 			t.Errorf("ParseSort(%q): want ErrUnknownValue, got %v", value, err)
 		}
@@ -167,14 +167,14 @@ func TestParseSort(t *testing.T) {
 }
 
 func TestParseSortOrder(t *testing.T) {
-	cases := map[string]SortOrder{"": Descending, "absteigend": Descending, "aufsteigend": Ascending}
+	cases := map[string]SortOrder{"": Descending, "desc": Descending, "asc": Ascending}
 	for value, want := range cases {
 		got, err := ParseSortOrder(value)
 		if err != nil || got != want {
 			t.Errorf("ParseSortOrder(%q) = %q, %v", value, got, err)
 		}
 	}
-	for _, value := range []string{"desc", "asc", "Absteigend"} {
+	for _, value := range []string{"absteigend", "aufsteigend", "Desc", "ascending"} {
 		if _, err := ParseSortOrder(value); !errors.Is(err, ErrUnknownValue) {
 			t.Errorf("ParseSortOrder(%q): want ErrUnknownValue, got %v", value, err)
 		}

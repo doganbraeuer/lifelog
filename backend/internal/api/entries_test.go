@@ -23,8 +23,8 @@ type fakeStore struct {
 	calls       int
 	askedModule string
 
-	entries map[string]core.Entry // ID → entry (for GET /eintraege/{id})
-	files   map[string][]byte     // file ID → content (for …/datei)
+	entries map[string]core.Entry // ID → entry (for GET /entries/{id})
+	files   map[string][]byte     // file ID → content (for …/file)
 	fileErr error                 // if set, OpenFile fails with it
 }
 
@@ -69,7 +69,7 @@ func list(t *testing.T, s *fakeStore, query string) *httptest.ResponseRecorder {
 	t.Helper()
 	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: s})
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/eintraege"+query, nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/entries"+query, nil))
 	return rec
 }
 
@@ -80,7 +80,7 @@ func TestList_EmptyIsEmptyArray(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	want := `{"eintraege":[],"anzahl":0}`
+	want := `{"entries":[],"count":0}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}
@@ -103,8 +103,8 @@ func TestList_DefaultsAndFormat(t *testing.T) {
 	}
 
 	var a struct {
-		Entries []map[string]any `json:"eintraege"`
-		Count   int              `json:"anzahl"`
+		Entries []map[string]any `json:"entries"`
+		Count   int              `json:"count"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
 		t.Fatal(err)
@@ -123,22 +123,22 @@ func TestList_DefaultsAndFormat(t *testing.T) {
 	}
 
 	first := a.Entries[0]
-	if first["importdatum"] != "2026-11-03T18:10:07Z" {
-		t.Errorf("importdatum = %v", first["importdatum"])
+	if first["importedAt"] != "2026-11-03T18:10:07Z" {
+		t.Errorf("importedAt = %v", first["importedAt"])
 	}
-	if first["dokumentdatum"] != "2026-10-14" {
-		t.Errorf("dokumentdatum = %v", first["dokumentdatum"])
+	if first["documentDate"] != "2026-10-14" {
+		t.Errorf("documentDate = %v", first["documentDate"])
 	}
 
 	// null stays visible as null; the field is not missing.
 	last := a.Entries[2]
-	for _, field := range []string{"dokumentdatum", "quelle"} {
+	for _, field := range []string{"documentDate", "issuer"} {
 		if v, ok := last[field]; !ok || v != nil {
 			t.Errorf("%s = %v (present: %v), want null", field, v, ok)
 		}
 	}
 	// The short form contains no detail fields.
-	for _, field := range []string{"volltext", "infos", "datei", "korrekturen"} {
+	for _, field := range []string{"fullText", "facts", "file", "corrections"} {
 		if _, ok := first[field]; ok {
 			t.Errorf("short form contains %s", field)
 		}
@@ -150,12 +150,12 @@ func TestList_ParametersAreApplied(t *testing.T) {
 		summary("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-10-14", 30),
 		summary("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
 	}}
-	rec := list(t, s, "?modul=gesundheit&sortierung=importdatum&richtung=aufsteigend")
+	rec := list(t, s, "?module=gesundheit&sort=importedAt&order=asc")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"eintraege":[{"id":"bbbb`) {
+	if !strings.Contains(rec.Body.String(), `"entries":[{"id":"bbbb`) {
 		t.Errorf("b (import :20) must come first: %s", rec.Body)
 	}
 }
@@ -164,10 +164,10 @@ func TestList_InvalidParameters(t *testing.T) {
 	cases := []struct {
 		query, parameter, value string
 	}{
-		{"?sortierung=quelle", "sortierung", "quelle"},
-		{"?richtung=desc", "richtung", "desc"},
-		{"?modul=sport", "modul", "sport"},
-		{"?modul=Gesundheit", "modul", "Gesundheit"},
+		{"?sort=issuer", "sort", "issuer"},
+		{"?order=absteigend", "order", "absteigend"},
+		{"?module=sport", "module", "sport"},
+		{"?module=Gesundheit", "module", "Gesundheit"},
 	}
 	for _, c := range cases {
 		t.Run(c.query, func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestList_InvalidParameters(t *testing.T) {
 			if a.Error.Code != CodeInvalidParameter {
 				t.Errorf("code = %q", a.Error.Code)
 			}
-			if a.Error.Details["parameter"] != c.parameter || a.Error.Details["wert"] != c.value {
+			if a.Error.Details["parameter"] != c.parameter || a.Error.Details["value"] != c.value {
 				t.Errorf("details = %v", a.Error.Details)
 			}
 			if a.Error.Message == "" {

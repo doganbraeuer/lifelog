@@ -15,14 +15,14 @@ import (
 )
 
 // textForm builds a form from fields in a fixed order; a name may appear
-// several times. A field "datei" is attached as a file.
+// several times. A field "file" is attached as a file.
 func textForm(t *testing.T, fields ...[2]string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	for _, f := range fields {
-		if f[0] == "datei" {
-			fw, err := mw.CreateFormFile("datei", "a.pdf")
+		if f[0] == "file" {
+			fw, err := mw.CreateFormFile("file", "a.pdf")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -32,7 +32,7 @@ func textForm(t *testing.T, fields ...[2]string) *http.Request {
 		mw.WriteField(f[0], f[1])
 	}
 	mw.Close()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/eintraege", &body)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/entries", &body)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	return r
 }
@@ -48,19 +48,19 @@ func textEntry() core.Entry {
 func TestTextImport_Success(t *testing.T) {
 	text := "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
 	u := &fakeUploader{entry: textEntry()}
-	rec := upload(t, u, textForm(t, [2]string{"text", text}, [2]string{"modul", "gesundheit"}))
+	rec := upload(t, u, textForm(t, [2]string{"text", text}, [2]string{"module", "gesundheit"}))
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	if rec.Header().Get("Location") != "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0" {
+	if rec.Header().Get("Location") != "/api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", rec.Header().Get("Location"))
 	}
 	// Unchanged to the service, including whitespace and \r\n.
 	if u.textUpload == nil || u.textUpload.Text != text || u.textUpload.Module != "gesundheit" || u.upload != nil {
 		t.Errorf("to the service: text %+v, file %+v", u.textUpload, u.upload)
 	}
-	for _, must := range []string{`"mimeTyp":"text/plain; charset=utf-8"`, `"dateiname":"text.txt"`, `"korrekturen":[]`} {
+	for _, must := range []string{`"mimeType":"text/plain; charset=utf-8"`, `"fileName":"text.txt"`, `"corrections":[]`} {
 		if !strings.Contains(rec.Body.String(), must) {
 			t.Errorf("response without %s: %s", must, rec.Body)
 		}
@@ -76,10 +76,10 @@ func TestTextImport_FormErrors(t *testing.T) {
 		code    string
 		message string
 	}{
-		{"neither file nor text", [][2]string{{"modul", "gesundheit"}}, 400, CodeFileMissing, "Datei"},
+		{"neither file nor text", [][2]string{{"module", "gesundheit"}}, 400, CodeFileMissing, "Datei"},
 		{"text empty", [][2]string{{"text", ""}}, 400, CodeFileMissing, "Text"},
 		{"text only whitespace", [][2]string{{"text", " \r\n\t "}}, 400, CodeFileMissing, "Text"},
-		{"file and text", [][2]string{{"datei", "%PDF-"}, {"text", "Befund"}}, 400, CodeInvalidRequest, "nicht beides"},
+		{"file and text", [][2]string{{"file", "%PDF-"}, {"text", "Befund"}}, 400, CodeInvalidRequest, "nicht beides"},
 		{"two texts", [][2]string{{"text", "a"}, {"text", "b"}}, 400, CodeInvalidRequest, "genau einen Text"},
 		{"two texts, one empty", [][2]string{{"text", ""}, {"text", "b"}}, 400, CodeInvalidRequest, "genau einen Text"},
 	} {
@@ -108,13 +108,13 @@ func TestTextImport_CheckThroughTheService(t *testing.T) {
 		details string
 	}{
 		{"100,001 characters", [][2]string{{"text", strings.Repeat("a", core.MaxTextChars+1)}},
-			413, CodeFileTooLarge, "map[maxZeichen:100000]"},
+			413, CodeFileTooLarge, "map[maxChars:100000]"},
 		{"100,001 umlauts", [][2]string{{"text", strings.Repeat("ü", core.MaxTextChars+1)}},
-			413, CodeFileTooLarge, "map[maxZeichen:100000]"},
+			413, CodeFileTooLarge, "map[maxChars:100000]"},
 		{"invalid UTF-8", [][2]string{{"text", "Befund \xff\xfe"}},
-			400, CodeInvalidRequest, "map[feld:text]"},
-		{"unknown module", [][2]string{{"text", "Befund"}, {"modul", "sport"}},
-			400, CodeInvalidRequest, "map[feld:modul wert:sport]"},
+			400, CodeInvalidRequest, "map[field:text]"},
+		{"unknown module", [][2]string{{"text", "Befund"}, {"module", "sport"}},
+			400, CodeInvalidRequest, "map[field:module value:sport]"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// Service without store and models: the check comes before anything else.
@@ -151,8 +151,8 @@ func TestTextImport_ServiceErrors(t *testing.T) {
 	}{
 		{core.ErrFileEmpty, 400, CodeFileMissing, "Bitte einen Text eingeben.", "map[]"},
 		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplicate,
-			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
-		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeExtractionFailed, "", "map[]"},
+			"Diesen Text hast du schon importiert.", "map[entryId:6727a1f3c2b4e5d6f7a8b9c0]"},
+		{&core.ExtractionError{Field: "type", Reason: "x"}, 502, CodeExtractionFailed, "", "map[]"},
 		{fmt.Errorf("broken JSON: %w", llm.ErrInvalidResponse), 502, CodeExtractionFailed, "", "map[]"},
 		{fmt.Errorf("Gemini 503: %w", llm.ErrUnavailable), 503, CodeModelUnavailable, "", "map[]"},
 		{fmt.Errorf("database gone"), 500, CodeInternalError, "", "map[]"},

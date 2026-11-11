@@ -13,7 +13,7 @@ type Deleter interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// deleteHandler answers DELETE /api/v1/eintraege/{id} (API.md 3.7): 204
+// deleteHandler answers DELETE /api/v1/entries/{id} (API.md 3.7): 204
 // without a body.
 func deleteHandler(d Deleter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

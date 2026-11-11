@@ -24,15 +24,15 @@ func sampleEntry() core.Entry {
 		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
 		FullText:     "Hämoglobin 14,2 g/dl",
 		Facts: []core.Fact{
-			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
-			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
+			{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+			{ID: "f2", Name: "Befundart", Value: "Blutbild klein"},
 		},
 		File: core.File{
 			ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund.pdf",
 			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32),
 		},
 		Corrections: []core.Correction{{
-			Field: "infos.i1.wert", Recognized: ptr("14,1"), Corrected: ptr("14,2"),
+			Field: "facts.f1.value", Recognized: ptr("14,1"), Corrected: ptr("14,2"),
 			CorrectedAt: time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC),
 		}},
 	}

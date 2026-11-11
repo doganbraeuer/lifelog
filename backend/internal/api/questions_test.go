@@ -28,7 +28,7 @@ func (a *fakeAsker) Ask(_ context.Context, question, module string) (core.Answer
 func ask(t *testing.T, a *fakeAsker, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	router := NewRouter(Dependencies{DB: fakePinger{}, Asker: a})
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/fragen", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/questions", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, r)
@@ -43,7 +43,7 @@ func TestQuestions_Hit(t *testing.T) {
 			Type: "laborbefund", Issuer: p("Labor Muster GmbH, Salzburg"), DocumentDate: p("2026-10-14"),
 			Excerpt: "Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}},
 	}}
-	rec := ask(t, a, `{"frage": "Welchen Hämoglobinwert hatte ich im Oktober?", "modul": "gesundheit"}`)
+	rec := ask(t, a, `{"question": "Welchen Hämoglobinwert hatte ich im Oktober?", "module": "gesundheit"}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
@@ -52,9 +52,9 @@ func TestQuestions_Hit(t *testing.T) {
 		t.Errorf("to the service: %q / %q", a.question, a.module)
 	}
 	// Exactly the form from API.md 3.6.
-	want := `{"antwort":"Im Laborbefund steht Hämoglobin 14,2 g/dl [1].","gefunden":true,"quellen":[` +
-		`{"nr":1,"eintragId":"6727a1f3c2b4e5d6f7a8b9c0","modul":"gesundheit","typ":"laborbefund",` +
-		`"quelle":"Labor Muster GmbH, Salzburg","dokumentdatum":"2026-10-14","auszug":"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}]}`
+	want := `{"answer":"Im Laborbefund steht Hämoglobin 14,2 g/dl [1].","found":true,"sources":[` +
+		`{"number":1,"entryId":"6727a1f3c2b4e5d6f7a8b9c0","module":"gesundheit","type":"laborbefund",` +
+		`"issuer":"Labor Muster GmbH, Salzburg","documentDate":"2026-10-14","excerpt":"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
@@ -63,9 +63,9 @@ func TestQuestions_Hit(t *testing.T) {
 func TestQuestions_NoHitIsEmptyList(t *testing.T) {
 	// The app sends no module; that is allowed (default gesundheit).
 	a := &fakeAsker{answer: core.Answer{Text: core.NotFoundAnswer, Sources: nil}}
-	rec := ask(t, a, `{"frage": "Wie wird das Wetter?"}`)
+	rec := ask(t, a, `{"question": "Wie wird das Wetter?"}`)
 
-	want := `{"antwort":"Dazu finde ich nichts in deinen Dokumenten.","gefunden":false,"quellen":[]}`
+	want := `{"answer":"Dazu finde ich nichts in deinen Dokumenten.","found":false,"sources":[]}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != 200 || got != want {
 		t.Errorf("%d %s", rec.Code, got)
 	}
@@ -76,8 +76,8 @@ func TestQuestions_NoHitIsEmptyList(t *testing.T) {
 
 func TestQuestions_InvalidJSON(t *testing.T) {
 	for _, body := range []string{
-		``, `kein json`, `{"frage": 42}`, `{"frge": "Tippfehler"}`,
-		`{"frage": "a"} {"frage": "b"}`, `["frage"]`,
+		``, `kein json`, `{"question": 42}`, `{"qustion": "Tippfehler"}`,
+		`{"question": "a"} {"question": "b"}`, `["question"]`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			a := &fakeAsker{}
@@ -91,7 +91,7 @@ func TestQuestions_InvalidJSON(t *testing.T) {
 
 func TestQuestions_BodyTooLarge(t *testing.T) {
 	a := &fakeAsker{}
-	body := `{"frage": "` + strings.Repeat("a", maxQuestionBody) + `"}`
+	body := `{"question": "` + strings.Repeat("a", maxQuestionBody) + `"}`
 	checkError(t, ask(t, a, body), 400, CodeInvalidRequest)
 }
 
@@ -110,9 +110,9 @@ func TestQuestions_ServiceErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.code, func(t *testing.T) {
-			rec := ask(t, &fakeAsker{err: c.err}, `{"frage": "x", "modul": "sport"}`)
+			rec := ask(t, &fakeAsker{err: c.err}, `{"question": "x", "module": "sport"}`)
 			a := checkError(t, rec, c.status, c.code)
-			if errors.Is(c.err, core.ErrUnknownModule) && fmt.Sprint(a.Error.Details) != "map[feld:modul wert:sport]" {
+			if errors.Is(c.err, core.ErrUnknownModule) && fmt.Sprint(a.Error.Details) != "map[field:module value:sport]" {
 				t.Errorf("details = %v", a.Error.Details)
 			}
 			for _, internal := range []string{"Gemini", "blocked", "vector index"} {

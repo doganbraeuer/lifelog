@@ -47,7 +47,7 @@ func withLogging(next http.Handler) http.Handler {
 }
 
 // withRecover catches a panic in a handler and answers with
-// 500 INTERNER_FEHLER instead of dropping the connection without a word.
+// 500 INTERNAL_ERROR instead of dropping the connection without a word.
 func withRecover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

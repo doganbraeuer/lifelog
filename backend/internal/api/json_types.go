@@ -12,16 +12,16 @@ import (
 
 type entrySummaryJSON struct {
 	ID           string  `json:"id"`
-	Module       string  `json:"modul"`
-	Type         string  `json:"typ"`
-	DocumentDate *string `json:"dokumentdatum"` // without omitempty: null stays visible
-	ImportedAt   string  `json:"importdatum"`
-	Issuer       *string `json:"quelle"`
+	Module       string  `json:"module"`
+	Type         string  `json:"type"`
+	DocumentDate *string `json:"documentDate"` // without omitempty: null stays visible
+	ImportedAt   string  `json:"importedAt"`
+	Issuer       *string `json:"issuer"`
 }
 
 type entryListJSON struct {
-	Entries []entrySummaryJSON `json:"eintraege"`
-	Count   int                `json:"anzahl"`
+	Entries []entrySummaryJSON `json:"entries"`
+	Count   int                `json:"count"`
 }
 
 // timeJSON formats a time as RFC 3339 in UTC, e.g. "2026-11-03T18:42:07Z"
@@ -44,37 +44,37 @@ func summaryToJSON(e core.EntrySummary) entrySummaryJSON {
 // entryJSON is the full entry (API.md, section 2).
 type entryJSON struct {
 	ID           string           `json:"id"`
-	Module       string           `json:"modul"`
-	Type         string           `json:"typ"`
-	DocumentDate *string          `json:"dokumentdatum"`
-	ImportedAt   string           `json:"importdatum"`
-	Issuer       *string          `json:"quelle"`
-	FullText     string           `json:"volltext"`
-	Facts        []factJSON       `json:"infos"`
-	File         fileJSON         `json:"datei"`
-	Corrections  []correctionJSON `json:"korrekturen"`
+	Module       string           `json:"module"`
+	Type         string           `json:"type"`
+	DocumentDate *string          `json:"documentDate"`
+	ImportedAt   string           `json:"importedAt"`
+	Issuer       *string          `json:"issuer"`
+	FullText     string           `json:"fullText"`
+	Facts        []factJSON       `json:"facts"`
+	File         fileJSON         `json:"file"`
+	Corrections  []correctionJSON `json:"corrections"`
 }
 
 type factJSON struct {
 	ID    string  `json:"id"`
 	Name  string  `json:"name"`
-	Value string  `json:"wert"`
-	Unit  *string `json:"einheit,omitempty"` // missing if the document names none
+	Value string  `json:"value"`
+	Unit  *string `json:"unit,omitempty"` // missing if the document names none
 }
 
 type fileJSON struct {
 	ID       string `json:"id"`
-	FileName string `json:"dateiname"`
-	MimeType string `json:"mimeTyp"`
-	Size     int64  `json:"groesse"`
+	FileName string `json:"fileName"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
 	Sha256   string `json:"sha256"`
 }
 
 type correctionJSON struct {
-	Field       string  `json:"feld"`
-	Recognized  *string `json:"erkannt"`
-	Corrected   *string `json:"korrigiert"`
-	CorrectedAt string  `json:"zeitpunkt"`
+	Field       string  `json:"field"`
+	Recognized  *string `json:"recognized"`
+	Corrected   *string `json:"corrected"`
+	CorrectedAt string  `json:"correctedAt"`
 }
 
 func entryToJSON(e core.Entry) entryJSON {

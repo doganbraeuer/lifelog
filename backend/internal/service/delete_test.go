@@ -89,7 +89,7 @@ func deleteData() *fakeDeleteStore {
 		entry: &core.Entry{
 			ID: idLab, Module: "gesundheit", Type: "laborbefund",
 			Issuer: ptr("Labor Geheim GmbH"), FullText: "Hämoglobin 14,2 g/dl",
-			Facts: []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
+			Facts: []core.Fact{{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
 			File:  core.File{ID: throwawayFile, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
 		},
 		chunks: true,

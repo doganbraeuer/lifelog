@@ -21,9 +21,9 @@ func correctionEntry() Entry {
 		DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH"),
 		FullText: "Hämoglobin 14,2 g/dl …",
 		Facts: []Fact{
-			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
-			{ID: "i2", Name: "Leukozyten", Value: "6,3", Unit: ptr("G/l")},
-			{ID: "i3", Name: "Befundart", Value: "Blutbild klein"},
+			{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+			{ID: "f2", Name: "Leukozyten", Value: "6,3", Unit: ptr("G/l")},
+			{ID: "f3", Name: "Befundart", Value: "Blutbild klein"},
 		},
 		Corrections: []Correction{},
 	}
@@ -72,18 +72,18 @@ func TestCorrect_FirstCorrectionAsInAPIExample(t *testing.T) {
 	// API.md 3.5: date and leukocytes in one request.
 	updated, changed := mustCorrect(t, correctionEntry(), Change{
 		DocumentDate: set("2026-10-15"),
-		Facts:        []FactChange{{ID: "i2", Value: ptr("6,8")}},
+		Facts:        []FactChange{{ID: "f2", Value: ptr("6,8")}},
 	}, t1)
 
 	// Rule 1: the fields hold the current value.
 	if text(updated.DocumentDate) != "2026-10-15" || updated.Facts[1].Value != "6,8" {
-		t.Errorf("date %s, i2 %s", text(updated.DocumentDate), updated.Facts[1].Value)
+		t.Errorf("date %s, f2 %s", text(updated.DocumentDate), updated.Facts[1].Value)
 	}
 	checkCorrections(t, updated.Corrections,
-		Correction{Field: "dokumentdatum", Recognized: ptr("2026-10-14"), Corrected: ptr("2026-10-15"), CorrectedAt: t1},
-		Correction{Field: "infos.i2.wert", Recognized: ptr("6,3"), Corrected: ptr("6,8"), CorrectedAt: t1},
+		Correction{Field: "documentDate", Recognized: ptr("2026-10-14"), Corrected: ptr("2026-10-15"), CorrectedAt: t1},
+		Correction{Field: "facts.f2.value", Recognized: ptr("6,3"), Corrected: ptr("6,8"), CorrectedAt: t1},
 	)
-	if !slices.Equal(changed, []string{"dokumentdatum", "infos.i2.wert"}) {
+	if !slices.Equal(changed, []string{"documentDate", "facts.f2.value"}) {
 		t.Errorf("changed = %v", changed)
 	}
 	// Everything else stays as it was.
@@ -96,11 +96,11 @@ func TestCorrect_FirstCorrectionAsInAPIExample(t *testing.T) {
 
 func TestCorrect_CorrectedTwiceKeepsRecognized(t *testing.T) {
 	// Rule 2: one item per field, recognized stays the original value.
-	e, _ := mustCorrect(t, correctionEntry(), Change{Facts: []FactChange{{ID: "i2", Value: ptr("6,8")}}}, t1)
-	e, _ = mustCorrect(t, e, Change{Facts: []FactChange{{ID: "i2", Value: ptr("6,9")}}}, t2)
+	e, _ := mustCorrect(t, correctionEntry(), Change{Facts: []FactChange{{ID: "f2", Value: ptr("6,8")}}}, t1)
+	e, _ = mustCorrect(t, e, Change{Facts: []FactChange{{ID: "f2", Value: ptr("6,9")}}}, t2)
 
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "infos.i2.wert", Recognized: ptr("6,3"), Corrected: ptr("6,9"), CorrectedAt: t2})
+		Correction{Field: "facts.f2.value", Recognized: ptr("6,3"), Corrected: ptr("6,9"), CorrectedAt: t2})
 }
 
 func TestCorrect_TypeTwice(t *testing.T) {
@@ -109,14 +109,14 @@ func TestCorrect_TypeTwice(t *testing.T) {
 	// writing and the correction would disappear as "reset".
 	e, _ := mustCorrect(t, correctionEntry(), Change{Type: ptr("arztbrief")}, t1)
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "typ", Recognized: ptr("laborbefund"), Corrected: ptr("arztbrief"), CorrectedAt: t1})
+		Correction{Field: "type", Recognized: ptr("laborbefund"), Corrected: ptr("arztbrief"), CorrectedAt: t1})
 
 	e, _ = mustCorrect(t, e, Change{Type: ptr("rezept")}, t2)
 	if e.Type != "rezept" {
 		t.Errorf("type = %s", e.Type)
 	}
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "typ", Recognized: ptr("laborbefund"), Corrected: ptr("rezept"), CorrectedAt: t2})
+		Correction{Field: "type", Recognized: ptr("laborbefund"), Corrected: ptr("rezept"), CorrectedAt: t2})
 }
 
 func TestCorrect_ResetRemovesCorrection(t *testing.T) {
@@ -129,9 +129,9 @@ func TestCorrect_ResetRemovesCorrection(t *testing.T) {
 		{"date", Change{DocumentDate: set("2026-10-15")}, Change{DocumentDate: set("2026-10-14")}},
 		{"date removed and back", Change{DocumentDate: remove}, Change{DocumentDate: set("2026-10-14")}},
 		{"issuer", Change{Issuer: set("Labor B")}, Change{Issuer: set("Labor Muster GmbH")}},
-		{"value", Change{Facts: []FactChange{{ID: "i2", Value: ptr("6,8")}}}, Change{Facts: []FactChange{{ID: "i2", Value: ptr("6,3")}}}},
-		{"unit removed", Change{Facts: []FactChange{{ID: "i1", Unit: remove}}}, Change{Facts: []FactChange{{ID: "i1", Unit: set("g/dl")}}}},
-		{"unit added", Change{Facts: []FactChange{{ID: "i3", Unit: set("x")}}}, Change{Facts: []FactChange{{ID: "i3", Unit: remove}}}},
+		{"value", Change{Facts: []FactChange{{ID: "f2", Value: ptr("6,8")}}}, Change{Facts: []FactChange{{ID: "f2", Value: ptr("6,3")}}}},
+		{"unit removed", Change{Facts: []FactChange{{ID: "f1", Unit: remove}}}, Change{Facts: []FactChange{{ID: "f1", Unit: set("g/dl")}}}},
+		{"unit added", Change{Facts: []FactChange{{ID: "f3", Unit: set("x")}}}, Change{Facts: []FactChange{{ID: "f3", Unit: remove}}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestCorrect_NullValues(t *testing.T) {
 	noDate.DocumentDate = nil
 	e, _ := mustCorrect(t, noDate, Change{DocumentDate: set("2026-10-14")}, t1)
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "dokumentdatum", Recognized: nil, Corrected: ptr("2026-10-14"), CorrectedAt: t1})
+		Correction{Field: "documentDate", Recognized: nil, Corrected: ptr("2026-10-14"), CorrectedAt: t1})
 
 	// Remove the issuer: corrected is null.
 	e, _ = mustCorrect(t, correctionEntry(), Change{Issuer: remove}, t1)
@@ -165,18 +165,18 @@ func TestCorrect_NullValues(t *testing.T) {
 		t.Errorf("issuer = %s", text(e.Issuer))
 	}
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "quelle", Recognized: ptr("Labor Muster GmbH"), Corrected: nil, CorrectedAt: t1})
+		Correction{Field: "issuer", Recognized: ptr("Labor Muster GmbH"), Corrected: nil, CorrectedAt: t1})
 
 	// Add a unit where there was none, and remove one.
 	e, _ = mustCorrect(t, correctionEntry(), Change{Facts: []FactChange{
-		{ID: "i3", Unit: set("Stück")}, {ID: "i1", Unit: remove},
+		{ID: "f3", Unit: set("Stück")}, {ID: "f1", Unit: remove},
 	}}, t1)
 	if text(e.Facts[2].Unit) != "Stück" || e.Facts[0].Unit != nil {
-		t.Errorf("units: i3 %s, i1 %s", text(e.Facts[2].Unit), text(e.Facts[0].Unit))
+		t.Errorf("units: f3 %s, f1 %s", text(e.Facts[2].Unit), text(e.Facts[0].Unit))
 	}
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "infos.i3.einheit", Recognized: nil, Corrected: ptr("Stück"), CorrectedAt: t1},
-		Correction{Field: "infos.i1.einheit", Recognized: ptr("g/dl"), Corrected: nil, CorrectedAt: t1},
+		Correction{Field: "facts.f3.unit", Recognized: nil, Corrected: ptr("Stück"), CorrectedAt: t1},
+		Correction{Field: "facts.f1.unit", Recognized: ptr("g/dl"), Corrected: nil, CorrectedAt: t1},
 	)
 }
 
@@ -188,9 +188,9 @@ func TestCorrect_NoChangeNoCorrection(t *testing.T) {
 		"same type":        {Type: ptr(" laborbefund ")},
 		"same date":        {DocumentDate: set("2026-10-14")},
 		"same issuer":      {Issuer: set("  Labor Muster GmbH ")},
-		"same value":       {Facts: []FactChange{{ID: "i1", Value: ptr("14,2 ")}}},
-		"no unit":          {Facts: []FactChange{{ID: "i3", Unit: remove}}},
-		"empty unit":       {Facts: []FactChange{{ID: "i3", Unit: set("  ")}}},
+		"same value":       {Facts: []FactChange{{ID: "f1", Value: ptr("14,2 ")}}},
+		"no unit":          {Facts: []FactChange{{ID: "f3", Unit: remove}}},
+		"empty unit":       {Facts: []FactChange{{ID: "f3", Unit: set("  ")}}},
 		"empty facts list": {Facts: []FactChange{}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -211,7 +211,7 @@ func TestCorrect_Whitespace(t *testing.T) {
 		Type:         ptr(" arztbrief\n"),
 		DocumentDate: set(" 2026-10-15 "),
 		Issuer:       set("   "), // empty → null
-		Facts:        []FactChange{{ID: "i2", Value: ptr(" 6,8 "), Unit: set("")}},
+		Facts:        []FactChange{{ID: "f2", Value: ptr(" 6,8 "), Unit: set("")}},
 	}, t1)
 	if updated.Type != "arztbrief" || text(updated.DocumentDate) != "2026-10-15" || updated.Issuer != nil ||
 		updated.Facts[1].Value != "6,8" || updated.Facts[1].Unit != nil {
@@ -225,13 +225,13 @@ func TestCorrect_InputStaysUnchanged(t *testing.T) {
 	// that is removed (rule 3).
 	e, _ := mustCorrect(t, correctionEntry(), Change{
 		Issuer: set("Labor B"),
-		Facts:  []FactChange{{ID: "i2", Value: ptr("6,8")}, {ID: "i1", Unit: remove}},
+		Facts:  []FactChange{{ID: "f2", Value: ptr("6,8")}, {ID: "f1", Unit: remove}},
 	}, t1)
 	before := deepCopy(e)
 
 	_, _ = mustCorrect(t, e, Change{
 		Issuer: set("Labor C"),
-		Facts:  []FactChange{{ID: "i2", Value: ptr("6,3")}, {ID: "i1", Value: ptr("14,0")}},
+		Facts:  []FactChange{{ID: "f2", Value: ptr("6,3")}, {ID: "f1", Value: ptr("14,0")}},
 	}, t2)
 
 	if !reflect.DeepEqual(e, before) {
@@ -296,22 +296,22 @@ func TestCorrect_Errors(t *testing.T) {
 		message string
 	}{
 		{"empty", Change{}, ErrInvalidCorrection, "", "", nil, "keine Änderung"},
-		{"unknown type", Change{Type: ptr("befund")}, ErrInvalidCorrection, "typ", "", "befund",
+		{"unknown type", Change{Type: ptr("befund")}, ErrInvalidCorrection, "type", "", "befund",
 			"Erlaubt sind arztbrief, laborbefund, rezept, sonstiges."},
-		{"date format", Change{DocumentDate: set("15.10.2026")}, ErrInvalidCorrection, "dokumentdatum", "", "15.10.2026",
+		{"date format", Change{DocumentDate: set("15.10.2026")}, ErrInvalidCorrection, "documentDate", "", "15.10.2026",
 			"Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden."},
-		{"date empty", Change{DocumentDate: set(" ")}, ErrInvalidCorrection, "dokumentdatum", "", " ", "Format JJJJ-MM-TT"},
-		{"no such day", Change{DocumentDate: set("2026-02-31")}, ErrInvalidCorrection, "dokumentdatum", "", "2026-02-31",
+		{"date empty", Change{DocumentDate: set(" ")}, ErrInvalidCorrection, "documentDate", "", " ", "Format JJJJ-MM-TT"},
+		{"no such day", Change{DocumentDate: set("2026-02-31")}, ErrInvalidCorrection, "documentDate", "", "2026-02-31",
 			"Das Dokumentdatum ist kein gültiges Kalenderdatum."},
-		{"fact without id", Change{Facts: []FactChange{{Value: ptr("1")}}}, ErrInvalidCorrection, "infos", "", nil, "braucht eine id"},
-		{"fact twice", Change{Facts: []FactChange{{ID: "i1", Value: ptr("1")}, {ID: "i1", Unit: remove}}},
-			ErrInvalidCorrection, "", "i1", nil, "mehrfach"},
-		{"fact without change", Change{Facts: []FactChange{{ID: "i1"}}}, ErrInvalidCorrection, "", "i1", nil, "keine Änderung"},
-		{"unknown fact", Change{Facts: []FactChange{{ID: "i9", Value: ptr("1")}}}, ErrFactNotFound, "", "i9", nil, "gibt es in dem Eintrag nicht"},
-		{"empty value", Change{Facts: []FactChange{{ID: "i2", Value: ptr("  ")}}}, ErrInvalidCorrection, "infos.i2.wert", "", "  ", "nicht leer"},
+		{"fact without id", Change{Facts: []FactChange{{Value: ptr("1")}}}, ErrInvalidCorrection, "facts", "", nil, "braucht eine id"},
+		{"fact twice", Change{Facts: []FactChange{{ID: "f1", Value: ptr("1")}, {ID: "f1", Unit: remove}}},
+			ErrInvalidCorrection, "", "f1", nil, "mehrfach"},
+		{"fact without change", Change{Facts: []FactChange{{ID: "f1"}}}, ErrInvalidCorrection, "", "f1", nil, "keine Änderung"},
+		{"unknown fact", Change{Facts: []FactChange{{ID: "f9", Value: ptr("1")}}}, ErrFactNotFound, "", "f9", nil, "gibt es in dem Eintrag nicht"},
+		{"empty value", Change{Facts: []FactChange{{ID: "f2", Value: ptr("  ")}}}, ErrInvalidCorrection, "facts.f2.value", "", "  ", "nicht leer"},
 		// Valid parts first, invalid fact afterwards: error, nothing changed.
-		{"partly valid", Change{Issuer: set("Labor B"), Facts: []FactChange{{ID: "i2", Value: ptr("6,8")}, {ID: "i7", Value: ptr("1")}}},
-			ErrFactNotFound, "", "i7", nil, ""},
+		{"partly valid", Change{Issuer: set("Labor B"), Facts: []FactChange{{ID: "f2", Value: ptr("6,8")}, {ID: "f7", Value: ptr("1")}}},
+			ErrFactNotFound, "", "f7", nil, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -347,21 +347,21 @@ func TestCorrect_Errors(t *testing.T) {
 func TestCorrectionError_ErrorAndConstructors(t *testing.T) {
 	cases := map[string]error{
 		"invalid correction":                   Invalid("x", "", nil),
-		"invalid correction: quelle":           Invalid("x", "quelle", 42),
-		"invalid correction: infos.i1":         &CorrectionError{Kind: ErrInvalidCorrection, FactID: "i1"},
-		"field not correctable: volltext":      NotCorrectable("volltext"),
-		"field not correctable: infos.i1.name": NotCorrectable("infos.i1.name"),
+		"invalid correction: issuer":           Invalid("x", "issuer", 42),
+		"invalid correction: facts.f1":         &CorrectionError{Kind: ErrInvalidCorrection, FactID: "f1"},
+		"field not correctable: fullText":      NotCorrectable("fullText"),
+		"field not correctable: facts.f1.name": NotCorrectable("facts.f1.name"),
 	}
 	for want, err := range cases {
 		if err.Error() != want {
 			t.Errorf("Error() = %q, want %q", err.Error(), want)
 		}
 	}
-	nc := NotCorrectable("volltext")
+	nc := NotCorrectable("fullText")
 	if !errors.Is(nc, ErrFieldNotCorrectable) || errors.Is(nc, ErrInvalidCorrection) {
 		t.Error("NotCorrectable has the wrong kind")
 	}
-	if nc.Message != "Das Feld volltext kann nicht korrigiert werden." {
+	if nc.Message != "Das Feld fullText kann nicht korrigiert werden." {
 		t.Errorf("message = %q", nc.Message)
 	}
 }

@@ -18,7 +18,7 @@ const statusTimeout = 3 * time.Second
 
 type statusResponse struct {
 	Status   string `json:"status"`
-	Database string `json:"datenbank"`
+	Database string `json:"database"`
 }
 
 // statusHandler answers GET /api/v1/status (docs/API.md, 3.8).
@@ -30,7 +30,7 @@ func statusHandler(db Pinger) http.HandlerFunc {
 		if err := db.Ping(ctx); err != nil {
 			slog.Warn("database unreachable", "error", err)
 			writeJSON(w, http.StatusServiceUnavailable,
-				statusResponse{Status: "fehler", Database: "nicht erreichbar"})
+				statusResponse{Status: "error", Database: "unreachable"})
 			return
 		}
 		writeJSON(w, http.StatusOK, statusResponse{Status: "ok", Database: "ok"})

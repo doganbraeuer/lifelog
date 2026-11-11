@@ -13,8 +13,8 @@ import (
 
 // Error codes for questions (API.md 3.6).
 const (
-	CodeQuestionMissing = "FRAGE_FEHLT"
-	CodeQuestionTooLong = "FRAGE_ZU_LANG"
+	CodeQuestionMissing = "QUESTION_MISSING"
+	CodeQuestionTooLong = "QUESTION_TOO_LONG"
 )
 
 // maxQuestionBody: a question has at most 500 characters (≤ 2000 bytes);
@@ -27,24 +27,24 @@ type Asker interface {
 }
 
 type questionRequest struct {
-	Question string `json:"frage"`
-	Module   string `json:"modul"`
+	Question string `json:"question"`
+	Module   string `json:"module"`
 }
 
 type answerJSON struct {
-	Answer  string       `json:"antwort"`
-	Found   bool         `json:"gefunden"`
-	Sources []sourceJSON `json:"quellen"`
+	Answer  string       `json:"answer"`
+	Found   bool         `json:"found"`
+	Sources []sourceJSON `json:"sources"`
 }
 
 type sourceJSON struct {
-	Number       int     `json:"nr"`
-	EntryID      string  `json:"eintragId"`
-	Module       string  `json:"modul"`
-	Type         string  `json:"typ"`
-	Issuer       *string `json:"quelle"`
-	DocumentDate *string `json:"dokumentdatum"`
-	Excerpt      string  `json:"auszug"`
+	Number       int     `json:"number"`
+	EntryID      string  `json:"entryId"`
+	Module       string  `json:"module"`
+	Type         string  `json:"type"`
+	Issuer       *string `json:"issuer"`
+	DocumentDate *string `json:"documentDate"`
+	Excerpt      string  `json:"excerpt"`
 }
 
 func answerToJSON(a core.Answer) answerJSON {
@@ -58,17 +58,17 @@ func answerToJSON(a core.Answer) answerJSON {
 	return answerJSON{Answer: a.Text, Found: a.Found, Sources: sources}
 }
 
-// questionsHandler answers POST /api/v1/fragen (API.md 3.6).
+// questionsHandler answers POST /api/v1/questions (API.md 3.6).
 func questionsHandler(a Asker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req questionRequest
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionBody))
-		// Unknown fields are an error (API.md 1): a typo like "frge" should
+		// Unknown fields are an error (API.md 1): a typo like "qustion" should
 		// stand out instead of silently ending as "question missing".
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil || dec.More() {
 			writeError(w, http.StatusBadRequest, CodeInvalidRequest,
-				"Bitte die Frage als JSON schicken, z. B. {\"frage\": \"…\"}.", nil)
+				"Bitte die Frage als JSON schicken, z. B. {\"question\": \"…\"}.", nil)
 			return
 		}
 
@@ -91,7 +91,7 @@ func writeQuestionError(w http.ResponseWriter, r *http.Request, err error, modul
 	case errors.Is(err, core.ErrUnknownModule):
 		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
-			map[string]any{"feld": "modul", "wert": module})
+			map[string]any{"field": "module", "value": module})
 	case errors.Is(err, llm.ErrUnavailable), errors.Is(err, llm.ErrInvalidResponse):
 		slog.Warn("question: model unavailable or answer unusable", "error", err)
 		writeError(w, http.StatusServiceUnavailable, CodeModelUnavailable,

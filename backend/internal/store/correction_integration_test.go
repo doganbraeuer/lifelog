@@ -14,7 +14,7 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 	s, ctx := testStore(t)
 
 	e := testEntry(NewID(), NewID(), strings.Repeat("cd", 32))
-	e.Facts = append(e.Facts, core.Fact{ID: "i2", Name: "Befundart", Value: "Blutbild klein"})
+	e.Facts = append(e.Facts, core.Fact{ID: "f2", Name: "Befundart", Value: "Blutbild klein"})
 	if err := s.SaveEntry(ctx, e); err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +28,8 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 		DocumentDate: core.Nullable{Set: true},
 		Issuer:       core.Nullable{Set: true, Value: &issuer},
 		Facts: []core.FactChange{
-			{ID: "i1", Value: &[]string{"14,0"}[0], Unit: core.Nullable{Set: true}},
-			{ID: "i2", Unit: core.Nullable{Set: true, Value: &[]string{"Stück"}[0]}},
+			{ID: "f1", Value: &[]string{"14,0"}[0], Unit: core.Nullable{Set: true}},
+			{ID: "f2", Unit: core.Nullable{Set: true, Value: &[]string{"Stück"}[0]}},
 		},
 	}, now)
 	if err != nil || len(changed) != 6 {

@@ -10,7 +10,7 @@ import (
 
 // Error codes for the entry endpoints (API.md, section 1).
 const (
-	CodeInvalidParameter = "UNGUELTIGER_PARAMETER"
+	CodeInvalidParameter = "INVALID_PARAMETER"
 )
 
 // EntryStore is what the entry handlers need from the database. Implemented
@@ -21,27 +21,27 @@ type EntryStore interface {
 	OpenFile(ctx context.Context, fileID string) (content io.ReadCloser, length int64, err error)
 }
 
-// listEntriesHandler answers GET /api/v1/eintraege (API.md, 3.2).
+// listEntriesHandler answers GET /api/v1/entries (API.md, 3.2).
 func listEntriesHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		module, err := core.CheckModule(q.Get("modul"))
+		module, err := core.CheckModule(q.Get("module"))
 		if err != nil {
-			writeInvalidParameter(w, "modul", q.Get("modul"),
+			writeInvalidParameter(w, "module", q.Get("module"),
 				"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.")
 			return
 		}
-		sort, err := core.ParseSort(q.Get("sortierung"))
+		sort, err := core.ParseSort(q.Get("sort"))
 		if err != nil {
-			writeInvalidParameter(w, "sortierung", q.Get("sortierung"),
-				"Unbekannte Sortierung. Erlaubt sind dokumentdatum und importdatum.")
+			writeInvalidParameter(w, "sort", q.Get("sort"),
+				"Unbekannte Sortierung. Erlaubt sind documentDate und importedAt.")
 			return
 		}
-		order, err := core.ParseSortOrder(q.Get("richtung"))
+		order, err := core.ParseSortOrder(q.Get("order"))
 		if err != nil {
-			writeInvalidParameter(w, "richtung", q.Get("richtung"),
-				"Unbekannte Richtung. Erlaubt sind absteigend und aufsteigend.")
+			writeInvalidParameter(w, "order", q.Get("order"),
+				"Unbekannte Richtung. Erlaubt sind desc und asc.")
 			return
 		}
 
@@ -58,5 +58,5 @@ func listEntriesHandler(s EntryStore) http.HandlerFunc {
 
 func writeInvalidParameter(w http.ResponseWriter, parameter, value, message string) {
 	writeError(w, http.StatusBadRequest, CodeInvalidParameter, message,
-		map[string]any{"parameter": parameter, "wert": value})
+		map[string]any{"parameter": parameter, "value": value})
 }

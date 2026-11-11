@@ -88,7 +88,7 @@ func testEntry(id, fileID, hash string) core.Entry {
 		ImportedAt:   time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC),
 		Issuer:       ptr("Labor Muster GmbH"),
 		FullText:     "Hämoglobin 14,2 g/dl",
-		Facts:        []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
+		Facts:        []core.Fact{{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
 		File: core.File{ID: fileID, FileName: "befund.pdf", MimeType: core.MimePDF,
 			Size: 9, Sha256: hash},
 		Corrections: []core.Correction{},

@@ -49,7 +49,7 @@ func correctionData() *fakeCorrectionStore {
 	return &fakeCorrectionStore{entry: &core.Entry{
 		ID: idLab, Module: "gesundheit", Type: "laborbefund",
 		DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH"),
-		Facts:       []core.Fact{{ID: "i2", Name: "Leukozyten", Value: "6,3", Unit: ptr("G/l")}},
+		Facts:       []core.Fact{{ID: "f2", Name: "Leukozyten", Value: "6,3", Unit: ptr("G/l")}},
 		Corrections: []core.Correction{},
 	}}
 }
@@ -67,7 +67,7 @@ func newFixedCorrector(s CorrectionStore) *Corrector {
 func TestCorrect_Success(t *testing.T) {
 	s := correctionData()
 	e, err := newFixedCorrector(s).Correct(context.Background(), idLab,
-		core.Change{Facts: []core.FactChange{{ID: "i2", Value: ptr("6,8")}}})
+		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestCorrect_Errors(t *testing.T) {
 		{"reading fails", &fakeCorrectionStore{readErr: internal}, idLab, valid, internal, 1},
 		{"invalid correction", correctionData(), idLab, core.Change{Type: ptr("befund")}, core.ErrInvalidCorrection, 1},
 		{"unknown fact", correctionData(), idLab,
-			core.Change{Facts: []core.FactChange{{ID: "i9", Value: ptr("1")}}}, core.ErrFactNotFound, 1},
+			core.Change{Facts: []core.FactChange{{ID: "f9", Value: ptr("1")}}}, core.ErrFactNotFound, 1},
 		{"saving fails", func() *fakeCorrectionStore { s := correctionData(); s.saveErr = internal; return s }(),
 			idLab, valid, internal, 1},
 		{"deleted in between", func() *fakeCorrectionStore { s := correctionData(); s.gone = true; return s }(),
@@ -144,12 +144,12 @@ func TestCorrect_LogWithoutValues(t *testing.T) {
 
 	_, err := newFixedCorrector(correctionData()).Correct(context.Background(), idLab, core.Change{
 		Issuer: core.Nullable{Set: true, Value: ptr("Dr. Geheim")},
-		Facts:  []core.FactChange{{ID: "i2", Value: ptr("7,7")}},
+		Facts:  []core.FactChange{{ID: "f2", Value: ptr("7,7")}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(log.String(), "quelle") || !strings.Contains(log.String(), "infos.i2.wert") {
+	if !strings.Contains(log.String(), "issuer") || !strings.Contains(log.String(), "facts.f2.value") {
 		t.Errorf("field names missing in the log: %s", log.String())
 	}
 	for _, value := range []string{"Dr. Geheim", "7,7", "6,3", "Labor Muster"} {

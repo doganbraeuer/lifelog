@@ -156,7 +156,7 @@ func TestUpload_Success(t *testing.T) {
 	if e.Corrections == nil || len(e.Corrections) != 0 {
 		t.Errorf("corrections = %#v", e.Corrections)
 	}
-	if len(e.Facts) != 2 || e.Facts[0].ID != "i1" {
+	if len(e.Facts) != 2 || e.Facts[0].ID != "f1" {
 		t.Errorf("facts = %+v", e.Facts)
 	}
 

@@ -25,7 +25,7 @@ func deleteEntry(t *testing.T, d *fakeDeleter, id string) *httptest.ResponseReco
 	t.Helper()
 	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(), Deleter: d})
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/eintraege/"+id, nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/entries/"+id, nil))
 	return rec
 }
 
@@ -87,7 +87,7 @@ func TestDelete_Canceled(t *testing.T) {
 }
 
 // The new route must not disturb GET and PATCH on the same path, and there
-// is no DELETE on /datei.
+// is no DELETE on /file.
 func TestDelete_OtherMethodsUnaffected(t *testing.T) {
 	d := &fakeDeleter{}
 	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(),
@@ -96,12 +96,12 @@ func TestDelete_OtherMethodsUnaffected(t *testing.T) {
 		method, path string
 		status       int
 	}{
-		{http.MethodGet, "/api/v1/eintraege/" + testID, http.StatusOK},
-		{http.MethodPatch, "/api/v1/eintraege/" + testID, http.StatusNotFound},
-		{http.MethodDelete, "/api/v1/eintraege/" + testID + "/datei", http.StatusMethodNotAllowed},
-		{http.MethodDelete, "/api/v1/eintraege", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/v1/entries/" + testID, http.StatusOK},
+		{http.MethodPatch, "/api/v1/entries/" + testID, http.StatusNotFound},
+		{http.MethodDelete, "/api/v1/entries/" + testID + "/file", http.StatusMethodNotAllowed},
+		{http.MethodDelete, "/api/v1/entries", http.StatusMethodNotAllowed},
 	} {
-		body := strings.NewReader(`{"typ": "arztbrief"}`)
+		body := strings.NewReader(`{"type": "arztbrief"}`)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, body))
 		if rec.Code != tc.status {

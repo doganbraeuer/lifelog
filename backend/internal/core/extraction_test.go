@@ -49,7 +49,7 @@ func TestCheckExtraction_Valid(t *testing.T) {
 	if len(e.Facts) != 3 {
 		t.Fatalf("facts = %d", len(e.Facts))
 	}
-	for i, id := range []string{"i1", "i2", "i3"} {
+	for i, id := range []string{"f1", "f2", "f3"} {
 		if e.Facts[i].ID != id {
 			t.Errorf("Facts[%d].ID = %q, want %q", i, e.Facts[i].ID, id)
 		}
@@ -161,8 +161,8 @@ func TestCheckExtraction_IncompleteFactsAreDropped(t *testing.T) {
 	if len(e.Facts) != 2 {
 		t.Fatalf("facts = %+v, want 2", e.Facts)
 	}
-	if e.Facts[0].ID != "i1" || e.Facts[0].Name != "Hämoglobin" ||
-		e.Facts[1].ID != "i2" || e.Facts[1].Name != "CRP" {
+	if e.Facts[0].ID != "f1" || e.Facts[0].Name != "Hämoglobin" ||
+		e.Facts[1].ID != "f2" || e.Facts[1].Name != "CRP" {
 		t.Errorf("facts = %+v", e.Facts)
 	}
 

@@ -40,10 +40,10 @@ func Entries() []core.Entry {
 				"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)\n"+
 				"CRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
 			[]core.Fact{
-				{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
-				{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: ptr("G/l")},
-				{ID: "i3", Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},
-				{ID: "i4", Name: "Befundart", Value: "Blutbild klein"},
+				{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+				{ID: "f2", Name: "Leukozyten", Value: "6,8", Unit: ptr("G/l")},
+				{ID: "f3", Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},
+				{ID: "f4", Name: "Befundart", Value: "Blutbild klein"},
 			},
 		),
 		textEntry(
@@ -54,8 +54,8 @@ func Entries() []core.Entry {
 				"Vorstellung zur Routinekontrolle. Blutdruck 128/82 mmHg.\n"+
 				"Kontrolle in 6 Monaten vereinbart.",
 			[]core.Fact{
-				{ID: "i1", Name: "Blutdruck", Value: "128/82", Unit: ptr("mmHg")},
-				{ID: "i2", Name: "Nächste Kontrolle", Value: "in 6 Monaten"},
+				{ID: "f1", Name: "Blutdruck", Value: "128/82", Unit: ptr("mmHg")},
+				{ID: "f2", Name: "Nächste Kontrolle", Value: "in 6 Monaten"},
 			},
 		),
 		textEntry(
@@ -70,9 +70,9 @@ func Entries() []core.Entry {
 			"Dr. Erika Beispiel, Allgemeinmedizin\n\nRezept vom 14.10.2026\n"+
 				"Patient: Max Mustermann\n\nBeispielin 100 mg, 1-0-0, 30 Stück",
 			[]core.Fact{
-				{ID: "i1", Name: "Präparat", Value: "Beispielin 100 mg"},
-				{ID: "i2", Name: "Dosierung", Value: "1-0-0"},
-				{ID: "i3", Name: "Menge", Value: "30", Unit: ptr("Stück")},
+				{ID: "f1", Name: "Präparat", Value: "Beispielin 100 mg"},
+				{ID: "f2", Name: "Dosierung", Value: "1-0-0"},
+				{ID: "f3", Name: "Menge", Value: "30", Unit: ptr("Stück")},
 			},
 		),
 	}

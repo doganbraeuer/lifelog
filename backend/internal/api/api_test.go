@@ -43,7 +43,7 @@ func TestStatus_DatabaseUnreachable(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
-	want := `{"status":"fehler","datenbank":"nicht erreichbar"}`
+	want := `{"status":"error","database":"unreachable"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}
@@ -54,14 +54,14 @@ func TestStatus_DatabaseUnreachable(t *testing.T) {
 
 func TestWriteError_Format(t *testing.T) {
 	rec := httptest.NewRecorder()
-	writeError(rec, http.StatusNotFound, "EINTRAG_NICHT_GEFUNDEN",
+	writeError(rec, http.StatusNotFound, "ENTRY_NOT_FOUND",
 		"Diesen Eintrag gibt es nicht.", map[string]any{"id": "abc"})
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	checkJSONHeader(t, rec)
-	want := `{"fehler":{"code":"EINTRAG_NICHT_GEFUNDEN","nachricht":"Diesen Eintrag gibt es nicht.","details":{"id":"abc"}}}`
+	want := `{"error":{"code":"ENTRY_NOT_FOUND","message":"Diesen Eintrag gibt es nicht.","details":{"id":"abc"}}}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
@@ -69,7 +69,7 @@ func TestWriteError_Format(t *testing.T) {
 
 func TestWriteError_WithoutDetails(t *testing.T) {
 	rec := httptest.NewRecorder()
-	writeError(rec, http.StatusBadRequest, "FRAGE_FEHLT", "Bitte stelle eine Frage.", nil)
+	writeError(rec, http.StatusBadRequest, "QUESTION_MISSING", "Bitte stelle eine Frage.", nil)
 
 	if strings.Contains(rec.Body.String(), "details") {
 		t.Errorf("empty details should be missing: %s", rec.Body.String())
@@ -78,9 +78,9 @@ func TestWriteError_WithoutDetails(t *testing.T) {
 
 func TestWriteJSON_NoHTMLEscaping(t *testing.T) {
 	rec := httptest.NewRecorder()
-	writeJSON(rec, http.StatusOK, map[string]string{"wert": "<0,5 & >1"})
+	writeJSON(rec, http.StatusOK, map[string]string{"value": "<0,5 & >1"})
 
-	want := `{"wert":"<0,5 & >1"}`
+	want := `{"value":"<0,5 & >1"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}
@@ -109,7 +109,7 @@ func TestRecover_PanicBecomes500(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"code":"INTERNER_FEHLER"`) {
+	if !strings.Contains(rec.Body.String(), `"code":"INTERNAL_ERROR"`) {
 		t.Errorf("body = %s", rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), "secret state") {

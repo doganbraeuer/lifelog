@@ -17,7 +17,7 @@
 //
 // The entries look like text imports: the original file is the full text
 // as text.txt in GridFS. The chunks are created as on upload (same
-// splitting, same embedding model), so POST /fragen and cmd/calibrate find
+// splitting, same embedding model), so POST /questions and cmd/calibrate find
 // them.
 package main
 

@@ -9,24 +9,24 @@ import (
 // Sort is the field the timeline is sorted by.
 type Sort string
 
-// The values are the query parameter values of GET /eintraege.
+// The values are the query parameter values of GET /entries.
 const (
-	ByDocumentDate Sort = "dokumentdatum"
-	ByImportedAt   Sort = "importdatum"
+	ByDocumentDate Sort = "documentDate"
+	ByImportedAt   Sort = "importedAt"
 )
 
 // SortOrder is the direction of sorting.
 type SortOrder string
 
 const (
-	Descending SortOrder = "absteigend"
-	Ascending  SortOrder = "aufsteigend"
+	Descending SortOrder = "desc"
+	Ascending  SortOrder = "asc"
 )
 
 // ErrUnknownValue: a parameter has a value that is not allowed.
 var ErrUnknownValue = errors.New("unknown value")
 
-// ParseSort reads the query parameter "sortierung". Empty gives the default
+// ParseSort reads the query parameter "sort". Empty gives the default
 // ByDocumentDate.
 func ParseSort(value string) (Sort, error) {
 	switch Sort(value) {
@@ -38,7 +38,7 @@ func ParseSort(value string) (Sort, error) {
 	return "", ErrUnknownValue
 }
 
-// ParseSortOrder reads the query parameter "richtung". Empty gives the
+// ParseSortOrder reads the query parameter "order". Empty gives the
 // default Descending (newest document first).
 func ParseSortOrder(value string) (SortOrder, error) {
 	switch SortOrder(value) {

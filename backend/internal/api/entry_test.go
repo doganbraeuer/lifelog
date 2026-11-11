@@ -34,7 +34,7 @@ func get(t *testing.T, s *fakeStore, path string) *httptest.ResponseRecorder {
 }
 
 func TestEntry_Found(t *testing.T) {
-	rec := get(t, storeWithEntry(), "/api/v1/eintraege/"+testID)
+	rec := get(t, storeWithEntry(), "/api/v1/entries/"+testID)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
@@ -45,13 +45,13 @@ func TestEntry_Found(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Full entry: all fields from API.md section 2 are present.
-	for _, field := range []string{"id", "modul", "typ", "dokumentdatum", "importdatum", "quelle", "volltext", "infos", "datei", "korrekturen"} {
+	for _, field := range []string{"id", "module", "type", "documentDate", "importedAt", "issuer", "fullText", "facts", "file", "corrections"} {
 		if _, ok := a[field]; !ok {
 			t.Errorf("field %s missing", field)
 		}
 	}
-	if c, ok := a["korrekturen"].([]any); !ok || len(c) != 0 {
-		t.Errorf("korrekturen = %#v, want []", a["korrekturen"])
+	if c, ok := a["corrections"].([]any); !ok || len(c) != 0 {
+		t.Errorf("corrections = %#v, want []", a["corrections"])
 	}
 }
 
@@ -62,12 +62,12 @@ func TestEntry_Errors(t *testing.T) {
 		status     int
 		code       string
 	}{
-		{"invalid ID", "/api/v1/eintraege/abc", storeWithEntry(), 400, CodeInvalidID},
-		{"ID with non-hex", "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9zz", storeWithEntry(), 400, CodeInvalidID},
-		{"unknown", "/api/v1/eintraege/000000000000000000000000", storeWithEntry(), 404, CodeEntryNotFound},
-		{"database error", "/api/v1/eintraege/" + testID, &fakeStore{err: errors.New("gone")}, 500, CodeInternalError},
-		{"file: invalid ID", "/api/v1/eintraege/abc/datei", storeWithEntry(), 400, CodeInvalidID},
-		{"file: unknown", "/api/v1/eintraege/000000000000000000000000/datei", storeWithEntry(), 404, CodeEntryNotFound},
+		{"invalid ID", "/api/v1/entries/abc", storeWithEntry(), 400, CodeInvalidID},
+		{"ID with non-hex", "/api/v1/entries/6727a1f3c2b4e5d6f7a8b9zz", storeWithEntry(), 400, CodeInvalidID},
+		{"unknown", "/api/v1/entries/000000000000000000000000", storeWithEntry(), 404, CodeEntryNotFound},
+		{"database error", "/api/v1/entries/" + testID, &fakeStore{err: errors.New("gone")}, 500, CodeInternalError},
+		{"file: invalid ID", "/api/v1/entries/abc/file", storeWithEntry(), 400, CodeInvalidID},
+		{"file: unknown", "/api/v1/entries/000000000000000000000000/file", storeWithEntry(), 404, CodeEntryNotFound},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -79,14 +79,14 @@ func TestEntry_Errors(t *testing.T) {
 
 func TestEntry_InvalidIDDoesNotAskDatabase(t *testing.T) {
 	s := storeWithEntry()
-	get(t, s, "/api/v1/eintraege/abc")
+	get(t, s, "/api/v1/entries/abc")
 	if s.calls != 0 {
 		t.Error("the database must not be asked for an invalid ID")
 	}
 }
 
 func TestFile_Found(t *testing.T) {
-	rec := get(t, storeWithEntry(), "/api/v1/eintraege/"+testID+"/datei")
+	rec := get(t, storeWithEntry(), "/api/v1/entries/"+testID+"/file")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
@@ -115,7 +115,7 @@ func TestFile_TextImport(t *testing.T) {
 	e.File.FileName, e.File.MimeType = "text.txt", "text/plain; charset=utf-8"
 	s.entries[testID] = e
 
-	rec := get(t, s, "/api/v1/eintraege/"+testID+"/datei")
+	rec := get(t, s, "/api/v1/entries/"+testID+"/file")
 	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
 		t.Errorf("Content-Type = %q", ct)
 	}
@@ -127,7 +127,7 @@ func TestFile_TextImport(t *testing.T) {
 func TestFile_MissingIs500(t *testing.T) {
 	s := storeWithEntry()
 	s.files = map[string][]byte{} // entry there, file gone
-	rec := get(t, s, "/api/v1/eintraege/"+testID+"/datei")
+	rec := get(t, s, "/api/v1/entries/"+testID+"/file")
 	checkError(t, rec, 500, CodeInternalError)
 }
 

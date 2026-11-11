@@ -1,6 +1,6 @@
 // calibrate measures how well the threshold core.MinScore separates
 // relevant from unrelated questions. It asks a fixed list of synthetic
-// questions (questions.go), embeds each one as POST /fragen does and prints
+// questions (questions.go), embeds each one as POST /questions does and prints
 // the best score of the vector search per question. The language model
 // (answerer) is NOT called; it only costs one embedding per question.
 //

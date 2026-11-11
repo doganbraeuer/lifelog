@@ -13,11 +13,11 @@ import (
 
 // Error codes for single entries (API.md 3.3, 3.4).
 const (
-	CodeInvalidID     = "UNGUELTIGE_ID"
-	CodeEntryNotFound = "EINTRAG_NICHT_GEFUNDEN"
+	CodeInvalidID     = "INVALID_ID"
+	CodeEntryNotFound = "ENTRY_NOT_FOUND"
 )
 
-// entryHandler answers GET /api/v1/eintraege/{id} (API.md 3.3).
+// entryHandler answers GET /api/v1/entries/{id} (API.md 3.3).
 func entryHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		e, ok := loadEntry(w, r, s)
@@ -28,7 +28,7 @@ func entryHandler(s EntryStore) http.HandlerFunc {
 	}
 }
 
-// fileHandler answers GET /api/v1/eintraege/{id}/datei (API.md 3.4): the
+// fileHandler answers GET /api/v1/entries/{id}/file (API.md 3.4): the
 // original file as binary data. Errors still come as JSON.
 func fileHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

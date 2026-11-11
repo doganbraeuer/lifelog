@@ -14,8 +14,8 @@ import (
 
 // Error codes for corrections (API.md 3.5).
 const (
-	CodeFieldNotCorrectable = "FELD_NICHT_KORRIGIERBAR"
-	CodeFactNotFound        = "INFO_NICHT_GEFUNDEN"
+	CodeFieldNotCorrectable = "FIELD_NOT_CORRECTABLE"
+	CodeFactNotFound        = "FACT_NOT_FOUND"
 )
 
 // maxCorrectionBody: limit for the whole body; there are no separate length
@@ -28,14 +28,14 @@ type Corrector interface {
 }
 
 // Fields of the entry that exist but must not be corrected. They get
-// FELD_NICHT_KORRIGIERBAR instead of "unknown field".
-var notCorrectableFields = []string{"datei", "id", "importdatum", "korrekturen", "modul", "volltext"}
+// FIELD_NOT_CORRECTABLE instead of "unknown field".
+var notCorrectableFields = []string{"corrections", "file", "fullText", "id", "importedAt", "module"}
 
-// correctHandler answers PATCH /api/v1/eintraege/{id} (API.md 3.5).
+// correctHandler answers PATCH /api/v1/entries/{id} (API.md 3.5).
 func correctHandler(c Corrector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		// Check the ID before the body: "/eintraege/abc" is always UNGUELTIGE_ID.
+		// Check the ID before the body: "/entries/abc" is always INVALID_ID.
 		if err := core.CheckID(id); err != nil {
 			writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
 			return
@@ -91,13 +91,13 @@ func writeCorrectionError(w http.ResponseWriter, r *http.Request, err error) {
 func correctionDetails(ce *core.CorrectionError) map[string]any {
 	d := map[string]any{}
 	if ce.Field != "" {
-		d["feld"] = ce.Field
+		d["field"] = ce.Field
 	}
 	if ce.Value != nil {
-		d["wert"] = ce.Value
+		d["value"] = ce.Value
 	}
 	if ce.FactID != "" {
-		d["infoId"] = ce.FactID
+		d["factId"] = ce.FactID
 	}
 	if len(d) == 0 {
 		return nil
@@ -120,7 +120,7 @@ func parseChange(body []byte) (core.Change, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		return core.Change{}, core.Invalid(
-			"Bitte die Änderung als JSON-Objekt schicken, z. B. {\"quelle\": \"…\"}.", "", nil)
+			"Bitte die Änderung als JSON-Objekt schicken, z. B. {\"issuer\": \"…\"}.", "", nil)
 	}
 
 	names := sortedKeys(fields)
@@ -128,35 +128,35 @@ func parseChange(body []byte) (core.Change, error) {
 		switch {
 		case slices.Contains(notCorrectableFields, name):
 			return core.Change{}, core.NotCorrectable(name)
-		case !slices.Contains([]string{"dokumentdatum", "infos", "quelle", "typ"}, name):
+		case !slices.Contains([]string{"documentDate", "facts", "issuer", "type"}, name):
 			return core.Change{}, core.Invalid("Unbekanntes Feld: "+name+".", name, nil)
 		}
 	}
 
 	var c core.Change
-	if raw, ok := fields["typ"]; ok {
+	if raw, ok := fields["type"]; ok {
 		typ, isString := asString(raw)
 		if !isString {
-			return core.Change{}, core.Invalid("Der Typ muss ein Text sein.", "typ", asValue(raw))
+			return core.Change{}, core.Invalid("Der Typ muss ein Text sein.", "type", asValue(raw))
 		}
 		c.Type = &typ
 	}
-	if raw, ok := fields["dokumentdatum"]; ok {
+	if raw, ok := fields["documentDate"]; ok {
 		n, ok := asNullable(raw)
 		if !ok {
 			return core.Change{}, core.Invalid("Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.",
-				"dokumentdatum", asValue(raw))
+				"documentDate", asValue(raw))
 		}
 		c.DocumentDate = n
 	}
-	if raw, ok := fields["quelle"]; ok {
+	if raw, ok := fields["issuer"]; ok {
 		n, ok := asNullable(raw)
 		if !ok {
-			return core.Change{}, core.Invalid("Die Quelle muss ein Text oder null sein.", "quelle", asValue(raw))
+			return core.Change{}, core.Invalid("Die Quelle muss ein Text oder null sein.", "issuer", asValue(raw))
 		}
 		c.Issuer = n
 	}
-	if raw, ok := fields["infos"]; ok {
+	if raw, ok := fields["facts"]; ok {
 		facts, err := parseFacts(raw)
 		if err != nil {
 			return core.Change{}, err
@@ -166,28 +166,28 @@ func parseChange(body []byte) (core.Change, error) {
 	return c, nil
 }
 
-// parseFacts: "infos" must be a list of objects with id and value and/or
-// unit. The result is never nil, also for "infos": [].
+// parseFacts: "facts" must be a list of objects with id and value and/or
+// unit. The result is never nil, also for "facts": [].
 func parseFacts(raw json.RawMessage) ([]core.FactChange, error) {
 	var list []json.RawMessage
 	if err := json.Unmarshal(raw, &list); err != nil || list == nil {
-		return nil, core.Invalid("\"infos\" muss eine Liste sein.", "infos", nil)
+		return nil, core.Invalid("\"facts\" muss eine Liste sein.", "facts", nil)
 	}
 	facts := make([]core.FactChange, 0, len(list))
 	for _, element := range list {
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(element, &fields); err != nil || fields == nil {
-			return nil, core.Invalid("Jede Info muss ein Objekt sein.", "infos", nil)
+			return nil, core.Invalid("Jede Info muss ein Objekt sein.", "facts", nil)
 		}
 		id, isString := asString(fields["id"])
 		if !isString || id == "" {
-			return nil, core.Invalid("Jede Info braucht eine id.", "infos", nil)
+			return nil, core.Invalid("Jede Info braucht eine id.", "facts", nil)
 		}
-		path := "infos." + id + "."
+		path := "facts." + id + "."
 
 		for _, name := range sortedKeys(fields) {
 			switch name {
-			case "id", "wert", "einheit":
+			case "id", "value", "unit":
 			case "name":
 				return nil, core.NotCorrectable(path + "name")
 			default:
@@ -196,17 +196,17 @@ func parseFacts(raw json.RawMessage) ([]core.FactChange, error) {
 		}
 
 		fact := core.FactChange{ID: id}
-		if raw, ok := fields["wert"]; ok {
+		if raw, ok := fields["value"]; ok {
 			value, isString := asString(raw)
 			if !isString {
-				return nil, core.Invalid("Der Wert muss ein Text sein.", path+"wert", asValue(raw))
+				return nil, core.Invalid("Der Wert muss ein Text sein.", path+"value", asValue(raw))
 			}
 			fact.Value = &value
 		}
-		if raw, ok := fields["einheit"]; ok {
+		if raw, ok := fields["unit"]; ok {
 			n, ok := asNullable(raw)
 			if !ok {
-				return nil, core.Invalid("Die Einheit muss ein Text oder null sein.", path+"einheit", asValue(raw))
+				return nil, core.Invalid("Die Einheit muss ein Text oder null sein.", path+"unit", asValue(raw))
 			}
 			fact.Unit = n
 		}

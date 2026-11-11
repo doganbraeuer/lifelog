@@ -27,13 +27,13 @@ type FactChange struct {
 	Unit  Nullable
 }
 
-// Change is the content of PATCH /eintraege/{id} (API.md 3.5).
+// Change is the content of PATCH /entries/{id} (API.md 3.5).
 type Change struct {
 	Type         *string // nil: unchanged (null is not allowed)
 	DocumentDate Nullable
 	Issuer       Nullable
-	// Facts: nil means "infos" is missing in the request. An empty list means
-	// "infos": [] and changes nothing.
+	// Facts: nil means "facts" is missing in the request. An empty list means
+	// "facts": [] and changes nothing.
 	Facts []FactChange
 }
 
@@ -44,9 +44,9 @@ func (c Change) isEmpty() bool {
 
 // Kinds of correction errors. The API turns them into the codes in API.md 3.5.
 var (
-	ErrInvalidCorrection   = errors.New("invalid correction")    // 400 UNGUELTIGE_ANFRAGE
-	ErrFieldNotCorrectable = errors.New("field not correctable") // 400 FELD_NICHT_KORRIGIERBAR
-	ErrFactNotFound        = errors.New("fact not found")        // 404 INFO_NICHT_GEFUNDEN
+	ErrInvalidCorrection   = errors.New("invalid correction")    // 400 INVALID_REQUEST
+	ErrFieldNotCorrectable = errors.New("field not correctable") // 400 FIELD_NOT_CORRECTABLE
+	ErrFactNotFound        = errors.New("fact not found")        // 404 FACT_NOT_FOUND
 )
 
 // CorrectionError describes what is wrong with a correction.
@@ -57,7 +57,7 @@ var (
 type CorrectionError struct {
 	Kind    error  // ErrInvalidCorrection, ErrFieldNotCorrectable or ErrFactNotFound
 	Message string // for the app, German
-	Field   string // e.g. "dokumentdatum", "infos.i2.wert"; empty if it is about a fact as a whole
+	Field   string // e.g. "documentDate", "facts.f2.value"; empty if it is about a fact as a whole
 	FactID  string // for errors concerning a fact as a whole
 	Value   any    // the rejected value, only for details; nil if it does not belong there
 }
@@ -65,7 +65,7 @@ type CorrectionError struct {
 func (e *CorrectionError) Error() string {
 	target := e.Field
 	if target == "" && e.FactID != "" {
-		target = "infos." + e.FactID
+		target = "facts." + e.FactID
 	}
 	if target == "" {
 		return e.Kind.Error()
@@ -91,8 +91,8 @@ func NotCorrectable(field string) *CorrectionError {
 	}
 }
 
-// update is a checked new value for a field path like "dokumentdatum" or
-// "infos.i2.einheit".
+// update is a checked new value for a field path like "documentDate" or
+// "facts.f2.unit".
 type update struct {
 	field string
 	value *string
@@ -155,9 +155,9 @@ func checkChange(e Entry, c Change) ([]update, error) {
 		if !TypeAllowed(e.Module, typ) {
 			return nil, Invalid(
 				fmt.Sprintf("Unbekannter Typ. Erlaubt sind %s.", strings.Join(AllowedTypes(e.Module), ", ")),
-				"typ", *c.Type)
+				"type", *c.Type)
 		}
-		updates = append(updates, update{"typ", &typ})
+		updates = append(updates, update{"type", &typ})
 	}
 
 	if c.DocumentDate.Set {
@@ -169,21 +169,21 @@ func checkChange(e Entry, c Change) ([]update, error) {
 				if errors.Is(err, ErrNoSuchDay) {
 					message = "Das Dokumentdatum ist kein gültiges Kalenderdatum."
 				}
-				return nil, Invalid(message, "dokumentdatum", *c.DocumentDate.Value)
+				return nil, Invalid(message, "documentDate", *c.DocumentDate.Value)
 			}
 			date = &d
 		}
-		updates = append(updates, update{"dokumentdatum", date})
+		updates = append(updates, update{"documentDate", date})
 	}
 
 	if c.Issuer.Set {
-		updates = append(updates, update{"quelle", trimmedOrNil(c.Issuer.Value)})
+		updates = append(updates, update{"issuer", trimmedOrNil(c.Issuer.Value)})
 	}
 
 	seen := map[string]bool{}
 	for _, fc := range c.Facts {
 		if fc.ID == "" {
-			return nil, Invalid("Jede Info braucht eine id.", "infos", nil)
+			return nil, Invalid("Jede Info braucht eine id.", "facts", nil)
 		}
 		if seen[fc.ID] {
 			return nil, &CorrectionError{Kind: ErrInvalidCorrection, FactID: fc.ID,
@@ -201,12 +201,12 @@ func checkChange(e Entry, c Change) ([]update, error) {
 		if fc.Value != nil {
 			value := strings.TrimSpace(*fc.Value)
 			if value == "" {
-				return nil, Invalid("Der Wert darf nicht leer sein.", "infos."+fc.ID+".wert", *fc.Value)
+				return nil, Invalid("Der Wert darf nicht leer sein.", "facts."+fc.ID+".value", *fc.Value)
 			}
-			updates = append(updates, update{"infos." + fc.ID + ".wert", &value})
+			updates = append(updates, update{"facts." + fc.ID + ".value", &value})
 		}
 		if fc.Unit.Set {
-			updates = append(updates, update{"infos." + fc.ID + ".einheit", trimmedOrNil(fc.Unit.Value)})
+			updates = append(updates, update{"facts." + fc.ID + ".unit", trimmedOrNil(fc.Unit.Value)})
 		}
 	}
 	return updates, nil
@@ -253,17 +253,17 @@ func apply(e *Entry, field string, value *string, now time.Time) bool {
 // changes the text it points to.
 func read(e *Entry, field string) *string {
 	switch field {
-	case "typ":
+	case "type":
 		typ := e.Type
 		return &typ
-	case "dokumentdatum":
+	case "documentDate":
 		return e.DocumentDate
-	case "quelle":
+	case "issuer":
 		return e.Issuer
 	}
 	id, part := factPath(field)
 	fact := e.Facts[factIndex(e.Facts, id)]
-	if part == "wert" {
+	if part == "value" {
 		value := fact.Value
 		return &value
 	}
@@ -274,28 +274,28 @@ func read(e *Entry, field string) *string {
 // untouched. Type and value are never nil after the check.
 func write(e *Entry, field string, value *string) {
 	switch field {
-	case "typ":
+	case "type":
 		e.Type = *value
 		return
-	case "dokumentdatum":
+	case "documentDate":
 		e.DocumentDate = value
 		return
-	case "quelle":
+	case "issuer":
 		e.Issuer = value
 		return
 	}
 	id, part := factPath(field)
 	fact := &e.Facts[factIndex(e.Facts, id)]
-	if part == "wert" {
+	if part == "value" {
 		fact.Value = *value
 	} else {
 		fact.Unit = value
 	}
 }
 
-// factPath splits "infos.i2.wert" into "i2" and "wert".
+// factPath splits "facts.f2.value" into "f2" and "value".
 func factPath(field string) (id, part string) {
-	rest := strings.TrimPrefix(field, "infos.")
+	rest := strings.TrimPrefix(field, "facts.")
 	i := strings.LastIndexByte(rest, '.')
 	return rest[:i], rest[i+1:]
 }

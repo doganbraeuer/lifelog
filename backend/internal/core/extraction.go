@@ -26,11 +26,11 @@ type ExtractedFact struct {
 	Unit  *string
 }
 
-// ErrUnreadable: the model recognizes no document (→ 422 NICHT_LESBAR).
+// ErrUnreadable: the model recognizes no document (→ 422 UNREADABLE).
 var ErrUnreadable = errors.New("no document recognizable")
 
 // ErrInvalidExtraction: the model's response does not follow the rules
-// (→ 502 AUSLESEN_FEHLGESCHLAGEN).
+// (→ 502 EXTRACTION_FAILED).
 var ErrInvalidExtraction = errors.New("invalid extraction")
 
 // ExtractionError says which field does not fit. It deliberately never
@@ -142,7 +142,7 @@ func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string
 			continue
 		}
 		facts = append(facts, Fact{
-			ID:    fmt.Sprintf("i%d", len(facts)+1), // without gaps, even after dropped facts
+			ID:    fmt.Sprintf("f%d", len(facts)+1), // without gaps, even after dropped facts
 			Name:  name,
 			Value: value,
 			Unit:  trimmedOrNil(xf.Unit),

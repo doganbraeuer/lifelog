@@ -1,9 +1,8 @@
 // Package api contains the HTTP layer: router, handlers, the error format
 // from docs/API.md and the JSON response types.
 //
-// The JSON field names, paths, error code values and details keys are still
-// German; they change together with docs/API.md (plan step B7). The message
-// texts stay German, because the app shows them.
+// Names on the wire are English, as in docs/API.md. The message texts stay
+// German, because the app shows them.
 package api
 
 import (
@@ -15,16 +14,16 @@ import (
 
 // Error codes from docs/API.md, section 1. More come with the endpoints.
 const (
-	CodeInternalError = "INTERNER_FEHLER"
+	CodeInternalError = "INTERNAL_ERROR"
 )
 
 type errorResponse struct {
-	Error errorBody `json:"fehler"`
+	Error errorBody `json:"error"`
 }
 
 type errorBody struct {
 	Code    string         `json:"code"`
-	Message string         `json:"nachricht"`
+	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
 }
 
@@ -43,7 +42,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 		slog.Error("could not encode JSON response", "error", err)
 		status = http.StatusInternalServerError
 		buf.Reset()
-		buf.WriteString(`{"fehler":{"code":"INTERNER_FEHLER","nachricht":"Interner Fehler im Backend."}}` + "\n")
+		buf.WriteString(`{"error":{"code":"INTERNAL_ERROR","message":"Interner Fehler im Backend."}}` + "\n")
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
