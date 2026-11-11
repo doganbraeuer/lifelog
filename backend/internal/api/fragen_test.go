@@ -20,7 +20,7 @@ type fragerAttrappe struct {
 	aufgerufen   bool
 }
 
-func (f *fragerAttrappe) Ausfuehren(_ context.Context, frage, modul string) (core.Answer, error) {
+func (f *fragerAttrappe) Ask(_ context.Context, frage, modul string) (core.Answer, error) {
 	f.aufgerufen, f.frage, f.modul = true, frage, modul
 	return f.antwort, f.err
 }

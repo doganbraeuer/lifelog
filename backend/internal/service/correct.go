@@ -8,69 +8,69 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// KorrekturSpeicher ist, was das Korrigieren von der Datenbank braucht.
-// Umgesetzt von speicher.Speicher.
-type KorrekturSpeicher interface {
-	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	SaveCorrection(ctx context.Context, e core.Entry) (gefunden bool, err error)
+// CorrectionStore is what correcting needs from the database. Implemented
+// by store.Store.
+type CorrectionStore interface {
+	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
+	SaveCorrection(ctx context.Context, e core.Entry) (found bool, err error)
 }
 
-// Korrigieren korrigiert erkannte Werte eines Eintrags (docs/API.md 3.5).
-type Korrigieren struct {
-	speicher KorrekturSpeicher
-	jetzt    func() time.Time
+// Corrector corrects recognized values of an entry (docs/API.md 3.5).
+type Corrector struct {
+	store CorrectionStore
+	now   func() time.Time
 }
 
-func NeuKorrigieren(s KorrekturSpeicher) *Korrigieren {
-	return &Korrigieren{speicher: s, jetzt: time.Now}
+func NewCorrector(s CorrectionStore) *Corrector {
+	return &Corrector{store: s, now: time.Now}
 }
 
-// Ausfuehren:
+// Correct:
 //
-//  1. ID prüfen, Eintrag laden.
-//  2. core.Korrigiere: alles prüfen, dann Regeln 1–4 anwenden.
-//  3. Hat sich nichts geändert: nichts schreiben, Eintrag unverändert
-//     zurückgeben (API.md 3.5).
-//  4. Sonst die korrigierbaren Felder speichern.
+//  1. Check the ID, load the entry.
+//  2. core.Correct: check everything, then apply rules 1–4.
+//  3. If nothing changed: write nothing, return the entry unchanged
+//     (API.md 3.5).
+//  4. Otherwise store the correctable fields.
 //
-// Ohne Sperre: Zwei gleichzeitige Korrekturen am selben Eintrag können sich
-// überschreiben (API.md 4, Gleichzeitige Korrekturen).
+// Without a lock: two simultaneous corrections of the same entry can
+// overwrite each other (API.md 4, concurrent corrections).
 //
-// Fehler: core.ErrUngueltigeID, core.ErrEintragNichtGefunden, die Fehler
-// aus core.Korrigiere (*core.KorrekturFehler) oder ein interner Fehler.
-func (k *Korrigieren) Ausfuehren(ctx context.Context, id string, a core.Change) (core.Entry, error) {
+// Errors: core.ErrInvalidID, core.ErrEntryNotFound, the errors of
+// core.Correct (*core.CorrectionError) or an internal error.
+func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (core.Entry, error) {
 	if err := core.CheckID(id); err != nil {
 		return core.Entry{}, err
 	}
-	e, gefunden, err := k.speicher.GetEntry(ctx, id)
+	e, found, err := c.store.GetEntry(ctx, id)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	if !gefunden {
+	if !found {
 		return core.Entry{}, core.ErrEntryNotFound
 	}
 
-	// Millisekunden, weil MongoDB Zeitpunkte so genau speichert: Antwort und
-	// spätere Abfrage zeigen dann dasselbe (wie beim Upload).
-	jetzt := k.jetzt().UTC().Truncate(time.Millisecond)
-	neu, geaendert, err := core.Correct(e, a, jetzt)
+	// Milliseconds, because MongoDB stores times with that precision: the
+	// response and a later query then show the same (as on upload).
+	now := c.now().UTC().Truncate(time.Millisecond)
+	updated, changed, err := core.Correct(e, ch, now)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	if len(geaendert) == 0 {
-		slog.Info("Korrektur ohne Änderung", "eintrag", id)
-		return neu, nil
+	if len(changed) == 0 {
+		slog.Info("correction without change", "entry", id)
+		return updated, nil
 	}
 
-	gefunden, err = k.speicher.SaveCorrection(ctx, neu)
+	found, err = c.store.SaveCorrection(ctx, updated)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	if !gefunden {
-		// Zwischen Lesen und Schreiben gelöscht.
+	if !found {
+		// Deleted between reading and writing.
 		return core.Entry{}, core.ErrEntryNotFound
 	}
-	// Nur Feldnamen, nie Werte.
-	slog.Info("Korrektur gespeichert", "eintrag", id, "felder", geaendert)
-	return neu, nil
+	// Only field names, never values.
+	slog.Info("correction saved", "entry", id, "fields", changed)
+	return updated, nil
 }

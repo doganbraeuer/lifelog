@@ -10,14 +10,14 @@ import (
 
 // Loescher löscht einen Eintrag. Umgesetzt von dienst.Loeschen.
 type Loescher interface {
-	Ausfuehren(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
 }
 
 // loeschenHandler beantwortet DELETE /api/v1/eintraege/{id} (API.md 3.7):
 // 204 ohne Body.
 func loeschenHandler(l Loescher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := l.Ausfuehren(r.Context(), r.PathValue("id"))
+		err := l.Delete(r.Context(), r.PathValue("id"))
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusNoContent)

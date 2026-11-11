@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/service"
 )
 
 // hochladerAttrappe merkt sich den Upload und liefert eintrag bzw. err.
@@ -26,12 +26,12 @@ type hochladerAttrappe struct {
 	textUpload *service.TextUpload
 }
 
-func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u service.Upload) (core.Entry, error) {
+func (h *hochladerAttrappe) Upload(_ context.Context, u service.Upload) (core.Entry, error) {
 	h.upload = &u
 	return h.eintrag, h.err
 }
 
-func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u service.TextUpload) (core.Entry, error) {
+func (h *hochladerAttrappe) UploadText(_ context.Context, u service.TextUpload) (core.Entry, error) {
 	h.textUpload = &u
 	return h.eintrag, h.err
 }
@@ -95,7 +95,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", loc)
 	}
-	if h.upload == nil || string(h.upload.Daten) != "%PDF-1.7" || h.upload.Dateiname != "befund.pdf" || h.upload.Modul != "gesundheit" {
+	if h.upload == nil || string(h.upload.Data) != "%PDF-1.7" || h.upload.FileName != "befund.pdf" || h.upload.Module != "gesundheit" {
 		t.Errorf("Upload an den Dienst = %+v", h.upload)
 	}
 
@@ -116,7 +116,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 func TestHochladen_OhneModulIstLeer(t *testing.T) {
 	h := &hochladerAttrappe{eintrag: vollerEintrag()}
 	hochladen(t, h, formular(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, nil))
-	if h.upload == nil || h.upload.Modul != "" {
+	if h.upload == nil || h.upload.Module != "" {
 		t.Errorf("Modul = %+v (leer heißt Standard, das entscheidet der Dienst)", h.upload)
 	}
 }
@@ -182,7 +182,7 @@ func TestHochladen_FehlerDesDienstes(t *testing.T) {
 		{core.ErrFileEmpty, 400, CodeDateiFehlt, nil},
 		{core.ErrFileTooLarge, 413, CodeDateiZuGross, nil},
 		{core.ErrUnsupportedFileType, 415, CodeDateitypNichtUnterstuetzt, nil},
-		{&service.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
+		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
 		{core.ErrUnreadable, 422, CodeNichtLesbar, nil},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},

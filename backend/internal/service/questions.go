@@ -8,119 +8,121 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// FragenSpeicher ist, was die Suche von der Datenbank braucht. Umgesetzt
-// von speicher.Speicher.
-type FragenSpeicher interface {
-	SimilarChunks(ctx context.Context, vektor []float32, modul string, k int) ([]core.Hit, error)
+// QuestionStore is what the search needs from the database. Implemented by
+// store.Store.
+type QuestionStore interface {
+	SimilarChunks(ctx context.Context, vector []float32, module string, k int) ([]core.Hit, error)
 	SummariesByIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error)
 }
 
-// Fragen beantwortet Fragen zu den Dokumenten (docs/API.md 3.6).
-type Fragen struct {
-	speicher  FragenSpeicher
-	einbetter llm.Embedder
-	antworter llm.Answerer
+// Asker answers questions about the documents (docs/API.md 3.6).
+type Asker struct {
+	store    QuestionStore
+	embedder llm.Embedder
+	answerer llm.Answerer
 }
 
-func NeuFragen(s FragenSpeicher, e llm.Embedder, a llm.Answerer) *Fragen {
-	return &Fragen{speicher: s, einbetter: e, antworter: a}
+func NewAsker(s QuestionStore, e llm.Embedder, a llm.Answerer) *Asker {
+	return &Asker{store: s, embedder: e, answerer: a}
 }
 
-// Ausfuehren:
+// Ask:
 //
-//  1. Frage und Modul prüfen.
-//  2. Frage einbetten, ähnlichste Abschnitte des Moduls suchen.
-//  3. Erste Schicht: Treffer unter core.MinScore verwerfen, ebenso
-//     Abschnitte, deren Eintrag es nicht (mehr) gibt.
-//  4. Bleibt nichts übrig: fester Satz, OHNE Aufruf des Sprachmodells.
-//  5. Sonst: Sprachmodell mit Frage und nummerierten Fundstellen.
-//  6. Zweite Schicht: core.BaueAntwort. Ohne gültigen Verweis gilt die
-//     Antwort als „nichts gefunden“.
+//  1. Check the question and the module.
+//  2. Embed the question, find the most similar chunks of the module.
+//  3. First layer: drop hits below core.MinScore, as well as chunks whose
+//     entry no longer exists.
+//  4. If nothing remains: fixed sentence, WITHOUT calling the language
+//     model.
+//  5. Otherwise: language model with the question and numbered sources.
+//  6. Second layer: core.BuildAnswer. Without a valid reference the answer
+//     counts as "nothing found".
 //
-// Ins Log kommen weder Frage noch Abschnittstexte, nur Zahlen.
+// Neither the question nor chunk texts go into the log, only numbers.
 //
-// Fehler: core.ErrUnbekanntesModul, core.ErrFrageFehlt, core.ErrFrageZuLang,
-// llm.ErrNichtErreichbar, llm.ErrAntwortUngueltig oder intern.
-func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Answer, error) {
-	modul, err := core.CheckModule(modul)
+// Errors: core.ErrUnknownModule, core.ErrQuestionMissing,
+// core.ErrQuestionTooLong, llm.ErrUnavailable, llm.ErrInvalidResponse or
+// internal.
+func (a *Asker) Ask(ctx context.Context, question, module string) (core.Answer, error) {
+	module, err := core.CheckModule(module)
 	if err != nil {
 		return core.Answer{}, err
 	}
-	frage, err = core.CheckQuestion(frage)
+	question, err = core.CheckQuestion(question)
 	if err != nil {
 		return core.Answer{}, err
 	}
 
-	vektor, err := f.einbetter.EmbedQuestion(ctx, frage)
+	vector, err := a.embedder.EmbedQuestion(ctx, question)
 	if err != nil {
 		return core.Answer{}, err
 	}
-	alle, err := f.speicher.SimilarChunks(ctx, vektor, modul, core.MaxHits)
+	all, err := a.store.SimilarChunks(ctx, vector, module, core.MaxHits)
 	if err != nil {
 		return core.Answer{}, err
 	}
-	treffer := core.AboveThreshold(alle, core.MinScore)
+	hits := core.AboveThreshold(all, core.MinScore)
 
-	fundstellen, err := f.fundstellen(ctx, treffer, modul)
+	sources, err := a.sources(ctx, hits, module)
 	if err != nil {
 		return core.Answer{}, err
 	}
-	slog.Info("Frage", "modul", modul, "treffer", len(alle), "ueberSchwelle", len(treffer),
-		"fundstellen", len(fundstellen), "besterScore", besterScore(alle))
-	if len(fundstellen) == 0 {
+	slog.Info("question", "module", module, "hits", len(all), "aboveThreshold", len(hits),
+		"sources", len(sources), "bestScore", bestScore(all))
+	if len(sources) == 0 {
 		return core.NoHit(), nil
 	}
 
-	text, err := f.antworter.Answer(ctx, frage, fundstellen)
+	text, err := a.answerer.Answer(ctx, question, sources)
 	if err != nil {
 		return core.Answer{}, err
 	}
-	antwort := core.BuildAnswer(text, fundstellen)
-	if !antwort.Found {
-		slog.Info("Antwort ohne gültigen Verweis, fester Satz", "fundstellen", len(fundstellen))
+	answer := core.BuildAnswer(text, sources)
+	if !answer.Found {
+		slog.Info("answer without a valid reference, fixed sentence", "sources", len(sources))
 	}
-	return antwort, nil
+	return answer, nil
 }
 
-// fundstellen nummeriert die Treffer (1, 2, …) und ergänzt die aktuellen
-// Angaben des Eintrags: Typ, Datum und Quelle auch dann, wenn sie
-// korrigiert wurden (API.md 3.6). Treffer ohne Eintrag fallen weg; das kann
-// kurz während eines Uploads oder Löschens vorkommen.
-func (f *Fragen) fundstellen(ctx context.Context, treffer []core.Hit, modul string) ([]core.Source, error) {
-	if len(treffer) == 0 {
+// sources numbers the hits (1, 2, …) and adds the current details of the
+// entry: type, date and issuer, even if they were corrected (API.md 3.6).
+// Hits without an entry are dropped; that can briefly happen during an
+// upload or a delete.
+func (a *Asker) sources(ctx context.Context, hits []core.Hit, module string) ([]core.Source, error) {
+	if len(hits) == 0 {
 		return []core.Source{}, nil
 	}
-	ids := make([]string, 0, len(treffer))
-	for _, t := range treffer {
-		ids = append(ids, t.EntryID)
+	ids := make([]string, 0, len(hits))
+	for _, h := range hits {
+		ids = append(ids, h.EntryID)
 	}
-	eintraege, err := f.speicher.SummariesByIDs(ctx, ids)
+	entries, err := a.store.SummariesByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	fundstellen := make([]core.Source, 0, len(treffer))
-	for _, t := range treffer {
-		e, ok := eintraege[t.EntryID]
+	sources := make([]core.Source, 0, len(hits))
+	for _, h := range hits {
+		e, ok := entries[h.EntryID]
 		if !ok {
-			continue // verwaister Abschnitt
+			continue // orphaned chunk
 		}
-		fundstellen = append(fundstellen, core.Source{
-			Number:       len(fundstellen) + 1,
-			EntryID:      t.EntryID,
-			Module:       modul,
+		sources = append(sources, core.Source{
+			Number:       len(sources) + 1,
+			EntryID:      h.EntryID,
+			Module:       module,
 			Type:         e.Type,
 			Issuer:       e.Issuer,
 			DocumentDate: e.DocumentDate,
-			Excerpt:      t.Text,
+			Excerpt:      h.Text,
 		})
 	}
-	return fundstellen, nil
+	return sources, nil
 }
 
-func besterScore(treffer []core.Hit) float64 {
-	if len(treffer) == 0 {
+func bestScore(hits []core.Hit) float64 {
+	if len(hits) == 0 {
 		return 0
 	}
-	return treffer[0].Score
+	return hits[0].Score
 }

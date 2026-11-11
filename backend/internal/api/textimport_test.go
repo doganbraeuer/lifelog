@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/service"
 )
 
 // textFormular baut ein Formular aus Feldern in fester Reihenfolge; ein
@@ -57,7 +57,7 @@ func TestTextImport_Erfolg(t *testing.T) {
 		t.Errorf("Location = %q", rec.Header().Get("Location"))
 	}
 	// Unverändert an den Dienst, auch Leerraum und \r\n.
-	if h.textUpload == nil || h.textUpload.Text != text || h.textUpload.Modul != "gesundheit" || h.upload != nil {
+	if h.textUpload == nil || h.textUpload.Text != text || h.textUpload.Module != "gesundheit" || h.upload != nil {
 		t.Errorf("an den Dienst: text %+v, datei %+v", h.textUpload, h.upload)
 	}
 	for _, muss := range []string{`"mimeTyp":"text/plain; charset=utf-8"`, `"dateiname":"text.txt"`, `"korrekturen":[]`} {
@@ -118,7 +118,7 @@ func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			// Dienst ohne Speicher und Modelle: Die Prüfung kommt vor allem anderen.
-			d := service.NeuHochladen(nil, nil, nil, nil)
+			d := service.NewUploader(nil, nil, nil, nil)
 			router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Hochladen: d})
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, textFormular(t, f.felder...))
@@ -150,7 +150,7 @@ func TestTextImport_FehlerDesDienstes(t *testing.T) {
 		details   string
 	}{
 		{core.ErrFileEmpty, 400, CodeDateiFehlt, "Bitte einen Text eingeben.", "map[]"},
-		{&service.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
+		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
 		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
 		{fmt.Errorf("JSON kaputt: %w", llm.ErrInvalidResponse), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},

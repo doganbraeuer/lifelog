@@ -16,7 +16,7 @@ type loescherAttrappe struct {
 	ids []string
 }
 
-func (l *loescherAttrappe) Ausfuehren(_ context.Context, id string) error {
+func (l *loescherAttrappe) Delete(_ context.Context, id string) error {
 	l.ids = append(l.ids, id)
 	return l.err
 }

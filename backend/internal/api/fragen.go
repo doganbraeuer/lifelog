@@ -23,7 +23,7 @@ const maxFrageBody = 64 << 10
 
 // Frager beantwortet Fragen. Umgesetzt von dienst.Fragen.
 type Frager interface {
-	Ausfuehren(ctx context.Context, frage, modul string) (core.Answer, error)
+	Ask(ctx context.Context, frage, modul string) (core.Answer, error)
 }
 
 type frageAnfrage struct {
@@ -72,7 +72,7 @@ func fragenHandler(f Frager) http.HandlerFunc {
 			return
 		}
 
-		antwort, err := f.Ausfuehren(r.Context(), anfrage.Frage, anfrage.Modul)
+		antwort, err := f.Ask(r.Context(), anfrage.Frage, anfrage.Modul)
 		if err != nil {
 			schreibeFragenFehler(w, r, err, anfrage.Modul)
 			return

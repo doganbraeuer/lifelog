@@ -53,12 +53,12 @@ func checkFile(t *testing.T, s *Store, ctx context.Context, fileID string, exist
 // service against a real MongoDB (API.md 3.7).
 func TestIntegration_DeleteEntry(t *testing.T) {
 	s, ctx := testStore(t)
-	d := service.NeuLoeschen(s)
+	d := service.NewDeleter(s)
 
 	a := create(t, s, ctx, strings.Repeat("a1", 32))
 	b := create(t, s, ctx, strings.Repeat("b2", 32))
 
-	if err := d.Ausfuehren(ctx, a.ID); err != nil {
+	if err := d.Delete(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -81,7 +81,7 @@ func TestIntegration_DeleteEntry(t *testing.T) {
 	checkFile(t, s, ctx, b.File.ID, true)
 
 	// Second delete: 404.
-	if err := d.Ausfuehren(ctx, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
+	if err := d.Delete(ctx, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Errorf("second delete: %v, want ErrEntryNotFound", err)
 	}
 }
@@ -98,7 +98,7 @@ func TestIntegration_DeleteAfterInterruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.NeuLoeschen(s).Ausfuehren(ctx, e.ID); err != nil {
+	if err := service.NewDeleter(s).Delete(ctx, e.ID); err != nil {
 		t.Fatalf("delete with missing file: %v", err)
 	}
 	if _, exists, err := s.GetEntry(ctx, e.ID); err != nil || exists {

@@ -16,201 +16,200 @@ import (
 	"lifelog/backend/internal/llm/fake"
 )
 
-// Ein synthetischer Text mit Leerraum am Rand, \r\n und Umlauten: Er muss
-// bytegenau so gespeichert werden, wie er ankommt.
-const eingabe = "  Hausarztpraxis Beispiel\r\nÜberweisung vom 21.10.2026\n\nDiagnose: Rückenschmerzen \n"
+// A synthetic text with whitespace at the edges, \r\n and umlauts: it must
+// be stored byte for byte as it arrives.
+const enteredText = "  Hausarztpraxis Beispiel\r\nÜberweisung vom 21.10.2026\n\nDiagnose: Rückenschmerzen \n"
 
-func textErkennung() core.Extraction {
-	// Wie die Attrappe sie liefert. Volltext und Lesbar setzt das Modell beim
-	// Text nicht; der Dienst muss sie selbst setzen und Abweichungen
-	// überschreiben.
+func textExtraction() core.Extraction {
+	// As the fake returns it. The model does not set FullText and Readable for
+	// a text; the service must set them itself and overwrite deviations.
 	return core.Extraction{
 		Readable:     false,
 		FullText:     "vom Modell erfunden",
-		DocumentDate: zeiger("2026-10-21"),
-		Issuer:       zeiger("Hausarztpraxis Beispiel"),
+		DocumentDate: ptr("2026-10-21"),
+		Issuer:       ptr("Hausarztpraxis Beispiel"),
 		Type:         "arztbrief",
 		Facts:        []core.ExtractedFact{{Name: "Diagnose", Value: "Rückenschmerzen"}},
 	}
 }
 
-func textAufbau() aufbau {
-	a := neuerAufbau()
-	a.leser.Extraction = textErkennung()
-	return a
+func textSetup() setup {
+	s := newSetup()
+	s.reader.Extraction = textExtraction()
+	return s
 }
 
-func TestTextImport_Erfolg(t *testing.T) {
-	a := textAufbau()
-	e, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
+func TestTextImport_Success(t *testing.T) {
+	s := textSetup()
+	e, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Nur TextLesen, nie DokumentLesen, und mit dem Text unverändert.
-	n, gesendet := a.leser.TextCalls()
-	if n != 1 || a.leser.Calls() != 0 || gesendet != eingabe {
-		t.Errorf("TextLesen %d×, DokumentLesen %d×, Text %q", n, a.leser.Calls(), gesendet)
+	// Only ReadText, never ReadDocument, and with the text unchanged.
+	n, sent := s.reader.TextCalls()
+	if n != 1 || s.reader.Calls() != 0 || sent != enteredText {
+		t.Errorf("ReadText %d×, ReadDocument %d×, text %q", n, s.reader.Calls(), sent)
 	}
 
-	// volltext ist der eingegebene Text, nicht der des Modells.
-	if e.FullText != eingabe {
-		t.Errorf("Volltext = %q", e.FullText)
+	// The full text is the entered text, not the model's.
+	if e.FullText != enteredText {
+		t.Errorf("full text = %q", e.FullText)
 	}
-	summe := sha256.Sum256([]byte(eingabe))
+	sum := sha256.Sum256([]byte(enteredText))
 	want := core.File{
 		ID: e.File.ID, FileName: "text.txt", MimeType: "text/plain; charset=utf-8",
-		Size: int64(len(eingabe)), Sha256: hex.EncodeToString(summe[:]),
+		Size: int64(len(enteredText)), Sha256: hex.EncodeToString(sum[:]),
 	}
 	if e.File != want {
-		t.Errorf("Datei = %+v\nerwartet %+v", e.File, want)
+		t.Errorf("file = %+v\nwant %+v", e.File, want)
 	}
-	// Bytes, nicht Zeichen: Ü und ü sind je zwei Bytes.
-	if e.File.Size != int64(len([]rune(eingabe))+2) {
-		t.Errorf("Größe %d ist nicht in Bytes", e.File.Size)
+	// Bytes, not characters: Ü and ü are two bytes each.
+	if e.File.Size != int64(len([]rune(enteredText))+2) {
+		t.Errorf("size %d is not in bytes", e.File.Size)
 	}
-	if got := string(a.speicher.dateien[e.File.ID]); got != eingabe {
-		t.Errorf("gespeicherte Datei = %q", got)
+	if got := string(s.store.files[e.File.ID]); got != enteredText {
+		t.Errorf("stored file = %q", got)
 	}
 
 	if e.Module != "gesundheit" || e.Type != "arztbrief" || len(e.Facts) != 1 || e.Facts[0].ID != "i1" {
-		t.Errorf("Eintrag %+v", e)
+		t.Errorf("entry %+v", e)
 	}
-	if len(a.speicher.eintraege) != 1 || a.speicher.eintraege[0].FullText != eingabe {
-		t.Error("Eintrag nicht mit dem eingegebenen Text gespeichert")
+	if len(s.store.entries) != 1 || s.store.entries[0].FullText != enteredText {
+		t.Error("entry not stored with the entered text")
 	}
-	// Abschnitte aus dem eingegebenen Text.
-	if len(a.speicher.abschnitte) == 0 || !strings.Contains(a.speicher.abschnitte[0].Text, "Hausarztpraxis") {
-		t.Errorf("Abschnitte %+v", a.speicher.abschnitte)
+	// Chunks from the entered text.
+	if len(s.store.chunks) == 0 || !strings.Contains(s.store.chunks[0].Text, "Hausarztpraxis") {
+		t.Errorf("chunks %+v", s.store.chunks)
 	}
 }
 
-func TestTextImport_DuplikatVorModellaufruf(t *testing.T) {
-	a := textAufbau()
-	summe := sha256.Sum256([]byte(eingabe))
-	a.speicher.hashes[hex.EncodeToString(summe[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
+func TestTextImport_DuplicateBeforeModelCall(t *testing.T) {
+	s := textSetup()
+	sum := sha256.Sum256([]byte(enteredText))
+	s.store.hashes[hex.EncodeToString(sum[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
 
-	_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
+	_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
 
-	var dup *DuplikatFehler
-	if !errors.As(err, &dup) || dup.EintragID != "bbbbbbbbbbbbbbbbbbbbbbbb" {
+	var dup *DuplicateError
+	if !errors.As(err, &dup) || dup.EntryID != "bbbbbbbbbbbbbbbbbbbbbbbb" {
 		t.Fatalf("err = %v", err)
 	}
-	if n, _ := a.leser.TextCalls(); n != 0 || a.einbetter.Calls() != 0 {
-		t.Errorf("Modell trotz Duplikat aufgerufen: Lesen %d, Einbetten %d", n, a.einbetter.Calls())
+	if n, _ := s.reader.TextCalls(); n != 0 || s.embedder.Calls() != 0 {
+		t.Errorf("model called despite duplicate: read %d, embed %d", n, s.embedder.Calls())
 	}
 }
 
-// Schon ein zusätzliches Leerzeichen ergibt einen anderen Hash (API.md 4).
-func TestTextImport_LeerzeichenIstKeinDuplikat(t *testing.T) {
-	a := textAufbau()
-	summe := sha256.Sum256([]byte(eingabe))
-	a.speicher.hashes[hex.EncodeToString(summe[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
-	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe + " "}); err != nil {
+// One extra space already gives a different hash (API.md 4).
+func TestTextImport_SpaceIsNoDuplicate(t *testing.T) {
+	s := textSetup()
+	sum := sha256.Sum256([]byte(enteredText))
+	s.store.hashes[hex.EncodeToString(sum[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
+	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText + " "}); err != nil {
 		t.Errorf("err = %v", err)
 	}
 }
 
-func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
-	for _, f := range []struct {
+func TestTextImport_ChecksBeforeAnyCall(t *testing.T) {
+	for _, c := range []struct {
 		name   string
 		upload TextUpload
-		fehler error
+		err    error
 	}{
-		{"leer", TextUpload{Text: ""}, core.ErrFileEmpty},
-		{"nur Leerraum", TextUpload{Text: " \r\n\t"}, core.ErrFileEmpty},
-		{"ungültiges UTF-8", TextUpload{Text: "Befund \xff"}, core.ErrTextNotUTF8},
-		{"zu lang", TextUpload{Text: strings.Repeat("ä", core.MaxTextChars+1)}, core.ErrTextTooLong},
-		{"unbekanntes Modul", TextUpload{Text: eingabe, Modul: "sport"}, core.ErrUnknownModule},
+		{"empty", TextUpload{Text: ""}, core.ErrFileEmpty},
+		{"only whitespace", TextUpload{Text: " \r\n\t"}, core.ErrFileEmpty},
+		{"invalid UTF-8", TextUpload{Text: "Befund \xff"}, core.ErrTextNotUTF8},
+		{"too long", TextUpload{Text: strings.Repeat("ä", core.MaxTextChars+1)}, core.ErrTextTooLong},
+		{"unknown module", TextUpload{Text: enteredText, Module: "sport"}, core.ErrUnknownModule},
 	} {
-		t.Run(f.name, func(t *testing.T) {
-			a := textAufbau()
-			_, err := a.dienst.TextAusfuehren(context.Background(), f.upload)
-			if !errors.Is(err, f.fehler) {
-				t.Errorf("err = %v, erwartet %v", err, f.fehler)
+		t.Run(c.name, func(t *testing.T) {
+			s := textSetup()
+			_, err := s.uploader.UploadText(context.Background(), c.upload)
+			if !errors.Is(err, c.err) {
+				t.Errorf("err = %v, want %v", err, c.err)
 			}
-			if n, _ := a.leser.TextCalls(); n != 0 || len(a.speicher.protokoll) != 0 {
-				t.Errorf("Aufrufe trotz Fehler: Lesen %d, Speicher %v", n, a.speicher.protokoll)
+			if n, _ := s.reader.TextCalls(); n != 0 || len(s.store.log) != 0 {
+				t.Errorf("calls despite error: read %d, store %v", n, s.store.log)
 			}
 		})
 	}
 }
 
-// Genau 100 000 Zeichen mit Umlauten (200 000 Bytes) sind erlaubt.
-func TestTextImport_GrenzeInZeichen(t *testing.T) {
-	a := textAufbau()
+// Exactly 100,000 characters with umlauts (200,000 bytes) are allowed.
+func TestTextImport_LimitInCharacters(t *testing.T) {
+	s := textSetup()
 	text := strings.Repeat("ü", core.MaxTextChars)
-	e, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: text})
+	e, err := s.uploader.UploadText(context.Background(), TextUpload{Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if e.File.Size != 2*core.MaxTextChars {
-		t.Errorf("Größe %d", e.File.Size)
+		t.Errorf("size %d", e.File.Size)
 	}
 }
 
-func TestTextImport_ModellFehlerSpeichertNichts(t *testing.T) {
-	for _, f := range []struct {
+func TestTextImport_ModelErrorStoresNothing(t *testing.T) {
+	for _, c := range []struct {
 		name string
 		err  error
 	}{
-		{"nicht erreichbar", llm.ErrUnavailable},
-		{"Antwort ungültig", llm.ErrInvalidResponse},
+		{"unavailable", llm.ErrUnavailable},
+		{"invalid response", llm.ErrInvalidResponse},
 	} {
-		t.Run(f.name, func(t *testing.T) {
-			a := textAufbau()
-			a.dienst.leser = &fake.Reader{Err: f.err}
-			_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
-			if !errors.Is(err, f.err) {
+		t.Run(c.name, func(t *testing.T) {
+			s := textSetup()
+			s.uploader.reader = &fake.Reader{Err: c.err}
+			_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+			if !errors.Is(err, c.err) {
 				t.Errorf("err = %v", err)
 			}
-			if !slices.Equal(a.speicher.protokoll, []string{"EintragMitHash"}) || !a.speicher.leer() {
-				t.Errorf("gespeichert: %v", a.speicher.protokoll)
+			if !slices.Equal(s.store.log, []string{"EntryByHash"}) || !s.store.isEmpty() {
+				t.Errorf("stored: %v", s.store.log)
 			}
 		})
 	}
 }
 
-// Ein unerlaubter Typ vom Modell ist ungültig (502), kein NICHT_LESBAR.
-func TestTextImport_TypNichtErlaubt(t *testing.T) {
-	a := textAufbau()
-	e := textErkennung()
-	e.Type = "kochrezept"
-	a.leser.Extraction = e
-	_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
+// A type from the model that is not allowed is invalid (502), not UNREADABLE.
+func TestTextImport_TypeNotAllowed(t *testing.T) {
+	s := textSetup()
+	x := textExtraction()
+	x.Type = "kochrezept"
+	s.reader.Extraction = x
+	_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
 	if !errors.Is(err, core.ErrInvalidExtraction) || errors.Is(err, core.ErrUnreadable) {
 		t.Errorf("err = %v", err)
 	}
 }
 
-func TestTextImport_AufraeumenBeiSpeicherfehler(t *testing.T) {
-	a := textAufbau()
-	dbFehler := errors.New("Verbindung verloren")
-	a.speicher.fehler["EintragSpeichern"] = dbFehler
-	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe}); !errors.Is(err, dbFehler) {
+func TestTextImport_CleanupOnStoreError(t *testing.T) {
+	s := textSetup()
+	dbErr := errors.New("connection lost")
+	s.store.errs["SaveEntry"] = dbErr
+	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText}); !errors.Is(err, dbErr) {
 		t.Errorf("err = %v", err)
 	}
-	if !a.speicher.leer() {
-		t.Error("nicht aufgeräumt")
+	if !s.store.isEmpty() {
+		t.Error("not cleaned up")
 	}
 }
 
-func TestTextImport_TextNichtImLog(t *testing.T) {
+func TestTextImport_TextNotInLog(t *testing.T) {
 	var log bytes.Buffer
-	alt := slog.Default()
+	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	t.Cleanup(func() { slog.SetDefault(alt) })
+	t.Cleanup(func() { slog.SetDefault(old) })
 
-	a := textAufbau()
-	e := textErkennung()
-	e.Facts = append(e.Facts, core.ExtractedFact{Name: "Dosis", Value: ""}) // wird ausgelassen und geloggt
-	a.leser.Extraction = e
-	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe}); err != nil {
+	s := textSetup()
+	x := textExtraction()
+	x.Facts = append(x.Facts, core.ExtractedFact{Name: "Dosis", Value: ""}) // dropped and logged
+	s.reader.Extraction = x
+	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText}); err != nil {
 		t.Fatal(err)
 	}
-	for _, inhalt := range []string{"Hausarztpraxis", "Rückenschmerzen", "Überweisung", "Dosis"} {
-		if strings.Contains(log.String(), inhalt) {
-			t.Errorf("Log enthält %q: %s", inhalt, log.String())
+	for _, content := range []string{"Hausarztpraxis", "Rückenschmerzen", "Überweisung", "Dosis"} {
+		if strings.Contains(log.String(), content) {
+			t.Errorf("log contains %q: %s", content, log.String())
 		}
 	}
 }

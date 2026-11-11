@@ -12,246 +12,245 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-const dateiWegwerf = "bbbbbbbbbbbbbbbbbbbbbbbb"
+const throwawayFile = "bbbbbbbbbbbbbbbbbbbbbbbb"
 
-// loeschAttrappe hält einen Eintrag mit Abschnitten und Datei, protokolliert
-// jeden Aufruf mit Argument und kann in einem Schritt scheitern.
-type loeschAttrappe struct {
-	eintrag    *core.Entry // nil: Eintrag gibt es nicht (mehr)
-	abschnitte bool
-	datei      bool
+// fakeDeleteStore holds an entry with chunks and file, records every call
+// with its argument and can fail in one step.
+type fakeDeleteStore struct {
+	entry  *core.Entry // nil: the entry does not exist (anymore)
+	chunks bool
+	file   bool
 
-	scheitertBei string // Name der Methode, die einen Fehler liefert
-	fehler       error  // dieser Fehler, sonst errDB
-	nachLesen    func() // läuft nach EintragLesen, z. B. um ctx abzubrechen
-	ctxFehler    []error
-	protokoll    []string
+	failsAt   string // name of the method that returns an error
+	err       error  // this error, otherwise errDB
+	afterRead func() // runs after GetEntry, e.g. to cancel ctx
+	ctxErrs   []error
+	log       []string
 }
 
-var errDB = errors.New("Datenbank weg")
+var errDB = errors.New("database gone")
 
-func (s *loeschAttrappe) schritt(ctx context.Context, name, arg string) error {
-	s.protokoll = append(s.protokoll, name+"("+arg+")")
-	s.ctxFehler = append(s.ctxFehler, ctx.Err())
-	if s.scheitertBei == name {
-		if s.fehler != nil {
-			return s.fehler
+func (s *fakeDeleteStore) step(ctx context.Context, name, arg string) error {
+	s.log = append(s.log, name+"("+arg+")")
+	s.ctxErrs = append(s.ctxErrs, ctx.Err())
+	if s.failsAt == name {
+		if s.err != nil {
+			return s.err
 		}
 		return errDB
 	}
 	return nil
 }
 
-func (s *loeschAttrappe) GetEntry(ctx context.Context, id string) (core.Entry, bool, error) {
-	if err := s.schritt(ctx, "EintragLesen", id); err != nil {
+func (s *fakeDeleteStore) GetEntry(ctx context.Context, id string) (core.Entry, bool, error) {
+	if err := s.step(ctx, "GetEntry", id); err != nil {
 		return core.Entry{}, false, err
 	}
-	if s.eintrag == nil || s.eintrag.ID != id {
+	if s.entry == nil || s.entry.ID != id {
 		return core.Entry{}, false, nil
 	}
-	e := *s.eintrag
-	if s.nachLesen != nil {
-		s.nachLesen()
+	e := *s.entry
+	if s.afterRead != nil {
+		s.afterRead()
 	}
 	return e, true, nil
 }
 
-func (s *loeschAttrappe) DeleteChunks(ctx context.Context, id string) error {
-	if err := s.schritt(ctx, "AbschnitteLoeschen", id); err != nil {
+func (s *fakeDeleteStore) DeleteChunks(ctx context.Context, id string) error {
+	if err := s.step(ctx, "DeleteChunks", id); err != nil {
 		return err
 	}
-	s.abschnitte = false
+	s.chunks = false
 	return nil
 }
 
-// DateiLoeschen verhält sich wie speicher: Fehlt die Datei, kein Fehler.
-func (s *loeschAttrappe) DeleteFile(ctx context.Context, id string) error {
-	if err := s.schritt(ctx, "DateiLoeschen", id); err != nil {
+// DeleteFile behaves like store: if the file is missing, no error.
+func (s *fakeDeleteStore) DeleteFile(ctx context.Context, id string) error {
+	if err := s.step(ctx, "DeleteFile", id); err != nil {
 		return err
 	}
-	s.datei = false
+	s.file = false
 	return nil
 }
 
-func (s *loeschAttrappe) DeleteEntry(ctx context.Context, id string) (bool, error) {
-	if err := s.schritt(ctx, "EintragLoeschen", id); err != nil {
+func (s *fakeDeleteStore) DeleteEntry(ctx context.Context, id string) (bool, error) {
+	if err := s.step(ctx, "DeleteEntry", id); err != nil {
 		return false, err
 	}
-	if s.eintrag == nil || s.eintrag.ID != id {
+	if s.entry == nil || s.entry.ID != id {
 		return false, nil
 	}
-	s.eintrag = nil
+	s.entry = nil
 	return true, nil
 }
 
-func loeschBestand() *loeschAttrappe {
-	return &loeschAttrappe{
-		eintrag: &core.Entry{
-			ID: idLabor, Module: "gesundheit", Type: "laborbefund",
-			Issuer: zd("Labor Geheim GmbH"), FullText: "Hämoglobin 14,2 g/dl",
-			Facts: []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zd("g/dl")}},
-			File:  core.File{ID: dateiWegwerf, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
+func deleteData() *fakeDeleteStore {
+	return &fakeDeleteStore{
+		entry: &core.Entry{
+			ID: idLab, Module: "gesundheit", Type: "laborbefund",
+			Issuer: ptr("Labor Geheim GmbH"), FullText: "Hämoglobin 14,2 g/dl",
+			Facts: []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
+			File:  core.File{ID: throwawayFile, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
 		},
-		abschnitte: true,
-		datei:      true,
+		chunks: true,
+		file:   true,
 	}
 }
 
-var alleSchritte = []string{
-	"EintragLesen(" + idLabor + ")",
-	"AbschnitteLoeschen(" + idLabor + ")",
-	"DateiLoeschen(" + dateiWegwerf + ")",
-	"EintragLoeschen(" + idLabor + ")",
+var allSteps = []string{
+	"GetEntry(" + idLab + ")",
+	"DeleteChunks(" + idLab + ")",
+	"DeleteFile(" + throwawayFile + ")",
+	"DeleteEntry(" + idLab + ")",
 }
 
-func TestLoeschen_ErfolgInDieserReihenfolge(t *testing.T) {
-	s := loeschBestand()
-	if err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor); err != nil {
+func TestDelete_SuccessInThisOrder(t *testing.T) {
+	s := deleteData()
+	if err := NewDeleter(s).Delete(context.Background(), idLab); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(s.protokoll, alleSchritte) {
-		t.Errorf("Aufrufe\n%v\nerwartet\n%v", s.protokoll, alleSchritte)
+	if !reflect.DeepEqual(s.log, allSteps) {
+		t.Errorf("calls\n%v\nwant\n%v", s.log, allSteps)
 	}
-	if s.eintrag != nil || s.abschnitte || s.datei {
-		t.Errorf("nicht alles gelöscht: eintrag %v, abschnitte %v, datei %v", s.eintrag != nil, s.abschnitte, s.datei)
+	if s.entry != nil || s.chunks || s.file {
+		t.Errorf("not everything deleted: entry %v, chunks %v, file %v", s.entry != nil, s.chunks, s.file)
 	}
 }
 
-// Scheitert ein Schritt, kommen die späteren nicht mehr dran, und der
-// Eintrag bleibt sichtbar (API.md 3.7). Ein zweiter Aufruf räumt auf, ein
-// dritter liefert 404.
-func TestLoeschen_ScheitertInEinemSchritt(t *testing.T) {
-	for i, schritt := range []string{"EintragLesen", "AbschnitteLoeschen", "DateiLoeschen", "EintragLoeschen"} {
-		t.Run(schritt, func(t *testing.T) {
-			s := loeschBestand()
-			s.scheitertBei = schritt
-			l := NeuLoeschen(s)
+// If a step fails, the later ones do not run, and the entry stays visible
+// (API.md 3.7). A second call cleans up, a third gives 404.
+func TestDelete_FailsInOneStep(t *testing.T) {
+	for i, step := range []string{"GetEntry", "DeleteChunks", "DeleteFile", "DeleteEntry"} {
+		t.Run(step, func(t *testing.T) {
+			s := deleteData()
+			s.failsAt = step
+			d := NewDeleter(s)
 
-			err := l.Ausfuehren(context.Background(), idLabor)
+			err := d.Delete(context.Background(), idLab)
 			if !errors.Is(err, errDB) {
-				t.Fatalf("Fehler %v, erwartet %v", err, errDB)
+				t.Fatalf("error %v, want %v", err, errDB)
 			}
-			if want := alleSchritte[:i+1]; !reflect.DeepEqual(s.protokoll, want) {
-				t.Errorf("Aufrufe %v, erwartet %v", s.protokoll, want)
+			if want := allSteps[:i+1]; !reflect.DeepEqual(s.log, want) {
+				t.Errorf("calls %v, want %v", s.log, want)
 			}
-			if s.eintrag == nil {
-				t.Error("Eintrag gelöscht, obwohl ein früherer Schritt gescheitert ist")
+			if s.entry == nil {
+				t.Error("entry deleted although an earlier step failed")
 			}
 
-			// Wiederholen räumt den Rest auf.
-			s.scheitertBei, s.protokoll = "", nil
-			if err := l.Ausfuehren(context.Background(), idLabor); err != nil {
-				t.Fatalf("zweiter Aufruf: %v", err)
+			// Repeating cleans up the rest.
+			s.failsAt, s.log = "", nil
+			if err := d.Delete(context.Background(), idLab); err != nil {
+				t.Fatalf("second call: %v", err)
 			}
-			if s.eintrag != nil || s.abschnitte || s.datei {
-				t.Error("zweiter Aufruf hat nicht alles gelöscht")
+			if s.entry != nil || s.chunks || s.file {
+				t.Error("second call did not delete everything")
 			}
-			if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
-				t.Errorf("dritter Aufruf: %v, erwartet ErrEintragNichtGefunden", err)
+			if err := d.Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+				t.Errorf("third call: %v, want ErrEntryNotFound", err)
 			}
 		})
 	}
 }
 
-func TestLoeschen_ZweimalLiefertNichtGefunden(t *testing.T) {
-	s := loeschBestand()
-	l := NeuLoeschen(s)
-	if err := l.Ausfuehren(context.Background(), idLabor); err != nil {
+func TestDelete_TwiceGivesNotFound(t *testing.T) {
+	s := deleteData()
+	d := NewDeleter(s)
+	if err := d.Delete(context.Background(), idLab); err != nil {
 		t.Fatal(err)
 	}
-	s.protokoll = nil
-	if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
-		t.Fatalf("zweiter Aufruf: %v", err)
+	s.log = nil
+	if err := d.Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+		t.Fatalf("second call: %v", err)
 	}
-	// Nur gelesen, nichts gelöscht.
-	if want := alleSchritte[:1]; !reflect.DeepEqual(s.protokoll, want) {
-		t.Errorf("Aufrufe %v, erwartet %v", s.protokoll, want)
+	// Only read, nothing deleted.
+	if want := allSteps[:1]; !reflect.DeepEqual(s.log, want) {
+		t.Errorf("calls %v, want %v", s.log, want)
 	}
 }
 
-func TestLoeschen_UngueltigeIDOhneSpeicher(t *testing.T) {
-	s := loeschBestand()
+func TestDelete_InvalidIDWithoutStore(t *testing.T) {
+	s := deleteData()
 	for _, id := range []string{"", "abc", strings.Repeat("z", 24)} {
-		if err := NeuLoeschen(s).Ausfuehren(context.Background(), id); !errors.Is(err, core.ErrInvalidID) {
-			t.Errorf("%q: %v, erwartet ErrUngueltigeID", id, err)
+		if err := NewDeleter(s).Delete(context.Background(), id); !errors.Is(err, core.ErrInvalidID) {
+			t.Errorf("%q: %v, want ErrInvalidID", id, err)
 		}
 	}
-	if len(s.protokoll) != 0 {
-		t.Errorf("Speicher aufgerufen: %v", s.protokoll)
+	if len(s.log) != 0 {
+		t.Errorf("store called: %v", s.log)
 	}
 }
 
-// Datei schon weg (z. B. nach einem abgebrochenen Löschen): kein Fehler.
-func TestLoeschen_DateiFehltSchon(t *testing.T) {
-	s := loeschBestand()
-	s.datei, s.abschnitte = false, false
-	if err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor); err != nil {
+// File already gone (e.g. after an interrupted delete): no error.
+func TestDelete_FileAlreadyMissing(t *testing.T) {
+	s := deleteData()
+	s.file, s.chunks = false, false
+	if err := NewDeleter(s).Delete(context.Background(), idLab); err != nil {
 		t.Fatal(err)
 	}
-	if s.eintrag != nil {
-		t.Error("Eintrag nicht gelöscht")
+	if s.entry != nil {
+		t.Error("entry not deleted")
 	}
 }
 
-// Ein gleichzeitiger Aufruf löscht den Eintrag zwischen Lesen und Löschen.
-func TestLoeschen_GleichzeitigGeloescht(t *testing.T) {
-	s := loeschBestand()
-	s.nachLesen = func() { s.eintrag = nil }
-	if err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
-		t.Errorf("%v, erwartet ErrEintragNichtGefunden", err)
+// A simultaneous call deletes the entry between reading and deleting.
+func TestDelete_DeletedSimultaneously(t *testing.T) {
+	s := deleteData()
+	s.afterRead = func() { s.entry = nil }
+	if err := NewDeleter(s).Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+		t.Errorf("%v, want ErrEntryNotFound", err)
 	}
-	if !reflect.DeepEqual(s.protokoll, alleSchritte) {
-		t.Errorf("Aufrufe %v, erwartet alle vier", s.protokoll)
+	if !reflect.DeepEqual(s.log, allSteps) {
+		t.Errorf("calls %v, want all four", s.log)
 	}
 }
 
-// Bricht die App nach dem Lesen ab, laufen die Löschschritte trotzdem mit
-// einem gültigen Kontext zu Ende.
-func TestLoeschen_AbbruchNachBeginnLaeuftZuEnde(t *testing.T) {
-	ctx, abbrechen := context.WithCancel(context.Background())
-	s := loeschBestand()
-	s.nachLesen = abbrechen
+// If the app cancels after reading, the delete steps still run to
+// completion with a valid context.
+func TestDelete_CancelAfterStartRunsToCompletion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := deleteData()
+	s.afterRead = cancel
 
-	if err := NeuLoeschen(s).Ausfuehren(ctx, idLabor); err != nil {
+	if err := NewDeleter(s).Delete(ctx, idLab); err != nil {
 		t.Fatal(err)
 	}
-	if s.eintrag != nil {
-		t.Fatal("Eintrag nicht gelöscht")
+	if s.entry != nil {
+		t.Fatal("entry not deleted")
 	}
-	for i, err := range s.ctxFehler[1:] {
+	for i, err := range s.ctxErrs[1:] {
 		if err != nil {
-			t.Errorf("%s mit abgebrochenem Kontext: %v", s.protokoll[i+1], err)
+			t.Errorf("%s with a canceled context: %v", s.log[i+1], err)
 		}
 	}
 }
 
-// Schon vor Beginn abgebrochen: Das Lesen scheitert, gelöscht wird nichts.
-func TestLoeschen_AbbruchVorBeginn(t *testing.T) {
-	s := loeschBestand()
-	s.scheitertBei, s.fehler = "EintragLesen", context.Canceled
+// Canceled before the start: reading fails, nothing is deleted.
+func TestDelete_CancelBeforeStart(t *testing.T) {
+	s := deleteData()
+	s.failsAt, s.err = "GetEntry", context.Canceled
 
-	err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor)
-	if !errors.Is(err, context.Canceled) || s.eintrag == nil {
-		t.Errorf("Fehler %v, eintrag noch da: %v", err, s.eintrag != nil)
+	err := NewDeleter(s).Delete(context.Background(), idLab)
+	if !errors.Is(err, context.Canceled) || s.entry == nil {
+		t.Errorf("error %v, entry still there: %v", err, s.entry != nil)
 	}
 }
 
-func TestLoeschen_LogNurID(t *testing.T) {
+func TestDelete_LogOnlyID(t *testing.T) {
 	var log bytes.Buffer
-	alt := slog.Default()
+	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	t.Cleanup(func() { slog.SetDefault(alt) })
+	t.Cleanup(func() { slog.SetDefault(old) })
 
-	if err := NeuLoeschen(loeschBestand()).Ausfuehren(context.Background(), idLabor); err != nil {
+	if err := NewDeleter(deleteData()).Delete(context.Background(), idLab); err != nil {
 		t.Fatal(err)
 	}
 	text := log.String()
-	if !strings.Contains(text, "Eintrag gelöscht") || !strings.Contains(text, idLabor) {
-		t.Errorf("Log ohne Meldung oder ID: %s", text)
+	if !strings.Contains(text, "entry deleted") || !strings.Contains(text, idLab) {
+		t.Errorf("log without message or ID: %s", text)
 	}
-	for _, inhalt := range []string{"Geheim", "geheim", "Hämoglobin", "14,2", "laborbefund", dateiWegwerf} {
-		if strings.Contains(text, inhalt) {
-			t.Errorf("Log enthält %q: %s", inhalt, text)
+	for _, content := range []string{"Geheim", "geheim", "Hämoglobin", "14,2", "laborbefund", throwawayFile} {
+		if strings.Contains(text, content) {
+			t.Errorf("log contains %q: %s", content, text)
 		}
 	}
 }

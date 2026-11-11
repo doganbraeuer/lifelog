@@ -8,78 +8,77 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// LoeschSpeicher ist, was das Löschen von der Datenbank braucht. Umgesetzt
-// von speicher.Speicher. DateiLoeschen und AbschnitteLoeschen dürfen keinen
-// Fehler liefern, wenn es nichts (mehr) zu löschen gibt.
-type LoeschSpeicher interface {
-	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	DeleteChunks(ctx context.Context, eintragID string) error
+// DeleteStore is what deleting needs from the database. Implemented by
+// store.Store. DeleteFile and DeleteChunks must not return an error if
+// there is nothing (left) to delete.
+type DeleteStore interface {
+	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
+	DeleteChunks(ctx context.Context, entryID string) error
 	DeleteFile(ctx context.Context, id string) error
-	DeleteEntry(ctx context.Context, id string) (gefunden bool, err error)
+	DeleteEntry(ctx context.Context, id string) (found bool, err error)
 }
 
-// loeschTimeout: Zeit für die drei Löschschritte. Sie laufen ohne den
-// Kontext der Anfrage weiter (siehe Ausfuehren), brauchen also eine eigene
-// Grenze.
-const loeschTimeout = 30 * time.Second
+// deleteTimeout: time for the three delete steps. They keep running without
+// the request's context (see Delete), so they need a limit of their own.
+const deleteTimeout = 30 * time.Second
 
-// Loeschen löscht einen Eintrag mit Abschnitten und Originaldatei
+// Deleter deletes an entry with its chunks and original file
 // (docs/API.md 3.7).
-type Loeschen struct {
-	speicher LoeschSpeicher
+type Deleter struct {
+	store DeleteStore
 }
 
-func NeuLoeschen(s LoeschSpeicher) *Loeschen {
-	return &Loeschen{speicher: s}
+func NewDeleter(s DeleteStore) *Deleter {
+	return &Deleter{store: s}
 }
 
-// Ausfuehren:
+// Delete:
 //
-//  1. ID prüfen, Eintrag laden (er nennt die ID der Originaldatei).
-//  2. Abschnitte löschen: Ab jetzt findet die Suche den Eintrag nicht mehr.
-//  3. Originaldatei löschen. Fehlt sie schon, ist das kein Fehler.
-//  4. Eintrag zuletzt löschen.
+//  1. Check the ID, load the entry (it names the ID of the original file).
+//  2. Delete the chunks: from now on search no longer finds the entry.
+//  3. Delete the original file. If it is already missing, that is no error.
+//  4. Delete the entry last.
 //
-// Scheitert ein Schritt, bricht Ausfuehren ab. Der Eintrag ist dann noch
-// sichtbar, und ein erneuter Aufruf räumt den Rest auf.
+// If a step fails, Delete stops. The entry is then still visible, and
+// calling again cleans up the rest.
 //
-// Ab Schritt 2 läuft das Löschen auch dann zu Ende, wenn die App die
-// Verbindung abbricht (context.WithoutCancel). Sonst könnte ein Eintrag
-// ohne Datei und Abschnitte übrig bleiben, den die Zeitleiste zwar zeigt,
-// dessen Original sich aber nicht mehr öffnen lässt.
+// From step 2 on, deleting runs to completion even if the app drops the
+// connection (context.WithoutCancel). Otherwise an entry without file and
+// chunks could be left behind, which the timeline shows but whose original
+// can no longer be opened.
 //
-// Fehler: core.ErrUngueltigeID, core.ErrEintragNichtGefunden (auch beim
-// zweiten Löschen) oder ein interner Fehler.
-func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
+// Errors: core.ErrInvalidID, core.ErrEntryNotFound (also when deleting a
+// second time) or an internal error.
+func (d *Deleter) Delete(ctx context.Context, id string) error {
 	if err := core.CheckID(id); err != nil {
 		return err
 	}
-	e, gefunden, err := l.speicher.GetEntry(ctx, id)
+	e, found, err := d.store.GetEntry(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !gefunden {
+	if !found {
 		return core.ErrEntryNotFound
 	}
 
-	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), loeschTimeout)
-	defer abbrechen()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deleteTimeout)
+	defer cancel()
 
-	if err := l.speicher.DeleteChunks(ctx, id); err != nil {
+	if err := d.store.DeleteChunks(ctx, id); err != nil {
 		return err
 	}
-	if err := l.speicher.DeleteFile(ctx, e.File.ID); err != nil {
+	if err := d.store.DeleteFile(ctx, e.File.ID); err != nil {
 		return err
 	}
-	gefunden, err = l.speicher.DeleteEntry(ctx, id)
+	found, err = d.store.DeleteEntry(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !gefunden {
-		// Ein gleichzeitiger Aufruf war schneller.
+	if !found {
+		// A simultaneous call was faster.
 		return core.ErrEntryNotFound
 	}
-	// Nur die ID, nie Inhalte.
-	slog.Info("Eintrag gelöscht", "eintrag", id)
+	// Only the ID, never content.
+	slog.Info("entry deleted", "entry", id)
 	return nil
 }

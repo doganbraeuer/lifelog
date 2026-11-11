@@ -13,23 +13,23 @@ import (
 	"lifelog/backend/internal/llm/fake"
 )
 
-type suchAttrappe struct {
-	treffer      []core.Hit
-	eintraege    map[string]core.EntrySummary
-	err          error
-	gefragtModul string
-	gefragtK     int
+type fakeSearch struct {
+	hits        []core.Hit
+	entries     map[string]core.EntrySummary
+	err         error
+	askedModule string
+	askedK      int
 }
 
-func (s *suchAttrappe) SimilarChunks(_ context.Context, _ []float32, modul string, k int) ([]core.Hit, error) {
-	s.gefragtModul, s.gefragtK = modul, k
-	return s.treffer, s.err
+func (s *fakeSearch) SimilarChunks(_ context.Context, _ []float32, module string, k int) ([]core.Hit, error) {
+	s.askedModule, s.askedK = module, k
+	return s.hits, s.err
 }
 
-func (s *suchAttrappe) SummariesByIDs(_ context.Context, ids []string) (map[string]core.EntrySummary, error) {
+func (s *fakeSearch) SummariesByIDs(_ context.Context, ids []string) (map[string]core.EntrySummary, error) {
 	m := map[string]core.EntrySummary{}
 	for _, id := range ids {
-		if e, ok := s.eintraege[id]; ok {
+		if e, ok := s.entries[id]; ok {
 			m[id] = e
 		}
 	}
@@ -37,137 +37,137 @@ func (s *suchAttrappe) SummariesByIDs(_ context.Context, ids []string) (map[stri
 }
 
 const (
-	idLabor = "aaaaaaaaaaaaaaaaaaaaaaaa"
-	idBrief = "bbbbbbbbbbbbbbbbbbbbbbbb"
-	idWeg   = "cccccccccccccccccccccccc" // Eintrag gelöscht, Abschnitt noch da
+	idLab    = "aaaaaaaaaaaaaaaaaaaaaaaa"
+	idLetter = "bbbbbbbbbbbbbbbbbbbbbbbb"
+	idGone   = "cccccccccccccccccccccccc" // entry deleted, chunk still there
 )
 
-func suchBestand() *suchAttrappe {
-	return &suchAttrappe{
-		treffer: []core.Hit{
-			{EntryID: idLabor, Position: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
-			{EntryID: idWeg, Position: 1, Text: "verwaist", Score: 0.86},
-			{EntryID: idBrief, Position: 1, Text: "Blutdruck 128/82", Score: core.MinScore},              // genau auf der Schwelle
-			{EntryID: idBrief, Position: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // darunter
+func searchData() *fakeSearch {
+	return &fakeSearch{
+		hits: []core.Hit{
+			{EntryID: idLab, Position: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
+			{EntryID: idGone, Position: 1, Text: "verwaist", Score: 0.86},
+			{EntryID: idLetter, Position: 1, Text: "Blutdruck 128/82", Score: core.MinScore},              // exactly on the threshold
+			{EntryID: idLetter, Position: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // below
 		},
-		eintraege: map[string]core.EntrySummary{
-			idLabor: {ID: idLabor, Module: "gesundheit", Type: "laborbefund", DocumentDate: zeiger("2026-10-14"), Issuer: zeiger("Labor Muster GmbH")},
-			idBrief: {ID: idBrief, Module: "gesundheit", Type: "arztbrief", DocumentDate: zeiger("2026-09-02"), Issuer: zeiger("Dr. Erika Beispiel")},
+		entries: map[string]core.EntrySummary{
+			idLab:    {ID: idLab, Module: "gesundheit", Type: "laborbefund", DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH")},
+			idLetter: {ID: idLetter, Module: "gesundheit", Type: "arztbrief", DocumentDate: ptr("2026-09-02"), Issuer: ptr("Dr. Erika Beispiel")},
 		},
 	}
 }
 
-func TestFragen_Treffer(t *testing.T) {
-	s := suchBestand()
+func TestAsk_Hit(t *testing.T) {
+	s := searchData()
 	a := &fake.Answerer{Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1]."}
-	f := NeuFragen(s, &fake.Embedder{}, a)
+	asker := NewAsker(s, &fake.Embedder{}, a)
 
-	antwort, err := f.Ausfuehren(context.Background(), "  Wie hoch war mein Hb?  ", "")
+	answer, err := asker.Ask(context.Background(), "  Wie hoch war mein Hb?  ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.gefragtModul != "gesundheit" || s.gefragtK != core.MaxHits {
-		t.Errorf("Suche mit Modul %q, k %d", s.gefragtModul, s.gefragtK)
+	if s.askedModule != "gesundheit" || s.askedK != core.MaxHits {
+		t.Errorf("search with module %q, k %d", s.askedModule, s.askedK)
 	}
 
-	// Ans Modell gingen nur Treffer ≥ MinScore mit vorhandenem Eintrag, neu nummeriert.
-	frage, fs := a.LastRequest()
-	if frage != "Wie hoch war mein Hb?" {
-		t.Errorf("Frage = %q, erwartet ohne Leerraum", frage)
+	// Only hits ≥ MinScore with an existing entry went to the model, renumbered.
+	question, sources := a.LastRequest()
+	if question != "Wie hoch war mein Hb?" {
+		t.Errorf("question = %q, want without whitespace", question)
 	}
-	if len(fs) != 2 || fs[0].Number != 1 || fs[0].EntryID != idLabor || fs[1].Number != 2 || fs[1].EntryID != idBrief {
-		t.Fatalf("Fundstellen = %+v", fs)
+	if len(sources) != 2 || sources[0].Number != 1 || sources[0].EntryID != idLab || sources[1].Number != 2 || sources[1].EntryID != idLetter {
+		t.Fatalf("sources = %+v", sources)
 	}
-	if fs[0].Type != "laborbefund" || *fs[0].DocumentDate != "2026-10-14" || *fs[0].Issuer != "Labor Muster GmbH" || fs[0].Module != "gesundheit" {
-		t.Errorf("Angaben aus dem Eintrag fehlen: %+v", fs[0])
+	if sources[0].Type != "laborbefund" || *sources[0].DocumentDate != "2026-10-14" || *sources[0].Issuer != "Labor Muster GmbH" || sources[0].Module != "gesundheit" {
+		t.Errorf("details from the entry missing: %+v", sources[0])
 	}
 
-	if !antwort.Found || len(antwort.Sources) != 1 || antwort.Sources[0].Excerpt != "Hämoglobin 14,2 g/dl" {
-		t.Errorf("Antwort = %+v", antwort)
+	if !answer.Found || len(answer.Sources) != 1 || answer.Sources[0].Excerpt != "Hämoglobin 14,2 g/dl" {
+		t.Errorf("answer = %+v", answer)
 	}
 }
 
-func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
-	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idLabor, Score: 0.77, Text: "Wetter?"}},
-		eintraege: suchBestand().eintraege}
-	a := &fake.Answerer{Text: "sollte nie kommen [1]"}
+func TestAsk_BelowThresholdNoModelCall(t *testing.T) {
+	s := &fakeSearch{hits: []core.Hit{{EntryID: idLab, Score: 0.77, Text: "Wetter?"}},
+		entries: searchData().entries}
+	a := &fake.Answerer{Text: "should never come [1]"}
 
-	antwort, err := NeuFragen(s, &fake.Embedder{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
+	answer, err := NewAsker(s, &fake.Embedder{}, a).Ask(context.Background(), "Wie wird das Wetter?", "")
 
-	if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || antwort.Sources == nil || len(antwort.Sources) != 0 {
-		t.Errorf("Antwort = %+v, %v; erwartet fester Satz", antwort, err)
+	if err != nil || answer.Found || answer.Text != core.NotFoundAnswer || answer.Sources == nil || len(answer.Sources) != 0 {
+		t.Errorf("answer = %+v, %v; want the fixed sentence", answer, err)
 	}
 	if a.Calls() != 0 {
-		t.Error("ohne Treffer über der Schwelle darf das Sprachmodell nicht gefragt werden")
+		t.Error("without hits above the threshold the language model must not be asked")
 	}
 }
 
-func TestFragen_NurVerwaisteTreffer(t *testing.T) {
-	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idWeg, Score: 0.95}}, eintraege: map[string]core.EntrySummary{}}
+func TestAsk_OnlyOrphanedHits(t *testing.T) {
+	s := &fakeSearch{hits: []core.Hit{{EntryID: idGone, Score: 0.95}}, entries: map[string]core.EntrySummary{}}
 	a := &fake.Answerer{}
-	antwort, _ := NeuFragen(s, &fake.Embedder{}, a).Ausfuehren(context.Background(), "x", "")
-	if antwort.Found || a.Calls() != 0 {
-		t.Errorf("verwaiste Abschnitte dürfen nicht ans Modell: %+v, %d Aufrufe", antwort, a.Calls())
+	answer, _ := NewAsker(s, &fake.Embedder{}, a).Ask(context.Background(), "x", "")
+	if answer.Found || a.Calls() != 0 {
+		t.Errorf("orphaned chunks must not go to the model: %+v, %d calls", answer, a.Calls())
 	}
 }
 
-func TestFragen_ModellOhneVerweis(t *testing.T) {
-	// Zweite Schicht: Das Modell antwortet selbst mit dem festen Satz oder
-	// ohne Quelle; beides wird zu "nichts gefunden".
+func TestAsk_ModelWithoutReference(t *testing.T) {
+	// Second layer: the model answers with the fixed sentence itself or
+	// without a source; both become "nothing found".
 	for _, text := range []string{core.NotFoundAnswer, "Der Wert war 14,2."} {
 		a := &fake.Answerer{Text: text}
-		antwort, err := NeuFragen(suchBestand(), &fake.Embedder{}, a).Ausfuehren(context.Background(), "x", "")
-		if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || len(antwort.Sources) != 0 {
-			t.Errorf("%q → %+v, %v", text, antwort, err)
+		answer, err := NewAsker(searchData(), &fake.Embedder{}, a).Ask(context.Background(), "x", "")
+		if err != nil || answer.Found || answer.Text != core.NotFoundAnswer || len(answer.Sources) != 0 {
+			t.Errorf("%q → %+v, %v", text, answer, err)
 		}
 	}
 }
 
-func TestFragen_Fehler(t *testing.T) {
-	faelle := []struct {
-		name      string
-		frage     string
-		modul     string
-		suche     *suchAttrappe
-		einbetter *fake.Embedder
-		antworter *fake.Answerer
-		fehler    error
+func TestAsk_Errors(t *testing.T) {
+	cases := []struct {
+		name     string
+		question string
+		module   string
+		search   *fakeSearch
+		embedder *fake.Embedder
+		answerer *fake.Answerer
+		err      error
 	}{
-		{"Frage leer", "  ", "", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionMissing},
-		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionTooLong},
-		{"Modul unbekannt", "x", "sport", suchBestand(), &fake.Embedder{}, &fake.Answerer{}, core.ErrUnknownModule},
-		{"Embedding nicht erreichbar", "x", "", suchBestand(), &fake.Embedder{Err: llm.ErrUnavailable}, &fake.Answerer{}, llm.ErrUnavailable},
-		{"Antworter nicht erreichbar", "x", "", suchBestand(), &fake.Embedder{}, &fake.Answerer{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
-		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &fake.Embedder{}, &fake.Answerer{}, nil},
+		{"question empty", "  ", "", searchData(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionMissing},
+		{"question too long", strings.Repeat("a", 501), "", searchData(), &fake.Embedder{}, &fake.Answerer{}, core.ErrQuestionTooLong},
+		{"module unknown", "x", "sport", searchData(), &fake.Embedder{}, &fake.Answerer{}, core.ErrUnknownModule},
+		{"embedding unavailable", "x", "", searchData(), &fake.Embedder{Err: llm.ErrUnavailable}, &fake.Answerer{}, llm.ErrUnavailable},
+		{"answerer unavailable", "x", "", searchData(), &fake.Embedder{}, &fake.Answerer{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
+		{"vector search fails", "x", "", &fakeSearch{err: errors.New("index missing")}, &fake.Embedder{}, &fake.Answerer{}, nil},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			_, err := NeuFragen(f.suche, f.einbetter, f.antworter).Ausfuehren(context.Background(), f.frage, f.modul)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := NewAsker(c.search, c.embedder, c.answerer).Ask(context.Background(), c.question, c.module)
 			if err == nil {
-				t.Fatal("erwartet Fehler")
+				t.Fatal("want an error")
 			}
-			if f.fehler != nil && !errors.Is(err, f.fehler) {
-				t.Errorf("err = %v, erwartet %v", err, f.fehler)
+			if c.err != nil && !errors.Is(err, c.err) {
+				t.Errorf("err = %v, want %v", err, c.err)
 			}
 		})
 	}
 }
 
-func TestFragen_FrageUndTexteNichtImLog(t *testing.T) {
+func TestAsk_QuestionAndTextsNotInLog(t *testing.T) {
 	var log bytes.Buffer
-	alt := slog.Default()
+	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	t.Cleanup(func() { slog.SetDefault(alt) })
+	t.Cleanup(func() { slog.SetDefault(old) })
 
 	a := &fake.Answerer{Text: "GEHEIME-ANTWORT [1]"}
-	_, _ = NeuFragen(suchBestand(), &fake.Embedder{}, a).Ausfuehren(context.Background(), "GEHEIME-FRAGE", "")
+	_, _ = NewAsker(searchData(), &fake.Embedder{}, a).Ask(context.Background(), "GEHEIME-FRAGE", "")
 
-	for _, geheim := range []string{"GEHEIME-FRAGE", "GEHEIME-ANTWORT", "Hämoglobin"} {
-		if strings.Contains(log.String(), geheim) {
-			t.Errorf("%q im Log: %s", geheim, log.String())
+	for _, secret := range []string{"GEHEIME-FRAGE", "GEHEIME-ANTWORT", "Hämoglobin"} {
+		if strings.Contains(log.String(), secret) {
+			t.Errorf("%q in the log: %s", secret, log.String())
 		}
 	}
-	if !strings.Contains(log.String(), "besterScore=0.89") {
-		t.Errorf("Score fehlt im Log (wichtig fürs Kalibrieren): %s", log.String())
+	if !strings.Contains(log.String(), "bestScore=0.89") {
+		t.Errorf("score missing in the log (important for calibration): %s", log.String())
 	}
 }

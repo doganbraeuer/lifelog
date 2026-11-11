@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/service"
 )
 
 // Fehlercodes für den Upload (API.md 3.1).
@@ -34,8 +34,8 @@ const formularPuffer = 1 << 20 // 1 MiB
 // Hochlader führt den Upload bzw. Text-Import aus. Umgesetzt von
 // service.Hochladen.
 type Hochlader interface {
-	Ausfuehren(ctx context.Context, u service.Upload) (core.Entry, error)
-	TextAusfuehren(ctx context.Context, u service.TextUpload) (core.Entry, error)
+	Upload(ctx context.Context, u service.Upload) (core.Entry, error)
+	UploadText(ctx context.Context, u service.TextUpload) (core.Entry, error)
 }
 
 // art: Datei-Upload oder Text-Import. Bestimmt nur die Fehlermeldungen.
@@ -85,7 +85,7 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 			return
 		case hatText:
 			// Der Text geht unverändert weiter, nicht getrimmt.
-			eintrag, err := h.TextAusfuehren(r.Context(), service.TextUpload{Text: texte[0], Modul: modul})
+			eintrag, err := h.UploadText(r.Context(), service.TextUpload{Text: texte[0], Module: modul})
 			schreibeErgebnis(w, r, eintrag, err, artText, modul)
 			return
 		case len(dateien) == 0 && len(texte) == 1:
@@ -104,8 +104,8 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 			schreibeInternenFehler(w, r, err)
 			return
 		}
-		eintrag, err := h.Ausfuehren(r.Context(), service.Upload{
-			Daten: daten, Dateiname: dateien[0].Filename, Modul: modul,
+		eintrag, err := h.Upload(r.Context(), service.Upload{
+			Data: daten, FileName: dateien[0].Filename, Module: modul,
 		})
 		schreibeErgebnis(w, r, eintrag, err, artDatei, modul)
 	}
@@ -124,7 +124,7 @@ func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Entry
 // schreibeUploadFehler ordnet jedem Fehler des Dienstes den Code aus
 // API.md 3.1 zu.
 func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a art, modul string) {
-	var duplikat *service.DuplikatFehler
+	var duplikat *service.DuplicateError
 	switch {
 	case a == artText && errors.Is(err, core.ErrFileEmpty):
 		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
@@ -136,7 +136,7 @@ func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a a
 			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": core.MaxTextChars})
 	case a == artText && errors.As(err, &duplikat):
 		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diesen Text hast du schon importiert.",
-			map[string]any{"eintragId": duplikat.EintragID})
+			map[string]any{"eintragId": duplikat.EntryID})
 	case errors.Is(err, core.ErrUnknownModule):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
@@ -150,7 +150,7 @@ func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a a
 			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC und PDF.", nil)
 	case errors.As(err, &duplikat):
 		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diese Datei hast du schon hochgeladen.",
-			map[string]any{"eintragId": duplikat.EintragID})
+			map[string]any{"eintragId": duplikat.EntryID})
 	case errors.Is(err, core.ErrUnreadable):
 		schreibeFehler(w, http.StatusUnprocessableEntity, CodeNichtLesbar,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)

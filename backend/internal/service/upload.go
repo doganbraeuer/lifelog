@@ -1,8 +1,8 @@
-// Package service enthält die Abläufe des Backends (Upload, später Fragen,
-// Löschen, Korrigieren). Ein Dienst verbindet Fachlogik (kern), Modelle
-// (modell) und Speicher, kennt aber weder HTTP noch MongoDB oder Gemini
-// direkt, nur deren Schnittstellen. Deshalb lässt er sich vollständig mit
-// Attrappen testen.
+// Package service contains the procedures of the backend (upload,
+// questions, delete, correct). A service connects domain logic (core),
+// models (llm) and storage, but knows neither HTTP nor MongoDB nor Gemini
+// directly, only their interfaces. That is why it can be tested completely
+// with fakes.
 package service
 
 import (
@@ -19,261 +19,260 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// UploadSpeicher ist, was der Upload von der Datenbank braucht. Umgesetzt
-// von speicher.Speicher.
-type UploadSpeicher interface {
-	EntryByHash(ctx context.Context, sha256 string) (id string, gefunden bool, err error)
-	SaveFile(ctx context.Context, id, dateiname, mimeTyp string, daten []byte) error
+// UploadStore is what the upload needs from the database. Implemented by
+// store.Store.
+type UploadStore interface {
+	EntryByHash(ctx context.Context, sha256 string) (id string, found bool, err error)
+	SaveFile(ctx context.Context, id, fileName, mimeType string, data []byte) error
 	DeleteFile(ctx context.Context, id string) error
-	SaveChunks(ctx context.Context, abschnitte []core.Chunk) error
-	DeleteChunks(ctx context.Context, eintragID string) error
+	SaveChunks(ctx context.Context, chunks []core.Chunk) error
+	DeleteChunks(ctx context.Context, entryID string) error
 	SaveEntry(ctx context.Context, e core.Entry) error
 }
 
-// Upload ist eine hochgeladene Datei.
+// Upload is an uploaded file.
 type Upload struct {
-	Daten     []byte
-	Dateiname string
-	Modul     string // leer = Standardmodul
+	Data     []byte
+	FileName string
+	Module   string // empty = default module
 }
 
-// TextUpload ist ein eingegebener Text (Text-Import, API.md 3.1).
+// TextUpload is an entered text (text import, API.md 3.1).
 type TextUpload struct {
-	Text  string // genau wie eingegeben, nicht getrimmt
-	Modul string // leer = Standardmodul
+	Text   string // exactly as entered, not trimmed
+	Module string // empty = default module
 }
 
-// eingang ist, was Datei- und Text-Upload nach der Eingangsprüfung
-// gemeinsam haben. lesen ruft das passende Modell auf.
-type eingang struct {
-	modul     string
-	daten     []byte // wird gespeichert und gehasht
-	dateiname string
-	mimeTyp   string
-	lesen     func(ctx context.Context) (core.Extraction, error)
+// input is what file and text upload have in common after the input
+// checks. read calls the matching model.
+type input struct {
+	module   string
+	data     []byte // is stored and hashed
+	fileName string
+	mimeType string
+	read     func(ctx context.Context) (core.Extraction, error)
 }
 
-// DuplikatFehler: Genau diese Datei gibt es schon. EintragID nennt den
-// vorhandenen Eintrag, damit die App direkt dorthin springen kann.
-type DuplikatFehler struct{ EintragID string }
+// DuplicateError: exactly this file already exists. EntryID names the
+// existing entry, so the app can jump straight to it.
+type DuplicateError struct{ EntryID string }
 
-func (d *DuplikatFehler) Error() string { return "Duplikat von Eintrag " + d.EintragID }
+func (d *DuplicateError) Error() string { return "duplicate of entry " + d.EntryID }
 
-// Is: errors.Is(err, core.ErrDuplikat) trifft auch auf DuplikatFehler zu.
-func (d *DuplikatFehler) Is(ziel error) bool { return ziel == core.ErrDuplicate }
+// Is: errors.Is(err, core.ErrDuplicate) is also true for DuplicateError.
+func (d *DuplicateError) Is(target error) bool { return target == core.ErrDuplicate }
 
-// Hochladen führt den Upload aus (docs/API.md 3.1).
-type Hochladen struct {
-	speicher  UploadSpeicher
-	leser     llm.Reader
-	einbetter llm.Embedder
-	neueID    func() string
-	jetzt     func() time.Time
+// Uploader runs the upload (docs/API.md 3.1).
+type Uploader struct {
+	store    UploadStore
+	reader   llm.Reader
+	embedder llm.Embedder
+	newID    func() string
+	now      func() time.Time
 }
 
-// NeuHochladen erstellt den Dienst. neueID vergibt ObjectIds
-// (speicher.NeueID).
-func NeuHochladen(s UploadSpeicher, l llm.Reader, e llm.Embedder, neueID func() string) *Hochladen {
-	return &Hochladen{speicher: s, leser: l, einbetter: e, neueID: neueID, jetzt: time.Now}
+// NewUploader creates the service. newID assigns ObjectIds (store.NewID).
+func NewUploader(s UploadStore, r llm.Reader, e llm.Embedder, newID func() string) *Uploader {
+	return &Uploader{store: s, reader: r, embedder: e, newID: newID, now: time.Now}
 }
 
-// aufraeumTimeout: Zeit fürs Entfernen halb gespeicherter Teile. Läuft mit
-// eigenem Kontext, weil der Kontext der Anfrage dann oft schon abgelaufen
-// oder abgebrochen ist.
-const aufraeumTimeout = 10 * time.Second
+// cleanupTimeout: time for removing half-stored parts. Runs with a context
+// of its own, because the request's context has often already expired or
+// been canceled by then.
+const cleanupTimeout = 10 * time.Second
 
-// Ausfuehren lädt die Datei hoch, lässt sie auslesen und speichert alles.
+// Upload uploads the file, has it read and stores everything.
 //
-//  1. Modul, Größe und Typ prüfen.
-//  2. Hash berechnen, Duplikat prüfen, VOR dem Modellaufruf.
-//  3. Vision-LLM lesen lassen.
-//  4. Erkennung prüfen (core.PruefeErkennung).
-//  5. Volltext in Abschnitte zerlegen und einbetten.
-//  6. Datei → Abschnitte → Eintrag speichern. Der Eintrag kommt zuletzt;
-//     scheitert ein Schritt, werden die schon gespeicherten Teile wieder
-//     entfernt. So bleibt kein halber Eintrag zurück.
+//  1. Check module, size and type.
+//  2. Compute the hash, check for a duplicate, BEFORE the model call.
+//  3. Have the vision LLM read it.
+//  4. Check the extraction (core.CheckExtraction).
+//  5. Split the full text into chunks and embed them.
+//  6. Store file → chunks → entry. The entry comes last; if a step fails,
+//     the parts already stored are removed again. This way no half entry is
+//     left behind.
 //
-// Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrDateiZuGross,
-// core.ErrDateitypNichtUnterstuetzt, *DuplikatFehler, core.ErrNichtLesbar,
-// core.ErrErkennungUngueltig, llm.ErrAntwortUngueltig,
-// llm.ErrNichtErreichbar oder ein sonstiger (interner) Fehler.
-func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (core.Entry, error) {
-	// 1. Prüfen, ohne Netz und ohne Datenbank.
-	modul, err := core.CheckModule(u.Modul)
+// Errors: core.ErrUnknownModule, core.ErrFileEmpty, core.ErrFileTooLarge,
+// core.ErrUnsupportedFileType, *DuplicateError, core.ErrUnreadable,
+// core.ErrInvalidExtraction, llm.ErrInvalidResponse, llm.ErrUnavailable or
+// another (internal) error.
+func (u *Uploader) Upload(ctx context.Context, up Upload) (core.Entry, error) {
+	// 1. Check, without network and without database.
+	module, err := core.CheckModule(up.Module)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	mimeTyp, err := core.CheckFile(u.Daten)
+	mimeType, err := core.CheckFile(up.Data)
 	if err != nil {
 		return core.Entry{}, err
 	}
 
-	return h.verarbeiten(ctx, eingang{
-		modul:     modul,
-		daten:     u.Daten,
-		dateiname: dateiname(u.Dateiname),
-		mimeTyp:   mimeTyp,
-		lesen: func(ctx context.Context) (core.Extraction, error) {
-			return h.leser.ReadDocument(ctx, u.Daten, mimeTyp, core.AllowedTypes(modul))
+	return u.process(ctx, input{
+		module:   module,
+		data:     up.Data,
+		fileName: safeFileName(up.FileName),
+		mimeType: mimeType,
+		read: func(ctx context.Context) (core.Extraction, error) {
+			return u.reader.ReadDocument(ctx, up.Data, mimeType, core.AllowedTypes(module))
 		},
 	})
 }
 
-// TextAusfuehren importiert einen eingegebenen Text. Ablauf wie bei
-// Ausfuehren, mit drei Unterschieden (API.md 3.1):
+// UploadText imports an entered text. The procedure is as in Upload, with
+// three differences (API.md 3.1):
 //
-//   - Statt Größe und Typ prüft core.PruefeText (leer, UTF-8, 100 000
-//     Zeichen).
-//   - Gespeichert und gehasht werden die UTF-8-Bytes des Texts, als
-//     text.txt mit text/plain; charset=utf-8.
-//   - Das Sprachmodell (Leser.TextLesen) liefert nur Datum, Quelle, Typ
-//     und Infos. volltext ist der eingegebene Text, unverändert, und ein
-//     Text gilt immer als lesbar.
+//   - Instead of size and type, core.CheckText checks the text (empty,
+//     UTF-8, 100,000 characters).
+//   - The UTF-8 bytes of the text are stored and hashed, as text.txt with
+//     text/plain; charset=utf-8.
+//   - The language model (Reader.ReadText) only returns date, issuer, type
+//     and facts. The full text is the entered text, unchanged, and a text
+//     always counts as readable.
 //
-// Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrTextKeinUTF8,
-// core.ErrTextZuLang, *DuplikatFehler, core.ErrErkennungUngueltig,
-// llm.ErrAntwortUngueltig, llm.ErrNichtErreichbar oder ein interner
-// Fehler.
-func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (core.Entry, error) {
-	modul, err := core.CheckModule(u.Modul)
+// Errors: core.ErrUnknownModule, core.ErrFileEmpty, core.ErrTextNotUTF8,
+// core.ErrTextTooLong, *DuplicateError, core.ErrInvalidExtraction,
+// llm.ErrInvalidResponse, llm.ErrUnavailable or an internal error.
+func (u *Uploader) UploadText(ctx context.Context, up TextUpload) (core.Entry, error) {
+	module, err := core.CheckModule(up.Module)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	if err := core.CheckText(u.Text); err != nil {
+	if err := core.CheckText(up.Text); err != nil {
 		return core.Entry{}, err
 	}
-	return h.verarbeiten(ctx, eingang{
-		modul:     modul,
-		daten:     []byte(u.Text), // Go-Strings sind UTF-8: genau diese Bytes
-		dateiname: core.TextFileName,
-		mimeTyp:   core.MimeText,
-		lesen: func(ctx context.Context) (core.Extraction, error) {
-			e, err := h.leser.ReadText(ctx, u.Text, core.AllowedTypes(modul))
+	return u.process(ctx, input{
+		module:   module,
+		data:     []byte(up.Text), // Go strings are UTF-8: exactly these bytes
+		fileName: core.TextFileName,
+		mimeType: core.MimeText,
+		read: func(ctx context.Context) (core.Extraction, error) {
+			x, err := u.reader.ReadText(ctx, up.Text, core.AllowedTypes(module))
 			if err != nil {
 				return core.Extraction{}, err
 			}
-			e.Readable = true
-			e.FullText = u.Text
-			return e, nil
+			x.Readable = true
+			x.FullText = up.Text
+			return x, nil
 		},
 	})
 }
 
-// verarbeiten führt die Schritte 2–6 aus, gleich für Datei und Text.
-func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Entry, error) {
-	modul := ein.modul
+// process runs steps 2–6, the same for file and text.
+func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
+	module := in.module
 
-	// 2. Duplikat prüfen, bevor ein Modellaufruf etwas kostet.
-	summe := sha256.Sum256(ein.daten)
-	hash := hex.EncodeToString(summe[:])
-	if id, gefunden, err := h.speicher.EntryByHash(ctx, hash); err != nil {
+	// 2. Check for a duplicate before a model call costs anything.
+	sum := sha256.Sum256(in.data)
+	hash := hex.EncodeToString(sum[:])
+	if id, found, err := u.store.EntryByHash(ctx, hash); err != nil {
 		return core.Entry{}, err
-	} else if gefunden {
-		return core.Entry{}, &DuplikatFehler{EintragID: id}
+	} else if found {
+		return core.Entry{}, &DuplicateError{EntryID: id}
 	}
 
-	// 3. Lesen.
-	erkennung, err := ein.lesen(ctx)
+	// 3. Read.
+	extraction, err := in.read(ctx)
 	if err != nil {
 		return core.Entry{}, err
 	}
 
-	// 4. Prüfen. Ins Log kommen nur Feldnamen, nie Werte (Gesundheitsdaten).
-	eintrag, ausgelassen, err := core.CheckExtraction(erkennung, modul)
-	if len(ausgelassen) > 0 {
-		slog.Warn("unvollständige Infos weggelassen", "felder", ausgelassen)
+	// 4. Check. Only field names go into the log, never values (health data).
+	entry, dropped, err := core.CheckExtraction(extraction, module)
+	if len(dropped) > 0 {
+		slog.Warn("incomplete facts dropped", "fields", dropped)
 	}
 	if err != nil {
-		var ef *core.ExtractionError
-		if errors.As(err, &ef) {
-			slog.Warn("Erkennung ungültig", "feld", ef.Field, "grund", ef.Reason)
+		var xe *core.ExtractionError
+		if errors.As(err, &xe) {
+			slog.Warn("invalid extraction", "field", xe.Field, "reason", xe.Reason)
 		}
 		return core.Entry{}, err
 	}
 
-	// 5. Abschnitte und Embeddings.
-	texte := core.SplitIntoChunks(eintrag.FullText, core.ChunkMaxChars)
-	vektoren, err := h.einbetter.EmbedChunks(ctx, texte)
+	// 5. Chunks and embeddings.
+	texts := core.SplitIntoChunks(entry.FullText, core.ChunkMaxChars)
+	vectors, err := u.embedder.EmbedChunks(ctx, texts)
 	if err != nil {
 		return core.Entry{}, err
 	}
-	if len(vektoren) != len(texte) {
-		return core.Entry{}, fmt.Errorf("%d Embeddings für %d Abschnitte: %w",
-			len(vektoren), len(texte), llm.ErrInvalidResponse)
+	if len(vectors) != len(texts) {
+		return core.Entry{}, fmt.Errorf("%d embeddings for %d chunks: %w",
+			len(vectors), len(texts), llm.ErrInvalidResponse)
 	}
 
-	// IDs und Metadaten vergeben. Millisekunden, weil MongoDB Zeitpunkte so
-	// genau speichert: Antwort und spätere Abfrage zeigen dann dasselbe.
-	eintrag.ID = h.neueID()
-	eintrag.ImportedAt = h.jetzt().UTC().Truncate(time.Millisecond)
-	eintrag.File = core.File{
-		ID:       h.neueID(),
-		FileName: ein.dateiname,
-		MimeType: ein.mimeTyp,
-		Size:     int64(len(ein.daten)),
+	// Assign IDs and metadata. Milliseconds, because MongoDB stores times
+	// with that precision: the response and a later query then show the
+	// same.
+	entry.ID = u.newID()
+	entry.ImportedAt = u.now().UTC().Truncate(time.Millisecond)
+	entry.File = core.File{
+		ID:       u.newID(),
+		FileName: in.fileName,
+		MimeType: in.mimeType,
+		Size:     int64(len(in.data)),
 		Sha256:   hash,
 	}
-	abschnitte := make([]core.Chunk, len(texte))
-	for i, t := range texte {
-		abschnitte[i] = core.Chunk{
-			EntryID: eintrag.ID, Module: modul, Position: i + 1, Text: t, Embedding: vektoren[i],
+	chunks := make([]core.Chunk, len(texts))
+	for i, t := range texts {
+		chunks[i] = core.Chunk{
+			EntryID: entry.ID, Module: module, Position: i + 1, Text: t, Embedding: vectors[i],
 		}
 	}
 
-	// 6. Speichern, Eintrag zuletzt.
-	if err := h.speichern(ctx, eintrag, abschnitte, ein.daten); err != nil {
+	// 6. Store, entry last.
+	if err := u.save(ctx, entry, chunks, in.data); err != nil {
 		return core.Entry{}, err
 	}
-	return eintrag, nil
+	return entry, nil
 }
 
-func (h *Hochladen) speichern(ctx context.Context, e core.Entry, abschnitte []core.Chunk, daten []byte) error {
-	if err := h.speicher.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, daten); err != nil {
-		h.aufraeumen(ctx, e, false)
+func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, data []byte) error {
+	if err := u.store.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, data); err != nil {
+		u.cleanup(ctx, e, false)
 		return err
 	}
-	if err := h.speicher.SaveChunks(ctx, abschnitte); err != nil {
-		h.aufraeumen(ctx, e, true)
+	if err := u.store.SaveChunks(ctx, chunks); err != nil {
+		u.cleanup(ctx, e, true)
 		return err
 	}
-	err := h.speicher.SaveEntry(ctx, e)
+	err := u.store.SaveEntry(ctx, e)
 	if err == nil {
 		return nil
 	}
-	h.aufraeumen(ctx, e, true)
+	u.cleanup(ctx, e, true)
 
 	if errors.Is(err, core.ErrDuplicate) {
-		// Jemand hat dieselbe Datei gleichzeitig hochgeladen und war
-		// schneller. Den vorhandenen Eintrag nennen wie bei Schritt 2.
-		if id, gefunden, ferr := h.speicher.EntryByHash(ctx, e.File.Sha256); ferr == nil && gefunden {
-			return &DuplikatFehler{EintragID: id}
+		// Someone uploaded the same file at the same time and was faster.
+		// Name the existing entry as in step 2.
+		if id, found, ferr := u.store.EntryByHash(ctx, e.File.Sha256); ferr == nil && found {
+			return &DuplicateError{EntryID: id}
 		}
 	}
 	return err
 }
 
-// aufraeumen entfernt Datei und (falls schon gespeichert) Abschnitte eines
-// gescheiterten Uploads. Auch die Datei wird bei einem Fehler in
-// DateiSpeichern gelöscht: GridFS kann schon einzelne Stücke geschrieben
-// haben. Scheitert das Aufräumen, steht es im Log; der Eintrag selbst
-// existiert ja nicht, die App sieht also nichts Halbes.
-func (h *Hochladen) aufraeumen(ctx context.Context, e core.Entry, abschnitteAuch bool) {
-	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), aufraeumTimeout)
-	defer abbrechen()
+// cleanup removes the file and (if already stored) the chunks of a failed
+// upload. The file is also deleted after an error in SaveFile: GridFS may
+// already have written some pieces. If cleaning up fails, it is logged; the
+// entry itself does not exist, so the app sees nothing half-done.
+func (u *Uploader) cleanup(ctx context.Context, e core.Entry, withChunks bool) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
 
-	if abschnitteAuch {
-		if err := h.speicher.DeleteChunks(ctx, e.ID); err != nil {
-			slog.Error("Aufräumen: Abschnitte nicht gelöscht", "eintrag", e.ID, "fehler", err)
+	if withChunks {
+		if err := u.store.DeleteChunks(ctx, e.ID); err != nil {
+			slog.Error("cleanup: chunks not deleted", "entry", e.ID, "error", err)
 		}
 	}
-	if err := h.speicher.DeleteFile(ctx, e.File.ID); err != nil {
-		slog.Error("Aufräumen: Datei nicht gelöscht", "datei", e.File.ID, "fehler", err)
+	if err := u.store.DeleteFile(ctx, e.File.ID); err != nil {
+		slog.Error("cleanup: file not deleted", "file", e.File.ID, "error", err)
 	}
 }
 
-// dateiname macht aus dem Namen beim Upload einen sicheren Anzeigenamen:
-// ohne Pfad und Steuerzeichen, höchstens 200 Zeichen, nie leer.
-func dateiname(name string) string {
+// safeFileName turns the name at upload into a safe display name: without
+// path and control characters, at most 200 characters, never empty. The
+// fallback "dokument" is shown in the app, so it stays German.
+func safeFileName(name string) string {
 	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
 		name = name[i+1:]
 	}

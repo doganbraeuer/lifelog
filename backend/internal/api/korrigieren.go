@@ -24,7 +24,7 @@ const maxKorrekturBody = 64 << 10
 
 // Korrigierer korrigiert einen Eintrag. Umgesetzt von dienst.Korrigieren.
 type Korrigierer interface {
-	Ausfuehren(ctx context.Context, id string, a core.Change) (core.Entry, error)
+	Correct(ctx context.Context, id string, a core.Change) (core.Entry, error)
 }
 
 // Felder des Eintrags, die es gibt, aber nicht korrigiert werden dürfen.
@@ -53,7 +53,7 @@ func korrigierenHandler(k Korrigierer) http.HandlerFunc {
 			return
 		}
 
-		e, err := k.Ausfuehren(r.Context(), id, aenderung)
+		e, err := k.Correct(r.Context(), id, aenderung)
 		if err != nil {
 			schreibeKorrekturFehler(w, r, err)
 			return

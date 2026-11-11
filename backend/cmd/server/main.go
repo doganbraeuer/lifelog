@@ -80,10 +80,10 @@ func starten() error {
 		Handler: api.NeuerRouter(api.Abhaengigkeiten{
 			DB:          db,
 			Eintraege:   db,
-			Hochladen:   service.NeuHochladen(db, g, g, store.NewID),
-			Fragen:      service.NeuFragen(db, g, g),
-			Korrigieren: service.NeuKorrigieren(db),
-			Loeschen:    service.NeuLoeschen(db),
+			Hochladen:   service.NewUploader(db, g, g, store.NewID),
+			Fragen:      service.NewAsker(db, g, g),
+			Korrigieren: service.NewCorrector(db),
+			Loeschen:    service.NewDeleter(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz

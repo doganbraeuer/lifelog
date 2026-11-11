@@ -24,7 +24,7 @@ type korrigiererAttrappe struct {
 	aenderung  core.Change
 }
 
-func (k *korrigiererAttrappe) Ausfuehren(_ context.Context, id string, a core.Change) (core.Entry, error) {
+func (k *korrigiererAttrappe) Correct(_ context.Context, id string, a core.Change) (core.Entry, error) {
 	k.aufgerufen, k.id, k.aenderung = true, id, a
 	return k.eintrag, k.err
 }

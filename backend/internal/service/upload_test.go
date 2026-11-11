@@ -16,353 +16,352 @@ import (
 	"lifelog/backend/internal/llm/fake"
 )
 
-// speicherAttrappe protokolliert alle Aufrufe in Reihenfolge und kann bei
-// einzelnen Methoden scheitern.
-type speicherAttrappe struct {
-	hashes     map[string]string // sha256 → Eintrag-ID (vorhandene Einträge)
-	fehler     map[string]error  // Methodenname → Fehler
-	protokoll  []string
-	eintraege  []core.Entry
-	abschnitte []core.Chunk
-	dateien    map[string][]byte
+// fakeStore records all calls in order and can fail for single methods.
+type fakeStore struct {
+	hashes  map[string]string // sha256 → entry ID (existing entries)
+	errs    map[string]error  // method name → error
+	log     []string
+	entries []core.Entry
+	chunks  []core.Chunk
+	files   map[string][]byte
 }
 
-func neuerSpeicher() *speicherAttrappe {
-	return &speicherAttrappe{hashes: map[string]string{}, fehler: map[string]error{}, dateien: map[string][]byte{}}
+func newFakeStore() *fakeStore {
+	return &fakeStore{hashes: map[string]string{}, errs: map[string]error{}, files: map[string][]byte{}}
 }
 
-func (s *speicherAttrappe) EntryByHash(_ context.Context, sha string) (string, bool, error) {
-	s.protokoll = append(s.protokoll, "EintragMitHash")
-	if err := s.fehler["EintragMitHash"]; err != nil {
+func (s *fakeStore) EntryByHash(_ context.Context, sha string) (string, bool, error) {
+	s.log = append(s.log, "EntryByHash")
+	if err := s.errs["EntryByHash"]; err != nil {
 		return "", false, err
 	}
 	id, ok := s.hashes[sha]
 	return id, ok, nil
 }
 
-func (s *speicherAttrappe) SaveFile(_ context.Context, id, _, _ string, daten []byte) error {
-	s.protokoll = append(s.protokoll, "DateiSpeichern")
-	if err := s.fehler["DateiSpeichern"]; err != nil {
+func (s *fakeStore) SaveFile(_ context.Context, id, _, _ string, data []byte) error {
+	s.log = append(s.log, "SaveFile")
+	if err := s.errs["SaveFile"]; err != nil {
 		return err
 	}
-	s.dateien[id] = daten
+	s.files[id] = data
 	return nil
 }
 
-func (s *speicherAttrappe) DeleteFile(_ context.Context, id string) error {
-	s.protokoll = append(s.protokoll, "DateiLoeschen")
-	delete(s.dateien, id)
+func (s *fakeStore) DeleteFile(_ context.Context, id string) error {
+	s.log = append(s.log, "DeleteFile")
+	delete(s.files, id)
 	return nil
 }
 
-func (s *speicherAttrappe) SaveChunks(_ context.Context, a []core.Chunk) error {
-	s.protokoll = append(s.protokoll, "AbschnitteSpeichern")
-	if err := s.fehler["AbschnitteSpeichern"]; err != nil {
+func (s *fakeStore) SaveChunks(_ context.Context, c []core.Chunk) error {
+	s.log = append(s.log, "SaveChunks")
+	if err := s.errs["SaveChunks"]; err != nil {
 		return err
 	}
-	s.abschnitte = append(s.abschnitte, a...)
+	s.chunks = append(s.chunks, c...)
 	return nil
 }
 
-func (s *speicherAttrappe) DeleteChunks(_ context.Context, eintragID string) error {
-	s.protokoll = append(s.protokoll, "AbschnitteLoeschen")
-	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a core.Chunk) bool { return a.EntryID == eintragID })
+func (s *fakeStore) DeleteChunks(_ context.Context, entryID string) error {
+	s.log = append(s.log, "DeleteChunks")
+	s.chunks = slices.DeleteFunc(s.chunks, func(c core.Chunk) bool { return c.EntryID == entryID })
 	return nil
 }
 
-func (s *speicherAttrappe) SaveEntry(_ context.Context, e core.Entry) error {
-	s.protokoll = append(s.protokoll, "EintragSpeichern")
-	if err := s.fehler["EintragSpeichern"]; err != nil {
+func (s *fakeStore) SaveEntry(_ context.Context, e core.Entry) error {
+	s.log = append(s.log, "SaveEntry")
+	if err := s.errs["SaveEntry"]; err != nil {
 		if errors.Is(err, core.ErrDuplicate) {
-			// Wie bei einem gleichzeitigen Upload: Jetzt existiert der andere.
+			// As with a simultaneous upload: now the other one exists.
 			s.hashes[e.File.Sha256] = "aaaaaaaaaaaaaaaaaaaaaaaa"
 		}
 		return err
 	}
-	s.eintraege = append(s.eintraege, e)
+	s.entries = append(s.entries, e)
 	return nil
 }
 
-// leer: Nach einem gescheiterten Upload darf nichts übrig bleiben.
-func (s *speicherAttrappe) leer() bool {
-	return len(s.eintraege) == 0 && len(s.abschnitte) == 0 && len(s.dateien) == 0
+// isEmpty: after a failed upload nothing may be left.
+func (s *fakeStore) isEmpty() bool {
+	return len(s.entries) == 0 && len(s.chunks) == 0 && len(s.files) == 0
 }
 
-func zeiger(s string) *string { return &s }
+func ptr(s string) *string { return &s }
 
 const pdf = "%PDF-1.7\nsynthetischer Befund"
 
-func erkennung() core.Extraction {
+func extraction() core.Extraction {
 	return core.Extraction{
 		Readable:     true,
-		DocumentDate: zeiger("2026-10-14"),
-		Issuer:       zeiger("Labor Muster GmbH"),
+		DocumentDate: ptr("2026-10-14"),
+		Issuer:       ptr("Labor Muster GmbH"),
 		Type:         "laborbefund",
 		FullText:     "Labor Muster GmbH\n\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/dl",
 		Facts: []core.ExtractedFact{
-			{Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
-			{Name: "CRP", Value: "<0,5", Unit: zeiger("mg/dl")},
+			{Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+			{Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},
 		},
 	}
 }
 
-type aufbau struct {
-	speicher  *speicherAttrappe
-	leser     *fake.Reader
-	einbetter *fake.Embedder
-	dienst    *Hochladen
+type setup struct {
+	store    *fakeStore
+	reader   *fake.Reader
+	embedder *fake.Embedder
+	uploader *Uploader
 }
 
-func neuerAufbau() aufbau {
-	a := aufbau{
-		speicher:  neuerSpeicher(),
-		leser:     &fake.Reader{Extraction: erkennung()},
-		einbetter: &fake.Embedder{},
+func newSetup() setup {
+	s := setup{
+		store:    newFakeStore(),
+		reader:   &fake.Reader{Extraction: extraction()},
+		embedder: &fake.Embedder{},
 	}
 	n := 0
-	a.dienst = NeuHochladen(a.speicher, a.leser, a.einbetter, func() string {
+	s.uploader = NewUploader(s.store, s.reader, s.embedder, func() string {
 		n++
-		return fmt.Sprintf("%024d", n) // 000…001, 000…002: gültige ObjectId-Form
+		return fmt.Sprintf("%024d", n) // 000…001, 000…002: valid ObjectId form
 	})
-	a.dienst.jetzt = func() time.Time { return time.Date(2026, 11, 4, 13, 0, 0, 123456789, time.UTC) }
-	return a
+	s.uploader.now = func() time.Time { return time.Date(2026, 11, 4, 13, 0, 0, 123456789, time.UTC) }
+	return s
 }
 
-func TestHochladen_Erfolg(t *testing.T) {
-	a := neuerAufbau()
-	e, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf), Dateiname: "befund.pdf"})
+func TestUpload_Success(t *testing.T) {
+	s := newSetup()
+	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Reihenfolge: erst prüfen, dann Datei → Abschnitte → Eintrag zuletzt.
-	erwartet := []string{"EintragMitHash", "DateiSpeichern", "AbschnitteSpeichern", "EintragSpeichern"}
-	if !slices.Equal(a.speicher.protokoll, erwartet) {
-		t.Errorf("Reihenfolge = %v, erwartet %v", a.speicher.protokoll, erwartet)
+	// Order: check first, then file → chunks → entry last.
+	want := []string{"EntryByHash", "SaveFile", "SaveChunks", "SaveEntry"}
+	if !slices.Equal(s.store.log, want) {
+		t.Errorf("order = %v, want %v", s.store.log, want)
 	}
 
 	if e.ID == "" || e.File.ID == "" || e.ID == e.File.ID {
-		t.Errorf("IDs: Eintrag %q, Datei %q", e.ID, e.File.ID)
+		t.Errorf("IDs: entry %q, file %q", e.ID, e.File.ID)
 	}
 	if e.Module != "gesundheit" || e.Type != "laborbefund" {
-		t.Errorf("Modul/Typ = %q/%q", e.Module, e.Type)
+		t.Errorf("module/type = %q/%q", e.Module, e.Type)
 	}
 	if !e.ImportedAt.Equal(time.Date(2026, 11, 4, 13, 0, 0, 123000000, time.UTC)) {
-		t.Errorf("Importdatum = %v, erwartet auf Millisekunden gekürzt", e.ImportedAt)
+		t.Errorf("ImportedAt = %v, want truncated to milliseconds", e.ImportedAt)
 	}
-	d := e.File
-	if d.MimeType != core.MimePDF || d.Size != int64(len(pdf)) || d.FileName != "befund.pdf" || len(d.Sha256) != 64 {
-		t.Errorf("Datei = %+v", d)
+	f := e.File
+	if f.MimeType != core.MimePDF || f.Size != int64(len(pdf)) || f.FileName != "befund.pdf" || len(f.Sha256) != 64 {
+		t.Errorf("file = %+v", f)
 	}
 	if e.Corrections == nil || len(e.Corrections) != 0 {
-		t.Errorf("Korrekturen = %#v", e.Corrections)
+		t.Errorf("corrections = %#v", e.Corrections)
 	}
 	if len(e.Facts) != 2 || e.Facts[0].ID != "i1" {
-		t.Errorf("Infos = %+v", e.Facts)
+		t.Errorf("facts = %+v", e.Facts)
 	}
 
-	// Abschnitte gehören zum Eintrag, tragen das Modul und sind nummeriert.
-	ab := a.speicher.abschnitte
-	if len(ab) == 0 {
-		t.Fatal("keine Abschnitte gespeichert")
+	// Chunks belong to the entry, carry the module and are numbered.
+	chunks := s.store.chunks
+	if len(chunks) == 0 {
+		t.Fatal("no chunks stored")
 	}
-	for i, x := range ab {
-		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != llm.EmbeddingDimensions {
-			t.Errorf("Abschnitt %d = %+v", i, x)
+	for i, c := range chunks {
+		if c.EntryID != e.ID || c.Module != "gesundheit" || c.Position != i+1 || len(c.Embedding) != llm.EmbeddingDimensions {
+			t.Errorf("chunk %d = %+v", i, c)
 		}
 	}
-	if !bytes.Equal(a.speicher.dateien[d.ID], []byte(pdf)) {
-		t.Error("Datei nicht unverändert gespeichert")
+	if !bytes.Equal(s.store.files[f.ID], []byte(pdf)) {
+		t.Error("file not stored unchanged")
 	}
-	if len(a.speicher.eintraege) != 1 {
-		t.Errorf("%d Einträge gespeichert", len(a.speicher.eintraege))
+	if len(s.store.entries) != 1 {
+		t.Errorf("%d entries stored", len(s.store.entries))
 	}
 }
 
-func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
-	a := neuerAufbau()
-	if _, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)}); err != nil {
+func TestUpload_DuplicateBeforeModelCall(t *testing.T) {
+	s := newSetup()
+	if _, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)}); err != nil {
 		t.Fatal(err)
 	}
-	vorhanden := a.speicher.eintraege[0]
-	a.speicher.hashes[vorhanden.File.Sha256] = vorhanden.ID
-	leserVorher, einbetterVorher := a.leser.Calls(), a.einbetter.Calls()
+	existing := s.store.entries[0]
+	s.store.hashes[existing.File.Sha256] = existing.ID
+	readerBefore, embedderBefore := s.reader.Calls(), s.embedder.Calls()
 
-	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
+	_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
 
-	var df *DuplikatFehler
-	if !errors.As(err, &df) || df.EintragID != vorhanden.ID {
-		t.Fatalf("erwartet DuplikatFehler mit %q, bekommen %v", vorhanden.ID, err)
+	var de *DuplicateError
+	if !errors.As(err, &de) || de.EntryID != existing.ID {
+		t.Fatalf("want DuplicateError with %q, got %v", existing.ID, err)
 	}
 	if !errors.Is(err, core.ErrDuplicate) {
-		t.Error("DuplikatFehler muss auch core.ErrDuplikat sein")
+		t.Error("DuplicateError must also be core.ErrDuplicate")
 	}
-	if a.leser.Calls() != leserVorher || a.einbetter.Calls() != einbetterVorher {
-		t.Error("bei einem Duplikat darf kein Modell aufgerufen werden")
+	if s.reader.Calls() != readerBefore || s.embedder.Calls() != embedderBefore {
+		t.Error("no model may be called for a duplicate")
 	}
-	if len(a.speicher.eintraege) != 1 {
-		t.Error("Duplikat wurde gespeichert")
+	if len(s.store.entries) != 1 {
+		t.Error("duplicate was stored")
 	}
 }
 
-func TestHochladen_PruefungenVorJedemAufruf(t *testing.T) {
-	faelle := []struct {
+func TestUpload_ChecksBeforeAnyCall(t *testing.T) {
+	cases := []struct {
 		name   string
 		upload Upload
-		fehler error
+		err    error
 	}{
-		{"leere Datei", Upload{Daten: nil}, core.ErrFileEmpty},
-		{"zu groß", Upload{Daten: append([]byte("%PDF-"), make([]byte, core.MaxFileBytes)...)}, core.ErrFileTooLarge},
-		{"falscher Typ", Upload{Daten: []byte("nur Text")}, core.ErrUnsupportedFileType},
-		{"unbekanntes Modul", Upload{Daten: []byte(pdf), Modul: "sport"}, core.ErrUnknownModule},
+		{"empty file", Upload{Data: nil}, core.ErrFileEmpty},
+		{"too large", Upload{Data: append([]byte("%PDF-"), make([]byte, core.MaxFileBytes)...)}, core.ErrFileTooLarge},
+		{"wrong type", Upload{Data: []byte("nur Text")}, core.ErrUnsupportedFileType},
+		{"unknown module", Upload{Data: []byte(pdf), Module: "sport"}, core.ErrUnknownModule},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			a := neuerAufbau()
-			_, err := a.dienst.Ausfuehren(context.Background(), f.upload)
-			if !errors.Is(err, f.fehler) {
-				t.Errorf("erwartet %v, bekommen %v", f.fehler, err)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newSetup()
+			_, err := s.uploader.Upload(context.Background(), c.upload)
+			if !errors.Is(err, c.err) {
+				t.Errorf("want %v, got %v", c.err, err)
 			}
-			if len(a.speicher.protokoll) != 0 || a.leser.Calls() != 0 {
-				t.Errorf("vor bestandener Prüfung darf nichts aufgerufen werden: %v", a.speicher.protokoll)
+			if len(s.store.log) != 0 || s.reader.Calls() != 0 {
+				t.Errorf("nothing may be called before the checks pass: %v", s.store.log)
 			}
 		})
 	}
 }
 
-func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
-	nichtLesbar := erkennung()
-	nichtLesbar.Readable = false
-	falscherTyp := erkennung()
-	falscherTyp.Type = "kochrezept"
+func TestUpload_ErrorsBeforeSaving(t *testing.T) {
+	unreadable := extraction()
+	unreadable.Readable = false
+	wrongType := extraction()
+	wrongType.Type = "kochrezept"
 
-	faelle := []struct {
-		name      string
-		leser     *fake.Reader
-		einbetter *fake.Embedder
-		fehler    error
+	cases := []struct {
+		name     string
+		reader   *fake.Reader
+		embedder *fake.Embedder
+		err      error
 	}{
-		{"Vision-LLM nicht erreichbar", &fake.Reader{Err: llm.ErrUnavailable}, &fake.Embedder{}, llm.ErrUnavailable},
-		{"Antwort ungültig", &fake.Reader{Err: llm.ErrInvalidResponse}, &fake.Embedder{}, llm.ErrInvalidResponse},
-		{"nicht lesbar", &fake.Reader{Extraction: nichtLesbar}, &fake.Embedder{}, core.ErrUnreadable},
-		{"Erkennung ungültig", &fake.Reader{Extraction: falscherTyp}, &fake.Embedder{}, core.ErrInvalidExtraction},
-		{"Embedding nicht erreichbar", &fake.Reader{Extraction: erkennung()}, &fake.Embedder{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
+		{"vision LLM unavailable", &fake.Reader{Err: llm.ErrUnavailable}, &fake.Embedder{}, llm.ErrUnavailable},
+		{"invalid response", &fake.Reader{Err: llm.ErrInvalidResponse}, &fake.Embedder{}, llm.ErrInvalidResponse},
+		{"unreadable", &fake.Reader{Extraction: unreadable}, &fake.Embedder{}, core.ErrUnreadable},
+		{"invalid extraction", &fake.Reader{Extraction: wrongType}, &fake.Embedder{}, core.ErrInvalidExtraction},
+		{"embedding unavailable", &fake.Reader{Extraction: extraction()}, &fake.Embedder{Err: llm.ErrUnavailable}, llm.ErrUnavailable},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			a := neuerAufbau()
-			a.dienst.leser, a.dienst.einbetter = f.leser, f.einbetter
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newSetup()
+			s.uploader.reader, s.uploader.embedder = c.reader, c.embedder
 
-			_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
+			_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
 
-			if !errors.Is(err, f.fehler) {
-				t.Errorf("erwartet %v, bekommen %v", f.fehler, err)
+			if !errors.Is(err, c.err) {
+				t.Errorf("want %v, got %v", c.err, err)
 			}
-			if !slices.Equal(a.speicher.protokoll, []string{"EintragMitHash"}) {
-				t.Errorf("nach einem Modellfehler darf nichts gespeichert werden: %v", a.speicher.protokoll)
+			if !slices.Equal(s.store.log, []string{"EntryByHash"}) {
+				t.Errorf("nothing may be stored after a model error: %v", s.store.log)
 			}
 		})
 	}
 }
 
-func TestHochladen_AufraeumenBeiSpeicherfehlern(t *testing.T) {
-	dbFehler := errors.New("Verbindung verloren")
-	faelle := []struct {
-		name      string
-		scheitert string
-		protokoll []string
+func TestUpload_CleanupOnStoreErrors(t *testing.T) {
+	dbErr := errors.New("connection lost")
+	cases := []struct {
+		name  string
+		fails string
+		log   []string
 	}{
-		{"Datei scheitert", "DateiSpeichern",
-			[]string{"EintragMitHash", "DateiSpeichern", "DateiLoeschen"}},
-		{"Abschnitte scheitern", "AbschnitteSpeichern",
-			[]string{"EintragMitHash", "DateiSpeichern", "AbschnitteSpeichern", "AbschnitteLoeschen", "DateiLoeschen"}},
-		{"Eintrag scheitert", "EintragSpeichern",
-			[]string{"EintragMitHash", "DateiSpeichern", "AbschnitteSpeichern", "EintragSpeichern", "AbschnitteLoeschen", "DateiLoeschen"}},
+		{"file fails", "SaveFile",
+			[]string{"EntryByHash", "SaveFile", "DeleteFile"}},
+		{"chunks fail", "SaveChunks",
+			[]string{"EntryByHash", "SaveFile", "SaveChunks", "DeleteChunks", "DeleteFile"}},
+		{"entry fails", "SaveEntry",
+			[]string{"EntryByHash", "SaveFile", "SaveChunks", "SaveEntry", "DeleteChunks", "DeleteFile"}},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			a := neuerAufbau()
-			a.speicher.fehler[f.scheitert] = dbFehler
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newSetup()
+			s.store.errs[c.fails] = dbErr
 
-			_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
+			_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
 
-			if !errors.Is(err, dbFehler) {
+			if !errors.Is(err, dbErr) {
 				t.Errorf("err = %v", err)
 			}
-			if !slices.Equal(a.speicher.protokoll, f.protokoll) {
-				t.Errorf("Protokoll = %v\nerwartet   %v", a.speicher.protokoll, f.protokoll)
+			if !slices.Equal(s.store.log, c.log) {
+				t.Errorf("log = %v\nwant  %v", s.store.log, c.log)
 			}
-			if !a.speicher.leer() {
-				t.Error("nach dem Aufräumen ist noch etwas gespeichert")
+			if !s.store.isEmpty() {
+				t.Error("something is still stored after cleanup")
 			}
 		})
 	}
 }
 
-func TestHochladen_GleichzeitigesDuplikat(t *testing.T) {
-	// Beide Uploads kommen an der Prüfung in Schritt 2 vorbei; erst der
-	// eindeutige Index beim Speichern merkt es.
-	a := neuerAufbau()
-	a.speicher.fehler["EintragSpeichern"] = core.ErrDuplicate
+func TestUpload_SimultaneousDuplicate(t *testing.T) {
+	// Both uploads pass the check in step 2; only the unique index notices
+	// when saving.
+	s := newSetup()
+	s.store.errs["SaveEntry"] = core.ErrDuplicate
 
-	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
+	_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
 
-	var df *DuplikatFehler
-	if !errors.As(err, &df) || df.EintragID != "aaaaaaaaaaaaaaaaaaaaaaaa" {
-		t.Fatalf("erwartet DuplikatFehler mit vorhandener ID, bekommen %v", err)
+	var de *DuplicateError
+	if !errors.As(err, &de) || de.EntryID != "aaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Fatalf("want DuplicateError with the existing ID, got %v", err)
 	}
-	if !a.speicher.leer() {
-		t.Error("eigene Datei und Abschnitte müssen wieder entfernt sein")
+	if !s.store.isEmpty() {
+		t.Error("own file and chunks must be removed again")
 	}
 }
 
-func TestHochladen_AufraeumenAuchNachAbbruch(t *testing.T) {
-	// Die App bricht ab, während gespeichert wird. Das Aufräumen braucht
-	// einen eigenen Kontext, sonst scheitert es selbst am Abbruch.
-	a := neuerAufbau()
-	ctx, abbrechen := context.WithCancel(context.Background())
-	a.speicher.fehler["EintragSpeichern"] = context.Canceled
-	abbrechen()
+func TestUpload_CleanupAlsoAfterCancel(t *testing.T) {
+	// The app cancels while saving. Cleaning up needs a context of its own,
+	// otherwise it fails itself because of the cancellation.
+	s := newSetup()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.store.errs["SaveEntry"] = context.Canceled
+	cancel()
 
-	// Die Attrappen ignorieren den Kontext; entscheidend ist, dass
-	// aufgeräumt wird und der Abbruch erkennbar bleibt.
-	_, err := a.dienst.Ausfuehren(ctx, Upload{Daten: []byte(pdf)})
+	// The fakes ignore the context; what matters is that it cleans up and
+	// the cancellation stays recognizable.
+	_, err := s.uploader.Upload(ctx, Upload{Data: []byte(pdf)})
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
 	}
-	if !a.speicher.leer() {
-		t.Error("nach Abbruch nicht aufgeräumt")
+	if !s.store.isEmpty() {
+		t.Error("not cleaned up after cancel")
 	}
 }
 
-func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
+func TestUpload_DroppedFactsOnlyAsFieldInLog(t *testing.T) {
 	var log bytes.Buffer
-	alt := slog.Default()
+	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	t.Cleanup(func() { slog.SetDefault(alt) })
+	t.Cleanup(func() { slog.SetDefault(old) })
 
-	e := erkennung()
-	e.Facts = append(e.Facts, core.ExtractedFact{Name: "", Value: "GEHEIMER-WERT-42"})
-	a := neuerAufbau()
-	a.dienst.leser = &fake.Reader{Extraction: e}
+	x := extraction()
+	x.Facts = append(x.Facts, core.ExtractedFact{Name: "", Value: "GEHEIMER-WERT-42"})
+	s := newSetup()
+	s.uploader.reader = &fake.Reader{Extraction: x}
 
-	eintrag, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
+	entry, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(eintrag.Facts) != 2 {
-		t.Errorf("Infos = %+v, die unvollständige muss fehlen", eintrag.Facts)
+	if len(entry.Facts) != 2 {
+		t.Errorf("facts = %+v, the incomplete one must be missing", entry.Facts)
 	}
 	if !strings.Contains(log.String(), "infos[2].name") {
-		t.Errorf("Feld fehlt im Log: %s", log.String())
+		t.Errorf("field missing in the log: %s", log.String())
 	}
 	if strings.Contains(log.String(), "GEHEIMER-WERT-42") {
-		t.Errorf("Wert im Log: %s", log.String())
+		t.Errorf("value in the log: %s", log.String())
 	}
 }
 
-func TestDateiname(t *testing.T) {
-	faelle := map[string]string{
+func TestSafeFileName(t *testing.T) {
+	cases := map[string]string{
 		"befund.pdf":              "befund.pdf",
 		"  befund.pdf  ":          "befund.pdf",
 		"../../etc/passwd":        "passwd",
@@ -372,9 +371,9 @@ func TestDateiname(t *testing.T) {
 		"   ":                     "dokument",
 		strings.Repeat("ä", 250):  strings.Repeat("ä", 200),
 	}
-	for ein, erwartet := range faelle {
-		if got := dateiname(ein); got != erwartet {
-			t.Errorf("dateiname(%q) = %q, erwartet %q", ein, got, erwartet)
+	for in, want := range cases {
+		if got := safeFileName(in); got != want {
+			t.Errorf("safeFileName(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
