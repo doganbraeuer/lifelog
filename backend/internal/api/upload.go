@@ -146,7 +146,7 @@ func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind up
 		writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge, "Die Datei ist größer als 10 MB.", nil)
 	case errors.Is(err, core.ErrUnsupportedFileType):
 		writeError(w, http.StatusUnsupportedMediaType, CodeUnsupportedFileType,
-			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC und PDF.", nil)
+			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC, WebP und PDF.", nil)
 	case errors.As(err, &duplicate):
 		writeError(w, http.StatusConflict, CodeDuplicate, "Diese Datei hast du schon hochgeladen.",
 			map[string]any{"entryId": duplicate.EntryID})

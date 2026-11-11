@@ -96,7 +96,7 @@ func demoFiles(dir string) ([]demoFile, error) {
 				continue
 			}
 			switch strings.ToLower(filepath.Ext(name)) {
-			case ".pdf", ".png", ".jpg", ".jpeg", ".txt":
+			case ".pdf", ".png", ".jpg", ".jpeg", ".heic", ".webp", ".txt":
 				files = append(files, demoFile{Path: filepath.Join(sub, name), Name: name, Doc: documentKey(name)})
 			}
 		}

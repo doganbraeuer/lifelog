@@ -27,6 +27,11 @@ type Pipeline struct {
 	PDF      PDF    // nil: PDFs give ErrUnavailable
 	MaxPages int    // 0: DefaultMaxPages
 
+	// Image: how photos are prepared before OCR (PrepareImage). The zero
+	// value only turns them upright and converts them; the server uses
+	// DefaultImageOptions.
+	Image ImageOptions
+
 	// ForceOCR ignores the text layer and reads every PDF page with OCR.
 	// Only for measuring the engine (cmd/ocrcheck), never in the server.
 	ForceOCR bool
@@ -36,11 +41,15 @@ type Pipeline struct {
 // all pages, so that a line on page 2 never equals one on page 1.
 func (p *Pipeline) Recognize(ctx context.Context, data []byte, mimeType string) (core.OCRResult, error) {
 	switch mimeType {
-	case core.MimeJPEG, core.MimePNG:
+	case core.MimeJPEG, core.MimePNG, core.MimeHEIC, core.MimeWebP:
 		if p.Engine == nil {
 			return core.OCRResult{}, ErrUnavailable
 		}
-		page, err := p.Engine.RecognizeImage(ctx, data)
+		image, err := PrepareImage(data, mimeType, p.Image)
+		if err != nil {
+			return core.OCRResult{}, err
+		}
+		page, err := p.Engine.RecognizeImage(ctx, image)
 		if err != nil {
 			return core.OCRResult{}, err
 		}
@@ -82,6 +91,8 @@ func (p *Pipeline) recognizePDF(ctx context.Context, data []byte) (core.OCRResul
 		if p.Engine == nil {
 			return core.OCRResult{}, fmt.Errorf("page %d has no text layer: %w", i+1, ErrUnavailable)
 		}
+		// Rendered pages are already upright PNGs of a fixed size
+		// (poppler.RenderLongSide) and need no preparing.
 		image, err := p.PDF.RenderPage(ctx, data, i+1)
 		if err != nil {
 			return core.OCRResult{}, fmt.Errorf("render page %d: %w", i+1, err)

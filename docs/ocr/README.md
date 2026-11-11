@@ -96,8 +96,9 @@ photos (3,000–4,000 pixels) are therefore read as they are.
 
 Result: [2026-11-11-tesseract-phone.md](2026-11-11-tesseract-phone.md).
 
-Lab report 01 was printed and photographed with an iPhone 14 Pro Max
-(2268 × 4032 pixels, JPEG): `demo/phone/01_lab_report_2026-01-20_phone.jpg`.
+Lab report 01 was photographed with an iPhone 14 Pro Max (2268 × 4032
+pixels, JPEG): `demo/phone/01_lab_report_2026-01-20_phone.jpg`. As it turned
+out later, the document was shown **on a screen**, not printed on paper.
 Before it went into the repository, its metadata (EXIF with the GPS
 position, XMP) was removed; the image data is unchanged byte for byte.
 
@@ -113,19 +114,82 @@ are `mgj/dl`. The measurement now always includes `demo/phone/` (variant
 
 **Decision (Dogan, 2026-11-11): Tesseract is enough for now.** PaddleOCR
 only if further real photos do clearly worse. One photo is a small sample
-(good light, flat paper, held straight); worth adding next: a photo in poor
-light, a crumpled page, one taken at an angle.
+(a screen, held straight); worth adding next: photos of printed paper, in
+poor light, a crumpled page, one taken at an angle.
 
 The same day, `go run ./cmd/ocrcheck -recheck -write` checked every stored
 entry again with the upscaling: only the eye test uploaded by the app (L3)
 changed, from 3 of 6 to 6 of 6 confirmed.
 
+## 2026-11-11: every image prepared the same way (HEIC, orientation, size)
+
+Result: [2026-11-11-tesseract-prepare.md](2026-11-11-tesseract-prepare.md).
+
+Before, Tesseract got the uploaded bytes (only small images were scaled).
+HEIC, the iPhone's default format, could not be read at all, and a photo
+stored lying on its side with an EXIF orientation was read sideways. Now
+`ocr.PrepareImage` turns every photo (JPEG, PNG, HEIC, WebP) into one
+format before OCR: decoded in Go, turned upright, put on white where it is
+transparent, scaled to a long side between 2500 and 4096 pixels, and
+written as an RGB PNG. Tesseract gets `--dpi 300`. PDF pages rendered by
+`pdftoppm` are already such PNGs and are not prepared again.
+
+What the measurement showed on the way:
+
+1. **The resolution must be given.** The first version (grey PNG) read the
+   real phone JPEG worse: 86 % instead of 100 %. In colour as well. Cause:
+   a PNG from Go carries no resolution, the JPEG said 300 dpi. Without one,
+   Tesseract estimates it ("Estimating resolution as 441"), misread
+   `mgj/dl` and dropped the reference column. With `--dpi` 200, 300 or 400
+   it reads everything; 300 was chosen (exact for an A4 page at 3508
+   pixels).
+2. **Colour, not grey.** With `--dpi 300`, a grey image read the demo
+   photos worse (90 % instead of 93 %, 29/36 instead of 31/36 facts) and the
+   HEIC photo much worse (29 % instead of 57 %).
+3. **Do not scale 12-megapixel photos down.** On the phone JPEG
+   (4032 pixels): limit 2500 → 86 %, 3000 → 57 %, 3508 → 71 %, 4096 (not
+   scaled) → 100 %. So the limit is 4096: a usual 12-megapixel photo is
+   read as it is, only larger ones (48 megapixels, 8064 pixels) are
+   halved. Larger ones are not measured yet.
+4. **The HEIC photo** (`demo/phone/01_lab_report_2026-01-20_phone.heic`, a
+   second photo of the same screen, slightly at an angle, with moiré):
+   upright and read, 57 % (date and issuer, 2 of 5 facts). Not
+   confirmed: the row „Gesamtcholesterin“ is not read at all, the value of
+   LDL is missing from its row, and one unit is `mog/dl`. The same file
+   decoded by Apple (`sips`) and turned upright gives the same kind of
+   mistakes (`mg/dil`, `mg/di`, the name „Gesamtcholesterin“ missing): the
+   photo is the cause, not the decoder.
+5. **Orientation:** a demo photo stored lying on its side with EXIF
+   orientation 6 is confirmed completely; without turning it, not a single
+   field (test `TestPipeline_JPEG_EXIFOrientation`).
+
+| Variant | Before | Now |
+|---|---|---|
+| PDF, text layer | 100 % | 100 % |
+| PDF, OCR (forced) | 98 % | 98 % |
+| Demo photos | 93 % (31/36) | 93 % (31/36) |
+| Phone JPEG | 100 % | 100 % |
+| Phone HEIC | not checked (`unsupported_file_type`) | 57 % |
+
+Time per photo: phone JPEG 1.6 s (before 0.7 s: decoding and the PNG cost
+time), HEIC 4.1 s (decoding with WebAssembly takes about 1.1 s), demo
+photos 0.5 s. All within the time of the vision LLM and far below the
+limit of 30 s.
+
+HEIC is decoded by `github.com/gen2brain/heic` v0.7.2 (MIT): a HEVC
+decoder compiled to WebAssembly and run by `wazero`, so it needs no cgo and
+no program on the server, and works the same on macOS, Linux and Windows.
+It would prefer a libheif installed on the machine; the backend switches
+that off (`heic.ForceWasmMode`), so all machines decode the same way.
+
 ## Adding a real photo
 
-Print a demo document, photograph it with a phone and save the photo (JPEG
-or PNG) named after the document with `_phone`, e.g.
-`01_lab_report_2026-01-20_phone.jpg`. Remove the location before it goes
-into `demo/phone/` (on the iPhone: share, Options, switch off Location).
+Print a demo document, photograph it with a phone and save the photo
+(JPEG, PNG, HEIC or WebP) named after the document with `_phone`, e.g.
+`01_lab_report_2026-01-20_phone.jpg`. **Check for the location before it
+goes into `demo/phone/`** (`mdls <file> | grep -i -E 'latitude|gps'`):
+on 2026-11-11 a HEIC sent by AirDrop still contained it although Location
+was switched off in the share options.
 To measure it once without adding it:
 
 ```sh

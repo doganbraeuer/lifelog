@@ -55,12 +55,25 @@ func (p *fakePDF) Name() string { return "pdftotext 1.0" }
 
 var digital = Page{Width: 595, Height: 842, Words: words("Labor Muster GmbH", "Befunddatum 14.10.2026")}
 
+// tinyPNG is a valid 10 × 14 colour PNG.
+func tinyPNG(t *testing.T) []byte {
+	t.Helper()
+	return encode(t, halves(10, 14), false)
+}
+
 func TestPipeline_Image(t *testing.T) {
 	e := &fakeEngine{page: Page{Width: 1000, Height: 1400, Words: words("Hb 14,2 g/dl")}}
-	p := &Pipeline{Engine: e}
-	r, err := p.Recognize(context.Background(), []byte("img"), core.MimePNG)
+	p := &Pipeline{Engine: e, Image: ImageOptions{MinLongSide: 20}}
+	r, err := p.Recognize(context.Background(), tinyPNG(t), core.MimePNG)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The engine gets the prepared image: an RGB PNG, scaled.
+	if len(e.images) != 1 {
+		t.Fatalf("%d engine calls", len(e.images))
+	}
+	if g := decodePNG(t, e.images[0]); g.Bounds().Dx() != 14 || g.Bounds().Dy() != 20 {
+		t.Errorf("engine got %v, want 14×20", g.Bounds())
 	}
 	if r.Engine != "engine 1.0 deu" || len(r.Pages) != 1 || r.Pages[0].Source != core.SourceOCR {
 		t.Errorf("engine %q, pages %+v", r.Engine, r.Pages)
@@ -150,7 +163,9 @@ func TestPipeline_Errors(t *testing.T) {
 		mime   string
 		reason string
 	}{
-		{"HEIC", &Pipeline{Engine: &fakeEngine{}, PDF: &fakePDF{}}, core.MimeHEIC, core.ReasonUnsupportedFileType},
+		{"text", &Pipeline{Engine: &fakeEngine{}, PDF: &fakePDF{}}, core.MimeText, core.ReasonUnsupportedFileType},
+		{"image too large", &Pipeline{Engine: &fakeEngine{}, Image: ImageOptions{MaxPixels: 100}}, core.MimePNG, core.ReasonImageTooLarge},
+		{"not a readable image", &Pipeline{Engine: &fakeEngine{}}, core.MimeHEIC, core.ReasonOCRFailed},
 		{"image without engine", &Pipeline{PDF: &fakePDF{}}, core.MimeJPEG, core.ReasonOCRUnavailable},
 		{"PDF without poppler", &Pipeline{Engine: &fakeEngine{}}, core.MimePDF, core.ReasonOCRUnavailable},
 		{"scan without engine", &Pipeline{PDF: &fakePDF{pages: scanned}}, core.MimePDF, core.ReasonOCRUnavailable},
@@ -162,7 +177,11 @@ func TestPipeline_Errors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := tt.p.Recognize(context.Background(), nil, tt.mime)
+			data := tinyPNG(t)
+			if tt.mime == core.MimeHEIC {
+				data = []byte("not an image")
+			}
+			_, err := tt.p.Recognize(context.Background(), data, tt.mime)
 			if err == nil {
 				t.Fatal("no error")
 			}

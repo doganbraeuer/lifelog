@@ -72,7 +72,7 @@ func TestUpload_VerificationFailsButUploadSucceeds(t *testing.T) {
 		reason string
 	}{
 		{"error", &ocrfake.Recognizer{Err: errors.New("tesseract: exit status 1")}, core.ReasonOCRFailed},
-		{"unsupported", &ocrfake.Recognizer{Err: fmt.Errorf("image/heic: %w", ocr.ErrUnsupported)}, core.ReasonUnsupportedFileType},
+		{"unsupported", &ocrfake.Recognizer{Err: fmt.Errorf("text/plain: %w", ocr.ErrUnsupported)}, core.ReasonUnsupportedFileType},
 		{"too many pages", &ocrfake.Recognizer{Err: ocr.ErrTooManyPages}, core.ReasonTooManyPages},
 		{"program missing", &ocrfake.Recognizer{Err: ocr.ErrUnavailable}, core.ReasonOCRUnavailable},
 		{"no text", &ocrfake.Recognizer{Result: core.OCRResult{Engine: "tesseract"}}, core.ReasonNoText},

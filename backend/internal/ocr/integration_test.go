@@ -36,7 +36,7 @@ func pipelineOrSkip(t *testing.T) *ocr.Pipeline {
 	if err != nil {
 		t.Skipf("Tesseract not installed: %v", err)
 	}
-	return &ocr.Pipeline{Engine: engine, PDF: pdf}
+	return &ocr.Pipeline{Engine: engine, PDF: pdf, Image: ocr.DefaultImageOptions()}
 }
 
 // labEntry holds the values of backend/testdata/lab_report.txt.
@@ -124,6 +124,86 @@ func TestPipeline_Photo_UsesOCR(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkAllByOCR(t, core.Verify(photoEntry(), r, time.Now()))
+}
+
+// The real iPhone photo as HEIC: stored as a 4032 × 3024 landscape image
+// plus "rotate by 90°". OCR must read it upright (3024 × 4032).
+func TestPipeline_HEIC_PhonePhoto(t *testing.T) {
+	p := pipelineOrSkip(t)
+	data, err := os.ReadFile("../../../demo/phone/01_lab_report_2026-01-20_phone.heic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Recognize(context.Background(), data, core.MimeHEIC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pg := r.Pages[0]; pg.Width != 3024 || pg.Height != 4032 {
+		t.Errorf("page %v × %v, want 3024 × 4032 (upright)", pg.Width, pg.Height)
+	}
+	checkAllByOCR(t, core.Verify(photoEntry(), r, time.Now()))
+}
+
+// A JPEG stored lying on its side with EXIF orientation 6, as cameras do.
+// Without turning it upright, Tesseract reads nothing useful.
+func TestPipeline_JPEG_EXIFOrientation(t *testing.T) {
+	p := pipelineOrSkip(t)
+	img, err := png.Decode(bytes.NewReader(readPhoto(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stored = upright turned 90° counter-clockwise; orientation 6 turns it back.
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	stored := image.NewRGBA(image.Rect(0, 0, h, w))
+	for sy := 0; sy < w; sy++ {
+		for sx := 0; sx < h; sx++ {
+			r, g, bl, a := img.At(b.Min.X+w-1-sy, b.Min.Y+sx).RGBA()
+			white := 0xffff - a
+			stored.Set(sx, sy, rgba(r+white, g+white, bl+white))
+		}
+	}
+	var jpg bytes.Buffer
+	if err := jpeg.Encode(&jpg, stored, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Recognize(context.Background(), withOrientation6(jpg.Bytes()), core.MimeJPEG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pg := r.Pages[0]; pg.Width >= pg.Height {
+		t.Errorf("page %v × %v, want portrait", pg.Width, pg.Height)
+	}
+	checkAllByOCR(t, core.Verify(photoEntry(), r, time.Now()))
+}
+
+// The demo photo as WebP (made with `cwebp -q 90`, with alpha channel).
+func TestPipeline_WebP(t *testing.T) {
+	p := pipelineOrSkip(t)
+	data := read(t, "lab_report_photo.webp")
+	if mime, err := core.DetectFileType(data); err != nil || mime != core.MimeWebP {
+		t.Fatalf("detected %q, %v", mime, err)
+	}
+	r, err := p.Recognize(context.Background(), data, core.MimeWebP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAllByOCR(t, core.Verify(photoEntry(), r, time.Now()))
+}
+
+// withOrientation6 inserts an EXIF segment (big-endian TIFF, IFD0 with
+// orientation 6) right after the start marker of a JPEG.
+func withOrientation6(jpg []byte) []byte {
+	tiff := []byte{'M', 'M', 0, 42, 0, 0, 0, 8, // header, IFD0 at 8
+		0, 1, // one entry
+		0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, // orientation, SHORT, 1, value 6
+		0, 0, 0, 0} // no next IFD
+	payload := append([]byte("Exif\x00\x00"), tiff...)
+	n := len(payload) + 2
+	seg := append([]byte{0xFF, 0xE1, byte(n >> 8), byte(n)}, payload...)
+	out := append([]byte{}, jpg[:2]...)
+	out = append(out, seg...)
+	return append(out, jpg[2:]...)
 }
 
 func checkAllByOCR(t *testing.T, v core.Verification) {

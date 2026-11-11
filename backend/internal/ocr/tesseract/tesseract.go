@@ -22,19 +22,10 @@ import (
 // DefaultLanguage: German, because the documents are German.
 const DefaultLanguage = "deu"
 
-// DefaultMinLongSide: smaller images are scaled up to this long side
-// before OCR (see upscale). Measured on 2026-11-11 (docs/ocr/README.md):
-// at 2000 and 2500 every value of the demo photos is read; at 3000 a whole
-// table row disappears, from 3508 on the results get worse again.
-const DefaultMinLongSide = 2500
-
-// Tesseract implements ocr.Engine.
+// Tesseract implements ocr.Engine. It reads the image as it gets it:
+// photos are prepared (upright, sized, grey) by ocr.PrepareImage first.
 type Tesseract struct {
 	path, lang, version string
-
-	// MinLongSide: images with a shorter long side are scaled up first.
-	// 0 switches scaling off. New sets DefaultMinLongSide.
-	MinLongSide int
 }
 
 // New finds tesseract in PATH and checks that the language pack is
@@ -60,7 +51,7 @@ func New(lang string) (*Tesseract, error) {
 	if !hasLanguage(string(out), lang) {
 		return nil, fmt.Errorf("tesseract language %q not installed: %w", lang, ocr.ErrUnavailable)
 	}
-	return &Tesseract{path: path, lang: lang, version: version, MinLongSide: DefaultMinLongSide}, nil
+	return &Tesseract{path: path, lang: lang, version: version}, nil
 }
 
 // parseVersion takes "5.5.4" from "tesseract 5.5.4\n leptonica-1.87.0 …".
@@ -84,14 +75,16 @@ func hasLanguage(out, lang string) bool {
 // Name is e.g. "tesseract 5.5.4 deu".
 func (t *Tesseract) Name() string { return "tesseract " + t.version + " " + t.lang }
 
-// RecognizeImage scales a small image up (MinLongSide) and runs
-// `tesseract stdin stdout -l <lang> tsv`.
+// DPI is passed to Tesseract for every image. The prepared PNGs carry no
+// resolution, and Tesseract then estimates one: on the real phone photo it
+// guessed 441 dpi and misread a unit and dropped a column, while 200, 300
+// and 400 all read it completely (docs/ocr/README.md). 300 is exact for an
+// A4 page rendered at 3508 pixels and close for the prepared photos.
+const DPI = 300
+
+// RecognizeImage runs `tesseract stdin stdout -l <lang> --dpi 300 tsv`.
 func (t *Tesseract) RecognizeImage(ctx context.Context, image []byte) (ocr.Page, error) {
-	image, err := upscale(image, t.MinLongSide)
-	if err != nil {
-		return ocr.Page{}, fmt.Errorf("tesseract: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, t.path, "stdin", "stdout", "-l", t.lang, "tsv")
+	cmd := exec.CommandContext(ctx, t.path, "stdin", "stdout", "-l", t.lang, "--dpi", strconv.Itoa(DPI), "tsv")
 	cmd.Stdin = bytes.NewReader(image)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

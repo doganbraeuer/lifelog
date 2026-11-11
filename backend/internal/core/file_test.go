@@ -40,7 +40,9 @@ func TestDetectFileType(t *testing.T) {
 		{"MP4 video also has ftyp", ftyp("isom", "isom", "mp41"), ""},
 		{"text", []byte("Laborbefund vom 14.10.2026"), ""},
 		{"GIF", []byte("GIF89a......................"), ""},
-		{"WebP", []byte("RIFF\x24\x00\x00\x00WEBPVP8 ............"), ""},
+		{"WebP (lossy)", []byte("RIFF\x24\x00\x00\x00WEBPVP8 ............"), MimeWebP},
+		{"WebP (lossless)", []byte("RIFF\x24\x00\x00\x00WEBPVP8L............"), MimeWebP},
+		{"RIFF that is not WebP (WAV)", []byte("RIFF\x24\x00\x00\x00WAVEfmt ............"), ""},
 		{"too short for ftyp", []byte("\x00\x00\x00\x10ftyp"), ""},
 		{"a .pdf extension is not enough, only the content counts", []byte("not a pdf"), ""},
 	}

@@ -8,6 +8,7 @@
 //	go run ./cmd/ocrcheck -recheck -write  # check every entry again and store the result
 //	go run ./cmd/ocrcheck -values -out ../docs/ocr/2026-11-11-tesseract.md
 //	go run ./cmd/ocrcheck -upscale 0       # measure without scaling small images up
+//	go run ./cmd/ocrcheck -downscale 3000  # measure with large images scaled down to 3000 pixels
 //	go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
 //
 // It does three things:
@@ -57,29 +58,34 @@ func main() {
 	demo := flag.String("demo", "../demo", "folder with the demo documents")
 	out := flag.String("out", "", "also write the measurement as Markdown to this file, e.g. ../docs/ocr/2026-11-11-tesseract.md")
 	values := flag.Bool("values", false, "list the fields that were not confirmed, with expected value and OCR row")
-	upscale := flag.Int("upscale", tesseract.DefaultMinLongSide, "scale images whose long side is shorter up to this many pixels before OCR; 0 = off")
+	upscale := flag.Int("upscale", ocr.DefaultMinLongSide, "scale images whose long side is shorter up to this many pixels before OCR; 0 = off")
+	downscale := flag.Int("downscale", ocr.DefaultMaxLongSide, "scale images whose long side is longer down to this many pixels before OCR; 0 = off")
 	extra := flag.String("extra", "", "comma-separated files outside demo/ to measure too, named like the document, e.g. 01_lab_report_2026-01-20_phone.jpg")
 	flag.Parse()
 
-	if err := run(options{write: *write, recheck: *recheck, demoDir: *demo, out: *out, values: *values, upscale: *upscale, extra: *extra}); err != nil {
+	if err := run(options{write: *write, recheck: *recheck, demoDir: *demo, out: *out, values: *values, upscale: *upscale, downscale: *downscale, extra: *extra}); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
 type options struct {
-	write   bool
-	recheck bool
-	demoDir string
-	out     string
-	values  bool
-	upscale int
-	extra   string
+	write     bool
+	recheck   bool
+	demoDir   string
+	out       string
+	values    bool
+	upscale   int
+	downscale int
+	extra     string
 }
 
 func run(o options) error {
-	if o.upscale < 0 {
-		return errors.New("-upscale must be 0 or more")
+	if o.upscale < 0 || o.downscale < 0 {
+		return errors.New("-upscale and -downscale must be 0 or more")
+	}
+	if o.upscale > 0 && o.downscale > 0 && o.upscale > o.downscale {
+		return errors.New("-upscale must not be larger than -downscale")
 	}
 	extra, err := extraFiles(strings.Split(o.extra, ","))
 	if err != nil {
@@ -107,12 +113,9 @@ func run(o options) error {
 	if err != nil {
 		return fmt.Errorf("%w (see backend/README.md, verification)", err)
 	}
-	engine.MinLongSide = o.upscale
-	upscaleNote := fmt.Sprintf("scaled up to a long side of %d pixels if smaller", o.upscale)
-	if o.upscale == 0 {
-		upscaleNote = "not scaled"
-	}
-	pipeline := &ocr.Pipeline{Engine: engine, PDF: pdf}
+	images := ocr.DefaultImageOptions()
+	images.MinLongSide, images.MaxLongSide = o.upscale, o.downscale
+	pipeline := &ocr.Pipeline{Engine: engine, PDF: pdf, Image: images}
 	programs := pdf.Name() + ", " + engine.Name()
 
 	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
@@ -138,7 +141,7 @@ func run(o options) error {
 	if err != nil {
 		return err
 	}
-	rep.Programs, rep.Database, rep.AllValues, rep.Upscale = programs, c.MongoDB, o.values, upscaleNote
+	rep.Programs, rep.Database, rep.AllValues, rep.Upscale = programs, c.MongoDB, o.values, imageNote(images)
 	rep.Date = time.Now().Format("2006-01-02")
 	md := rep.Markdown()
 	fmt.Println(md)
@@ -149,6 +152,18 @@ func run(o options) error {
 		fmt.Println("Measurement written to", o.out)
 	}
 	return nil
+}
+
+// imageNote describes the image settings for the report.
+func imageNote(o ocr.ImageOptions) string {
+	up, down := "never scaled up", "never scaled down"
+	if o.MinLongSide > 0 {
+		up = fmt.Sprintf("scaled up to a long side of %d pixels if smaller (at most twice)", o.MinLongSide)
+	}
+	if o.MaxLongSide > 0 {
+		down = fmt.Sprintf("scaled down to %d pixels if larger", o.MaxLongSide)
+	}
+	return "turned upright, " + up + ", " + down + ", as RGB PNG; Tesseract with --dpi 300"
 }
 
 // allEntries reads every entry of every module, in full.
@@ -274,7 +289,7 @@ func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir
 		}
 		files = slices.Insert(files, i, x)
 	}
-	forced := &ocr.Pipeline{Engine: p.Engine, PDF: p.PDF, ForceOCR: true}
+	forced := &ocr.Pipeline{Engine: p.Engine, PDF: p.PDF, Image: p.Image, ForceOCR: true}
 
 	refs := map[string]core.Entry{} // document → reference entry
 	var rep report
@@ -321,8 +336,11 @@ func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir
 			if variant == "photo" && strings.HasPrefix(f.Path, "live") {
 				variant = "photo (live)" // a second photo of the same document, see demo/README.md
 			}
-			kind := kindPhoto
 			if variant == "phone" {
+				variant = "phone " + strings.ToUpper(strings.TrimPrefix(filepath.Ext(f.Name), ".")) // JPG, HEIC
+			}
+			kind := kindPhoto
+			if f.variantName() == "phone" {
 				kind = kindPhone
 			}
 			rep.Rows = append(rep.Rows, measureFile(ctx, p, f, data, mime, variant, kind, ref))

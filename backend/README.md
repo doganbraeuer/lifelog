@@ -75,10 +75,16 @@ sudo apt install poppler-utils tesseract-ocr tesseract-ocr-deu   # Debian/Ubuntu
 ```
 
 - PDF pages with a text layer: `pdftotext -bbox-layout` (Poppler).
-- Photos and PDF pages without a text layer: `pdftoppm` renders the page,
-  Tesseract (`TESSERACT_LANG`, default `deu`) reads it. Images with a long
-  side under 2500 pixels are scaled up first (at most twice the size),
-  chosen by measurement (`docs/ocr/README.md`).
+- PDF pages without a text layer: `pdftoppm` renders the page, Tesseract
+  (`TESSERACT_LANG`, default `deu`) reads it.
+- Photos (JPEG, PNG, HEIC, WebP) are prepared in Go first
+  (`ocr.PrepareImage`): turned upright (EXIF orientation, HEIC rotation),
+  scaled to a long side between 2500 (at most twice the size) and 4096
+  pixels, and handed to Tesseract as an RGB PNG with `--dpi 300`. Images
+  over 50 megapixels are not decoded. HEIC is decoded by
+  `github.com/gen2brain/heic` (a decoder compiled to WebAssembly, no cgo,
+  nothing to install). The settings were chosen by measurement
+  (`docs/ocr/README.md`).
 
 It runs at the same time as the vision LLM (limit 30 s), so an upload does
 not take longer. The words with their positions are stored in the
@@ -94,6 +100,7 @@ go run ./cmd/ocrcheck -write     # store the verification of entries that were n
 go run ./cmd/ocrcheck -recheck   # show what checking every entry again would change (+ -write: store it)
 go run ./cmd/ocrcheck -values -out ../docs/ocr/<date>-tesseract.md   # measurement report
 go run ./cmd/ocrcheck -upscale 3000                    # measure another scaling (0 = off)
+go run ./cmd/ocrcheck -downscale 3000                  # measure scaling large photos down (0 = off)
 go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a real photo
 ```
 

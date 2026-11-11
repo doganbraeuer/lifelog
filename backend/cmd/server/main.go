@@ -130,7 +130,7 @@ func newRecognizer(c config.Config) ocr.Recognizer {
 		slog.Info("verification switched off (OCR_ENGINE=none), files stay unchecked")
 		return nil
 	}
-	p := &ocr.Pipeline{}
+	p := &ocr.Pipeline{Image: ocr.DefaultImageOptions()}
 	if pdf, err := poppler.New(); err != nil {
 		slog.Warn("Poppler missing, PDFs stay unchecked (backend/README.md, section verification)", "error", err)
 	} else {

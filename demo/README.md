@@ -56,12 +56,15 @@ notes for the text import.
 | `L3_eye_test_2026-09-15_app.png` | The eye test as the app uploaded it on 2026-11-09 | yes |
 | `04_prescription_2026-05-18_app.png` | The prescription as the app uploaded it on 2026-11-09 | yes |
 
-`phone/` contains real phone photos of printed demo documents (for the OCR
-measurement, `cmd/ocrcheck`; not uploaded by the script):
+`phone/` contains real phone photos of demo documents (for the OCR
+measurement, `cmd/ocrcheck`; not uploaded by the script). Their metadata
+was removed before they were added (the originals contained the GPS
+position):
 
 | File | Document |
 |---|---|
-| `01_lab_report_2026-01-20_phone.jpg` | Lab report 01, printed and photographed with an iPhone 14 Pro Max on 2026-11-11. The metadata (EXIF with GPS, XMP) was removed; the image data is unchanged. |
+| `01_lab_report_2026-01-20_phone.jpg` | Lab report 01 on a screen, photographed with an iPhone 14 Pro Max on 2026-11-11, upright JPEG. EXIF, XMP and Apple segments removed; the image data is unchanged byte for byte. |
+| `01_lab_report_2026-01-20_phone.heic` | The same document, photographed again as HEIC (the iPhone's own format): stored lying on its side with "rotate by 90°", at an angle, with moiré. The GPS block and the maker note in EXIF were overwritten with zeros; the image data is unchanged. |
 
 The `_app.png` files are the exact bytes stored in Atlas after the upload
 from the iOS app: the image picker re-encodes the image, so they differ from

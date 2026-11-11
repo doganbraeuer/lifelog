@@ -30,6 +30,7 @@ const (
 	ReasonOCRFailed           = "ocr_failed"            // error or time limit
 	ReasonUnsupportedFileType = "unsupported_file_type" // e.g. HEIC
 	ReasonTooManyPages        = "too_many_pages"        // PDF over the page limit
+	ReasonImageTooLarge       = "image_too_large"       // image over the pixel limit, not decoded
 	ReasonNoText              = "no_text"               // OCR found no text at all
 	ReasonNotRun              = "not_run"               // entry from before verification existed
 )

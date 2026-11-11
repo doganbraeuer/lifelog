@@ -59,7 +59,7 @@ type Page struct {
 var (
 	// ErrUnavailable: a needed program is not installed or switched off.
 	ErrUnavailable = errors.New("ocr unavailable")
-	// ErrUnsupported: this file type cannot be read (e.g. HEIC).
+	// ErrUnsupported: this file type cannot be read (e.g. text).
 	ErrUnsupported = errors.New("file type not supported by ocr")
 	// ErrTooManyPages: the PDF has more pages than the limit.
 	ErrTooManyPages = errors.New("too many pages for ocr")
@@ -76,6 +76,8 @@ func Reason(err error) string {
 		return core.ReasonUnsupportedFileType
 	case errors.Is(err, ErrTooManyPages):
 		return core.ReasonTooManyPages
+	case errors.Is(err, ErrImageTooLarge):
+		return core.ReasonImageTooLarge
 	}
 	return core.ReasonOCRFailed
 }
