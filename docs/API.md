@@ -1140,9 +1140,15 @@ same way with `start`/`end` in `fullText`.
   happens.
 - **Rotated PDF pages** (`/Rotate`): positions are not tested with them
   yet.
-- **Tesseract or PaddleOCR:** decided after the measurement on `demo/`
-  (`cmd/ocrcheck`, results in `docs/ocr/`). It reads PDFs both via the text
-  layer and, for comparison, via OCR.
+- **Tesseract or PaddleOCR:** measured on 2026-11-11 on `demo/`
+  ([docs/ocr/](ocr/README.md), `cmd/ocrcheck`): PDFs 100 % via the text
+  layer, photos 75 % (58 % of the facts with unit, 78 % by value only).
+  Most failures are units and decimal commas on low-resolution photos.
+  Options (scale up small images, tolerate OCR confusions in units,
+  PaddleOCR) are described there; not decided yet.
+- **Old entries:** entries stored before 2026-11-11 are `not_run`.
+  `go run ./cmd/ocrcheck -write` fills in their verification (without
+  `-write` it only shows what it would store).
   `internal/ocr` is an interface like `internal/llm`; another engine is a
   new subpackage.
 - **Badge in the timeline:** the short form could carry `matchPercent`.
