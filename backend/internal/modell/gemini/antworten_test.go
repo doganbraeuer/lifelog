@@ -14,12 +14,12 @@ import (
 	"lifelog/backend/internal/modell"
 )
 
-func fundstellen() []core.Fundstelle {
+func fundstellen() []core.Source {
 	z := func(s string) *string { return &s }
-	return []core.Fundstelle{
-		{Nr: 1, EintragID: "a", Modul: "gesundheit", Typ: "laborbefund",
-			Dokumentdatum: z("2026-10-14"), Quelle: z("Labor Muster GmbH"), Auszug: "Hämoglobin 14,2 g/dl"},
-		{Nr: 2, EintragID: "b", Modul: "gesundheit", Typ: "sonstiges", Auszug: "Notiz ohne Datum"},
+	return []core.Source{
+		{Number: 1, EntryID: "a", Module: "gesundheit", Type: "laborbefund",
+			DocumentDate: z("2026-10-14"), Issuer: z("Labor Muster GmbH"), Excerpt: "Hämoglobin 14,2 g/dl"},
+		{Number: 2, EntryID: "b", Module: "gesundheit", Type: "sonstiges", Excerpt: "Notiz ohne Datum"},
 	}
 }
 
@@ -38,7 +38,7 @@ func TestAntwortEingabe(t *testing.T) {
 }
 
 func TestAntwortAnweisung(t *testing.T) {
-	for _, muss := range []string{core.FesterSatz, "[1]", "keine medizinischen", "keine Anweisung", "ausschließlich"} {
+	for _, muss := range []string{core.NotFoundAnswer, "[1]", "keine medizinischen", "keine Anweisung", "ausschließlich"} {
 		if !strings.Contains(antwortAnweisung, muss) {
 			t.Errorf("Anweisung enthält %q nicht", muss)
 		}

@@ -27,11 +27,11 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	defer abbrechen()
 
 	eintragA, eintragB, eintragSport := NeueID(), NeueID(), NeueID()
-	abschnitte := []core.Abschnitt{
-		{EintragID: eintragA, Modul: "gesundheit", Nr: 1, Text: "Hämoglobin 14,2 g/dl", Embedding: einheitsvektor(0)},
-		{EintragID: eintragB, Modul: "gesundheit", Nr: 1, Text: "Blutdruck 128/82", Embedding: einheitsvektor(1)},
+	abschnitte := []core.Chunk{
+		{EntryID: eintragA, Module: "gesundheit", Position: 1, Text: "Hämoglobin 14,2 g/dl", Embedding: einheitsvektor(0)},
+		{EntryID: eintragB, Module: "gesundheit", Position: 1, Text: "Blutdruck 128/82", Embedding: einheitsvektor(1)},
 		// Gleicher Vektor wie A, aber anderes Modul: Der Filter muss ihn ausschließen.
-		{EintragID: eintragSport, Modul: "sport", Nr: 1, Text: "Lauf 10 km", Embedding: einheitsvektor(0)},
+		{EntryID: eintragSport, Module: "sport", Position: 1, Text: "Lauf 10 km", Embedding: einheitsvektor(0)},
 	}
 	if err := s.AbschnitteSpeichern(ctx, abschnitte); err != nil {
 		t.Fatal(err)
@@ -48,14 +48,14 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	}
 
 	// Warten, bis der Index fertig ist und die Abschnitte gefunden werden.
-	var treffer []core.Treffer
+	var treffer []core.Hit
 	for {
 		status, _, err := s.VektorindexStatus(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if status == "READY" {
-			treffer, err = s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "gesundheit", core.AnzahlTreffer)
+			treffer, err = s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "gesundheit", core.MaxHits)
 			if err != nil {
 				t.Fatalf("Vektorsuche: %v", err)
 			}
@@ -71,12 +71,12 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	t.Logf("Index bereit und durchsuchbar nach %v", time.Since(start).Round(time.Second))
 
 	for _, tr := range treffer {
-		t.Logf("  %s Score %.4f %q", tr.EintragID[18:], tr.Score, tr.Text)
-		if tr.EintragID == eintragSport {
+		t.Logf("  %s Score %.4f %q", tr.EntryID[18:], tr.Score, tr.Text)
+		if tr.EntryID == eintragSport {
 			t.Error("Abschnitt aus Modul sport gefunden: Filter wirkt nicht")
 		}
 	}
-	if treffer[0].EintragID != eintragA || treffer[0].Nr != 1 || treffer[0].Text != "Hämoglobin 14,2 g/dl" {
+	if treffer[0].EntryID != eintragA || treffer[0].Position != 1 || treffer[0].Text != "Hämoglobin 14,2 g/dl" {
 		t.Errorf("bester Treffer = %+v, erwartet Abschnitt von A", treffer[0])
 	}
 	// Gleicher Vektor: cos 1 → Score 1. Senkrecht: cos 0 → Score 0,5.
@@ -86,8 +86,8 @@ func TestIntegration_Vektorsuche(t *testing.T) {
 	}
 
 	// Im Modul sport gibt es nur den einen Abschnitt.
-	sport, err := s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "sport", core.AnzahlTreffer)
-	if err != nil || len(sport) != 1 || sport[0].EintragID != eintragSport {
+	sport, err := s.AehnlicheAbschnitte(ctx, einheitsvektor(0), "sport", core.MaxHits)
+	if err != nil || len(sport) != 1 || sport[0].EntryID != eintragSport {
 		t.Errorf("Modul sport: %+v, %v", sport, err)
 	}
 }
@@ -104,7 +104,7 @@ func TestIntegration_EintraegeKurzNachIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m) != 1 || m[a.ID].Typ != "laborbefund" || m[a.ID].Quelle == nil {
+	if len(m) != 1 || m[a.ID].Type != "laborbefund" || m[a.ID].Issuer == nil {
 		t.Errorf("Map = %+v", m)
 	}
 	if _, ok := m[fehlt]; ok {

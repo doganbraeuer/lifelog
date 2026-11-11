@@ -20,7 +20,7 @@ const (
 func speicherMitEintrag() *speicherAttrappe {
 	e := vollerEintrag() // aus hochladen_test.go, ID testID, Datei testDateiID
 	return &speicherAttrappe{
-		eintraege: map[string]core.Eintrag{testID: e},
+		eintraege: map[string]core.Entry{testID: e},
 		dateien:   map[string][]byte{testDateiID: []byte("%PDF-1.7 synthetisch")},
 	}
 }
@@ -112,7 +112,7 @@ func TestDatei_Gefunden(t *testing.T) {
 func TestDatei_TextImport(t *testing.T) {
 	s := speicherMitEintrag()
 	e := s.eintraege[testID]
-	e.Datei.Dateiname, e.Datei.MimeTyp = "text.txt", "text/plain; charset=utf-8"
+	e.File.FileName, e.File.MimeType = "text.txt", "text/plain; charset=utf-8"
 	s.eintraege[testID] = e
 
 	rec := abrufen(t, s, "/api/v1/eintraege/"+testID+"/datei")

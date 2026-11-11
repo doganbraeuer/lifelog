@@ -14,26 +14,26 @@ import (
 func zeiger(s string) *string { return &s }
 
 // beispielEintrag ist synthetisch (siehe docs/API.md).
-func beispielEintrag() core.Eintrag {
-	return core.Eintrag{
-		ID:            "6727a1f3c2b4e5d6f7a8b9c0",
-		Modul:         "gesundheit",
-		Typ:           "laborbefund",
-		Dokumentdatum: zeiger("2026-10-14"),
-		Importdatum:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Quelle:        zeiger("Labor Muster GmbH, Salzburg"),
-		Volltext:      "Hämoglobin 14,2 g/dl",
-		Infos: []core.Info{
-			{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")},
-			{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"},
+func beispielEintrag() core.Entry {
+	return core.Entry{
+		ID:           "6727a1f3c2b4e5d6f7a8b9c0",
+		Module:       "gesundheit",
+		Type:         "laborbefund",
+		DocumentDate: zeiger("2026-10-14"),
+		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
+		Issuer:       zeiger("Labor Muster GmbH, Salzburg"),
+		FullText:     "Hämoglobin 14,2 g/dl",
+		Facts: []core.Fact{
+			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
+			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
 		},
-		Datei: core.Datei{
-			ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "befund.pdf",
-			MimeTyp: "application/pdf", Groesse: 184320, Sha256: strings.Repeat("ab", 32),
+		File: core.File{
+			ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund.pdf",
+			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32),
 		},
-		Korrekturen: []core.Korrektur{{
-			Feld: "infos.i1.wert", Erkannt: zeiger("14,1"), Korrigiert: zeiger("14,2"),
-			Zeitpunkt: time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC),
+		Corrections: []core.Correction{{
+			Field: "infos.i1.wert", Recognized: zeiger("14,1"), Corrected: zeiger("14,2"),
+			CorrectedAt: time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC),
 		}},
 	}
 }
@@ -62,10 +62,10 @@ func TestEintragDok_HinUndZurueck(t *testing.T) {
 
 func TestEintragDok_NullUndLeereListen(t *testing.T) {
 	e := beispielEintrag()
-	e.Dokumentdatum = nil
-	e.Quelle = nil
-	e.Infos = nil
-	e.Korrekturen = nil
+	e.DocumentDate = nil
+	e.Issuer = nil
+	e.Facts = nil
+	e.Corrections = nil
 
 	dok, err := zuEintragDok(e)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestEintragDok_NullUndLeereListen(t *testing.T) {
 	// Ein altes Dokument mit null-Listen wird beim Lesen zu leeren Listen.
 	dok.Infos, dok.Korrekturen = nil, nil
 	k := dok.zuKern()
-	if k.Infos == nil || k.Korrekturen == nil {
+	if k.Facts == nil || k.Corrections == nil {
 		t.Error("zuKern muss leere statt nil-Listen liefern")
 	}
 }
@@ -115,18 +115,18 @@ func TestEintragDok_UngueltigeIDs(t *testing.T) {
 		t.Error("ungültige Eintrag-ID muss Fehler liefern")
 	}
 	e = beispielEintrag()
-	e.Datei.ID = ""
+	e.File.ID = ""
 	if _, err := zuEintragDok(e); err == nil {
 		t.Error("ungültige Datei-ID muss Fehler liefern")
 	}
 }
 
 func TestAbschnittDok_HinUndZurueck(t *testing.T) {
-	original := core.Abschnitt{
-		EintragID: "6727a1f3c2b4e5d6f7a8b9c0",
-		Modul:     "gesundheit",
-		Nr:        2,
-		Text:      "Hämoglobin 14,2 g/dl",
+	original := core.Chunk{
+		EntryID:  "6727a1f3c2b4e5d6f7a8b9c0",
+		Module:   "gesundheit",
+		Position: 2,
+		Text:     "Hämoglobin 14,2 g/dl",
 		// Werte, die als float32 nicht exakt dezimal darstellbar sind.
 		Embedding: []float32{0.1, -0.33333334, 1e-7, 0.99999994, -1},
 	}
@@ -161,10 +161,10 @@ func TestAbschnittDok_HinUndZurueck(t *testing.T) {
 }
 
 func TestAbschnittDok_Ungueltig(t *testing.T) {
-	if _, err := zuAbschnittDok(core.Abschnitt{EintragID: "x", Embedding: []float32{1}}); err == nil {
+	if _, err := zuAbschnittDok(core.Chunk{EntryID: "x", Embedding: []float32{1}}); err == nil {
 		t.Error("ungültige Eintrag-ID muss Fehler liefern")
 	}
-	if _, err := zuAbschnittDok(core.Abschnitt{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
+	if _, err := zuAbschnittDok(core.Chunk{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}); err == nil {
 		t.Error("Abschnitt ohne Embedding muss Fehler liefern")
 	}
 }
@@ -182,7 +182,7 @@ func TestNeueID(t *testing.T) {
 func TestImportdatumWirdUTC(t *testing.T) {
 	e := beispielEintrag()
 	wien := time.FixedZone("MEZ", 3600)
-	e.Importdatum = time.Date(2026, 11, 3, 19, 42, 7, 0, wien) // = 18:42:07 UTC
+	e.ImportedAt = time.Date(2026, 11, 3, 19, 42, 7, 0, wien) // = 18:42:07 UTC
 	dok, _ := zuEintragDok(e)
 	if dok.Importdatum.Location() != time.UTC || dok.Importdatum.Hour() != 18 {
 		t.Errorf("Importdatum = %v, erwartet 18:42:07 UTC", dok.Importdatum)

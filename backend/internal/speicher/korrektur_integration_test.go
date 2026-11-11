@@ -14,7 +14,7 @@ func TestIntegration_KorrekturSpeichern(t *testing.T) {
 	s, ctx := testSpeicher(t)
 
 	e := testEintrag(NeueID(), NeueID(), strings.Repeat("cd", 32))
-	e.Infos = append(e.Infos, core.Info{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"})
+	e.Facts = append(e.Facts, core.Fact{ID: "i2", Name: "Befundart", Value: "Blutbild klein"})
 	if err := s.EintragSpeichern(ctx, e); err != nil {
 		t.Fatal(err)
 	}
@@ -23,13 +23,13 @@ func TestIntegration_KorrekturSpeichern(t *testing.T) {
 	// Einheit entfernt, Einheit neu, Typ und Wert geändert.
 	jetzt := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC) // Millisekunden wie im Dienst
 	q := "Labor B"
-	neu, geaendert, err := core.Korrigiere(e, core.Aenderung{
-		Typ:           &[]string{"arztbrief"}[0],
-		Dokumentdatum: core.Feld{Gesetzt: true},
-		Quelle:        core.Feld{Gesetzt: true, Wert: &q},
-		Infos: []core.InfoAenderung{
-			{ID: "i1", Wert: &[]string{"14,0"}[0], Einheit: core.Feld{Gesetzt: true}},
-			{ID: "i2", Einheit: core.Feld{Gesetzt: true, Wert: &[]string{"Stück"}[0]}},
+	neu, geaendert, err := core.Correct(e, core.Change{
+		Type:         &[]string{"arztbrief"}[0],
+		DocumentDate: core.Nullable{Set: true},
+		Issuer:       core.Nullable{Set: true, Value: &q},
+		Facts: []core.FactChange{
+			{ID: "i1", Value: &[]string{"14,0"}[0], Unit: core.Nullable{Set: true}},
+			{ID: "i2", Unit: core.Nullable{Set: true, Value: &[]string{"Stück"}[0]}},
 		},
 	}, jetzt)
 	if err != nil || len(geaendert) != 6 {
@@ -51,7 +51,7 @@ func TestIntegration_KorrekturSpeichern(t *testing.T) {
 		t.Errorf("gelesen\n%+v\nerwartet\n%+v", gelesen, neu)
 	}
 	// Nicht korrigierbare Felder sind unverändert.
-	if gelesen.Volltext != e.Volltext || gelesen.Datei != e.Datei || !gelesen.Importdatum.Equal(e.Importdatum) || gelesen.Modul != e.Modul {
+	if gelesen.FullText != e.FullText || gelesen.File != e.File || !gelesen.ImportedAt.Equal(e.ImportedAt) || gelesen.Module != e.Module {
 		t.Errorf("nicht korrigierbare Felder geändert: %+v", gelesen)
 	}
 

@@ -6,50 +6,49 @@ import (
 	"sort"
 )
 
-// StandardModul gilt, wenn eine Anfrage kein Modul nennt.
-const StandardModul = "gesundheit"
+// DefaultModule applies when a request names no module.
+const DefaultModule = "gesundheit"
 
-// modulTypen ist der Modulkatalog: welche Module es gibt und welche Typen
-// innerhalb jedes Moduls erlaubt sind. Ein Typ gilt nur in seinem Modul, ein
-// späteres Kochrezept-Modul darf also wieder einen Typ "rezept" haben.
+// moduleTypes is the module catalog: which modules exist and which types are
+// allowed within each module. A type is only valid in its module, so a later
+// cooking recipe module may have a type "rezept" again.
 //
-// Weitere Module (ernaehrung, rezepte, sport) kommen erst dazu, wenn ihre
-// Typen feststehen (docs/API.md, Abschnitt „Module“).
-var modulTypen = map[string][]string{
+// Further modules (ernaehrung, rezepte, sport) are added once their types are
+// defined (docs/API.md, section "Modules").
+var moduleTypes = map[string][]string{
 	"gesundheit": {"arztbrief", "laborbefund", "rezept", "sonstiges"},
 }
 
-// ErrUnbekanntesModul: Der Wert ist kein bekanntes Modul.
-var ErrUnbekanntesModul = errors.New("unbekanntes Modul")
+// ErrUnknownModule: the value is not a known module.
+var ErrUnknownModule = errors.New("unknown module")
 
-// PruefeModul gibt das Modul für eine Anfrage zurück. Ein leerer Wert ergibt
-// das Standardmodul. Groß- und Kleinschreibung zählen: "Gesundheit" ist
-// unbekannt.
-func PruefeModul(wert string) (string, error) {
-	if wert == "" {
-		return StandardModul, nil
+// CheckModule returns the module for a request. An empty value gives the
+// default module. Case matters: "Gesundheit" is unknown.
+func CheckModule(value string) (string, error) {
+	if value == "" {
+		return DefaultModule, nil
 	}
-	if _, ok := modulTypen[wert]; !ok {
-		return "", ErrUnbekanntesModul
+	if _, ok := moduleTypes[value]; !ok {
+		return "", ErrUnknownModule
 	}
-	return wert, nil
+	return value, nil
 }
 
-// ErlaubteTypen liefert die Typen eines Moduls (Kopie, damit niemand den
-// Katalog verändert). Für ein unbekanntes Modul ist das Ergebnis leer.
-func ErlaubteTypen(modul string) []string {
-	return slices.Clone(modulTypen[modul])
+// AllowedTypes returns the types of a module (a copy, so nobody changes the
+// catalog). For an unknown module the result is empty.
+func AllowedTypes(module string) []string {
+	return slices.Clone(moduleTypes[module])
 }
 
-// TypErlaubt prüft, ob typ im Modul vorkommt.
-func TypErlaubt(modul, typ string) bool {
-	return slices.Contains(modulTypen[modul], typ)
+// TypeAllowed checks whether typ exists in the module.
+func TypeAllowed(module, typ string) bool {
+	return slices.Contains(moduleTypes[module], typ)
 }
 
-// Module liefert alle bekannten Module, alphabetisch sortiert.
-func Module() []string {
-	m := make([]string, 0, len(modulTypen))
-	for name := range modulTypen {
+// Modules returns all known modules, sorted alphabetically.
+func Modules() []string {
+	m := make([]string, 0, len(moduleTypes))
+	for name := range moduleTypes {
 		m = append(m, name)
 	}
 	sort.Strings(m)

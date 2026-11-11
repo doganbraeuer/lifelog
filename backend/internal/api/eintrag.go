@@ -37,11 +37,11 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 			return
 		}
 
-		inhalt, laenge, err := s.DateiOeffnen(r.Context(), e.Datei.ID)
+		inhalt, laenge, err := s.DateiOeffnen(r.Context(), e.File.ID)
 		if err != nil {
-			if errors.Is(err, core.ErrOriginalFehlt) {
+			if errors.Is(err, core.ErrOriginalMissing) {
 				// Darf nicht vorkommen: Eintrag ohne Datei ist ein Datenfehler.
-				slog.Error("Originaldatei fehlt", "eintrag", e.ID, "datei", e.Datei.ID)
+				slog.Error("Originaldatei fehlt", "eintrag", e.ID, "datei", e.File.ID)
 			}
 			schreibeInternenFehler(w, r, err)
 			return
@@ -49,9 +49,9 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 		defer inhalt.Close()
 
 		h := w.Header()
-		h.Set("Content-Type", e.Datei.MimeTyp)
+		h.Set("Content-Type", e.File.MimeType)
 		h.Set("Content-Length", strconv.FormatInt(laenge, 10))
-		h.Set("Content-Disposition", inlineMitName(e.Datei.Dateiname))
+		h.Set("Content-Disposition", inlineMitName(e.File.FileName))
 		// Der Browser/die WebView soll den Typ nicht selbst erraten.
 		h.Set("X-Content-Type-Options", "nosniff")
 		// Gesundheitsdokumente nicht in Zwischenspeichern ablegen.
@@ -68,20 +68,20 @@ func dateiHandler(s EintragSpeicher) http.HandlerFunc {
 
 // ladeEintrag prüft die ID aus dem Pfad und lädt den Eintrag. Bei einem
 // Fehler ist die Antwort schon geschrieben und ok ist false.
-func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (core.Eintrag, bool) {
+func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (core.Entry, bool) {
 	id := r.PathValue("id")
-	if err := core.PruefeID(id); err != nil {
+	if err := core.CheckID(id); err != nil {
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
-		return core.Eintrag{}, false
+		return core.Entry{}, false
 	}
 	e, gefunden, err := s.EintragLesen(r.Context(), id)
 	if err != nil {
 		schreibeInternenFehler(w, r, err)
-		return core.Eintrag{}, false
+		return core.Entry{}, false
 	}
 	if !gefunden {
 		schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
-		return core.Eintrag{}, false
+		return core.Entry{}, false
 	}
 	return e, true
 }

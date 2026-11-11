@@ -43,15 +43,15 @@ func TestErkennungAusAntwort_Gueltig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !e.Lesbar || e.Typ != "laborbefund" || *e.Dokumentdatum != "2026-10-14" || *e.Quelle != "Labor Muster GmbH, Salzburg" {
+	if !e.Readable || e.Type != "laborbefund" || *e.DocumentDate != "2026-10-14" || *e.Issuer != "Labor Muster GmbH, Salzburg" {
 		t.Errorf("Erkennung = %+v", e)
 	}
-	if len(e.Infos) != 2 || e.Infos[1].Wert != "<0,5" || e.Infos[1].Einheit != nil {
-		t.Errorf("Infos = %+v", e.Infos)
+	if len(e.Facts) != 2 || e.Facts[1].Value != "<0,5" || e.Facts[1].Unit != nil {
+		t.Errorf("Infos = %+v", e.Facts)
 	}
 
 	// Das Ergebnis passt zur Prüfung in kern (Zusammenspiel beider Teile).
-	if _, _, err := core.PruefeErkennung(e, "gesundheit"); err != nil {
+	if _, _, err := core.CheckExtraction(e, "gesundheit"); err != nil {
 		t.Errorf("core.PruefeErkennung: %v", err)
 	}
 }
@@ -62,14 +62,14 @@ func TestErkennungAusAntwort_NullUndNichtLesbar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Lesbar || e.Dokumentdatum != nil || e.Quelle != nil || e.Infos == nil {
+	if e.Readable || e.DocumentDate != nil || e.Issuer != nil || e.Facts == nil {
 		t.Errorf("Erkennung = %+v", e)
 	}
 }
 
 func TestErkennungAusAntwort_Codeblock(t *testing.T) {
 	e, err := erkennungAusAntwort(antwort("```json\n"+gueltigeAntwort+"\n```", genai.FinishReasonStop))
-	if err != nil || e.Typ != "laborbefund" {
+	if err != nil || e.Type != "laborbefund" {
 		t.Errorf("Codeblock nicht entfernt: %+v, %v", e, err)
 	}
 }
@@ -110,7 +110,7 @@ func TestErkennungAusText_FehlerOhneInhalt(t *testing.T) {
 }
 
 func TestLeseSchema(t *testing.T) {
-	typen := core.ErlaubteTypen("gesundheit")
+	typen := core.AllowedTypes("gesundheit")
 	roh, err := json.Marshal(leseSchema(typen))
 	if err != nil {
 		t.Fatal(err)

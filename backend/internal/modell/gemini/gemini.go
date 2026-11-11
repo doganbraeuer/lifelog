@@ -102,11 +102,11 @@ func Neu(ctx context.Context, e Einstellungen) (*Gemini, error) {
 
 // DokumentLesen schickt das Dokument an das Vision-LLM und liefert die
 // ungeprüfte Erkennung. Wiederholung und Ersatz: siehe erzeugenMitErsatz.
-func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (core.Erkennung, error) {
+func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string, erlaubteTypen []string) (core.Extraction, error) {
 	inhalte, cfg := leseAnfrage(daten, mimeTyp, erlaubteTypen)
 	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Lesen", inhalte, cfg)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	return erkennungAusAntwort(resp)
 }
@@ -115,22 +115,22 @@ func (g *Gemini) DokumentLesen(ctx context.Context, daten []byte, mimeTyp string
 // Datum, Quelle, Typ und Infos. Volltext bleibt leer und Lesbar ist true;
 // der Volltext ist der eingegebene Text, den setzt der Aufrufer. Gleiche
 // Wiederholung, gleicher Ersatz und gleiches Limit wie DokumentLesen.
-func (g *Gemini) TextLesen(ctx context.Context, text string, erlaubteTypen []string) (core.Erkennung, error) {
+func (g *Gemini) TextLesen(ctx context.Context, text string, erlaubteTypen []string) (core.Extraction, error) {
 	inhalte, cfg := textAnfrage(text, erlaubteTypen)
 	resp, err := g.erzeugenMitErsatz(ctx, g.leseTimeout, "Text lesen", inhalte, cfg)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	antwort, err := textAusAntwort(resp)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	return textErkennungAusText(antwort)
 }
 
 // Antworten beantwortet eine Frage nur aus den Fundstellen (Schritt 5).
 // Gleiche Wiederholung und gleicher Ersatz wie beim Lesen.
-func (g *Gemini) Antworten(ctx context.Context, frage string, fundstellen []core.Fundstelle) (string, error) {
+func (g *Gemini) Antworten(ctx context.Context, frage string, fundstellen []core.Source) (string, error) {
 	inhalte, cfg := antwortAnfrage(frage, fundstellen)
 	resp, err := g.erzeugenMitErsatz(ctx, g.antwortTimeout, "Antworten", inhalte, cfg)
 	if err != nil {

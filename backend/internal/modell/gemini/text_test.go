@@ -15,7 +15,7 @@ import (
 )
 
 func TestTextSchema_OhneLesbarUndVolltext(t *testing.T) {
-	typen := core.ErlaubteTypen("gesundheit")
+	typen := core.AllowedTypes("gesundheit")
 	roh, err := json.Marshal(textSchema(typen))
 	if err != nil {
 		t.Fatal(err)
@@ -86,11 +86,11 @@ func TestTextErkennungAusText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !e.Lesbar || e.Volltext != "" || e.Typ != "arztbrief" || deref(e.Dokumentdatum) != "2026-10-21" || e.Quelle != nil {
+	if !e.Readable || e.FullText != "" || e.Type != "arztbrief" || deref(e.DocumentDate) != "2026-10-21" || e.Issuer != nil {
 		t.Errorf("Erkennung %+v", e)
 	}
-	if len(e.Infos) != 1 || e.Infos[0].Wert != "Rückenschmerzen" {
-		t.Errorf("Infos %+v", e.Infos)
+	if len(e.Facts) != 1 || e.Facts[0].Value != "Rückenschmerzen" {
+		t.Errorf("Infos %+v", e.Facts)
 	}
 
 	// Ohne lesbar ist die Antwort gültig, mit Codeblock auch.
@@ -133,7 +133,7 @@ func TestTextLesen_WiederholungUndErsatz(t *testing.T) {
 			}
 			if f.erfolg {
 				// gueltigeAntwort enthält einen volltext; TextLesen ignoriert ihn.
-				if err != nil || e.Typ != "laborbefund" || !e.Lesbar || e.Volltext != "" {
+				if err != nil || e.Type != "laborbefund" || !e.Readable || e.FullText != "" {
 					t.Errorf("erwartet Erfolg ohne Volltext: %+v, %v", e, err)
 				}
 			} else if !errors.Is(err, modell.ErrNichtErreichbar) {

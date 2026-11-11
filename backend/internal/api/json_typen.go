@@ -30,14 +30,14 @@ func zeitpunktJSON(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func eintragKurzZuJSON(e core.EintragKurz) eintragKurzJSON {
+func eintragKurzZuJSON(e core.EntrySummary) eintragKurzJSON {
 	return eintragKurzJSON{
 		ID:            e.ID,
-		Modul:         e.Modul,
-		Typ:           e.Typ,
-		Dokumentdatum: e.Dokumentdatum,
-		Importdatum:   zeitpunktJSON(e.Importdatum),
-		Quelle:        e.Quelle,
+		Modul:         e.Module,
+		Typ:           e.Type,
+		Dokumentdatum: e.DocumentDate,
+		Importdatum:   zeitpunktJSON(e.ImportedAt),
+		Quelle:        e.Issuer,
 	}
 }
 
@@ -77,35 +77,35 @@ type korrekturJSON struct {
 	Zeitpunkt  string  `json:"zeitpunkt"`
 }
 
-func eintragZuJSON(e core.Eintrag) eintragJSON {
-	infos := make([]infoJSON, 0, len(e.Infos)) // nie nil
-	for _, i := range e.Infos {
-		infos = append(infos, infoJSON{ID: i.ID, Name: i.Name, Wert: i.Wert, Einheit: i.Einheit})
+func eintragZuJSON(e core.Entry) eintragJSON {
+	infos := make([]infoJSON, 0, len(e.Facts)) // nie nil
+	for _, i := range e.Facts {
+		infos = append(infos, infoJSON{ID: i.ID, Name: i.Name, Wert: i.Value, Einheit: i.Unit})
 	}
-	korrekturen := make([]korrekturJSON, 0, len(e.Korrekturen)) // nie nil
-	for _, k := range e.Korrekturen {
+	korrekturen := make([]korrekturJSON, 0, len(e.Corrections)) // nie nil
+	for _, k := range e.Corrections {
 		korrekturen = append(korrekturen, korrekturJSON{
-			Feld: k.Feld, Erkannt: k.Erkannt, Korrigiert: k.Korrigiert, Zeitpunkt: zeitpunktJSON(k.Zeitpunkt),
+			Feld: k.Field, Erkannt: k.Recognized, Korrigiert: k.Corrected, Zeitpunkt: zeitpunktJSON(k.CorrectedAt),
 		})
 	}
 	return eintragJSON{
 		ID:            e.ID,
-		Modul:         e.Modul,
-		Typ:           e.Typ,
-		Dokumentdatum: e.Dokumentdatum,
-		Importdatum:   zeitpunktJSON(e.Importdatum),
-		Quelle:        e.Quelle,
-		Volltext:      e.Volltext,
+		Modul:         e.Module,
+		Typ:           e.Type,
+		Dokumentdatum: e.DocumentDate,
+		Importdatum:   zeitpunktJSON(e.ImportedAt),
+		Quelle:        e.Issuer,
+		Volltext:      e.FullText,
 		Infos:         infos,
 		Datei: dateiJSON{
-			ID: e.Datei.ID, Dateiname: e.Datei.Dateiname, MimeTyp: e.Datei.MimeTyp,
-			Groesse: e.Datei.Groesse, Sha256: e.Datei.Sha256,
+			ID: e.File.ID, Dateiname: e.File.FileName, MimeTyp: e.File.MimeType,
+			Groesse: e.File.Size, Sha256: e.File.Sha256,
 		},
 		Korrekturen: korrekturen,
 	}
 }
 
-func eintraegeListeZuJSON(liste []core.EintragKurz) eintraegeListeJSON {
+func eintraegeListeZuJSON(liste []core.EntrySummary) eintraegeListeJSON {
 	out := make([]eintragKurzJSON, 0, len(liste)) // nie nil
 	for _, e := range liste {
 		out = append(out, eintragKurzZuJSON(e))

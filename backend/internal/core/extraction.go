@@ -7,73 +7,74 @@ import (
 	"time"
 )
 
-// Erkennung ist das, was ein Modell aus einem Dokument gelesen hat, noch
-// ungeprüft. Die Modell-Schnittstelle (Paket modell) liefert diesen Typ,
-// egal welcher Anbieter dahintersteckt.
-type Erkennung struct {
-	Lesbar        bool    // false: kein Dokument erkennbar (z. B. unscharfes Foto)
-	Dokumentdatum *string // soll "YYYY-MM-DD" sein
-	Quelle        *string
-	Typ           string
-	Volltext      string
-	Infos         []ErkannteInfo
+// Extraction is what a model has read from a document, not yet checked. The
+// model interface (package modell) returns this type, whichever provider is
+// behind it.
+type Extraction struct {
+	Readable     bool    // false: no document recognizable (e.g. blurry photo)
+	DocumentDate *string // should be "YYYY-MM-DD"
+	Issuer       *string
+	Type         string
+	FullText     string
+	Facts        []ExtractedFact
 }
 
-// ErkannteInfo ist eine Angabe, wie das Modell sie liefert (noch ohne ID).
-type ErkannteInfo struct {
-	Name    string
-	Wert    string
-	Einheit *string
+// ExtractedFact is a fact as the model returns it (still without an ID).
+type ExtractedFact struct {
+	Name  string
+	Value string
+	Unit  *string
 }
 
-// ErrNichtLesbar: Das Modell erkennt kein Dokument (→ 422 NICHT_LESBAR).
-var ErrNichtLesbar = errors.New("kein Dokument erkennbar")
+// ErrUnreadable: the model recognizes no document (→ 422 NICHT_LESBAR).
+var ErrUnreadable = errors.New("no document recognizable")
 
-// ErrErkennungUngueltig: Die Antwort des Modells passt nicht zu den Regeln
+// ErrInvalidExtraction: the model's response does not follow the rules
 // (→ 502 AUSLESEN_FEHLGESCHLAGEN).
-var ErrErkennungUngueltig = errors.New("Erkennung ungültig")
+var ErrInvalidExtraction = errors.New("invalid extraction")
 
-// ErkennungFehler sagt, welches Feld nicht passt. Er enthält bewusst nie den
-// Wert selbst, weil er im Log landet und Werte Gesundheitsdaten sein können.
-type ErkennungFehler struct {
-	Feld  string // z. B. "dokumentdatum" oder "infos[2].name"
-	Grund string
+// ExtractionError says which field does not fit. It deliberately never
+// contains the value itself, because it ends up in the log and values can be
+// health data.
+type ExtractionError struct {
+	Field  string // e.g. "dokumentdatum" or "infos[2].name"
+	Reason string
 }
 
-func (f *ErkennungFehler) Error() string {
-	return fmt.Sprintf("Erkennung ungültig: %s: %s", f.Feld, f.Grund)
+func (e *ExtractionError) Error() string {
+	return fmt.Sprintf("invalid extraction: %s: %s", e.Field, e.Reason)
 }
 
-// Is sorgt dafür, dass errors.Is(err, ErrErkennungUngueltig) zutrifft.
-func (f *ErkennungFehler) Is(ziel error) bool { return ziel == ErrErkennungUngueltig }
+// Is makes errors.Is(err, ErrInvalidExtraction) true.
+func (e *ExtractionError) Is(target error) bool { return target == ErrInvalidExtraction }
 
-// ErrDatumUngueltig: Ein Datum ist nicht im Format YYYY-MM-DD oder kein
-// echtes Kalenderdatum.
-var ErrDatumUngueltig = errors.New("Datum muss im Format JJJJ-MM-TT ein gültiges Kalenderdatum sein")
+// ErrInvalidDate: a date is not in the format YYYY-MM-DD or not a real
+// calendar date.
+var ErrInvalidDate = errors.New("date must be a valid calendar date in the format YYYY-MM-DD")
 
-// ErrKeinKalendertag: Das Format stimmt, aber den Tag gibt es nicht (z. B.
-// 2026-02-31). Ein Sonderfall von ErrDatumUngueltig; PATCH meldet ihn mit
-// eigener Nachricht (API.md 3.5).
-var ErrKeinKalendertag = fmt.Errorf("%w: diesen Tag gibt es nicht", ErrDatumUngueltig)
+// ErrNoSuchDay: the format is right, but the day does not exist (e.g.
+// 2026-02-31). A special case of ErrInvalidDate; PATCH reports it with its
+// own message (API.md 3.5).
+var ErrNoSuchDay = fmt.Errorf("%w: this day does not exist", ErrInvalidDate)
 
-// PruefeDatum prüft ein Dokumentdatum: genau "YYYY-MM-DD" mit führenden
-// Nullen, und das Datum muss es geben (kein 31.02.). Falsches Format ergibt
-// ErrDatumUngueltig, ein unmöglicher Tag ErrKeinKalendertag.
-func PruefeDatum(datum string) error {
-	if !datumsFormat(datum) {
-		return ErrDatumUngueltig
+// CheckDate checks a document date: exactly "YYYY-MM-DD" with leading
+// zeros, and the date must exist (no 31 February). A wrong format gives
+// ErrInvalidDate, an impossible day ErrNoSuchDay.
+func CheckDate(date string) error {
+	if !isDateFormat(date) {
+		return ErrInvalidDate
 	}
-	// time.Parse lehnt Monate und Tage außerhalb des Bereichs ab, z. B.
-	// 2026-02-30 oder 2026-13-01.
-	if _, err := time.Parse("2006-01-02", datum); err != nil {
-		return ErrKeinKalendertag
+	// time.Parse rejects months and days out of range, e.g. 2026-02-30 or
+	// 2026-13-01.
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return ErrNoSuchDay
 	}
 	return nil
 }
 
-// datumsFormat: genau zehn Zeichen, Ziffern mit Bindestrichen an Stelle 5
-// und 8.
-func datumsFormat(s string) bool {
+// isDateFormat: exactly ten characters, digits with hyphens at positions 5
+// and 8.
+func isDateFormat(s string) bool {
 	if len(s) != len("2006-01-02") {
 		return false
 	}
@@ -89,79 +90,79 @@ func datumsFormat(s string) bool {
 	return true
 }
 
-// PruefeErkennung prüft die Antwort des Modells und macht daraus einen
-// Eintrag für das Modul. Gesetzt werden Modul, Typ, Dokumentdatum, Quelle,
-// Volltext, Infos (mit IDs i1, i2, …) und eine leere Korrekturliste.
-// ID, Importdatum und Datei setzt danach der Aufrufer.
+// CheckExtraction checks the model's response and turns it into an entry for
+// the module. It sets module, type, document date, issuer, full text, facts
+// (with IDs i1, i2, …) and an empty list of corrections. The caller sets ID,
+// import time and file afterwards.
 //
-// Regeln:
-//   - Lesbar=false ergibt ErrNichtLesbar.
-//   - typ muss im Modul erlaubt sein.
-//   - volltext darf nicht leer sein. Er wird nicht verändert.
-//   - dokumentdatum: leer heißt „nicht erkannt“ (nil), sonst PruefeDatum.
-//   - quelle und einheit: leer heißt nil.
-//   - Eine Info ohne name oder wert wird weggelassen, nicht abgelehnt
-//     (API.md 3.1, Schritt 4). Die übrigen bekommen lückenlose IDs.
-//     Leerraum am Rand wird entfernt, der Wert bleibt sonst genau wie auf
-//     dem Dokument ("<0,5" bleibt "<0,5").
+// Rules:
+//   - Readable=false gives ErrUnreadable.
+//   - The type must be allowed in the module.
+//   - The full text must not be empty. It is not changed.
+//   - Document date: empty means "not recognized" (nil), otherwise CheckDate.
+//   - Issuer and unit: empty means nil.
+//   - A fact without name or value is dropped, not rejected (API.md 3.1,
+//     step 4). The remaining ones get IDs without gaps. Whitespace at the
+//     edges is removed; otherwise the value stays exactly as on the document
+//     ("<0,5" stays "<0,5").
 //
-// ausgelassen nennt die fehlenden Felder der weggelassenen Infos, z. B.
-// "infos[2].wert". Der Index bezieht sich auf die Liste des Modells. Die
-// Liste enthält nie Werte, der Aufrufer darf sie also ins Log schreiben.
-// Sie ist nie nil.
-func PruefeErkennung(e Erkennung, modul string) (eintrag Eintrag, ausgelassen []string, err error) {
-	ausgelassen = []string{}
-	if !e.Lesbar {
-		return Eintrag{}, ausgelassen, ErrNichtLesbar
+// dropped names the missing fields of the dropped facts, e.g.
+// "infos[2].wert". The index refers to the model's list. The list never
+// contains values, so the caller may log it. It is never nil.
+func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string, err error) {
+	dropped = []string{}
+	if !x.Readable {
+		return Entry{}, dropped, ErrUnreadable
 	}
-	if !TypErlaubt(modul, e.Typ) {
-		return Eintrag{}, ausgelassen, &ErkennungFehler{Feld: "typ", Grund: "im Modul " + modul + " nicht erlaubt"}
+	if !TypeAllowed(module, x.Type) {
+		return Entry{}, dropped, &ExtractionError{Field: "typ", Reason: "not allowed in module " + module}
 	}
-	if strings.TrimSpace(e.Volltext) == "" {
-		return Eintrag{}, ausgelassen, &ErkennungFehler{Feld: "volltext", Grund: "leer"}
+	if strings.TrimSpace(x.FullText) == "" {
+		return Entry{}, dropped, &ExtractionError{Field: "volltext", Reason: "empty"}
 	}
 
-	datum := ohneLeer(e.Dokumentdatum)
-	if datum != nil {
-		if err := PruefeDatum(*datum); err != nil {
-			return Eintrag{}, ausgelassen, &ErkennungFehler{Feld: "dokumentdatum", Grund: "kein gültiges Datum im Format JJJJ-MM-TT"}
+	date := trimmedOrNil(x.DocumentDate)
+	if date != nil {
+		if err := CheckDate(*date); err != nil {
+			return Entry{}, dropped, &ExtractionError{Field: "dokumentdatum", Reason: "not a valid date in the format YYYY-MM-DD"}
 		}
 	}
 
-	infos := make([]Info, 0, len(e.Infos))
-	for i, ei := range e.Infos {
-		name := strings.TrimSpace(ei.Name)
-		wert := strings.TrimSpace(ei.Wert)
-		if name == "" || wert == "" {
+	facts := make([]Fact, 0, len(x.Facts))
+	for i, xf := range x.Facts {
+		name := strings.TrimSpace(xf.Name)
+		value := strings.TrimSpace(xf.Value)
+		if name == "" || value == "" {
 			if name == "" {
-				ausgelassen = append(ausgelassen, fmt.Sprintf("infos[%d].name", i))
+				dropped = append(dropped, fmt.Sprintf("infos[%d].name", i))
 			}
-			if wert == "" {
-				ausgelassen = append(ausgelassen, fmt.Sprintf("infos[%d].wert", i))
+			if value == "" {
+				dropped = append(dropped, fmt.Sprintf("infos[%d].wert", i))
 			}
 			continue
 		}
-		infos = append(infos, Info{
-			ID:      fmt.Sprintf("i%d", len(infos)+1), // lückenlos, auch nach Auslassungen
-			Name:    name,
-			Wert:    wert,
-			Einheit: ohneLeer(ei.Einheit),
+		facts = append(facts, Fact{
+			ID:    fmt.Sprintf("i%d", len(facts)+1), // without gaps, even after dropped facts
+			Name:  name,
+			Value: value,
+			Unit:  trimmedOrNil(xf.Unit),
 		})
 	}
 
-	return Eintrag{
-		Modul:         modul,
-		Typ:           e.Typ,
-		Dokumentdatum: datum,
-		Quelle:        ohneLeer(e.Quelle),
-		Volltext:      e.Volltext,
-		Infos:         infos,
-		Korrekturen:   []Korrektur{},
-	}, ausgelassen, nil
+	return Entry{
+		Module:       module,
+		Type:         x.Type,
+		DocumentDate: date,
+		Issuer:       trimmedOrNil(x.Issuer),
+		FullText:     x.FullText,
+		Facts:        facts,
+		Corrections:  []Correction{},
+	}, dropped, nil
 }
 
-// ohneLeer entfernt Leerraum am Rand. Bleibt nichts übrig, ergibt das nil.
-func ohneLeer(s *string) *string {
+// trimmedOrNil removes whitespace at the edges. If nothing remains, the
+// result is nil.
+func trimmedOrNil(s *string) *string {
 	if s == nil {
 		return nil
 	}

@@ -20,17 +20,17 @@ import (
 // bytegenau so gespeichert werden, wie er ankommt.
 const eingabe = "  Hausarztpraxis Beispiel\r\nÜberweisung vom 21.10.2026\n\nDiagnose: Rückenschmerzen \n"
 
-func textErkennung() core.Erkennung {
+func textErkennung() core.Extraction {
 	// Wie die Attrappe sie liefert. Volltext und Lesbar setzt das Modell beim
 	// Text nicht; der Dienst muss sie selbst setzen und Abweichungen
 	// überschreiben.
-	return core.Erkennung{
-		Lesbar:        false,
-		Volltext:      "vom Modell erfunden",
-		Dokumentdatum: zeiger("2026-10-21"),
-		Quelle:        zeiger("Hausarztpraxis Beispiel"),
-		Typ:           "arztbrief",
-		Infos:         []core.ErkannteInfo{{Name: "Diagnose", Wert: "Rückenschmerzen"}},
+	return core.Extraction{
+		Readable:     false,
+		FullText:     "vom Modell erfunden",
+		DocumentDate: zeiger("2026-10-21"),
+		Issuer:       zeiger("Hausarztpraxis Beispiel"),
+		Type:         "arztbrief",
+		Facts:        []core.ExtractedFact{{Name: "Diagnose", Value: "Rückenschmerzen"}},
 	}
 }
 
@@ -54,29 +54,29 @@ func TestTextImport_Erfolg(t *testing.T) {
 	}
 
 	// volltext ist der eingegebene Text, nicht der des Modells.
-	if e.Volltext != eingabe {
-		t.Errorf("Volltext = %q", e.Volltext)
+	if e.FullText != eingabe {
+		t.Errorf("Volltext = %q", e.FullText)
 	}
 	summe := sha256.Sum256([]byte(eingabe))
-	want := core.Datei{
-		ID: e.Datei.ID, Dateiname: "text.txt", MimeTyp: "text/plain; charset=utf-8",
-		Groesse: int64(len(eingabe)), Sha256: hex.EncodeToString(summe[:]),
+	want := core.File{
+		ID: e.File.ID, FileName: "text.txt", MimeType: "text/plain; charset=utf-8",
+		Size: int64(len(eingabe)), Sha256: hex.EncodeToString(summe[:]),
 	}
-	if e.Datei != want {
-		t.Errorf("Datei = %+v\nerwartet %+v", e.Datei, want)
+	if e.File != want {
+		t.Errorf("Datei = %+v\nerwartet %+v", e.File, want)
 	}
 	// Bytes, nicht Zeichen: Ü und ü sind je zwei Bytes.
-	if e.Datei.Groesse != int64(len([]rune(eingabe))+2) {
-		t.Errorf("Größe %d ist nicht in Bytes", e.Datei.Groesse)
+	if e.File.Size != int64(len([]rune(eingabe))+2) {
+		t.Errorf("Größe %d ist nicht in Bytes", e.File.Size)
 	}
-	if got := string(a.speicher.dateien[e.Datei.ID]); got != eingabe {
+	if got := string(a.speicher.dateien[e.File.ID]); got != eingabe {
 		t.Errorf("gespeicherte Datei = %q", got)
 	}
 
-	if e.Modul != "gesundheit" || e.Typ != "arztbrief" || len(e.Infos) != 1 || e.Infos[0].ID != "i1" {
+	if e.Module != "gesundheit" || e.Type != "arztbrief" || len(e.Facts) != 1 || e.Facts[0].ID != "i1" {
 		t.Errorf("Eintrag %+v", e)
 	}
-	if len(a.speicher.eintraege) != 1 || a.speicher.eintraege[0].Volltext != eingabe {
+	if len(a.speicher.eintraege) != 1 || a.speicher.eintraege[0].FullText != eingabe {
 		t.Error("Eintrag nicht mit dem eingegebenen Text gespeichert")
 	}
 	// Abschnitte aus dem eingegebenen Text.
@@ -117,11 +117,11 @@ func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
 		upload TextUpload
 		fehler error
 	}{
-		{"leer", TextUpload{Text: ""}, core.ErrDateiLeer},
-		{"nur Leerraum", TextUpload{Text: " \r\n\t"}, core.ErrDateiLeer},
-		{"ungültiges UTF-8", TextUpload{Text: "Befund \xff"}, core.ErrTextKeinUTF8},
-		{"zu lang", TextUpload{Text: strings.Repeat("ä", core.MaxTextZeichen+1)}, core.ErrTextZuLang},
-		{"unbekanntes Modul", TextUpload{Text: eingabe, Modul: "sport"}, core.ErrUnbekanntesModul},
+		{"leer", TextUpload{Text: ""}, core.ErrFileEmpty},
+		{"nur Leerraum", TextUpload{Text: " \r\n\t"}, core.ErrFileEmpty},
+		{"ungültiges UTF-8", TextUpload{Text: "Befund \xff"}, core.ErrTextNotUTF8},
+		{"zu lang", TextUpload{Text: strings.Repeat("ä", core.MaxTextChars+1)}, core.ErrTextTooLong},
+		{"unbekanntes Modul", TextUpload{Text: eingabe, Modul: "sport"}, core.ErrUnknownModule},
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			a := textAufbau()
@@ -139,13 +139,13 @@ func TestTextImport_PruefungenVorJedemAufruf(t *testing.T) {
 // Genau 100 000 Zeichen mit Umlauten (200 000 Bytes) sind erlaubt.
 func TestTextImport_GrenzeInZeichen(t *testing.T) {
 	a := textAufbau()
-	text := strings.Repeat("ü", core.MaxTextZeichen)
+	text := strings.Repeat("ü", core.MaxTextChars)
 	e, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Datei.Groesse != 2*core.MaxTextZeichen {
-		t.Errorf("Größe %d", e.Datei.Groesse)
+	if e.File.Size != 2*core.MaxTextChars {
+		t.Errorf("Größe %d", e.File.Size)
 	}
 }
 
@@ -175,10 +175,10 @@ func TestTextImport_ModellFehlerSpeichertNichts(t *testing.T) {
 func TestTextImport_TypNichtErlaubt(t *testing.T) {
 	a := textAufbau()
 	e := textErkennung()
-	e.Typ = "kochrezept"
+	e.Type = "kochrezept"
 	a.leser.Erkennung = e
 	_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
-	if !errors.Is(err, core.ErrErkennungUngueltig) || errors.Is(err, core.ErrNichtLesbar) {
+	if !errors.Is(err, core.ErrInvalidExtraction) || errors.Is(err, core.ErrUnreadable) {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -203,7 +203,7 @@ func TestTextImport_TextNichtImLog(t *testing.T) {
 
 	a := textAufbau()
 	e := textErkennung()
-	e.Infos = append(e.Infos, core.ErkannteInfo{Name: "Dosis", Wert: ""}) // wird ausgelassen und geloggt
+	e.Facts = append(e.Facts, core.ExtractedFact{Name: "Dosis", Value: ""}) // wird ausgelassen und geloggt
 	a.leser.Erkennung = e
 	if _, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe}); err != nil {
 		t.Fatal(err)

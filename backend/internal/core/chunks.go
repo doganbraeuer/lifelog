@@ -6,133 +6,134 @@ import (
 	"unicode/utf8"
 )
 
-// AbschnittMaxZeichen ist die Obergrenze für einen Abschnitt, gezählt in
-// Zeichen (Runes), nicht in Bytes. "ä" ist ein Zeichen, aber zwei Bytes.
+// ChunkMaxChars is the upper limit for a chunk, counted in characters
+// (runes), not bytes. "ä" is one character but two bytes.
 //
-// Warum 500? Kleinere Abschnitte machen die Quellenangabe genauer (der
-// Auszug zeigt die passende Stelle statt des ganzen Dokuments). Größere
-// geben dem Sprachmodell mehr Zusammenhang. 500 ist ein Startwert für den
-// Prototyp, den wir mit echten (synthetischen) Dokumenten nachjustieren.
-const AbschnittMaxZeichen = 500
+// Why 500? Smaller chunks make the source citation more precise (the excerpt
+// shows the matching passage instead of the whole document). Larger ones give
+// the language model more context. 500 is a starting value for the prototype
+// that we adjust with real (synthetic) documents.
+const ChunkMaxChars = 500
 
-// leerzeilen trennt Absätze: ein Zeilenumbruch, dann mindestens eine Zeile,
-// die leer ist oder nur Leerraum enthält.
-var leerzeilen = regexp.MustCompile(`\n[ \t]*\n\s*`)
+// blankLines separates paragraphs: a line break, then at least one line that
+// is empty or contains only whitespace.
+var blankLines = regexp.MustCompile(`\n[ \t]*\n\s*`)
 
-// einheit ist ein Stück Text plus der Trenner, der im Original davor stand.
-type einheit struct {
-	trenner string // "\n\n" zwischen Absätzen, "\n" zwischen Zeilen, " " zwischen Wörtern, "" bei hartem Schnitt
-	text    string
+// piece is a piece of text plus the separator that preceded it in the
+// original.
+type piece struct {
+	sep  string // "\n\n" between paragraphs, "\n" between lines, " " between words, "" after a hard cut
+	text string
 }
 
-// ZerlegeInAbschnitte teilt einen Volltext in Abschnitte für die Suche.
+// SplitIntoChunks splits a full text into chunks for search.
 //
-//  1. Absätze (getrennt durch Leerzeilen) sind die natürlichen Einheiten.
-//  2. Ein zu langer Absatz wird an Zeilen geteilt, eine zu lange Zeile an
-//     Wörtern, ein zu langes Wort hart nach max Zeichen.
-//  3. Die Einheiten werden der Reihe nach zusammengefasst, solange der
-//     Abschnitt höchstens max Zeichen hat.
+//  1. Paragraphs (separated by blank lines) are the natural units.
+//  2. A paragraph that is too long is split at lines, a line that is too
+//     long at words, a word that is too long hard after max characters.
+//  3. The pieces are merged in order as long as the chunk has at most max
+//     characters.
 //
-// Kein Abschnitt ist leer oder länger als max. Leerer Text ergibt eine leere
-// Liste (nicht nil). Gleicher Text ergibt immer dieselben Abschnitte.
-func ZerlegeInAbschnitte(volltext string, max int) []string {
+// No chunk is empty or longer than max. Empty text gives an empty list (not
+// nil). The same text always gives the same chunks.
+func SplitIntoChunks(fullText string, max int) []string {
 	if max < 1 {
-		max = AbschnittMaxZeichen
+		max = ChunkMaxChars
 	}
-	text := strings.ReplaceAll(volltext, "\r\n", "\n")
+	text := strings.ReplaceAll(fullText, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 
-	var einheiten []einheit
-	for _, absatz := range leerzeilen.Split(text, -1) {
-		absatz = strings.TrimSpace(absatz)
-		if absatz == "" {
+	var pieces []piece
+	for _, paragraph := range blankLines.Split(text, -1) {
+		paragraph = strings.TrimSpace(paragraph)
+		if paragraph == "" {
 			continue
 		}
-		einheiten = append(einheiten, teile(absatz, "\n\n", max)...)
+		pieces = append(pieces, split(paragraph, "\n\n", max)...)
 	}
-	return fasseZusammen(einheiten, max)
+	return merge(pieces, max)
 }
 
-// teile zerlegt text so weit, dass jedes Stück höchstens max Zeichen hat.
-// trenner ist der Trenner vor dem ersten Stück.
-func teile(text, trenner string, max int) []einheit {
-	if laenge(text) <= max {
-		return []einheit{{trenner, text}}
+// split breaks text down until every piece has at most max characters. sep is
+// the separator before the first piece.
+func split(text, sep string, max int) []piece {
+	if length(text) <= max {
+		return []piece{{sep, text}}
 	}
 
-	var stuecke []string
-	var innen string
+	var parts []string
+	var inner string
 	switch {
 	case strings.Contains(text, "\n"):
-		stuecke, innen = nichtLeer(strings.Split(text, "\n")), "\n"
+		parts, inner = nonEmpty(strings.Split(text, "\n")), "\n"
 	case len(strings.Fields(text)) > 1:
-		stuecke, innen = strings.Fields(text), " "
+		parts, inner = strings.Fields(text), " "
 	default:
-		return hartSchneiden(text, trenner, max)
+		return hardCut(text, sep, max)
 	}
 
-	var out []einheit
-	for i, s := range stuecke {
-		t := innen
+	var out []piece
+	for i, p := range parts {
+		s := inner
 		if i == 0 {
-			t = trenner
+			s = sep
 		}
-		out = append(out, teile(s, t, max)...)
+		out = append(out, split(p, s, max)...)
 	}
 	return out
 }
 
-// hartSchneiden teilt ein einzelnes überlanges Wort (z. B. eine lange
-// Zeichenkette ohne Leerzeichen) nach max Zeichen. Geschnitten wird an
-// Zeichengrenzen, nie mitten in einem Umlaut.
-func hartSchneiden(text, trenner string, max int) []einheit {
-	var out []einheit
+// hardCut splits a single overlong word (e.g. a long string without spaces)
+// after max characters. It cuts at character boundaries, never in the middle
+// of an umlaut.
+func hardCut(text, sep string, max int) []piece {
+	var out []piece
 	runes := []rune(text)
 	for start := 0; start < len(runes); start += max {
-		ende := min(start+max, len(runes))
-		t := ""
+		end := min(start+max, len(runes))
+		s := ""
 		if start == 0 {
-			t = trenner
+			s = sep
 		}
-		out = append(out, einheit{t, string(runes[start:ende])})
+		out = append(out, piece{s, string(runes[start:end])})
 	}
 	return out
 }
 
-func fasseZusammen(einheiten []einheit, max int) []string {
-	abschnitte := []string{}
-	var aktuell strings.Builder
-	aktuellLaenge := 0
+func merge(pieces []piece, max int) []string {
+	chunks := []string{}
+	var current strings.Builder
+	currentLen := 0
 
-	for _, e := range einheiten {
-		textLaenge := laenge(e.text)
-		if aktuellLaenge > 0 && aktuellLaenge+laenge(e.trenner)+textLaenge <= max {
-			aktuell.WriteString(e.trenner)
-			aktuell.WriteString(e.text)
-			aktuellLaenge += laenge(e.trenner) + textLaenge
+	for _, p := range pieces {
+		textLen := length(p.text)
+		if currentLen > 0 && currentLen+length(p.sep)+textLen <= max {
+			current.WriteString(p.sep)
+			current.WriteString(p.text)
+			currentLen += length(p.sep) + textLen
 			continue
 		}
-		if aktuellLaenge > 0 {
-			abschnitte = append(abschnitte, aktuell.String())
-			aktuell.Reset()
+		if currentLen > 0 {
+			chunks = append(chunks, current.String())
+			current.Reset()
 		}
-		aktuell.WriteString(e.text) // Trenner am Anfang eines Abschnitts entfällt
-		aktuellLaenge = textLaenge
+		current.WriteString(p.text) // no separator at the start of a chunk
+		currentLen = textLen
 	}
-	if aktuellLaenge > 0 {
-		abschnitte = append(abschnitte, aktuell.String())
+	if currentLen > 0 {
+		chunks = append(chunks, current.String())
 	}
-	return abschnitte
+	return chunks
 }
 
-func nichtLeer(zeilen []string) []string {
-	out := zeilen[:0:0]
-	for _, z := range zeilen {
-		if z = strings.TrimSpace(z); z != "" {
-			out = append(out, z)
+func nonEmpty(lines []string) []string {
+	out := lines[:0:0]
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
 		}
 	}
 	return out
 }
 
-func laenge(s string) int { return utf8.RuneCountInString(s) }
+func length(s string) int { return utf8.RuneCountInString(s) }

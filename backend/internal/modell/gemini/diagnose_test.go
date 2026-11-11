@@ -77,12 +77,12 @@ func TestDiagnose_Lesen(t *testing.T) {
 	} else {
 		daten = testdatei(t, dateiname)
 	}
-	mimeTyp, err := core.ErkenneDateityp(daten)
+	mimeTyp, err := core.DetectFileType(daten)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	inhalte, cfg := leseAnfrage(daten, mimeTyp, core.ErlaubteTypen("gesundheit"))
+	inhalte, cfg := leseAnfrage(daten, mimeTyp, core.AllowedTypes("gesundheit"))
 	thinking := string(cfg.ThinkingConfig.ThinkingLevel)
 	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "aus" {
 		cfg.ThinkingConfig, thinking = nil, "aus"
@@ -137,16 +137,16 @@ func TestDiagnose_Lesen(t *testing.T) {
 			t.Errorf("Antwort nicht auswertbar: %v", err)
 			return
 		}
-		eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
+		eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
 		if err != nil {
 			t.Errorf("Prüfung: %v", err)
 			return
 		}
 		t.Logf("Geprüft: typ=%s datum=%s quelle=%s, %d Infos, ausgelassen %v",
-			eintrag.Typ, deref(eintrag.Dokumentdatum), deref(eintrag.Quelle), len(eintrag.Infos), ausgelassen)
+			eintrag.Type, deref(eintrag.DocumentDate), deref(eintrag.Issuer), len(eintrag.Facts), ausgelassen)
 		// Die Werte sind synthetisch (testdaten/), dürfen also ins Testlog.
-		for _, i := range eintrag.Infos {
-			t.Logf("  %s = %q %s", i.Name, i.Wert, deref(i.Einheit))
+		for _, i := range eintrag.Facts {
+			t.Logf("  %s = %q %s", i.Name, i.Value, deref(i.Unit))
 		}
 	}
 }

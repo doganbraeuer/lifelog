@@ -14,7 +14,7 @@ import (
 // genau einen Eintrag treffen. Sonst gibt es einen Fehler (alle Probleme auf einmal),
 // damit ein fehlender oder doppelter Upload nicht still falsche Zahlen
 // liefert. Ohne I/O, damit testbar.
-func aufloesen(fragen []kalibrierfrage, liste []core.EintragKurz) (map[ziel]string, error) {
+func aufloesen(fragen []kalibrierfrage, liste []core.EntrySummary) (map[ziel]string, error) {
 	ids := map[ziel]string{}
 	var fehler []error
 	for _, f := range fragen {
@@ -51,14 +51,14 @@ func aufloesen(fragen []kalibrierfrage, liste []core.EintragKurz) (map[ziel]stri
 }
 
 // passt: gleiches Dokumentdatum, dazu Typ und Quelle, soweit im Ziel angegeben.
-func passt(z ziel, e core.EintragKurz) bool {
-	if e.Dokumentdatum == nil || *e.Dokumentdatum != z.Datum {
+func passt(z ziel, e core.EntrySummary) bool {
+	if e.DocumentDate == nil || *e.DocumentDate != z.Datum {
 		return false
 	}
-	if z.Typ != "" && e.Typ != z.Typ {
+	if z.Typ != "" && e.Type != z.Typ {
 		return false
 	}
-	if z.Quelle != "" && (e.Quelle == nil || *e.Quelle != z.Quelle) {
+	if z.Quelle != "" && (e.Issuer == nil || *e.Issuer != z.Quelle) {
 		return false
 	}
 	return true
@@ -76,14 +76,14 @@ type messung struct {
 
 // messen fasst die Treffer einer Frage zusammen. Die Treffer kommen von
 // Atlas absteigend sortiert, darauf verlassen wir uns aber nicht.
-func messen(f kalibrierfrage, ids []string, treffer []core.Treffer) messung {
+func messen(f kalibrierfrage, ids []string, treffer []core.Hit) messung {
 	m := messung{Frage: f, IDs: ids, Erwartet: make([]float64, len(ids))}
 	for _, t := range treffer {
 		if t.Score > m.Bester {
-			m.Bester, m.BesterEintrag = t.Score, t.EintragID
+			m.Bester, m.BesterEintrag = t.Score, t.EntryID
 		}
 		for i, id := range ids {
-			if t.EintragID == id && t.Score > m.Erwartet[i] {
+			if t.EntryID == id && t.Score > m.Erwartet[i] {
 				m.Erwartet[i] = t.Score
 			}
 		}
@@ -202,7 +202,7 @@ func (a auswertung) Zusammenfassung() string {
 		fmt.Fprintf(&b, "  %-10s %2d Fragen, Score %s … %s, %2d/%d %s\n",
 			name, s.Anzahl, zahl(s.Min), zahl(s.Max), s.Durch, s.Anzahl, was)
 	}
-	fmt.Fprintf(&b, "Schwelle %s (cos %s):\n", zahl(a.Schwelle), zahl(core.KosinusAusScore(a.Schwelle)))
+	fmt.Fprintf(&b, "Schwelle %s (cos %s):\n", zahl(a.Schwelle), zahl(core.CosineFromScore(a.Schwelle)))
 	zeile("passend", a.Passend, "Fundstellen kommen durch (soll: alle)")
 	zeile("  mehrere", a.Mehrere, "davon mit mehreren Einträgen, alle kommen durch")
 	zeile("nah", a.Nah, "gehen ans Sprachmodell (erlaubt, es antwortet mit dem festen Satz)")

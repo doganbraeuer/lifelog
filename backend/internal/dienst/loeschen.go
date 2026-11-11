@@ -12,7 +12,7 @@ import (
 // von speicher.Speicher. DateiLoeschen und AbschnitteLoeschen dürfen keinen
 // Fehler liefern, wenn es nichts (mehr) zu löschen gibt.
 type LoeschSpeicher interface {
-	EintragLesen(ctx context.Context, id string) (e core.Eintrag, gefunden bool, err error)
+	EintragLesen(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
 	AbschnitteLoeschen(ctx context.Context, eintragID string) error
 	DateiLoeschen(ctx context.Context, id string) error
 	EintragLoeschen(ctx context.Context, id string) (gefunden bool, err error)
@@ -51,7 +51,7 @@ func NeuLoeschen(s LoeschSpeicher) *Loeschen {
 // Fehler: core.ErrUngueltigeID, core.ErrEintragNichtGefunden (auch beim
 // zweiten Löschen) oder ein interner Fehler.
 func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
-	if err := core.PruefeID(id); err != nil {
+	if err := core.CheckID(id); err != nil {
 		return err
 	}
 	e, gefunden, err := l.speicher.EintragLesen(ctx, id)
@@ -59,7 +59,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 		return err
 	}
 	if !gefunden {
-		return core.ErrEintragNichtGefunden
+		return core.ErrEntryNotFound
 	}
 
 	ctx, abbrechen := context.WithTimeout(context.WithoutCancel(ctx), loeschTimeout)
@@ -68,7 +68,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 	if err := l.speicher.AbschnitteLoeschen(ctx, id); err != nil {
 		return err
 	}
-	if err := l.speicher.DateiLoeschen(ctx, e.Datei.ID); err != nil {
+	if err := l.speicher.DateiLoeschen(ctx, e.File.ID); err != nil {
 		return err
 	}
 	gefunden, err = l.speicher.EintragLoeschen(ctx, id)
@@ -77,7 +77,7 @@ func (l *Loeschen) Ausfuehren(ctx context.Context, id string) error {
 	}
 	if !gefunden {
 		// Ein gleichzeitiger Aufruf war schneller.
-		return core.ErrEintragNichtGefunden
+		return core.ErrEntryNotFound
 	}
 	// Nur die ID, nie Inhalte.
 	slog.Info("Eintrag gelöscht", "eintrag", id)

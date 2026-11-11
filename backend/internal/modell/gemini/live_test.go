@@ -66,12 +66,12 @@ func testdatei(t *testing.T, name string) []byte {
 
 func TestLive_DokumentLesen(t *testing.T) {
 	g := liveGemini(t)
-	typen := core.ErlaubteTypen("gesundheit")
+	typen := core.AllowedTypes("gesundheit")
 
 	for _, name := range []string{"laborbefund.pdf", "laborbefund.png"} {
 		t.Run(name, func(t *testing.T) {
 			daten := testdatei(t, name)
-			mime, err := core.PruefeDatei(daten)
+			mime, err := core.CheckFile(daten)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +84,7 @@ func TestLive_DokumentLesen(t *testing.T) {
 			}
 			t.Logf("Dauer %v", dauer.Round(time.Millisecond))
 
-			eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
+			eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
 			if err != nil {
 				t.Fatalf("Prüfung: %v", err)
 			}
@@ -92,16 +92,16 @@ func TestLive_DokumentLesen(t *testing.T) {
 				t.Logf("ausgelassen: %v", ausgelassen)
 			}
 
-			if eintrag.Typ != "laborbefund" {
-				t.Errorf("typ = %q", eintrag.Typ)
+			if eintrag.Type != "laborbefund" {
+				t.Errorf("typ = %q", eintrag.Type)
 			}
-			if eintrag.Dokumentdatum == nil || *eintrag.Dokumentdatum != "2026-10-14" {
-				t.Errorf("dokumentdatum = %v (Geburtsdatum verwechselt?)", deref(eintrag.Dokumentdatum))
+			if eintrag.DocumentDate == nil || *eintrag.DocumentDate != "2026-10-14" {
+				t.Errorf("dokumentdatum = %v (Geburtsdatum verwechselt?)", deref(eintrag.DocumentDate))
 			}
-			if eintrag.Quelle == nil || !strings.Contains(*eintrag.Quelle, "Labor Muster") {
-				t.Errorf("quelle = %v", deref(eintrag.Quelle))
+			if eintrag.Issuer == nil || !strings.Contains(*eintrag.Issuer, "Labor Muster") {
+				t.Errorf("quelle = %v", deref(eintrag.Issuer))
 			}
-			if !strings.Contains(eintrag.Volltext, "Hämoglobin") {
+			if !strings.Contains(eintrag.FullText, "Hämoglobin") {
 				t.Error("volltext enthält Hämoglobin nicht (Umlaut verloren?)")
 			}
 
@@ -109,11 +109,11 @@ func TestLive_DokumentLesen(t *testing.T) {
 				"Hämoglobin": {"14,2", "g/dl"},
 				"CRP":        {"<0,5", "mg/dl"},
 			}
-			for _, info := range eintrag.Infos {
-				t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Wert, deref(info.Einheit))
+			for _, info := range eintrag.Facts {
+				t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Value, deref(info.Unit))
 				if w, ok := erwartet[info.Name]; ok {
-					if info.Wert != w[0] || deref(info.Einheit) != w[1] {
-						t.Errorf("%s = %q %s, erwartet %q %s", info.Name, info.Wert, deref(info.Einheit), w[0], w[1])
+					if info.Value != w[0] || deref(info.Unit) != w[1] {
+						t.Errorf("%s = %q %s, erwartet %q %s", info.Name, info.Value, deref(info.Unit), w[0], w[1])
 					}
 					delete(erwartet, info.Name)
 				}
@@ -130,7 +130,7 @@ func TestLive_TextLesen(t *testing.T) {
 	text := string(testdatei(t, "laborbefund.txt"))
 
 	start := time.Now()
-	e, err := g.TextLesen(context.Background(), text, core.ErlaubteTypen("gesundheit"))
+	e, err := g.TextLesen(context.Background(), text, core.AllowedTypes("gesundheit"))
 	dauer := time.Since(start).Round(time.Millisecond)
 	if err != nil {
 		t.Fatalf("nach %v: %v", dauer, err)
@@ -138,27 +138,27 @@ func TestLive_TextLesen(t *testing.T) {
 	t.Logf("Dauer %v", dauer)
 
 	// Wie im Dienst: Volltext ist der eingegebene Text.
-	e.Volltext = text
-	eintrag, ausgelassen, err := core.PruefeErkennung(e, "gesundheit")
+	e.FullText = text
+	eintrag, ausgelassen, err := core.CheckExtraction(e, "gesundheit")
 	if err != nil {
 		t.Fatalf("Prüfung: %v", err)
 	}
 	if len(ausgelassen) > 0 {
 		t.Logf("ausgelassen: %v", ausgelassen)
 	}
-	if eintrag.Typ != "laborbefund" {
-		t.Errorf("typ = %q", eintrag.Typ)
+	if eintrag.Type != "laborbefund" {
+		t.Errorf("typ = %q", eintrag.Type)
 	}
-	if deref(eintrag.Dokumentdatum) != "2026-10-14" {
-		t.Errorf("dokumentdatum = %v", deref(eintrag.Dokumentdatum))
+	if deref(eintrag.DocumentDate) != "2026-10-14" {
+		t.Errorf("dokumentdatum = %v", deref(eintrag.DocumentDate))
 	}
-	if !strings.Contains(deref(eintrag.Quelle), "Labor Muster") {
-		t.Errorf("quelle = %v", deref(eintrag.Quelle))
+	if !strings.Contains(deref(eintrag.Issuer), "Labor Muster") {
+		t.Errorf("quelle = %v", deref(eintrag.Issuer))
 	}
 	hb := false
-	for _, info := range eintrag.Infos {
-		t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Wert, deref(info.Einheit))
-		hb = hb || (info.Name == "Hämoglobin" && info.Wert == "14,2" && deref(info.Einheit) == "g/dl")
+	for _, info := range eintrag.Facts {
+		t.Logf("  %s: %s = %q %s", info.ID, info.Name, info.Value, deref(info.Unit))
+		hb = hb || (info.Name == "Hämoglobin" && info.Value == "14,2" && deref(info.Unit) == "g/dl")
 	}
 	if !hb {
 		t.Error("Hämoglobin 14,2 g/dl fehlt")
@@ -180,12 +180,12 @@ func TestLive_LeereSeiteIstNichtLesbar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, err := g.DokumentLesen(context.Background(), buf.Bytes(), core.MimePNG, core.ErlaubteTypen("gesundheit"))
+	e, err := g.DokumentLesen(context.Background(), buf.Bytes(), core.MimePNG, core.AllowedTypes("gesundheit"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := core.PruefeErkennung(e, "gesundheit"); !errors.Is(err, core.ErrNichtLesbar) {
-		t.Errorf("leere Seite: erwartet ErrNichtLesbar, bekommen %v (lesbar=%v)", err, e.Lesbar)
+	if _, _, err := core.CheckExtraction(e, "gesundheit"); !errors.Is(err, core.ErrUnreadable) {
+		t.Errorf("leere Seite: erwartet ErrNichtLesbar, bekommen %v (lesbar=%v)", err, e.Readable)
 	}
 }
 

@@ -14,20 +14,20 @@ import (
 )
 
 type suchAttrappe struct {
-	treffer      []core.Treffer
-	eintraege    map[string]core.EintragKurz
+	treffer      []core.Hit
+	eintraege    map[string]core.EntrySummary
 	err          error
 	gefragtModul string
 	gefragtK     int
 }
 
-func (s *suchAttrappe) AehnlicheAbschnitte(_ context.Context, _ []float32, modul string, k int) ([]core.Treffer, error) {
+func (s *suchAttrappe) AehnlicheAbschnitte(_ context.Context, _ []float32, modul string, k int) ([]core.Hit, error) {
 	s.gefragtModul, s.gefragtK = modul, k
 	return s.treffer, s.err
 }
 
-func (s *suchAttrappe) EintraegeKurzNachIDs(_ context.Context, ids []string) (map[string]core.EintragKurz, error) {
-	m := map[string]core.EintragKurz{}
+func (s *suchAttrappe) EintraegeKurzNachIDs(_ context.Context, ids []string) (map[string]core.EntrySummary, error) {
+	m := map[string]core.EntrySummary{}
 	for _, id := range ids {
 		if e, ok := s.eintraege[id]; ok {
 			m[id] = e
@@ -44,15 +44,15 @@ const (
 
 func suchBestand() *suchAttrappe {
 	return &suchAttrappe{
-		treffer: []core.Treffer{
-			{EintragID: idLabor, Nr: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
-			{EintragID: idWeg, Nr: 1, Text: "verwaist", Score: 0.86},
-			{EintragID: idBrief, Nr: 1, Text: "Blutdruck 128/82", Score: core.MinScore},              // genau auf der Schwelle
-			{EintragID: idBrief, Nr: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // darunter
+		treffer: []core.Hit{
+			{EntryID: idLabor, Position: 3, Text: "Hämoglobin 14,2 g/dl", Score: 0.89},
+			{EntryID: idWeg, Position: 1, Text: "verwaist", Score: 0.86},
+			{EntryID: idBrief, Position: 1, Text: "Blutdruck 128/82", Score: core.MinScore},              // genau auf der Schwelle
+			{EntryID: idBrief, Position: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // darunter
 		},
-		eintraege: map[string]core.EintragKurz{
-			idLabor: {ID: idLabor, Modul: "gesundheit", Typ: "laborbefund", Dokumentdatum: zeiger("2026-10-14"), Quelle: zeiger("Labor Muster GmbH")},
-			idBrief: {ID: idBrief, Modul: "gesundheit", Typ: "arztbrief", Dokumentdatum: zeiger("2026-09-02"), Quelle: zeiger("Dr. Erika Beispiel")},
+		eintraege: map[string]core.EntrySummary{
+			idLabor: {ID: idLabor, Module: "gesundheit", Type: "laborbefund", DocumentDate: zeiger("2026-10-14"), Issuer: zeiger("Labor Muster GmbH")},
+			idBrief: {ID: idBrief, Module: "gesundheit", Type: "arztbrief", DocumentDate: zeiger("2026-09-02"), Issuer: zeiger("Dr. Erika Beispiel")},
 		},
 	}
 }
@@ -66,7 +66,7 @@ func TestFragen_Treffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.gefragtModul != "gesundheit" || s.gefragtK != core.AnzahlTreffer {
+	if s.gefragtModul != "gesundheit" || s.gefragtK != core.MaxHits {
 		t.Errorf("Suche mit Modul %q, k %d", s.gefragtModul, s.gefragtK)
 	}
 
@@ -75,26 +75,26 @@ func TestFragen_Treffer(t *testing.T) {
 	if frage != "Wie hoch war mein Hb?" {
 		t.Errorf("Frage = %q, erwartet ohne Leerraum", frage)
 	}
-	if len(fs) != 2 || fs[0].Nr != 1 || fs[0].EintragID != idLabor || fs[1].Nr != 2 || fs[1].EintragID != idBrief {
+	if len(fs) != 2 || fs[0].Number != 1 || fs[0].EntryID != idLabor || fs[1].Number != 2 || fs[1].EntryID != idBrief {
 		t.Fatalf("Fundstellen = %+v", fs)
 	}
-	if fs[0].Typ != "laborbefund" || *fs[0].Dokumentdatum != "2026-10-14" || *fs[0].Quelle != "Labor Muster GmbH" || fs[0].Modul != "gesundheit" {
+	if fs[0].Type != "laborbefund" || *fs[0].DocumentDate != "2026-10-14" || *fs[0].Issuer != "Labor Muster GmbH" || fs[0].Module != "gesundheit" {
 		t.Errorf("Angaben aus dem Eintrag fehlen: %+v", fs[0])
 	}
 
-	if !antwort.Gefunden || len(antwort.Quellen) != 1 || antwort.Quellen[0].Auszug != "Hämoglobin 14,2 g/dl" {
+	if !antwort.Found || len(antwort.Sources) != 1 || antwort.Sources[0].Excerpt != "Hämoglobin 14,2 g/dl" {
 		t.Errorf("Antwort = %+v", antwort)
 	}
 }
 
 func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
-	s := &suchAttrappe{treffer: []core.Treffer{{EintragID: idLabor, Score: 0.77, Text: "Wetter?"}},
+	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idLabor, Score: 0.77, Text: "Wetter?"}},
 		eintraege: suchBestand().eintraege}
 	a := &attrappe.Antworter{Text: "sollte nie kommen [1]"}
 
 	antwort, err := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
 
-	if err != nil || antwort.Gefunden || antwort.Text != core.FesterSatz || antwort.Quellen == nil || len(antwort.Quellen) != 0 {
+	if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || antwort.Sources == nil || len(antwort.Sources) != 0 {
 		t.Errorf("Antwort = %+v, %v; erwartet fester Satz", antwort, err)
 	}
 	if a.Aufrufe() != 0 {
@@ -103,10 +103,10 @@ func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
 }
 
 func TestFragen_NurVerwaisteTreffer(t *testing.T) {
-	s := &suchAttrappe{treffer: []core.Treffer{{EintragID: idWeg, Score: 0.95}}, eintraege: map[string]core.EintragKurz{}}
+	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idWeg, Score: 0.95}}, eintraege: map[string]core.EntrySummary{}}
 	a := &attrappe.Antworter{}
 	antwort, _ := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
-	if antwort.Gefunden || a.Aufrufe() != 0 {
+	if antwort.Found || a.Aufrufe() != 0 {
 		t.Errorf("verwaiste Abschnitte dürfen nicht ans Modell: %+v, %d Aufrufe", antwort, a.Aufrufe())
 	}
 }
@@ -114,10 +114,10 @@ func TestFragen_NurVerwaisteTreffer(t *testing.T) {
 func TestFragen_ModellOhneVerweis(t *testing.T) {
 	// Zweite Schicht: Das Modell antwortet selbst mit dem festen Satz oder
 	// ohne Quelle; beides wird zu "nichts gefunden".
-	for _, text := range []string{core.FesterSatz, "Der Wert war 14,2."} {
+	for _, text := range []string{core.NotFoundAnswer, "Der Wert war 14,2."} {
 		a := &attrappe.Antworter{Text: text}
 		antwort, err := NeuFragen(suchBestand(), &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
-		if err != nil || antwort.Gefunden || antwort.Text != core.FesterSatz || len(antwort.Quellen) != 0 {
+		if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || len(antwort.Sources) != 0 {
 			t.Errorf("%q → %+v, %v", text, antwort, err)
 		}
 	}
@@ -133,9 +133,9 @@ func TestFragen_Fehler(t *testing.T) {
 		antworter *attrappe.Antworter
 		fehler    error
 	}{
-		{"Frage leer", "  ", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrFrageFehlt},
-		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrFrageZuLang},
-		{"Modul unbekannt", "x", "sport", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrUnbekanntesModul},
+		{"Frage leer", "  ", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrQuestionMissing},
+		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrQuestionTooLong},
+		{"Modul unbekannt", "x", "sport", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrUnknownModule},
 		{"Embedding nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, &attrappe.Antworter{}, modell.ErrNichtErreichbar},
 		{"Antworter nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
 		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &attrappe.Einbetter{}, &attrappe.Antworter{}, nil},

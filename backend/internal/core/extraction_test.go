@@ -7,227 +7,227 @@ import (
 	"testing"
 )
 
-func z(s string) *string { return &s }
+func ptr(s string) *string { return &s }
 
-// gueltig ist eine synthetische Erkennung, wie Gemini sie liefern könnte.
-func gueltig() Erkennung {
-	return Erkennung{
-		Lesbar:        true,
-		Dokumentdatum: z("2026-10-14"),
-		Quelle:        z("Labor Muster GmbH, Salzburg"),
-		Typ:           "laborbefund",
-		Volltext:      laborbefund,
-		Infos: []ErkannteInfo{
-			{Name: "Hämoglobin", Wert: "14,2", Einheit: z("g/dl")},
-			{Name: "CRP", Wert: "<0,5", Einheit: z("mg/dl")},
-			{Name: "Befundart", Wert: "Blutbild klein"},
+// valid is a synthetic extraction as Gemini could return it.
+func valid() Extraction {
+	return Extraction{
+		Readable:     true,
+		DocumentDate: ptr("2026-10-14"),
+		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
+		Type:         "laborbefund",
+		FullText:     labReport,
+		Facts: []ExtractedFact{
+			{Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
+			{Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},
+			{Name: "Befundart", Value: "Blutbild klein"},
 		},
 	}
 }
 
-func TestPruefeErkennung_Gueltig(t *testing.T) {
-	e, ausgelassen, err := PruefeErkennung(gueltig(), "gesundheit")
+func TestCheckExtraction_Valid(t *testing.T) {
+	e, dropped, err := CheckExtraction(valid(), "gesundheit")
 	if err != nil {
-		t.Fatalf("unerwarteter Fehler: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if ausgelassen == nil || len(ausgelassen) != 0 {
-		t.Errorf("ausgelassen = %#v, erwartet leere Liste", ausgelassen)
+	if dropped == nil || len(dropped) != 0 {
+		t.Errorf("dropped = %#v, want empty list", dropped)
 	}
-	if e.Modul != "gesundheit" || e.Typ != "laborbefund" {
-		t.Errorf("Modul/Typ = %q/%q", e.Modul, e.Typ)
+	if e.Module != "gesundheit" || e.Type != "laborbefund" {
+		t.Errorf("module/type = %q/%q", e.Module, e.Type)
 	}
-	if *e.Dokumentdatum != "2026-10-14" || *e.Quelle != "Labor Muster GmbH, Salzburg" {
-		t.Errorf("Datum/Quelle = %v/%v", *e.Dokumentdatum, *e.Quelle)
+	if *e.DocumentDate != "2026-10-14" || *e.Issuer != "Labor Muster GmbH, Salzburg" {
+		t.Errorf("date/issuer = %v/%v", *e.DocumentDate, *e.Issuer)
 	}
-	if e.Volltext != laborbefund {
-		t.Error("Volltext wurde verändert")
+	if e.FullText != labReport {
+		t.Error("full text was changed")
 	}
-	if e.Korrekturen == nil || len(e.Korrekturen) != 0 {
-		t.Errorf("Korrekturen = %#v, erwartet leere Liste", e.Korrekturen)
+	if e.Corrections == nil || len(e.Corrections) != 0 {
+		t.Errorf("corrections = %#v, want empty list", e.Corrections)
 	}
 
-	if len(e.Infos) != 3 {
-		t.Fatalf("Infos = %d", len(e.Infos))
+	if len(e.Facts) != 3 {
+		t.Fatalf("facts = %d", len(e.Facts))
 	}
 	for i, id := range []string{"i1", "i2", "i3"} {
-		if e.Infos[i].ID != id {
-			t.Errorf("Infos[%d].ID = %q, erwartet %q", i, e.Infos[i].ID, id)
+		if e.Facts[i].ID != id {
+			t.Errorf("Facts[%d].ID = %q, want %q", i, e.Facts[i].ID, id)
 		}
 	}
-	if e.Infos[1].Wert != "<0,5" {
-		t.Errorf("Wert verändert: %q", e.Infos[1].Wert)
+	if e.Facts[1].Value != "<0,5" {
+		t.Errorf("value changed: %q", e.Facts[1].Value)
 	}
-	if e.Infos[2].Einheit != nil {
-		t.Error("Info ohne Einheit muss nil haben")
+	if e.Facts[2].Unit != nil {
+		t.Error("fact without unit must have nil")
 	}
 }
 
-func TestPruefeErkennung_LeereWerteWerdenNull(t *testing.T) {
-	g := gueltig()
-	g.Dokumentdatum = z("  ")
-	g.Quelle = z("")
-	g.Infos = []ErkannteInfo{{Name: " Hämoglobin ", Wert: " 14,2 ", Einheit: z(" ")}}
+func TestCheckExtraction_EmptyValuesBecomeNil(t *testing.T) {
+	x := valid()
+	x.DocumentDate = ptr("  ")
+	x.Issuer = ptr("")
+	x.Facts = []ExtractedFact{{Name: " Hämoglobin ", Value: " 14,2 ", Unit: ptr(" ")}}
 
-	e, _, err := PruefeErkennung(g, "gesundheit")
+	e, _, err := CheckExtraction(x, "gesundheit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Dokumentdatum != nil || e.Quelle != nil {
-		t.Errorf("leeres Datum/leere Quelle müssen nil sein: %v %v", e.Dokumentdatum, e.Quelle)
+	if e.DocumentDate != nil || e.Issuer != nil {
+		t.Errorf("empty date/issuer must be nil: %v %v", e.DocumentDate, e.Issuer)
 	}
-	i := e.Infos[0]
-	if i.Name != "Hämoglobin" || i.Wert != "14,2" || i.Einheit != nil {
-		t.Errorf("Info = %+v", i)
+	f := e.Facts[0]
+	if f.Name != "Hämoglobin" || f.Value != "14,2" || f.Unit != nil {
+		t.Errorf("fact = %+v", f)
 	}
 }
 
-func TestPruefeErkennung_OhneInfosLeereListe(t *testing.T) {
-	g := gueltig()
-	g.Infos = nil
-	e, _, err := PruefeErkennung(g, "gesundheit")
+func TestCheckExtraction_NoFactsGivesEmptyList(t *testing.T) {
+	x := valid()
+	x.Facts = nil
+	e, _, err := CheckExtraction(x, "gesundheit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Infos == nil {
-		t.Error("Infos muss leere Liste sein, nicht nil")
+	if e.Facts == nil {
+		t.Error("facts must be an empty list, not nil")
 	}
 }
 
-func TestPruefeErkennung_NichtLesbar(t *testing.T) {
-	g := gueltig()
-	g.Lesbar = false
-	if _, _, err := PruefeErkennung(g, "gesundheit"); !errors.Is(err, ErrNichtLesbar) {
-		t.Errorf("erwartet ErrNichtLesbar, bekommen %v", err)
+func TestCheckExtraction_Unreadable(t *testing.T) {
+	x := valid()
+	x.Readable = false
+	if _, _, err := CheckExtraction(x, "gesundheit"); !errors.Is(err, ErrUnreadable) {
+		t.Errorf("want ErrUnreadable, got %v", err)
 	}
 }
 
-func TestPruefeErkennung_Fehler(t *testing.T) {
-	faelle := []struct {
-		name    string
-		aendern func(*Erkennung)
-		modul   string
-		feld    string
+func TestCheckExtraction_Errors(t *testing.T) {
+	cases := []struct {
+		name   string
+		change func(*Extraction)
+		module string
+		field  string
 	}{
-		{"unbekannter Typ", func(e *Erkennung) { e.Typ = "kochrezept" }, "gesundheit", "typ"},
-		{"leerer Typ", func(e *Erkennung) { e.Typ = "" }, "gesundheit", "typ"},
-		{"Typ in fremdem Modul", func(e *Erkennung) {}, "sport", "typ"},
-		{"leerer Volltext", func(e *Erkennung) { e.Volltext = " \n " }, "gesundheit", "volltext"},
-		{"Datum deutsch", func(e *Erkennung) { e.Dokumentdatum = z("14.10.2026") }, "gesundheit", "dokumentdatum"},
-		{"Datum gibt es nicht", func(e *Erkennung) { e.Dokumentdatum = z("2026-02-31") }, "gesundheit", "dokumentdatum"},
-		{"Datum mit Uhrzeit", func(e *Erkennung) { e.Dokumentdatum = z("2026-10-14T00:00:00Z") }, "gesundheit", "dokumentdatum"},
+		{"unknown type", func(x *Extraction) { x.Type = "kochrezept" }, "gesundheit", "typ"},
+		{"empty type", func(x *Extraction) { x.Type = "" }, "gesundheit", "typ"},
+		{"type in another module", func(x *Extraction) {}, "sport", "typ"},
+		{"empty full text", func(x *Extraction) { x.FullText = " \n " }, "gesundheit", "volltext"},
+		{"German date format", func(x *Extraction) { x.DocumentDate = ptr("14.10.2026") }, "gesundheit", "dokumentdatum"},
+		{"date does not exist", func(x *Extraction) { x.DocumentDate = ptr("2026-02-31") }, "gesundheit", "dokumentdatum"},
+		{"date with time", func(x *Extraction) { x.DocumentDate = ptr("2026-10-14T00:00:00Z") }, "gesundheit", "dokumentdatum"},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			g := gueltig()
-			f.aendern(&g)
-			_, _, err := PruefeErkennung(g, f.modul)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			x := valid()
+			c.change(&x)
+			_, _, err := CheckExtraction(x, c.module)
 
-			if !errors.Is(err, ErrErkennungUngueltig) {
-				t.Fatalf("erwartet ErrErkennungUngueltig, bekommen %v", err)
+			if !errors.Is(err, ErrInvalidExtraction) {
+				t.Fatalf("want ErrInvalidExtraction, got %v", err)
 			}
-			var ef *ErkennungFehler
-			if !errors.As(err, &ef) || ef.Feld != f.feld {
-				t.Errorf("Feld = %v, erwartet %q", err, f.feld)
+			var xe *ExtractionError
+			if !errors.As(err, &xe) || xe.Field != c.field {
+				t.Errorf("field = %v, want %q", err, c.field)
 			}
 		})
 	}
 }
 
-func TestPruefeErkennung_FehlerEnthaeltKeineWerte(t *testing.T) {
-	g := gueltig()
-	g.Dokumentdatum = z("Hämoglobin 14,2 geheim")
-	_, _, err := PruefeErkennung(g, "gesundheit")
+func TestCheckExtraction_ErrorContainsNoValues(t *testing.T) {
+	x := valid()
+	x.DocumentDate = ptr("Hämoglobin 14,2 geheim")
+	_, _, err := CheckExtraction(x, "gesundheit")
 	if err == nil || strings.Contains(err.Error(), "geheim") {
-		t.Errorf("Fehlermeldung darf den Wert nicht enthalten: %v", err)
+		t.Errorf("error message must not contain the value: %v", err)
 	}
 }
 
-func TestPruefeErkennung_UnvollstaendigeInfosWerdenWeggelassen(t *testing.T) {
-	g := gueltig()
-	g.Infos = []ErkannteInfo{
-		{Name: "Hämoglobin", Wert: "14,2", Einheit: z("g/dl")}, // 0: bleibt → i1
-		{Name: " ", Wert: "geheim-ohne-name"},                  // 1: ohne Name
-		{Name: "Leukozyten", Wert: "", Einheit: z("G/l")},      // 2: ohne Wert
-		{Name: "", Wert: "  "},                                 // 3: ohne beides
-		{Name: "CRP", Wert: "<0,5", Einheit: z("mg/dl")},       // 4: bleibt → i2
+func TestCheckExtraction_IncompleteFactsAreDropped(t *testing.T) {
+	x := valid()
+	x.Facts = []ExtractedFact{
+		{Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}, // 0: kept → i1
+		{Name: " ", Value: "geheim-ohne-name"},                 // 1: without name
+		{Name: "Leukozyten", Value: "", Unit: ptr("G/l")},      // 2: without value
+		{Name: "", Value: "  "},                                // 3: without both
+		{Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},       // 4: kept → i2
 	}
 
-	e, ausgelassen, err := PruefeErkennung(g, "gesundheit")
+	e, dropped, err := CheckExtraction(x, "gesundheit")
 	if err != nil {
-		t.Fatalf("eine unvollständige Info darf den Upload nicht ablehnen: %v", err)
+		t.Fatalf("an incomplete fact must not reject the upload: %v", err)
 	}
 
-	// Übrig bleiben die vollständigen Infos, lückenlos nummeriert.
-	if len(e.Infos) != 2 {
-		t.Fatalf("Infos = %+v, erwartet 2", e.Infos)
+	// The complete facts remain, numbered without gaps.
+	if len(e.Facts) != 2 {
+		t.Fatalf("facts = %+v, want 2", e.Facts)
 	}
-	if e.Infos[0].ID != "i1" || e.Infos[0].Name != "Hämoglobin" ||
-		e.Infos[1].ID != "i2" || e.Infos[1].Name != "CRP" {
-		t.Errorf("Infos = %+v", e.Infos)
+	if e.Facts[0].ID != "i1" || e.Facts[0].Name != "Hämoglobin" ||
+		e.Facts[1].ID != "i2" || e.Facts[1].Name != "CRP" {
+		t.Errorf("facts = %+v", e.Facts)
 	}
 
-	// Gemeldet werden nur Feldpfade mit dem Index aus der Modell-Liste.
-	erwartet := []string{"infos[1].name", "infos[2].wert", "infos[3].name", "infos[3].wert"}
-	if !slices.Equal(ausgelassen, erwartet) {
-		t.Errorf("ausgelassen = %q, erwartet %q", ausgelassen, erwartet)
+	// Only field paths with the index from the model's list are reported.
+	want := []string{"infos[1].name", "infos[2].wert", "infos[3].name", "infos[3].wert"}
+	if !slices.Equal(dropped, want) {
+		t.Errorf("dropped = %q, want %q", dropped, want)
 	}
-	for _, a := range ausgelassen {
-		if strings.Contains(a, "geheim") || strings.Contains(a, "Leukozyten") {
-			t.Errorf("ausgelassen enthält einen Wert oder Namen: %q", a)
+	for _, d := range dropped {
+		if strings.Contains(d, "geheim") || strings.Contains(d, "Leukozyten") {
+			t.Errorf("dropped contains a value or name: %q", d)
 		}
 	}
 }
 
-func TestPruefeErkennung_AlleInfosUnvollstaendig(t *testing.T) {
-	g := gueltig()
-	g.Infos = []ErkannteInfo{{Name: "", Wert: "x"}}
+func TestCheckExtraction_AllFactsIncomplete(t *testing.T) {
+	x := valid()
+	x.Facts = []ExtractedFact{{Name: "", Value: "x"}}
 
-	e, ausgelassen, err := PruefeErkennung(g, "gesundheit")
+	e, dropped, err := CheckExtraction(x, "gesundheit")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Infos == nil || len(e.Infos) != 0 {
-		t.Errorf("Infos = %#v, erwartet leere Liste", e.Infos)
+	if e.Facts == nil || len(e.Facts) != 0 {
+		t.Errorf("facts = %#v, want empty list", e.Facts)
 	}
-	if !slices.Equal(ausgelassen, []string{"infos[0].name"}) {
-		t.Errorf("ausgelassen = %q", ausgelassen)
-	}
-}
-
-func TestPruefeErkennung_AusgelassenNieNilAuchBeiFehler(t *testing.T) {
-	g := gueltig()
-	g.Lesbar = false
-	if _, ausgelassen, _ := PruefeErkennung(g, "gesundheit"); ausgelassen == nil {
-		t.Error("ausgelassen darf auch bei Fehlern nicht nil sein")
+	if !slices.Equal(dropped, []string{"infos[0].name"}) {
+		t.Errorf("dropped = %q", dropped)
 	}
 }
 
-func TestPruefeDatum(t *testing.T) {
+func TestCheckExtraction_DroppedNeverNilEvenOnError(t *testing.T) {
+	x := valid()
+	x.Readable = false
+	if _, dropped, _ := CheckExtraction(x, "gesundheit"); dropped == nil {
+		t.Error("dropped must not be nil, even on errors")
+	}
+}
+
+func TestCheckDate(t *testing.T) {
 	for _, ok := range []string{"2026-10-14", "2024-02-29", "1999-12-31", "2026-01-01"} {
-		if err := PruefeDatum(ok); err != nil {
-			t.Errorf("PruefeDatum(%q) = %v", ok, err)
+		if err := CheckDate(ok); err != nil {
+			t.Errorf("CheckDate(%q) = %v", ok, err)
 		}
 	}
-	for _, falsch := range []string{
+	for _, invalid := range []string{
 		"", "2026-1-5", "2026-01-5", "14.10.2026", "2026/10/14",
-		"2025-02-29", // kein Schaltjahr
+		"2025-02-29", // not a leap year
 		"2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-10-00",
 		"2026-10-14 ", " 2026-10-14", "2026-10-14T10:00:00Z", "２０２６-10-14",
 	} {
-		if err := PruefeDatum(falsch); !errors.Is(err, ErrDatumUngueltig) {
-			t.Errorf("PruefeDatum(%q) = %v, erwartet ErrDatumUngueltig", falsch, err)
+		if err := CheckDate(invalid); !errors.Is(err, ErrInvalidDate) {
+			t.Errorf("CheckDate(%q) = %v, want ErrInvalidDate", invalid, err)
 		}
 	}
 
-	// Format falsch und Tag unmöglich sind unterscheidbar (API.md 3.5).
+	// Wrong format and impossible day can be told apart (API.md 3.5).
 	for _, format := range []string{"", "14.10.2026", "2026-1-05", "2026/10/14", "2026-10-1a", " 2026-10-14", "２０２６-10-14"} {
-		if err := PruefeDatum(format); errors.Is(err, ErrKeinKalendertag) {
-			t.Errorf("PruefeDatum(%q): Formatfehler als ErrKeinKalendertag gemeldet", format)
+		if err := CheckDate(format); errors.Is(err, ErrNoSuchDay) {
+			t.Errorf("CheckDate(%q): format error reported as ErrNoSuchDay", format)
 		}
 	}
-	for _, tag := range []string{"2025-02-29", "2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-10-00"} {
-		if err := PruefeDatum(tag); !errors.Is(err, ErrKeinKalendertag) {
-			t.Errorf("PruefeDatum(%q) = %v, erwartet ErrKeinKalendertag", tag, err)
+	for _, day := range []string{"2025-02-29", "2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-10-00"} {
+		if err := CheckDate(day); !errors.Is(err, ErrNoSuchDay) {
+			t.Errorf("CheckDate(%q) = %v, want ErrNoSuchDay", day, err)
 		}
 	}
 }

@@ -128,10 +128,10 @@ type erkennungJSON struct {
 
 // erkennungAusAntwort holt den JSON-Text aus der Gemini-Antwort und prüft,
 // ob die Antwort überhaupt vollständig ist.
-func erkennungAusAntwort(resp *genai.GenerateContentResponse) (core.Erkennung, error) {
+func erkennungAusAntwort(resp *genai.GenerateContentResponse) (core.Extraction, error) {
 	text, err := textAusAntwort(resp)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	return erkennungAusText(text)
 }
@@ -166,17 +166,17 @@ func textAusAntwort(resp *genai.GenerateContentResponse) (string, error) {
 
 // erkennungAusText liest den JSON-Text beim Lesen einer Datei. Fehlermeldungen
 // enthalten nie Inhalte des Dokuments, nur die Art des Problems.
-func erkennungAusText(text string) (core.Erkennung, error) {
+func erkennungAusText(text string) (core.Extraction, error) {
 	a, err := erkennungJSONLesen(text)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	if a.Lesbar == nil {
-		return core.Erkennung{}, fmt.Errorf("Feld lesbar fehlt: %w", modell.ErrAntwortUngueltig)
+		return core.Extraction{}, fmt.Errorf("Feld lesbar fehlt: %w", modell.ErrAntwortUngueltig)
 	}
 	e := a.zuErkennung()
-	e.Lesbar = *a.Lesbar
-	e.Volltext = a.Volltext
+	e.Readable = *a.Lesbar
+	e.FullText = a.Volltext
 	return e, nil
 }
 
@@ -184,13 +184,13 @@ func erkennungAusText(text string) (core.Erkennung, error) {
 // true und Volltext leer: Den Volltext setzt der Aufrufer, er ist der
 // eingegebene Text. Liefert das Modell trotzdem volltext oder lesbar, wird
 // beides ignoriert.
-func textErkennungAusText(text string) (core.Erkennung, error) {
+func textErkennungAusText(text string) (core.Extraction, error) {
 	a, err := erkennungJSONLesen(text)
 	if err != nil {
-		return core.Erkennung{}, err
+		return core.Extraction{}, err
 	}
 	e := a.zuErkennung()
-	e.Lesbar = true
+	e.Readable = true
 	return e, nil
 }
 
@@ -211,16 +211,16 @@ func erkennungJSONLesen(text string) (erkennungJSON, error) {
 
 // zuErkennung übernimmt Datum, Quelle, Typ und Infos (ohne Lesbar und
 // Volltext).
-func (a erkennungJSON) zuErkennung() core.Erkennung {
-	infos := make([]core.ErkannteInfo, 0, len(a.Infos))
+func (a erkennungJSON) zuErkennung() core.Extraction {
+	infos := make([]core.ExtractedFact, 0, len(a.Infos))
 	for _, i := range a.Infos {
-		infos = append(infos, core.ErkannteInfo{Name: i.Name, Wert: i.Wert, Einheit: i.Einheit})
+		infos = append(infos, core.ExtractedFact{Name: i.Name, Value: i.Wert, Unit: i.Einheit})
 	}
-	return core.Erkennung{
-		Dokumentdatum: a.Dokumentdatum,
-		Quelle:        a.Quelle,
-		Typ:           a.Typ,
-		Infos:         infos,
+	return core.Extraction{
+		DocumentDate: a.Dokumentdatum,
+		Issuer:       a.Quelle,
+		Type:         a.Typ,
+		Facts:        infos,
 	}
 }
 

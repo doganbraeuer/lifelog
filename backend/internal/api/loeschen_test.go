@@ -50,8 +50,8 @@ func TestLoeschen_Fehler(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"ungültige ID", core.ErrUngueltigeID, http.StatusBadRequest, CodeUngueltigeID},
-		{"nicht gefunden", core.ErrEintragNichtGefunden, http.StatusNotFound, CodeEintragNichtGefunden},
+		{"ungültige ID", core.ErrInvalidID, http.StatusBadRequest, CodeUngueltigeID},
+		{"nicht gefunden", core.ErrEntryNotFound, http.StatusNotFound, CodeEintragNichtGefunden},
 		{"Datenbank", errors.New("Abschnitte löschen: Verbindung weg"), http.StatusInternalServerError, CodeInternerFehler},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,7 +71,7 @@ func TestLoeschen_Fehler(t *testing.T) {
 
 // Die ID prüft der Dienst; der Handler reicht sie unverändert durch.
 func TestLoeschen_UngueltigeIDAusDemPfad(t *testing.T) {
-	l := &loescherAttrappe{err: core.ErrUngueltigeID}
+	l := &loescherAttrappe{err: core.ErrInvalidID}
 	rec := loeschen(t, l, "abc")
 	pruefeFehler(t, rec, http.StatusBadRequest, CodeUngueltigeID)
 	if len(l.ids) != 1 || l.ids[0] != "abc" {
@@ -91,7 +91,7 @@ func TestLoeschen_Abbruch(t *testing.T) {
 func TestLoeschen_AndereMethodenUnberuehrt(t *testing.T) {
 	l := &loescherAttrappe{}
 	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Eintraege: speicherMitEintrag(),
-		Korrigieren: &korrigiererAttrappe{err: core.ErrEintragNichtGefunden}, Loeschen: l})
+		Korrigieren: &korrigiererAttrappe{err: core.ErrEntryNotFound}, Loeschen: l})
 	for _, tc := range []struct {
 		methode, pfad string
 		status        int

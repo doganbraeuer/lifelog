@@ -6,94 +6,96 @@ import (
 	"strings"
 )
 
-// Sortierung ist das Feld, nach dem die Zeitleiste sortiert wird.
-type Sortierung string
+// Sort is the field the timeline is sorted by.
+type Sort string
 
+// The values are the query parameter values of GET /eintraege.
 const (
-	NachDokumentdatum Sortierung = "dokumentdatum"
-	NachImportdatum   Sortierung = "importdatum"
+	ByDocumentDate Sort = "dokumentdatum"
+	ByImportedAt   Sort = "importdatum"
 )
 
-// Richtung der Sortierung.
-type Richtung string
+// SortOrder is the direction of sorting.
+type SortOrder string
 
 const (
-	Absteigend  Richtung = "absteigend"
-	Aufsteigend Richtung = "aufsteigend"
+	Descending SortOrder = "absteigend"
+	Ascending  SortOrder = "aufsteigend"
 )
 
-// ErrUnbekannterWert: Ein Parameter hat einen nicht erlaubten Wert.
-var ErrUnbekannterWert = errors.New("unbekannter Wert")
+// ErrUnknownValue: a parameter has a value that is not allowed.
+var ErrUnknownValue = errors.New("unknown value")
 
-// SortierungAus liest den Query-Parameter "sortierung". Leer ergibt den
-// Standard dokumentdatum.
-func SortierungAus(wert string) (Sortierung, error) {
-	switch Sortierung(wert) {
-	case "", NachDokumentdatum:
-		return NachDokumentdatum, nil
-	case NachImportdatum:
-		return NachImportdatum, nil
+// ParseSort reads the query parameter "sortierung". Empty gives the default
+// ByDocumentDate.
+func ParseSort(value string) (Sort, error) {
+	switch Sort(value) {
+	case "", ByDocumentDate:
+		return ByDocumentDate, nil
+	case ByImportedAt:
+		return ByImportedAt, nil
 	}
-	return "", ErrUnbekannterWert
+	return "", ErrUnknownValue
 }
 
-// RichtungAus liest den Query-Parameter "richtung". Leer ergibt den Standard
-// absteigend (neuestes Dokument zuerst).
-func RichtungAus(wert string) (Richtung, error) {
-	switch Richtung(wert) {
-	case "", Absteigend:
-		return Absteigend, nil
-	case Aufsteigend:
-		return Aufsteigend, nil
+// ParseSortOrder reads the query parameter "richtung". Empty gives the
+// default Descending (newest document first).
+func ParseSortOrder(value string) (SortOrder, error) {
+	switch SortOrder(value) {
+	case "", Descending:
+		return Descending, nil
+	case Ascending:
+		return Ascending, nil
 	}
-	return "", ErrUnbekannterWert
+	return "", ErrUnknownValue
 }
 
-// Sortiere ordnet die Einträge nach den Regeln aus docs/API.md, 3.2:
+// SortEntries orders the entries by the rules in docs/API.md, 3.2:
 //
-//  1. Nach dem gewählten Feld in der gewählten Richtung.
-//  2. Bei sortierung=dokumentdatum stehen Einträge ohne Datum immer am Ende,
-//     egal in welcher Richtung. Untereinander nach importdatum absteigend.
-//  3. Gleichstand: importdatum in derselben Richtung, danach id.
+//  1. By the chosen field in the chosen order.
+//  2. When sorting by document date, entries without a date are always at
+//     the end, regardless of the order. Among themselves by import time
+//     descending.
+//  3. Tie: import time in the same order, then id.
 //
-// Die Reihenfolge ist damit immer eindeutig, auch bei gleichen Daten.
-func Sortiere(eintraege []EintragKurz, s Sortierung, r Richtung) {
-	slices.SortFunc(eintraege, func(a, b EintragKurz) int {
-		return vergleiche(a, b, s, r)
+// The order is therefore always unique, even for equal dates.
+func SortEntries(entries []EntrySummary, s Sort, o SortOrder) {
+	slices.SortFunc(entries, func(a, b EntrySummary) int {
+		return compare(a, b, s, o)
 	})
 }
 
-// vergleiche liefert <0, wenn a vor b stehen soll, >0 wenn danach.
-func vergleiche(a, b EintragKurz, s Sortierung, r Richtung) int {
-	if s == NachDokumentdatum {
+// compare returns <0 if a should come before b, >0 if after.
+func compare(a, b EntrySummary, s Sort, o SortOrder) int {
+	if s == ByDocumentDate {
 		switch {
-		case a.Dokumentdatum == nil && b.Dokumentdatum == nil:
-			// Regel 2: untereinander immer absteigend, unabhängig von r.
-			return -vergleicheImportUndID(a, b)
-		case a.Dokumentdatum == nil:
-			return 1 // a ohne Datum → ans Ende
-		case b.Dokumentdatum == nil:
+		case a.DocumentDate == nil && b.DocumentDate == nil:
+			// Rule 2: among themselves always descending, regardless of o.
+			return -compareImportAndID(a, b)
+		case a.DocumentDate == nil:
+			return 1 // a without date → to the end
+		case b.DocumentDate == nil:
 			return -1
 		}
-		// "YYYY-MM-DD" lässt sich als Text vergleichen: Die Reihenfolge der
-		// Zeichen entspricht der zeitlichen Reihenfolge.
-		if c := strings.Compare(*a.Dokumentdatum, *b.Dokumentdatum); c != 0 {
-			return inRichtung(c, r)
+		// "YYYY-MM-DD" can be compared as text: the order of the characters
+		// matches the chronological order.
+		if c := strings.Compare(*a.DocumentDate, *b.DocumentDate); c != 0 {
+			return inOrder(c, o)
 		}
 	}
-	return inRichtung(vergleicheImportUndID(a, b), r)
+	return inOrder(compareImportAndID(a, b), o)
 }
 
-// vergleicheImportUndID vergleicht aufsteigend nach importdatum, dann id.
-func vergleicheImportUndID(a, b EintragKurz) int {
-	if c := a.Importdatum.Compare(b.Importdatum); c != 0 {
+// compareImportAndID compares ascending by import time, then id.
+func compareImportAndID(a, b EntrySummary) int {
+	if c := a.ImportedAt.Compare(b.ImportedAt); c != 0 {
 		return c
 	}
 	return strings.Compare(a.ID, b.ID)
 }
 
-func inRichtung(c int, r Richtung) int {
-	if r == Absteigend {
+func inOrder(c int, o SortOrder) int {
+	if o == Descending {
 		return -c
 	}
 	return c

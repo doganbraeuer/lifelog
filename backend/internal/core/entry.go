@@ -1,6 +1,6 @@
-// Package core enthält die Fachlogik ohne Datenbank, Netz oder HTTP:
-// Typen, Modulkatalog, Sortierung und später Prüfregeln. Alles hier ist
-// deterministisch und wird mit Unit-Tests abgedeckt.
+// Package core contains the domain logic without database, network or HTTP:
+// types, module catalog, sorting and validation rules. Everything here is
+// deterministic and covered by unit tests.
 package core
 
 import (
@@ -8,95 +8,95 @@ import (
 	"time"
 )
 
-// ErrDuplikat: Es gibt schon einen Eintrag mit genau dieser Datei (gleicher
-// SHA-256-Hash). Der Speicher meldet ihn, wenn der eindeutige Index
-// anschlägt.
-var ErrDuplikat = errors.New("Duplikat: Datei existiert bereits")
+// ErrDuplicate: there already is an entry with exactly this file (same
+// SHA-256 hash). The store reports it when the unique index fires.
+var ErrDuplicate = errors.New("duplicate: file already exists")
 
-// ErrEintragNichtGefunden: Es gibt keinen Eintrag mit dieser ID
+// ErrEntryNotFound: there is no entry with this ID
 // (→ 404 EINTRAG_NICHT_GEFUNDEN).
-var ErrEintragNichtGefunden = errors.New("Eintrag nicht gefunden")
+var ErrEntryNotFound = errors.New("entry not found")
 
-// ErrUngueltigeID: Die ID ist keine ObjectId (24 Hex-Zeichen).
-var ErrUngueltigeID = errors.New("ungültige ID")
+// ErrInvalidID: the ID is not an ObjectId (24 hex characters).
+var ErrInvalidID = errors.New("invalid ID")
 
-// ErrOriginalFehlt: Der Eintrag existiert, seine Originaldatei aber nicht.
-// Darf nicht vorkommen (Datei wird vor dem Eintrag gespeichert und nach
-// ihm gelöscht); wenn doch, ist das ein interner Fehler.
-var ErrOriginalFehlt = errors.New("Originaldatei fehlt")
+// ErrOriginalMissing: the entry exists, but its original file does not. Must
+// not happen (the file is stored before the entry and deleted after it); if
+// it does, it is an internal error.
+var ErrOriginalMissing = errors.New("original file missing")
 
-// PruefeID prüft, ob id wie eine ObjectId aussieht: genau 24 Hex-Zeichen.
-// So antwortet die API auf "/eintraege/abc" mit 400 statt mit 404, und die
-// Datenbank wird gar nicht erst gefragt.
-func PruefeID(id string) error {
+// CheckID checks whether id looks like an ObjectId: exactly 24 hex
+// characters. This way the API answers "/eintraege/abc" with 400 instead of
+// 404, and the database is not even asked.
+func CheckID(id string) error {
 	if len(id) != 24 {
-		return ErrUngueltigeID
+		return ErrInvalidID
 	}
 	for _, r := range id {
 		if !('0' <= r && r <= '9' || 'a' <= r && r <= 'f' || 'A' <= r && r <= 'F') {
-			return ErrUngueltigeID
+			return ErrInvalidID
 		}
 	}
 	return nil
 }
 
-// Eintrag ist ein vollständiger Eintrag nach docs/API.md, Abschnitt 2.
-type Eintrag struct {
-	ID            string    // ObjectId als Hex-String (24 Zeichen)
-	Modul         string    // z. B. "gesundheit"
-	Typ           string    // z. B. "laborbefund", gilt innerhalb des Moduls
-	Dokumentdatum *string   // "YYYY-MM-DD" oder nil, wenn nicht erkannt
-	Importdatum   time.Time // UTC
-	Quelle        *string   // ausstellende Stelle oder nil
-	Volltext      string
-	Infos         []Info
-	Datei         Datei
-	Korrekturen   []Korrektur
+// Entry is a full entry as in docs/API.md, section 2.
+type Entry struct {
+	ID           string    // ObjectId as hex string (24 characters)
+	Module       string    // e.g. "gesundheit"
+	Type         string    // e.g. "laborbefund", valid within the module
+	DocumentDate *string   // "YYYY-MM-DD" or nil if not recognized
+	ImportedAt   time.Time // UTC
+	Issuer       *string   // issuing body or nil
+	FullText     string
+	Facts        []Fact
+	File         File
+	Corrections  []Correction
 }
 
-// Info ist eine extrahierte Angabe. Wert bleibt immer ein String, genau wie
-// auf dem Dokument ("14,2", "<0,5"), damit beim Umwandeln nichts verloren geht.
-type Info struct {
-	ID      string // "i1", "i2", …
-	Name    string
-	Wert    string
-	Einheit *string // nil, wenn das Dokument keine Einheit nennt
+// Fact is an extracted fact. Value always stays a string, exactly as on the
+// document ("14,2", "<0,5"), so nothing is lost by conversion.
+type Fact struct {
+	ID    string // "i1", "i2", …
+	Name  string
+	Value string
+	Unit  *string // nil if the document names no unit
 }
 
-// Datei verweist auf die gespeicherte Originaldatei.
-type Datei struct {
-	ID        string
-	Dateiname string
-	MimeTyp   string
-	Groesse   int64
-	Sha256    string
+// File refers to the stored original file.
+type File struct {
+	ID       string
+	FileName string
+	MimeType string
+	Size     int64
+	Sha256   string
 }
 
-// Korrektur hält den ursprünglich erkannten und den korrigierten Wert fest.
-type Korrektur struct {
-	Feld       string
-	Erkannt    *string
-	Korrigiert *string
-	Zeitpunkt  time.Time
+// Correction records the originally recognized and the corrected value.
+type Correction struct {
+	Field       string
+	Recognized  *string
+	Corrected   *string
+	CorrectedAt time.Time
 }
 
-// EintragKurz ist die Kurzform für die Zeitleiste (ohne Volltext, Infos usw.).
-type EintragKurz struct {
-	ID            string
-	Modul         string
-	Typ           string
-	Dokumentdatum *string
-	Importdatum   time.Time
-	Quelle        *string
+// EntrySummary is the short form for the timeline (without full text, facts
+// etc.).
+type EntrySummary struct {
+	ID           string
+	Module       string
+	Type         string
+	DocumentDate *string
+	ImportedAt   time.Time
+	Issuer       *string
 }
 
-// Abschnitt ist ein Stück Volltext mit seinem Embedding, die Grundlage der
-// Suche (POST /fragen). Modul steht im Abschnitt selbst, damit die
-// Vektorsuche direkt danach filtern kann.
-type Abschnitt struct {
-	EintragID string
-	Modul     string
-	Nr        int // Reihenfolge im Volltext, ab 1
+// Chunk is a piece of the full text with its embedding, the basis of search
+// (POST /fragen). The module is stored in the chunk itself so the vector
+// search can filter by it directly.
+type Chunk struct {
+	EntryID   string
+	Module    string
+	Position  int // order within the full text, starting at 1
 	Text      string
 	Embedding []float32
 }

@@ -8,304 +8,304 @@ import (
 	"time"
 )
 
-// Feld ist ein Wert in einer Korrektur, der fehlen, null sein oder einen
-// Text enthalten kann. JSON kennt diese drei Fälle, Go-Zeiger nur zwei:
+// Nullable is a value in a correction that can be missing, null or contain a
+// text. JSON knows these three cases, Go pointers only two:
 //
-//	Feld{}                           fehlt in der Anfrage → unverändert
-//	Feld{Gesetzt: true}              "feld": null         → Wert entfernen
-//	Feld{Gesetzt: true, Wert: &s}    "feld": "…"          → Wert setzen
-type Feld struct {
-	Gesetzt bool
-	Wert    *string
+//	Nullable{}                        missing in the request → unchanged
+//	Nullable{Set: true}               "field": null          → remove the value
+//	Nullable{Set: true, Value: &s}    "field": "…"           → set the value
+type Nullable struct {
+	Set   bool
+	Value *string
 }
 
-// InfoAenderung ändert eine Info. Wert nil heißt unverändert; null ist für
-// den Wert nicht erlaubt und wird schon beim Lesen des JSON abgelehnt.
-type InfoAenderung struct {
-	ID      string
-	Wert    *string
-	Einheit Feld
+// FactChange changes a fact. Value nil means unchanged; null is not allowed
+// for the value and is rejected already when reading the JSON.
+type FactChange struct {
+	ID    string
+	Value *string
+	Unit  Nullable
 }
 
-// Aenderung ist der Inhalt von PATCH /eintraege/{id} (API.md 3.5).
-type Aenderung struct {
-	Typ           *string // nil: unverändert (null ist nicht erlaubt)
-	Dokumentdatum Feld
-	Quelle        Feld
-	// Infos: nil heißt, "infos" fehlt in der Anfrage. Eine leere Liste
-	// heißt "infos": [] und ändert nichts.
-	Infos []InfoAenderung
+// Change is the content of PATCH /eintraege/{id} (API.md 3.5).
+type Change struct {
+	Type         *string // nil: unchanged (null is not allowed)
+	DocumentDate Nullable
+	Issuer       Nullable
+	// Facts: nil means "infos" is missing in the request. An empty list means
+	// "infos": [] and changes nothing.
+	Facts []FactChange
 }
 
-// leer: Die Anfrage nennt kein einziges Feld, entspricht dem Body {}.
-func (a Aenderung) leer() bool {
-	return a.Typ == nil && !a.Dokumentdatum.Gesetzt && !a.Quelle.Gesetzt && a.Infos == nil
+// isEmpty: the request names not a single field, like the body {}.
+func (c Change) isEmpty() bool {
+	return c.Type == nil && !c.DocumentDate.Set && !c.Issuer.Set && c.Facts == nil
 }
 
-// Fehlerarten einer Korrektur. Die API macht daraus die Codes aus API.md 3.5.
+// Kinds of correction errors. The API turns them into the codes in API.md 3.5.
 var (
-	ErrKorrekturUngueltig    = errors.New("Korrektur ungültig")      // 400 UNGUELTIGE_ANFRAGE
-	ErrFeldNichtKorrigierbar = errors.New("Feld nicht korrigierbar") // 400 FELD_NICHT_KORRIGIERBAR
-	ErrInfoNichtGefunden     = errors.New("Info nicht gefunden")     // 404 INFO_NICHT_GEFUNDEN
+	ErrInvalidCorrection   = errors.New("invalid correction")    // 400 UNGUELTIGE_ANFRAGE
+	ErrFieldNotCorrectable = errors.New("field not correctable") // 400 FELD_NICHT_KORRIGIERBAR
+	ErrFactNotFound        = errors.New("fact not found")        // 404 INFO_NICHT_GEFUNDEN
 )
 
-// KorrekturFehler beschreibt, was an einer Korrektur nicht passt.
+// CorrectionError describes what is wrong with a correction.
 //
-// Nachricht ist ein deutscher Satz für die App. Feld, Wert und InfoID landen
-// in details. Error() enthält den Wert bewusst nicht: Fehler können im Log
-// landen, und Werte können Gesundheitsdaten sein.
-type KorrekturFehler struct {
-	Art       error  // ErrKorrekturUngueltig, ErrFeldNichtKorrigierbar oder ErrInfoNichtGefunden
-	Nachricht string // für die App
-	Feld      string // z. B. "dokumentdatum", "infos.i2.wert"; leer, wenn es um eine Info als Ganzes geht
-	InfoID    string // bei Fehlern, die eine Info als Ganzes betreffen
-	Wert      any    // der abgelehnte Wert, nur für details; nil, wenn er nicht hingehört
+// Message is a German sentence for the app. Field, Value and FactID go into
+// details. Error() deliberately does not contain the value: errors can end
+// up in the log, and values can be health data.
+type CorrectionError struct {
+	Kind    error  // ErrInvalidCorrection, ErrFieldNotCorrectable or ErrFactNotFound
+	Message string // for the app, German
+	Field   string // e.g. "dokumentdatum", "infos.i2.wert"; empty if it is about a fact as a whole
+	FactID  string // for errors concerning a fact as a whole
+	Value   any    // the rejected value, only for details; nil if it does not belong there
 }
 
-func (f *KorrekturFehler) Error() string {
-	ziel := f.Feld
-	if ziel == "" && f.InfoID != "" {
-		ziel = "infos." + f.InfoID
+func (e *CorrectionError) Error() string {
+	target := e.Field
+	if target == "" && e.FactID != "" {
+		target = "infos." + e.FactID
 	}
-	if ziel == "" {
-		return f.Art.Error()
+	if target == "" {
+		return e.Kind.Error()
 	}
-	return f.Art.Error() + ": " + ziel
+	return e.Kind.Error() + ": " + target
 }
 
-// Is sorgt dafür, dass errors.Is(err, ErrKorrekturUngueltig) usw. zutrifft.
-func (f *KorrekturFehler) Is(ziel error) bool { return ziel == f.Art }
+// Is makes errors.Is(err, ErrInvalidCorrection) etc. true.
+func (e *CorrectionError) Is(target error) bool { return target == e.Kind }
 
-// Ungueltig baut einen Fehler der Art ErrKorrekturUngueltig. Auch die API
-// benutzt das für Fehler, die schon beim Lesen des JSON auffallen.
-func Ungueltig(nachricht, feld string, wert any) *KorrekturFehler {
-	return &KorrekturFehler{Art: ErrKorrekturUngueltig, Nachricht: nachricht, Feld: feld, Wert: wert}
+// Invalid builds an error of kind ErrInvalidCorrection. The API also uses it
+// for errors that show up while reading the JSON.
+func Invalid(message, field string, value any) *CorrectionError {
+	return &CorrectionError{Kind: ErrInvalidCorrection, Message: message, Field: field, Value: value}
 }
 
-// NichtKorrigierbar baut einen Fehler der Art ErrFeldNichtKorrigierbar.
-func NichtKorrigierbar(feld string) *KorrekturFehler {
-	return &KorrekturFehler{
-		Art:       ErrFeldNichtKorrigierbar,
-		Nachricht: fmt.Sprintf("Das Feld %s kann nicht korrigiert werden.", feld),
-		Feld:      feld,
+// NotCorrectable builds an error of kind ErrFieldNotCorrectable.
+func NotCorrectable(field string) *CorrectionError {
+	return &CorrectionError{
+		Kind:    ErrFieldNotCorrectable,
+		Message: fmt.Sprintf("Das Feld %s kann nicht korrigiert werden.", field),
+		Field:   field,
 	}
 }
 
-// aenderung ist ein geprüfter neuer Wert für einen Feldpfad wie
-// "dokumentdatum" oder "infos.i2.einheit".
-type aenderung struct {
-	feld string
-	neu  *string
+// update is a checked new value for a field path like "dokumentdatum" or
+// "infos.i2.einheit".
+type update struct {
+	field string
+	value *string
 }
 
-// Korrigiere prüft die Änderung gegen den Eintrag und wendet sie an
-// (API.md 2, Regeln für Korrekturen, und 3.5).
+// Correct checks the change against the entry and applies it (API.md 2,
+// rules for corrections, and 3.5).
 //
-// Ablauf: Zuerst wird alles geprüft. Nur wenn alles gültig ist, werden die
-// Werte geschrieben. Bei einem Fehler ist das Ergebnis also nie halb
-// geändert.
+// Procedure: everything is checked first. Only if everything is valid are
+// the values written. On an error the result is therefore never half
+// changed.
 //
-// Regeln:
-//  1. Im Feld steht danach der aktuelle Wert.
-//  2. Pro Feld höchstens eine Korrektur. erkannt bleibt der ursprüngliche
-//     Wert, korrigiert und zeitpunkt zeigen den letzten Stand.
-//  3. Zurück auf den erkannten Wert: Die Korrektur verschwindet.
-//  4. Ändert sich ein Wert nicht, entsteht keine Korrektur.
+// Rules:
+//  1. Afterwards the field holds the current value.
+//  2. At most one correction per field. Recognized stays the original
+//     value, Corrected and CorrectedAt show the latest state.
+//  3. Back to the recognized value: the correction disappears.
+//  4. If a value does not change, no correction is created.
 //
-// Leerraum am Rand wird entfernt; leere quelle oder einheit gelten als null,
-// ein leerer wert ist ein Fehler.
+// Whitespace at the edges is removed; an empty issuer or unit counts as
+// null, an empty value is an error.
 //
-// e wird nicht verändert. geaendert nennt die Felder, deren Wert sich
-// wirklich geändert hat, in der Reihenfolge der Anfrage; ist die Liste
-// leer, muss der Aufrufer nichts speichern. Sie enthält nur Feldnamen, nie
-// Werte, darf also ins Log.
-func Korrigiere(e Eintrag, a Aenderung, jetzt time.Time) (neu Eintrag, geaendert []string, err error) {
-	liste, err := pruefeAenderung(e, a)
+// e is not changed. changed names the fields whose value really changed, in
+// the order of the request; if the list is empty, the caller does not need
+// to store anything. It only contains field names, never values, so it may
+// be logged.
+func Correct(e Entry, c Change, now time.Time) (updated Entry, changed []string, err error) {
+	updates, err := checkChange(e, c)
 	if err != nil {
-		return Eintrag{}, nil, err
+		return Entry{}, nil, err
 	}
 
-	neu = e
-	neu.Infos = slices.Clone(e.Infos)
-	neu.Korrekturen = slices.Clone(e.Korrekturen)
-	if neu.Korrekturen == nil {
-		neu.Korrekturen = []Korrektur{}
+	updated = e
+	updated.Facts = slices.Clone(e.Facts)
+	updated.Corrections = slices.Clone(e.Corrections)
+	if updated.Corrections == nil {
+		updated.Corrections = []Correction{}
 	}
-	geaendert = []string{}
-	for _, ae := range liste {
-		if setze(&neu, ae.feld, ae.neu, jetzt.UTC()) {
-			geaendert = append(geaendert, ae.feld)
+	changed = []string{}
+	for _, u := range updates {
+		if apply(&updated, u.field, u.value, now.UTC()) {
+			changed = append(changed, u.field)
 		}
 	}
-	return neu, geaendert, nil
+	return updated, changed, nil
 }
 
-// pruefeAenderung prüft alles und liefert die neuen Werte als Liste von
-// Feldpfaden. Reihenfolge: typ, dokumentdatum, quelle, dann die Infos in der
-// Reihenfolge der Anfrage. So meldet dieselbe Anfrage immer denselben
-// Fehler.
-func pruefeAenderung(e Eintrag, a Aenderung) ([]aenderung, error) {
-	if a.leer() {
-		return nil, Ungueltig("Die Anfrage enthält keine Änderung.", "", nil)
+// checkChange checks everything and returns the new values as a list of
+// field paths. Order: type, document date, issuer, then the facts in the
+// order of the request. This way the same request always reports the same
+// error.
+func checkChange(e Entry, c Change) ([]update, error) {
+	if c.isEmpty() {
+		return nil, Invalid("Die Anfrage enthält keine Änderung.", "", nil)
 	}
-	var liste []aenderung
+	var updates []update
 
-	if a.Typ != nil {
-		typ := strings.TrimSpace(*a.Typ)
-		if !TypErlaubt(e.Modul, typ) {
-			return nil, Ungueltig(
-				fmt.Sprintf("Unbekannter Typ. Erlaubt sind %s.", strings.Join(ErlaubteTypen(e.Modul), ", ")),
-				"typ", *a.Typ)
+	if c.Type != nil {
+		typ := strings.TrimSpace(*c.Type)
+		if !TypeAllowed(e.Module, typ) {
+			return nil, Invalid(
+				fmt.Sprintf("Unbekannter Typ. Erlaubt sind %s.", strings.Join(AllowedTypes(e.Module), ", ")),
+				"typ", *c.Type)
 		}
-		liste = append(liste, aenderung{"typ", &typ})
+		updates = append(updates, update{"typ", &typ})
 	}
 
-	if a.Dokumentdatum.Gesetzt {
-		var datum *string
-		if a.Dokumentdatum.Wert != nil {
-			d := strings.TrimSpace(*a.Dokumentdatum.Wert)
-			if err := PruefeDatum(d); err != nil {
-				nachricht := "Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden."
-				if errors.Is(err, ErrKeinKalendertag) {
-					nachricht = "Das Dokumentdatum ist kein gültiges Kalenderdatum."
+	if c.DocumentDate.Set {
+		var date *string
+		if c.DocumentDate.Value != nil {
+			d := strings.TrimSpace(*c.DocumentDate.Value)
+			if err := CheckDate(d); err != nil {
+				message := "Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden."
+				if errors.Is(err, ErrNoSuchDay) {
+					message = "Das Dokumentdatum ist kein gültiges Kalenderdatum."
 				}
-				return nil, Ungueltig(nachricht, "dokumentdatum", *a.Dokumentdatum.Wert)
+				return nil, Invalid(message, "dokumentdatum", *c.DocumentDate.Value)
 			}
-			datum = &d
+			date = &d
 		}
-		liste = append(liste, aenderung{"dokumentdatum", datum})
+		updates = append(updates, update{"dokumentdatum", date})
 	}
 
-	if a.Quelle.Gesetzt {
-		liste = append(liste, aenderung{"quelle", ohneLeer(a.Quelle.Wert)})
+	if c.Issuer.Set {
+		updates = append(updates, update{"quelle", trimmedOrNil(c.Issuer.Value)})
 	}
 
-	gesehen := map[string]bool{}
-	for _, ia := range a.Infos {
-		if ia.ID == "" {
-			return nil, Ungueltig("Jede Info braucht eine id.", "infos", nil)
+	seen := map[string]bool{}
+	for _, fc := range c.Facts {
+		if fc.ID == "" {
+			return nil, Invalid("Jede Info braucht eine id.", "infos", nil)
 		}
-		if gesehen[ia.ID] {
-			return nil, &KorrekturFehler{Art: ErrKorrekturUngueltig, InfoID: ia.ID,
-				Nachricht: fmt.Sprintf("Die Info %s kommt mehrfach vor.", ia.ID)}
+		if seen[fc.ID] {
+			return nil, &CorrectionError{Kind: ErrInvalidCorrection, FactID: fc.ID,
+				Message: fmt.Sprintf("Die Info %s kommt mehrfach vor.", fc.ID)}
 		}
-		gesehen[ia.ID] = true
-		if ia.Wert == nil && !ia.Einheit.Gesetzt {
-			return nil, &KorrekturFehler{Art: ErrKorrekturUngueltig, InfoID: ia.ID,
-				Nachricht: fmt.Sprintf("Die Info %s enthält keine Änderung.", ia.ID)}
+		seen[fc.ID] = true
+		if fc.Value == nil && !fc.Unit.Set {
+			return nil, &CorrectionError{Kind: ErrInvalidCorrection, FactID: fc.ID,
+				Message: fmt.Sprintf("Die Info %s enthält keine Änderung.", fc.ID)}
 		}
-		if infoIndex(e.Infos, ia.ID) < 0 {
-			return nil, &KorrekturFehler{Art: ErrInfoNichtGefunden, InfoID: ia.ID,
-				Nachricht: "Diese Info gibt es in dem Eintrag nicht."}
+		if factIndex(e.Facts, fc.ID) < 0 {
+			return nil, &CorrectionError{Kind: ErrFactNotFound, FactID: fc.ID,
+				Message: "Diese Info gibt es in dem Eintrag nicht."}
 		}
-		if ia.Wert != nil {
-			wert := strings.TrimSpace(*ia.Wert)
-			if wert == "" {
-				return nil, Ungueltig("Der Wert darf nicht leer sein.", "infos."+ia.ID+".wert", *ia.Wert)
+		if fc.Value != nil {
+			value := strings.TrimSpace(*fc.Value)
+			if value == "" {
+				return nil, Invalid("Der Wert darf nicht leer sein.", "infos."+fc.ID+".wert", *fc.Value)
 			}
-			liste = append(liste, aenderung{"infos." + ia.ID + ".wert", &wert})
+			updates = append(updates, update{"infos." + fc.ID + ".wert", &value})
 		}
-		if ia.Einheit.Gesetzt {
-			liste = append(liste, aenderung{"infos." + ia.ID + ".einheit", ohneLeer(ia.Einheit.Wert)})
+		if fc.Unit.Set {
+			updates = append(updates, update{"infos." + fc.ID + ".einheit", trimmedOrNil(fc.Unit.Value)})
 		}
 	}
-	return liste, nil
+	return updates, nil
 }
 
-// setze schreibt einen geprüften Wert und pflegt die Korrekturen nach den
-// Regeln 2 bis 4. Ergebnis: ob sich der Wert geändert hat.
-func setze(e *Eintrag, feld string, neu *string, jetzt time.Time) bool {
-	alt := lies(e, feld)
-	if gleich(alt, neu) {
-		return false // Regel 4
+// apply writes a checked value and maintains the corrections following
+// rules 2 to 4. Result: whether the value changed.
+func apply(e *Entry, field string, value *string, now time.Time) bool {
+	old := read(e, field)
+	if equal(old, value) {
+		return false // rule 4
 	}
 
-	i := slices.IndexFunc(e.Korrekturen, func(k Korrektur) bool { return k.Feld == feld })
-	// Gibt es noch keine Korrektur, ist der aktuelle Wert der erkannte.
-	erkannt := alt
+	i := slices.IndexFunc(e.Corrections, func(c Correction) bool { return c.Field == field })
+	// If there is no correction yet, the current value is the recognized one.
+	recognized := old
 	if i >= 0 {
-		erkannt = e.Korrekturen[i].Erkannt
+		recognized = e.Corrections[i].Recognized
 	}
 
-	schreibe(e, feld, neu)
+	write(e, field, value)
 
 	switch {
-	case gleich(neu, erkannt): // Regel 3: zurückgesetzt
+	case equal(value, recognized): // rule 3: reset
 		if i >= 0 {
-			e.Korrekturen = slices.Delete(e.Korrekturen, i, i+1)
+			e.Corrections = slices.Delete(e.Corrections, i, i+1)
 		}
-	case i >= 0: // Regel 2: erkannt bleibt, letzter Stand
-		e.Korrekturen[i].Korrigiert = neu
-		e.Korrekturen[i].Zeitpunkt = jetzt
+	case i >= 0: // rule 2: recognized stays, latest state
+		e.Corrections[i].Corrected = value
+		e.Corrections[i].CorrectedAt = now
 	default:
-		e.Korrekturen = append(e.Korrekturen, Korrektur{Feld: feld, Erkannt: erkannt, Korrigiert: neu, Zeitpunkt: jetzt})
+		e.Corrections = append(e.Corrections, Correction{Field: field, Recognized: recognized, Corrected: value, CorrectedAt: now})
 	}
 	return true
 }
 
-// lies liefert den aktuellen Wert eines Feldpfads. Die Pfade sind geprüft,
-// Infos existieren also.
+// read returns the current value of a field path. The paths are checked, so
+// the facts exist.
 //
-// Wichtig: Für typ und wert eine Kopie zurückgeben, nie &e.Typ. setze merkt
-// sich den alten Wert als "erkannt" und überschreibt danach das Feld; ein
-// Zeiger ins Feld würde dann auf den neuen Wert zeigen. Die *string-Felder
-// (Datum, Quelle, Einheit) sind unkritisch: schreibe ersetzt dort den
-// Zeiger, ändert aber nie den Text, auf den er zeigt.
-func lies(e *Eintrag, feld string) *string {
-	switch feld {
+// Important: return a copy for type and value, never &e.Type. apply keeps
+// the old value as "recognized" and then overwrites the field; a pointer into
+// the field would then point to the new value. The *string fields (date,
+// issuer, unit) are not critical: write replaces the pointer there but never
+// changes the text it points to.
+func read(e *Entry, field string) *string {
+	switch field {
 	case "typ":
-		typ := e.Typ
+		typ := e.Type
 		return &typ
 	case "dokumentdatum":
-		return e.Dokumentdatum
+		return e.DocumentDate
 	case "quelle":
-		return e.Quelle
+		return e.Issuer
 	}
-	id, teil := infoPfad(feld)
-	info := e.Infos[infoIndex(e.Infos, id)]
-	if teil == "wert" {
-		wert := info.Wert
-		return &wert
+	id, part := factPath(field)
+	fact := e.Facts[factIndex(e.Facts, id)]
+	if part == "wert" {
+		value := fact.Value
+		return &value
 	}
-	return info.Einheit
+	return fact.Unit
 }
 
-// schreibe setzt einen Feldpfad. Infos ist eine Kopie (Korrigiere), das
-// Original bleibt also unberührt. Typ und Wert sind nach der Prüfung nie nil.
-func schreibe(e *Eintrag, feld string, neu *string) {
-	switch feld {
+// write sets a field path. Facts is a copy (Correct), so the original stays
+// untouched. Type and value are never nil after the check.
+func write(e *Entry, field string, value *string) {
+	switch field {
 	case "typ":
-		e.Typ = *neu
+		e.Type = *value
 		return
 	case "dokumentdatum":
-		e.Dokumentdatum = neu
+		e.DocumentDate = value
 		return
 	case "quelle":
-		e.Quelle = neu
+		e.Issuer = value
 		return
 	}
-	id, teil := infoPfad(feld)
-	info := &e.Infos[infoIndex(e.Infos, id)]
-	if teil == "wert" {
-		info.Wert = *neu
+	id, part := factPath(field)
+	fact := &e.Facts[factIndex(e.Facts, id)]
+	if part == "wert" {
+		fact.Value = *value
 	} else {
-		info.Einheit = neu
+		fact.Unit = value
 	}
 }
 
-// infoPfad zerlegt "infos.i2.wert" in "i2" und "wert".
-func infoPfad(feld string) (id, teil string) {
-	rest := strings.TrimPrefix(feld, "infos.")
+// factPath splits "infos.i2.wert" into "i2" and "wert".
+func factPath(field string) (id, part string) {
+	rest := strings.TrimPrefix(field, "infos.")
 	i := strings.LastIndexByte(rest, '.')
 	return rest[:i], rest[i+1:]
 }
 
-func infoIndex(infos []Info, id string) int {
-	return slices.IndexFunc(infos, func(i Info) bool { return i.ID == id })
+func factIndex(facts []Fact, id string) int {
+	return slices.IndexFunc(facts, func(f Fact) bool { return f.ID == id })
 }
 
-// gleich vergleicht zwei optionale Werte: beide nil oder beide derselbe Text.
-func gleich(a, b *string) bool {
+// equal compares two optional values: both nil or both the same text.
+func equal(a, b *string) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}

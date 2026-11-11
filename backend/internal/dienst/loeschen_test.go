@@ -17,7 +17,7 @@ const dateiWegwerf = "bbbbbbbbbbbbbbbbbbbbbbbb"
 // loeschAttrappe hält einen Eintrag mit Abschnitten und Datei, protokolliert
 // jeden Aufruf mit Argument und kann in einem Schritt scheitern.
 type loeschAttrappe struct {
-	eintrag    *core.Eintrag // nil: Eintrag gibt es nicht (mehr)
+	eintrag    *core.Entry // nil: Eintrag gibt es nicht (mehr)
 	abschnitte bool
 	datei      bool
 
@@ -42,12 +42,12 @@ func (s *loeschAttrappe) schritt(ctx context.Context, name, arg string) error {
 	return nil
 }
 
-func (s *loeschAttrappe) EintragLesen(ctx context.Context, id string) (core.Eintrag, bool, error) {
+func (s *loeschAttrappe) EintragLesen(ctx context.Context, id string) (core.Entry, bool, error) {
 	if err := s.schritt(ctx, "EintragLesen", id); err != nil {
-		return core.Eintrag{}, false, err
+		return core.Entry{}, false, err
 	}
 	if s.eintrag == nil || s.eintrag.ID != id {
-		return core.Eintrag{}, false, nil
+		return core.Entry{}, false, nil
 	}
 	e := *s.eintrag
 	if s.nachLesen != nil {
@@ -86,11 +86,11 @@ func (s *loeschAttrappe) EintragLoeschen(ctx context.Context, id string) (bool, 
 
 func loeschBestand() *loeschAttrappe {
 	return &loeschAttrappe{
-		eintrag: &core.Eintrag{
-			ID: idLabor, Modul: "gesundheit", Typ: "laborbefund",
-			Quelle: zd("Labor Geheim GmbH"), Volltext: "Hämoglobin 14,2 g/dl",
-			Infos: []core.Info{{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zd("g/dl")}},
-			Datei: core.Datei{ID: dateiWegwerf, Dateiname: "befund_geheim.pdf", MimeTyp: "application/pdf"},
+		eintrag: &core.Entry{
+			ID: idLabor, Module: "gesundheit", Type: "laborbefund",
+			Issuer: zd("Labor Geheim GmbH"), FullText: "Hämoglobin 14,2 g/dl",
+			Facts: []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zd("g/dl")}},
+			File:  core.File{ID: dateiWegwerf, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
 		},
 		abschnitte: true,
 		datei:      true,
@@ -146,7 +146,7 @@ func TestLoeschen_ScheitertInEinemSchritt(t *testing.T) {
 			if s.eintrag != nil || s.abschnitte || s.datei {
 				t.Error("zweiter Aufruf hat nicht alles gelöscht")
 			}
-			if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEintragNichtGefunden) {
+			if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
 				t.Errorf("dritter Aufruf: %v, erwartet ErrEintragNichtGefunden", err)
 			}
 		})
@@ -160,7 +160,7 @@ func TestLoeschen_ZweimalLiefertNichtGefunden(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.protokoll = nil
-	if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEintragNichtGefunden) {
+	if err := l.Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Fatalf("zweiter Aufruf: %v", err)
 	}
 	// Nur gelesen, nichts gelöscht.
@@ -172,7 +172,7 @@ func TestLoeschen_ZweimalLiefertNichtGefunden(t *testing.T) {
 func TestLoeschen_UngueltigeIDOhneSpeicher(t *testing.T) {
 	s := loeschBestand()
 	for _, id := range []string{"", "abc", strings.Repeat("z", 24)} {
-		if err := NeuLoeschen(s).Ausfuehren(context.Background(), id); !errors.Is(err, core.ErrUngueltigeID) {
+		if err := NeuLoeschen(s).Ausfuehren(context.Background(), id); !errors.Is(err, core.ErrInvalidID) {
 			t.Errorf("%q: %v, erwartet ErrUngueltigeID", id, err)
 		}
 	}
@@ -197,7 +197,7 @@ func TestLoeschen_DateiFehltSchon(t *testing.T) {
 func TestLoeschen_GleichzeitigGeloescht(t *testing.T) {
 	s := loeschBestand()
 	s.nachLesen = func() { s.eintrag = nil }
-	if err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEintragNichtGefunden) {
+	if err := NeuLoeschen(s).Ausfuehren(context.Background(), idLabor); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Errorf("%v, erwartet ErrEintragNichtGefunden", err)
 	}
 	if !reflect.DeepEqual(s.protokoll, alleSchritte) {

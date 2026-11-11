@@ -6,34 +6,34 @@ import (
 	"unicode/utf8"
 )
 
-// Text-Import (API.md 3.1): Der Text wird als text.txt gespeichert.
+// Text import (API.md 3.1): the text is stored as text.txt.
 const (
-	MaxTextZeichen = 100_000 // Unicode-Zeichen (Runes), nicht Bytes
-	TextDateiname  = "text.txt"
-	MimeText       = "text/plain; charset=utf-8"
+	MaxTextChars = 100_000 // Unicode characters (runes), not bytes
+	TextFileName = "text.txt"
+	MimeText     = "text/plain; charset=utf-8"
 )
 
 var (
-	ErrTextKeinUTF8 = errors.New("Text ist kein gültiges UTF-8")
-	ErrTextZuLang   = errors.New("Text ist länger als 100 000 Zeichen")
+	ErrTextNotUTF8 = errors.New("text is not valid UTF-8")
+	ErrTextTooLong = errors.New("text is longer than 100,000 characters")
 )
 
-// PruefeText prüft einen eingegebenen Text. Er wird dabei nicht verändert;
-// gespeichert und gehasht wird genau, was ankommt.
+// CheckText checks an entered text. It is not changed; exactly what arrives
+// is stored and hashed.
 //
-// Fehler, in dieser Reihenfolge: ErrDateiLeer (leer oder nur Leerraum, →
-// 400 DATEI_FEHLT), ErrTextKeinUTF8 (→ 400 UNGUELTIGE_ANFRAGE),
-// ErrTextZuLang (→ 413 DATEI_ZU_GROSS).
-func PruefeText(text string) error {
+// Errors, in this order: ErrFileEmpty (empty or only whitespace, →
+// 400 DATEI_FEHLT), ErrTextNotUTF8 (→ 400 UNGUELTIGE_ANFRAGE),
+// ErrTextTooLong (→ 413 DATEI_ZU_GROSS).
+func CheckText(text string) error {
 	if strings.TrimSpace(text) == "" {
-		return ErrDateiLeer
+		return ErrFileEmpty
 	}
 	if !utf8.ValidString(text) {
-		return ErrTextKeinUTF8
+		return ErrTextNotUTF8
 	}
-	// Zeichen, nicht Bytes: "ü" ist ein Zeichen, aber zwei Bytes.
-	if utf8.RuneCountInString(text) > MaxTextZeichen {
-		return ErrTextZuLang
+	// Characters, not bytes: "ü" is one character but two bytes.
+	if utf8.RuneCountInString(text) > MaxTextChars {
+		return ErrTextTooLong
 	}
 	return nil
 }

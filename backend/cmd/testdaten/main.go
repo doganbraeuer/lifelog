@@ -69,7 +69,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 	eintraege := beispieldaten.Eintraege()
 
 	// Embeddings zuerst: Scheitert Gemini, bleibt die Datenbank, wie sie war.
-	abschnitte := map[string][]core.Abschnitt{}
+	abschnitte := map[string][]core.Chunk{}
 	if !nurEntfernen && !ohneAbschnitte {
 		abschnitte, err = einbetten(ctx, k, eintraege)
 		if err != nil {
@@ -92,7 +92,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 		if err := db.AbschnitteLoeschen(ctx, e.ID); err != nil {
 			return err
 		}
-		if err := db.DateiLoeschen(ctx, e.Datei.ID); err != nil {
+		if err := db.DateiLoeschen(ctx, e.File.ID); err != nil {
 			return err
 		}
 		if _, err := db.EintragLoeschen(ctx, e.ID); err != nil {
@@ -107,7 +107,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 	// Einfügen wie beim Upload: Datei, Abschnitte, Eintrag zuletzt.
 	anzahl := 0
 	for _, e := range eintraege {
-		if err := db.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, []byte(e.Volltext)); err != nil {
+		if err := db.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 			return err
 		}
 		if err := db.AbschnitteSpeichern(ctx, abschnitte[e.ID]); err != nil {
@@ -128,7 +128,7 @@ func ausfuehren(nurEntfernen, ohneAbschnitte bool) error {
 // einbetten zerlegt alle Testeinträge und holt die Embeddings in einem
 // Durchgang (AbschnitteEinbetten teilt selbst in Stapel). Ergebnis nach
 // Eintrag-ID.
-func einbetten(ctx context.Context, k config.Config, eintraege []core.Eintrag) (map[string][]core.Abschnitt, error) {
+func einbetten(ctx context.Context, k config.Config, eintraege []core.Entry) (map[string][]core.Chunk, error) {
 	g, err := gemini.Neu(ctx, gemini.Einstellungen{
 		Schluessel:      k.GeminiKey,
 		Modell:          k.GeminiModel,
@@ -138,7 +138,7 @@ func einbetten(ctx context.Context, k config.Config, eintraege []core.Eintrag) (
 		return nil, err
 	}
 
-	var alle []core.Abschnitt
+	var alle []core.Chunk
 	var texte []string
 	for _, e := range eintraege {
 		for _, a := range beispieldaten.Abschnitte(e) {
@@ -154,10 +154,10 @@ func einbetten(ctx context.Context, k config.Config, eintraege []core.Eintrag) (
 		return nil, fmt.Errorf("%d Embeddings für %d Abschnitte", len(vektoren), len(texte))
 	}
 
-	ergebnis := map[string][]core.Abschnitt{}
+	ergebnis := map[string][]core.Chunk{}
 	for i, a := range alle {
 		a.Embedding = vektoren[i]
-		ergebnis[a.EintragID] = append(ergebnis[a.EintragID], a)
+		ergebnis[a.EntryID] = append(ergebnis[a.EntryID], a)
 	}
 	return ergebnis, nil
 }
@@ -183,7 +183,7 @@ func wegwerfAnlegen() error {
 	defer db.Trennen(context.Background())
 
 	e, abschnitte := beispieldaten.Wegwerf(speicher.NeueID(), speicher.NeueID(), time.Now())
-	if err := db.DateiSpeichern(ctx, e.Datei.ID, e.Datei.Dateiname, e.Datei.MimeTyp, []byte(e.Volltext)); err != nil {
+	if err := db.DateiSpeichern(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte(e.FullText)); err != nil {
 		return err
 	}
 	if err := db.AbschnitteSpeichern(ctx, abschnitte); err != nil {

@@ -6,40 +6,40 @@ import (
 	"testing"
 )
 
-func TestPruefeModul(t *testing.T) {
-	for wert, erwartet := range map[string]string{"": "gesundheit", "gesundheit": "gesundheit"} {
-		got, err := PruefeModul(wert)
-		if err != nil || got != erwartet {
-			t.Errorf("PruefeModul(%q) = %q, %v", wert, got, err)
+func TestCheckModule(t *testing.T) {
+	for value, want := range map[string]string{"": "gesundheit", "gesundheit": "gesundheit"} {
+		got, err := CheckModule(value)
+		if err != nil || got != want {
+			t.Errorf("CheckModule(%q) = %q, %v", value, got, err)
 		}
 	}
-	// Module aus der App, die im Backend noch nicht gelten, sind Fehler.
-	for _, wert := range []string{"ernaehrung", "sport", "Gesundheit", " gesundheit"} {
-		if _, err := PruefeModul(wert); !errors.Is(err, ErrUnbekanntesModul) {
-			t.Errorf("PruefeModul(%q): erwartet ErrUnbekanntesModul, bekommen %v", wert, err)
+	// Modules from the app that are not yet valid in the backend are errors.
+	for _, value := range []string{"ernaehrung", "sport", "Gesundheit", " gesundheit"} {
+		if _, err := CheckModule(value); !errors.Is(err, ErrUnknownModule) {
+			t.Errorf("CheckModule(%q): want ErrUnknownModule, got %v", value, err)
 		}
 	}
 }
 
-func TestTypen(t *testing.T) {
-	if !TypErlaubt("gesundheit", "laborbefund") {
-		t.Error("laborbefund muss in gesundheit erlaubt sein")
+func TestTypes(t *testing.T) {
+	if !TypeAllowed("gesundheit", "laborbefund") {
+		t.Error("laborbefund must be allowed in gesundheit")
 	}
-	if TypErlaubt("gesundheit", "kochrezept") || TypErlaubt("sport", "rezept") {
-		t.Error("unbekannter Typ oder unbekanntes Modul darf nicht erlaubt sein")
+	if TypeAllowed("gesundheit", "kochrezept") || TypeAllowed("sport", "rezept") {
+		t.Error("unknown type or unknown module must not be allowed")
 	}
-	if len(ErlaubteTypen("sport")) != 0 {
-		t.Error("unbekanntes Modul muss leere Typenliste liefern")
-	}
-
-	// ErlaubteTypen liefert eine Kopie, der Katalog bleibt unverändert.
-	typen := ErlaubteTypen("gesundheit")
-	typen[0] = "kaputt"
-	if TypErlaubt("gesundheit", "kaputt") {
-		t.Error("Katalog wurde über die zurückgegebene Liste verändert")
+	if len(AllowedTypes("sport")) != 0 {
+		t.Error("unknown module must return an empty list of types")
 	}
 
-	if got := Module(); !slices.Equal(got, []string{"gesundheit"}) {
-		t.Errorf("Module() = %v", got)
+	// AllowedTypes returns a copy; the catalog stays unchanged.
+	types := AllowedTypes("gesundheit")
+	types[0] = "broken"
+	if TypeAllowed("gesundheit", "broken") {
+		t.Error("catalog was changed through the returned list")
+	}
+
+	if got := Modules(); !slices.Equal(got, []string{"gesundheit"}) {
+		t.Errorf("Modules() = %v", got)
 	}
 }

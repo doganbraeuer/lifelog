@@ -34,8 +34,8 @@ const formularPuffer = 1 << 20 // 1 MiB
 // Hochlader führt den Upload bzw. Text-Import aus. Umgesetzt von
 // dienst.Hochladen.
 type Hochlader interface {
-	Ausfuehren(ctx context.Context, u dienst.Upload) (core.Eintrag, error)
-	TextAusfuehren(ctx context.Context, u dienst.TextUpload) (core.Eintrag, error)
+	Ausfuehren(ctx context.Context, u dienst.Upload) (core.Entry, error)
+	TextAusfuehren(ctx context.Context, u dienst.TextUpload) (core.Entry, error)
 }
 
 // art: Datei-Upload oder Text-Import. Bestimmt nur die Fehlermeldungen.
@@ -49,13 +49,13 @@ const (
 // hochladenHandler beantwortet POST /api/v1/eintraege (API.md 3.1).
 func hochladenHandler(h Hochlader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, core.MaxDateiBytes+formularPuffer)
+		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formularPuffer)
 
 		// maxMemory so groß wie die erlaubte Anfrage: Das ganze Formular
 		// bleibt im Arbeitsspeicher. Sonst legt Go große Dateien als
 		// temporäre Dateien auf der Festplatte ab, und Gesundheitsdokumente
 		// sollen dort nicht herumliegen.
-		if err := r.ParseMultipartForm(core.MaxDateiBytes + formularPuffer); err != nil {
+		if err := r.ParseMultipartForm(core.MaxFileBytes + formularPuffer); err != nil {
 			var zuGross *http.MaxBytesError
 			switch {
 			case errors.As(err, &zuGross):
@@ -112,7 +112,7 @@ func hochladenHandler(h Hochlader) http.HandlerFunc {
 }
 
 // schreibeErgebnis: 201 mit Location und Eintrag, oder der passende Fehler.
-func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Eintrag, err error, a art, modul string) {
+func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Entry, err error, a art, modul string) {
 	if err != nil {
 		schreibeUploadFehler(w, r, err, a, modul)
 		return
@@ -126,35 +126,35 @@ func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Eintr
 func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a art, modul string) {
 	var duplikat *dienst.DuplikatFehler
 	switch {
-	case a == artText && errors.Is(err, core.ErrDateiLeer):
+	case a == artText && errors.Is(err, core.ErrFileEmpty):
 		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
-	case errors.Is(err, core.ErrTextKeinUTF8):
+	case errors.Is(err, core.ErrTextNotUTF8):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Der Text ist kein gültiges UTF-8.", map[string]any{"feld": "text"})
-	case errors.Is(err, core.ErrTextZuLang):
+	case errors.Is(err, core.ErrTextTooLong):
 		schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross,
-			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": core.MaxTextZeichen})
+			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": core.MaxTextChars})
 	case a == artText && errors.As(err, &duplikat):
 		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diesen Text hast du schon importiert.",
 			map[string]any{"eintragId": duplikat.EintragID})
-	case errors.Is(err, core.ErrUnbekanntesModul):
+	case errors.Is(err, core.ErrUnknownModule):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
 			map[string]any{"feld": "modul", "wert": modul})
-	case errors.Is(err, core.ErrDateiLeer):
+	case errors.Is(err, core.ErrFileEmpty):
 		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Die Datei ist leer.", nil)
-	case errors.Is(err, core.ErrDateiZuGross):
+	case errors.Is(err, core.ErrFileTooLarge):
 		schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross, "Die Datei ist größer als 10 MB.", nil)
-	case errors.Is(err, core.ErrDateitypNichtUnterstuetzt):
+	case errors.Is(err, core.ErrUnsupportedFileType):
 		schreibeFehler(w, http.StatusUnsupportedMediaType, CodeDateitypNichtUnterstuetzt,
 			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC und PDF.", nil)
 	case errors.As(err, &duplikat):
 		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diese Datei hast du schon hochgeladen.",
 			map[string]any{"eintragId": duplikat.EintragID})
-	case errors.Is(err, core.ErrNichtLesbar):
+	case errors.Is(err, core.ErrUnreadable):
 		schreibeFehler(w, http.StatusUnprocessableEntity, CodeNichtLesbar,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)
-	case errors.Is(err, core.ErrErkennungUngueltig), errors.Is(err, modell.ErrAntwortUngueltig):
+	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, modell.ErrAntwortUngueltig):
 		slog.Warn("Auslesen fehlgeschlagen", "fehler", err)
 		schreibeFehler(w, http.StatusBadGateway, CodeAuslesenFehlgeschlagen,
 			"Das Dokument konnte nicht ausgelesen werden. Bitte versuche es noch einmal.", nil)
@@ -178,7 +178,7 @@ func leseDatei(fh *multipart.FileHeader) ([]byte, error) {
 	defer f.Close()
 	// Ein Byte mehr als erlaubt lesen, damit core.PruefeDatei "zu groß"
 	// erkennt, statt eine abgeschnittene Datei zu prüfen.
-	return io.ReadAll(io.LimitReader(f, core.MaxDateiBytes+1))
+	return io.ReadAll(io.LimitReader(f, core.MaxFileBytes+1))
 }
 
 func ersterWert(werte []string) string {

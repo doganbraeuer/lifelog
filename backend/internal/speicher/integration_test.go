@@ -81,17 +81,17 @@ func testSpeicher(t *testing.T) (*Speicher, context.Context) {
 }
 
 // testEintrag ist synthetisch. hash bestimmt datei.sha256.
-func testEintrag(id, dateiID, hash string) core.Eintrag {
-	return core.Eintrag{
-		ID: id, Modul: "gesundheit", Typ: "laborbefund",
-		Dokumentdatum: zeiger("2026-10-14"),
-		Importdatum:   time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC),
-		Quelle:        zeiger("Labor Muster GmbH"),
-		Volltext:      "Hämoglobin 14,2 g/dl",
-		Infos:         []core.Info{{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")}},
-		Datei: core.Datei{ID: dateiID, Dateiname: "befund.pdf", MimeTyp: core.MimePDF,
-			Groesse: 9, Sha256: hash},
-		Korrekturen: []core.Korrektur{},
+func testEintrag(id, dateiID, hash string) core.Entry {
+	return core.Entry{
+		ID: id, Module: "gesundheit", Type: "laborbefund",
+		DocumentDate: zeiger("2026-10-14"),
+		ImportedAt:   time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC),
+		Issuer:       zeiger("Labor Muster GmbH"),
+		FullText:     "Hämoglobin 14,2 g/dl",
+		Facts:        []core.Fact{{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")}},
+		File: core.File{ID: dateiID, FileName: "befund.pdf", MimeType: core.MimePDF,
+			Size: 9, Sha256: hash},
+		Corrections: []core.Correction{},
 	}
 }
 
@@ -126,9 +126,9 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 	}
 
 	// 2. Abschnitte.
-	abschnitte := []core.Abschnitt{
-		{EintragID: eintragID, Modul: "gesundheit", Nr: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
-		{EintragID: eintragID, Modul: "gesundheit", Nr: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
+	abschnitte := []core.Chunk{
+		{EntryID: eintragID, Module: "gesundheit", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
+		{EntryID: eintragID, Module: "gesundheit", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}
 	if err := s.AbschnitteSpeichern(ctx, abschnitte); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 
 	// Eintrag vollständig lesen und Datei über den Speicher öffnen (Schritt 4).
 	e, gefunden, err := s.EintragLesen(ctx, eintragID)
-	if err != nil || !gefunden || e.Volltext != "Hämoglobin 14,2 g/dl" || len(e.Infos) != 1 || e.Datei.ID != dateiID {
+	if err != nil || !gefunden || e.FullText != "Hämoglobin 14,2 g/dl" || len(e.Facts) != 1 || e.File.ID != dateiID {
 		t.Fatalf("EintragLesen = %+v, %v, %v", e, gefunden, err)
 	}
 	if _, gefunden, err := s.EintragLesen(ctx, NeueID()); err != nil || gefunden {
@@ -186,7 +186,7 @@ func TestIntegration_SpeichernFindenLoeschen(t *testing.T) {
 		}
 	}
 	pruefeAnzahlAbschnitte(t, s, ctx, eintragID, 0)
-	if _, _, err := s.DateiOeffnen(ctx, dateiID); !errors.Is(err, core.ErrOriginalFehlt) {
+	if _, _, err := s.DateiOeffnen(ctx, dateiID); !errors.Is(err, core.ErrOriginalMissing) {
 		t.Errorf("nach dem Löschen: erwartet ErrOriginalFehlt, bekommen %v", err)
 	}
 	if _, gefunden, _ := s.EintragMitHash(ctx, hash); gefunden {
@@ -204,7 +204,7 @@ func TestIntegration_DuplikatUeberIndex(t *testing.T) {
 	// Zweiter Eintrag mit anderer ID, aber gleichem Hash: Der eindeutige
 	// Index muss das ablehnen, auch ohne vorherige Prüfung.
 	err := s.EintragSpeichern(ctx, testEintrag(NeueID(), NeueID(), hash))
-	if !errors.Is(err, core.ErrDuplikat) {
+	if !errors.Is(err, core.ErrDuplicate) {
 		t.Fatalf("erwartet ErrDuplikat, bekommen %v", err)
 	}
 

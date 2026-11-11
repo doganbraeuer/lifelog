@@ -62,7 +62,7 @@ func TestReserve_HaengendesHauptmodellLaesstZeitFuerErsatz(t *testing.T) {
 	e, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 	dauer := time.Since(start)
 
-	if err != nil || e.Typ != "laborbefund" {
+	if err != nil || e.Type != "laborbefund" {
 		t.Fatalf("erwartet Erfolg über das Ersatzmodell, bekommen %+v, %v", e, err)
 	}
 	// Das Hauptmodell sah eine Frist von ~180 ms (300 − 120), nicht 300 ms.

@@ -237,7 +237,7 @@ func TestDokumentLesen_WiederholungUndErsatz(t *testing.T) {
 			if got := errors.Is(err, modell.ErrNichtErreichbar); got != f.nichtErreichbar {
 				t.Errorf("ErrNichtErreichbar = %v, erwartet %v (%v)", got, f.nichtErreichbar, err)
 			}
-			if f.erfolg && (err != nil || e.Typ != "laborbefund") {
+			if f.erfolg && (err != nil || e.Type != "laborbefund") {
 				t.Errorf("erwartet Erfolg, bekommen %+v, %v", e, err)
 			}
 			if !f.erfolg && err == nil {

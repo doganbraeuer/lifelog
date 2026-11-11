@@ -103,7 +103,7 @@ func ausfuehren(schwelle float64) error {
 	}
 
 	fmt.Printf("%d Fragen, %d Einträge, Embedding-Modell %s, Datenbank %q, Top %d\n\n",
-		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, core.AnzahlTreffer)
+		len(fragen), len(liste), k.GeminiEmbeddingModel, k.MongoDB, core.MaxHits)
 	fmt.Println(" Nr  Gruppe     Bester  Treffer            Richtig        Frage")
 
 	messungen := make([]messung, 0, len(fragen))
@@ -115,7 +115,7 @@ func ausfuehren(schwelle float64) error {
 			}
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
-		treffer, err := db.AehnlicheAbschnitte(ctx, vektor, "gesundheit", core.AnzahlTreffer)
+		treffer, err := db.AehnlicheAbschnitte(ctx, vektor, "gesundheit", core.MaxHits)
 		if err != nil {
 			return fmt.Errorf("Frage %d: %w", i+1, err)
 		}
@@ -136,11 +136,11 @@ func ausfuehren(schwelle float64) error {
 }
 
 // kurzname für die Tabelle, z. B. "laborbefund 07-22".
-func kurzname(e core.EintragKurz) string {
-	if e.Dokumentdatum == nil || len(*e.Dokumentdatum) != 10 {
-		return e.Typ + " o. D."
+func kurzname(e core.EntrySummary) string {
+	if e.DocumentDate == nil || len(*e.DocumentDate) != 10 {
+		return e.Type + " o. D."
 	}
-	return e.Typ + " " + (*e.Dokumentdatum)[5:]
+	return e.Type + " " + (*e.DocumentDate)[5:]
 }
 
 func eintragName(namen map[string]string, id string) string {

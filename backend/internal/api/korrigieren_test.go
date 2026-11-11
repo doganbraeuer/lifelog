@@ -17,14 +17,14 @@ import (
 const idKorrektur = "6727a1f3c2b4e5d6f7a8b9c0"
 
 type korrigiererAttrappe struct {
-	eintrag    core.Eintrag
+	eintrag    core.Entry
 	err        error
 	aufgerufen bool
 	id         string
-	aenderung  core.Aenderung
+	aenderung  core.Change
 }
 
-func (k *korrigiererAttrappe) Ausfuehren(_ context.Context, id string, a core.Aenderung) (core.Eintrag, error) {
+func (k *korrigiererAttrappe) Ausfuehren(_ context.Context, id string, a core.Change) (core.Entry, error) {
 	k.aufgerufen, k.id, k.aenderung = true, id, a
 	return k.eintrag, k.err
 }
@@ -43,15 +43,15 @@ func zt(s string) *string { return &s }
 
 func TestKorrigieren_ErfolgGenauWieAPIBeispiel(t *testing.T) {
 	zeit := time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC)
-	k := &korrigiererAttrappe{eintrag: core.Eintrag{
-		ID: idKorrektur, Modul: "gesundheit", Typ: "laborbefund",
-		Dokumentdatum: zt("2026-10-15"), Importdatum: time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Quelle: zt("Labor Muster GmbH, Salzburg"), Volltext: "Leukozyten 6,3 G/l",
-		Infos: []core.Info{{ID: "i2", Name: "Leukozyten", Wert: "6,8", Einheit: zt("G/l")}},
-		Datei: core.Datei{ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "befund_oktober.pdf", MimeTyp: "application/pdf", Groesse: 184320, Sha256: "3f8a"},
-		Korrekturen: []core.Korrektur{
-			{Feld: "dokumentdatum", Erkannt: zt("2026-10-14"), Korrigiert: zt("2026-10-15"), Zeitpunkt: zeit},
-			{Feld: "infos.i2.wert", Erkannt: zt("6,3"), Korrigiert: zt("6,8"), Zeitpunkt: zeit},
+	k := &korrigiererAttrappe{eintrag: core.Entry{
+		ID: idKorrektur, Module: "gesundheit", Type: "laborbefund",
+		DocumentDate: zt("2026-10-15"), ImportedAt: time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
+		Issuer: zt("Labor Muster GmbH, Salzburg"), FullText: "Leukozyten 6,3 G/l",
+		Facts: []core.Fact{{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: zt("G/l")}},
+		File:  core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund_oktober.pdf", MimeType: "application/pdf", Size: 184320, Sha256: "3f8a"},
+		Corrections: []core.Correction{
+			{Field: "dokumentdatum", Recognized: zt("2026-10-14"), Corrected: zt("2026-10-15"), CorrectedAt: zeit},
+			{Field: "infos.i2.wert", Recognized: zt("6,3"), Corrected: zt("6,8"), CorrectedAt: zeit},
 		},
 	}}
 	rec := korrigieren(t, k, idKorrektur, `{"dokumentdatum": "2026-10-15", "infos": [{"id": "i2", "wert": "6,8"}]}`)
@@ -62,9 +62,9 @@ func TestKorrigieren_ErfolgGenauWieAPIBeispiel(t *testing.T) {
 	if k.id != idKorrektur {
 		t.Errorf("ID an den Dienst: %q", k.id)
 	}
-	want := core.Aenderung{
-		Dokumentdatum: core.Feld{Gesetzt: true, Wert: zt("2026-10-15")},
-		Infos:         []core.InfoAenderung{{ID: "i2", Wert: zt("6,8")}},
+	want := core.Change{
+		DocumentDate: core.Nullable{Set: true, Value: zt("2026-10-15")},
+		Facts:        []core.FactChange{{ID: "i2", Value: zt("6,8")}},
 	}
 	if !reflect.DeepEqual(k.aenderung, want) {
 		t.Errorf("Änderung = %+v, erwartet %+v", k.aenderung, want)
@@ -82,16 +82,16 @@ func TestKorrigieren_ErfolgGenauWieAPIBeispiel(t *testing.T) {
 
 func TestLeseAenderung_DreiFaelle(t *testing.T) {
 	// fehlt / null / Wert, für alle Felder.
-	faelle := map[string]core.Aenderung{
-		`{"typ": "rezept"}`:       {Typ: zt("rezept")},
-		`{"dokumentdatum": null}`: {Dokumentdatum: core.Feld{Gesetzt: true}},
-		`{"quelle": "  "}`:        {Quelle: core.Feld{Gesetzt: true, Wert: zt("  ")}}, // Leerraum entfernt erst kern
+	faelle := map[string]core.Change{
+		`{"typ": "rezept"}`:       {Type: zt("rezept")},
+		`{"dokumentdatum": null}`: {DocumentDate: core.Nullable{Set: true}},
+		`{"quelle": "  "}`:        {Issuer: core.Nullable{Set: true, Value: zt("  ")}}, // Leerraum entfernt erst kern
 		`{"quelle": null, "dokumentdatum": "2026-10-15"}`: {
-			Quelle: core.Feld{Gesetzt: true}, Dokumentdatum: core.Feld{Gesetzt: true, Wert: zt("2026-10-15")}},
-		`{"infos": []}`: {Infos: []core.InfoAenderung{}},
-		`{"infos": [{"id": "i1", "einheit": null}, {"id": "i2", "wert": "1", "einheit": "mg"}]}`: {Infos: []core.InfoAenderung{
-			{ID: "i1", Einheit: core.Feld{Gesetzt: true}},
-			{ID: "i2", Wert: zt("1"), Einheit: core.Feld{Gesetzt: true, Wert: zt("mg")}},
+			Issuer: core.Nullable{Set: true}, DocumentDate: core.Nullable{Set: true, Value: zt("2026-10-15")}},
+		`{"infos": []}`: {Facts: []core.FactChange{}},
+		`{"infos": [{"id": "i1", "einheit": null}, {"id": "i2", "wert": "1", "einheit": "mg"}]}`: {Facts: []core.FactChange{
+			{ID: "i1", Unit: core.Nullable{Set: true}},
+			{ID: "i2", Value: zt("1"), Unit: core.Nullable{Set: true, Value: zt("mg")}},
 		}},
 		`{}`: {},
 	}
@@ -106,7 +106,7 @@ func TestLeseAenderung_DreiFaelle(t *testing.T) {
 		}
 	}
 	// "infos" fehlt → nil, nicht leere Liste (kern unterscheidet das).
-	if a, _ := leseAenderung([]byte(`{"typ": "rezept"}`)); a.Infos != nil {
+	if a, _ := leseAenderung([]byte(`{"typ": "rezept"}`)); a.Facts != nil {
 		t.Error("Infos ohne Feld nicht nil")
 	}
 }
@@ -201,16 +201,16 @@ func TestKorrigieren_FehlerDesDienstes(t *testing.T) {
 		details string
 		meldung string
 	}{
-		{"datum", core.Ungueltig("Das Dokumentdatum ist kein gültiges Kalenderdatum.", "dokumentdatum", "2026-02-31"),
+		{"datum", core.Invalid("Das Dokumentdatum ist kein gültiges Kalenderdatum.", "dokumentdatum", "2026-02-31"),
 			400, CodeUngueltigeAnfrage, "map[feld:dokumentdatum wert:2026-02-31]", "kein gültiges Kalenderdatum"},
-		{"info doppelt", &core.KorrekturFehler{Art: core.ErrKorrekturUngueltig, InfoID: "i1", Nachricht: "Die Info i1 kommt mehrfach vor."},
+		{"info doppelt", &core.CorrectionError{Kind: core.ErrInvalidCorrection, FactID: "i1", Message: "Die Info i1 kommt mehrfach vor."},
 			400, CodeUngueltigeAnfrage, "map[infoId:i1]", "mehrfach"},
-		{"leer", core.Ungueltig("Die Anfrage enthält keine Änderung.", "", nil), 400, CodeUngueltigeAnfrage, "", "keine Änderung"},
-		{"info unbekannt", &core.KorrekturFehler{Art: core.ErrInfoNichtGefunden, InfoID: "i9", Nachricht: "Diese Info gibt es in dem Eintrag nicht."},
+		{"leer", core.Invalid("Die Anfrage enthält keine Änderung.", "", nil), 400, CodeUngueltigeAnfrage, "", "keine Änderung"},
+		{"info unbekannt", &core.CorrectionError{Kind: core.ErrFactNotFound, FactID: "i9", Message: "Diese Info gibt es in dem Eintrag nicht."},
 			404, CodeInfoNichtGefunden, "map[infoId:i9]", "gibt es in dem Eintrag nicht"},
-		{"nicht korrigierbar", core.NichtKorrigierbar("volltext"), 400, CodeFeldNichtKorrigierbar, "map[feld:volltext]", "volltext"},
-		{"eintrag fehlt", core.ErrEintragNichtGefunden, 404, CodeEintragNichtGefunden, "", "gibt es nicht"},
-		{"id", core.ErrUngueltigeID, 400, CodeUngueltigeID, "", "ungültig"},
+		{"nicht korrigierbar", core.NotCorrectable("volltext"), 400, CodeFeldNichtKorrigierbar, "map[feld:volltext]", "volltext"},
+		{"eintrag fehlt", core.ErrEntryNotFound, 404, CodeEintragNichtGefunden, "", "gibt es nicht"},
+		{"id", core.ErrInvalidID, 400, CodeUngueltigeID, "", "ungültig"},
 		{"intern", errors.New("Mongo: Verbindung weg"), 500, CodeInternerFehler, "", "schiefgegangen"},
 	}
 	for _, f := range faelle {

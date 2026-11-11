@@ -90,7 +90,7 @@ type trefferDok struct {
 //
 // Der Score ist der vectorSearchScore von Atlas, bei cosine (1 + cos) / 2.
 // Gefiltert nach Schwelle wird nicht hier, sondern im Dienst (core.MinScore).
-func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Treffer, error) {
+func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, modul string, k int) ([]core.Hit, error) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$vectorSearch", Value: bson.D{
 			{Key: "index", Value: VektorindexName},
@@ -117,9 +117,9 @@ func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, mo
 	if err := cur.All(ctx, &doks); err != nil {
 		return nil, fmt.Errorf("Vektorsuche: %w", err)
 	}
-	treffer := make([]core.Treffer, 0, len(doks))
+	treffer := make([]core.Hit, 0, len(doks))
 	for _, d := range doks {
-		treffer = append(treffer, core.Treffer{EintragID: d.EintragID.Hex(), Nr: d.Nr, Text: d.Text, Score: d.Score})
+		treffer = append(treffer, core.Hit{EntryID: d.EintragID.Hex(), Position: d.Nr, Text: d.Text, Score: d.Score})
 	}
 	return treffer, nil
 }
@@ -127,16 +127,16 @@ func (s *Speicher) AehnlicheAbschnitte(ctx context.Context, vektor []float32, mo
 // EintraegeKurzNachIDs lädt die Kurzform mehrerer Einträge auf einmal.
 // Einträge, die es nicht (mehr) gibt, fehlen einfach in der Map; der Dienst
 // verwirft dann die zugehörigen Abschnitte.
-func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EintragKurz, error) {
+func (s *Speicher) EintraegeKurzNachIDs(ctx context.Context, ids []string) (map[string]core.EntrySummary, error) {
 	oids := make([]bson.ObjectID, 0, len(ids))
 	for _, id := range ids {
 		oid, err := bson.ObjectIDFromHex(id)
 		if err != nil {
-			return nil, core.ErrUngueltigeID
+			return nil, core.ErrInvalidID
 		}
 		oids = append(oids, oid)
 	}
-	ergebnis := map[string]core.EintragKurz{}
+	ergebnis := map[string]core.EntrySummary{}
 	if len(oids) == 0 {
 		return ergebnis, nil
 	}

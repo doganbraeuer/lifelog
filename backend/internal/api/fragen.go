@@ -23,7 +23,7 @@ const maxFrageBody = 64 << 10
 
 // Frager beantwortet Fragen. Umgesetzt von dienst.Fragen.
 type Frager interface {
-	Ausfuehren(ctx context.Context, frage, modul string) (core.Antwort, error)
+	Ausfuehren(ctx context.Context, frage, modul string) (core.Answer, error)
 }
 
 type frageAnfrage struct {
@@ -47,15 +47,15 @@ type quelleJSON struct {
 	Auszug        string  `json:"auszug"`
 }
 
-func antwortZuJSON(a core.Antwort) antwortJSON {
-	quellen := make([]quelleJSON, 0, len(a.Quellen)) // nie nil
-	for _, q := range a.Quellen {
+func antwortZuJSON(a core.Answer) antwortJSON {
+	quellen := make([]quelleJSON, 0, len(a.Sources)) // nie nil
+	for _, q := range a.Sources {
 		quellen = append(quellen, quelleJSON{
-			Nr: q.Nr, EintragID: q.EintragID, Modul: q.Modul, Typ: q.Typ,
-			Quelle: q.Quelle, Dokumentdatum: q.Dokumentdatum, Auszug: q.Auszug,
+			Nr: q.Number, EintragID: q.EntryID, Modul: q.Module, Typ: q.Type,
+			Quelle: q.Issuer, Dokumentdatum: q.DocumentDate, Auszug: q.Excerpt,
 		})
 	}
-	return antwortJSON{Antwort: a.Text, Gefunden: a.Gefunden, Quellen: quellen}
+	return antwortJSON{Antwort: a.Text, Gefunden: a.Found, Quellen: quellen}
 }
 
 // fragenHandler beantwortet POST /api/v1/fragen (API.md 3.6).
@@ -83,12 +83,12 @@ func fragenHandler(f Frager) http.HandlerFunc {
 
 func schreibeFragenFehler(w http.ResponseWriter, r *http.Request, err error, modul string) {
 	switch {
-	case errors.Is(err, core.ErrFrageFehlt):
+	case errors.Is(err, core.ErrQuestionMissing):
 		schreibeFehler(w, http.StatusBadRequest, CodeFrageFehlt, "Bitte stelle eine Frage.", nil)
-	case errors.Is(err, core.ErrFrageZuLang):
+	case errors.Is(err, core.ErrQuestionTooLong):
 		schreibeFehler(w, http.StatusBadRequest, CodeFrageZuLang,
 			"Die Frage ist zu lang. Erlaubt sind höchstens 500 Zeichen.", nil)
-	case errors.Is(err, core.ErrUnbekanntesModul):
+	case errors.Is(err, core.ErrUnknownModule):
 		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
 			map[string]any{"feld": "modul", "wert": modul})

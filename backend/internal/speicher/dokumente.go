@@ -33,10 +33,10 @@ type eintragDok struct {
 }
 
 type infoDok struct {
-	ID      string  `bson:"id"`
-	Name    string  `bson:"name"`
-	Wert    string  `bson:"wert"`
-	Einheit *string `bson:"einheit,omitempty"`
+	ID    string  `bson:"id"`
+	Name  string  `bson:"name"`
+	Value string  `bson:"wert"`
+	Unit  *string `bson:"einheit,omitempty"`
 }
 
 type dateiDok struct {
@@ -48,10 +48,10 @@ type dateiDok struct {
 }
 
 type korrekturDok struct {
-	Feld       string    `bson:"feld"`
-	Erkannt    *string   `bson:"erkannt"`
-	Korrigiert *string   `bson:"korrigiert"`
-	Zeitpunkt  time.Time `bson:"zeitpunkt"`
+	Field       string    `bson:"feld"`
+	Recognized  *string   `bson:"erkannt"`
+	Corrected   *string   `bson:"korrigiert"`
+	CorrectedAt time.Time `bson:"zeitpunkt"`
 }
 
 // eintragKurzDok liest nur die Felder, die die Zeitleiste braucht.
@@ -74,83 +74,83 @@ var kurzProjektion = bson.D{
 	{Key: "quelle", Value: 1},
 }
 
-func zuEintragDok(e core.Eintrag) (eintragDok, error) {
+func zuEintragDok(e core.Entry) (eintragDok, error) {
 	id, err := bson.ObjectIDFromHex(e.ID)
 	if err != nil {
 		return eintragDok{}, fmt.Errorf("ungültige Eintrag-ID: %w", err)
 	}
-	dateiID, err := bson.ObjectIDFromHex(e.Datei.ID)
+	dateiID, err := bson.ObjectIDFromHex(e.File.ID)
 	if err != nil {
 		return eintragDok{}, fmt.Errorf("ungültige Datei-ID: %w", err)
 	}
 
-	infos := make([]infoDok, 0, len(e.Infos))
-	for _, i := range e.Infos {
+	infos := make([]infoDok, 0, len(e.Facts))
+	for _, i := range e.Facts {
 		infos = append(infos, infoDok(i))
 	}
-	korrekturen := make([]korrekturDok, 0, len(e.Korrekturen))
-	for _, k := range e.Korrekturen {
-		k.Zeitpunkt = k.Zeitpunkt.UTC()
+	korrekturen := make([]korrekturDok, 0, len(e.Corrections))
+	for _, k := range e.Corrections {
+		k.CorrectedAt = k.CorrectedAt.UTC()
 		korrekturen = append(korrekturen, korrekturDok(k))
 	}
 
 	return eintragDok{
 		ID:            id,
-		Modul:         e.Modul,
-		Typ:           e.Typ,
-		Dokumentdatum: e.Dokumentdatum,
-		Importdatum:   e.Importdatum.UTC(),
-		Quelle:        e.Quelle,
-		Volltext:      e.Volltext,
+		Modul:         e.Module,
+		Typ:           e.Type,
+		Dokumentdatum: e.DocumentDate,
+		Importdatum:   e.ImportedAt.UTC(),
+		Quelle:        e.Issuer,
+		Volltext:      e.FullText,
 		Infos:         infos,
 		Datei: dateiDok{
 			ID:        dateiID,
-			Dateiname: e.Datei.Dateiname,
-			MimeTyp:   e.Datei.MimeTyp,
-			Groesse:   e.Datei.Groesse,
-			Sha256:    e.Datei.Sha256,
+			Dateiname: e.File.FileName,
+			MimeTyp:   e.File.MimeType,
+			Groesse:   e.File.Size,
+			Sha256:    e.File.Sha256,
 		},
 		Korrekturen: korrekturen,
 	}, nil
 }
 
-func (d eintragDok) zuKern() core.Eintrag {
-	infos := make([]core.Info, 0, len(d.Infos))
+func (d eintragDok) zuKern() core.Entry {
+	infos := make([]core.Fact, 0, len(d.Infos))
 	for _, i := range d.Infos {
-		infos = append(infos, core.Info(i))
+		infos = append(infos, core.Fact(i))
 	}
-	korrekturen := make([]core.Korrektur, 0, len(d.Korrekturen))
+	korrekturen := make([]core.Correction, 0, len(d.Korrekturen))
 	for _, k := range d.Korrekturen {
-		korrekturen = append(korrekturen, core.Korrektur(k))
+		korrekturen = append(korrekturen, core.Correction(k))
 	}
-	return core.Eintrag{
-		ID:            d.ID.Hex(),
-		Modul:         d.Modul,
-		Typ:           d.Typ,
-		Dokumentdatum: d.Dokumentdatum,
-		Importdatum:   d.Importdatum.UTC(),
-		Quelle:        d.Quelle,
-		Volltext:      d.Volltext,
-		Infos:         infos,
-		Datei: core.Datei{
-			ID:        d.Datei.ID.Hex(),
-			Dateiname: d.Datei.Dateiname,
-			MimeTyp:   d.Datei.MimeTyp,
-			Groesse:   d.Datei.Groesse,
-			Sha256:    d.Datei.Sha256,
+	return core.Entry{
+		ID:           d.ID.Hex(),
+		Module:       d.Modul,
+		Type:         d.Typ,
+		DocumentDate: d.Dokumentdatum,
+		ImportedAt:   d.Importdatum.UTC(),
+		Issuer:       d.Quelle,
+		FullText:     d.Volltext,
+		Facts:        infos,
+		File: core.File{
+			ID:       d.Datei.ID.Hex(),
+			FileName: d.Datei.Dateiname,
+			MimeType: d.Datei.MimeTyp,
+			Size:     d.Datei.Groesse,
+			Sha256:   d.Datei.Sha256,
 		},
-		Korrekturen: korrekturen,
+		Corrections: korrekturen,
 	}
 }
 
-func (d eintragKurzDok) zuKern() core.EintragKurz {
-	return core.EintragKurz{
-		ID:            d.ID.Hex(),
-		Modul:         d.Modul,
-		Typ:           d.Typ,
-		Dokumentdatum: d.Dokumentdatum,
-		Importdatum:   d.Importdatum.UTC(),
-		Quelle:        d.Quelle,
+func (d eintragKurzDok) zuKern() core.EntrySummary {
+	return core.EntrySummary{
+		ID:           d.ID.Hex(),
+		Module:       d.Modul,
+		Type:         d.Typ,
+		DocumentDate: d.Dokumentdatum,
+		ImportedAt:   d.Importdatum.UTC(),
+		Issuer:       d.Quelle,
 	}
 }
 
@@ -168,29 +168,29 @@ type abschnittDok struct {
 	Embedding []float32     `bson:"embedding"`
 }
 
-func zuAbschnittDok(a core.Abschnitt) (abschnittDok, error) {
-	eintragID, err := bson.ObjectIDFromHex(a.EintragID)
+func zuAbschnittDok(a core.Chunk) (abschnittDok, error) {
+	eintragID, err := bson.ObjectIDFromHex(a.EntryID)
 	if err != nil {
 		return abschnittDok{}, fmt.Errorf("ungültige Eintrag-ID im Abschnitt: %w", err)
 	}
 	if len(a.Embedding) == 0 {
-		return abschnittDok{}, fmt.Errorf("Abschnitt %d hat kein Embedding", a.Nr)
+		return abschnittDok{}, fmt.Errorf("Abschnitt %d hat kein Embedding", a.Position)
 	}
 	return abschnittDok{
 		ID:        bson.NewObjectID(),
 		EintragID: eintragID,
-		Modul:     a.Modul,
-		Nr:        a.Nr,
+		Modul:     a.Module,
+		Nr:        a.Position,
 		Text:      a.Text,
 		Embedding: a.Embedding,
 	}, nil
 }
 
-func (d abschnittDok) zuKern() core.Abschnitt {
-	return core.Abschnitt{
-		EintragID: d.EintragID.Hex(),
-		Modul:     d.Modul,
-		Nr:        d.Nr,
+func (d abschnittDok) zuKern() core.Chunk {
+	return core.Chunk{
+		EntryID:   d.EintragID.Hex(),
+		Module:    d.Modul,
+		Position:  d.Nr,
 		Text:      d.Text,
 		Embedding: d.Embedding,
 	}

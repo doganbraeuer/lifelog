@@ -27,8 +27,8 @@ const (
 //
 // Die Einträge sehen aus wie Text-Importe: Die Originaldatei ist der
 // Volltext als text.txt.
-func Eintraege() []core.Eintrag {
-	return []core.Eintrag{
+func Eintraege() []core.Entry {
+	return []core.Entry{
 		textEintrag(
 			Laborbefund, "6727a1f3c2b4e5d6f7a8b9c1", "laborbefund",
 			zeiger("2026-10-14"), zeiger("Labor Muster GmbH, Salzburg"), "2026-11-03T18:42:07Z",
@@ -36,11 +36,11 @@ func Eintraege() []core.Eintrag {
 				"Patient: Max Mustermann, geb. 01.01.1990\n\n"+
 				"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)\n"+
 				"CRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
-			[]core.Info{
-				{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")},
-				{ID: "i2", Name: "Leukozyten", Wert: "6,8", Einheit: zeiger("G/l")},
-				{ID: "i3", Name: "CRP", Wert: "<0,5", Einheit: zeiger("mg/dl")},
-				{ID: "i4", Name: "Befundart", Wert: "Blutbild klein"},
+			[]core.Fact{
+				{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
+				{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: zeiger("G/l")},
+				{ID: "i3", Name: "CRP", Value: "<0,5", Unit: zeiger("mg/dl")},
+				{ID: "i4", Name: "Befundart", Value: "Blutbild klein"},
 			},
 		),
 		textEintrag(
@@ -50,26 +50,26 @@ func Eintraege() []core.Eintrag {
 				"Arztbrief vom 02.09.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\n"+
 				"Vorstellung zur Routinekontrolle. Blutdruck 128/82 mmHg.\n"+
 				"Kontrolle in 6 Monaten vereinbart.",
-			[]core.Info{
-				{ID: "i1", Name: "Blutdruck", Wert: "128/82", Einheit: zeiger("mmHg")},
-				{ID: "i2", Name: "Nächste Kontrolle", Wert: "in 6 Monaten"},
+			[]core.Fact{
+				{ID: "i1", Name: "Blutdruck", Value: "128/82", Unit: zeiger("mmHg")},
+				{ID: "i2", Name: "Nächste Kontrolle", Value: "in 6 Monaten"},
 			},
 		),
 		textEintrag(
 			Notiz, "6727a2a9c2b4e5d6f7a8b9e8", "sonstiges",
 			nil, nil, "2026-11-03T19:01:44Z",
 			"Notiz ohne Datum und ohne Absender.\nImpfpass liegt in der Schublade.",
-			[]core.Info{},
+			[]core.Fact{},
 		),
 		textEintrag(
 			Rezept, "6727a2f0c2b4e5d6f7a8b9f3", "rezept",
 			zeiger("2026-10-14"), zeiger("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T19:10:00Z",
 			"Dr. Erika Beispiel, Allgemeinmedizin\n\nRezept vom 14.10.2026\n"+
 				"Patient: Max Mustermann\n\nBeispielin 100 mg, 1-0-0, 30 Stück",
-			[]core.Info{
-				{ID: "i1", Name: "Präparat", Wert: "Beispielin 100 mg"},
-				{ID: "i2", Name: "Dosierung", Wert: "1-0-0"},
-				{ID: "i3", Name: "Menge", Wert: "30", Einheit: zeiger("Stück")},
+			[]core.Fact{
+				{ID: "i1", Name: "Präparat", Value: "Beispielin 100 mg"},
+				{ID: "i2", Name: "Dosierung", Value: "1-0-0"},
+				{ID: "i3", Name: "Menge", Value: "30", Unit: zeiger("Stück")},
 			},
 		),
 	}
@@ -78,11 +78,11 @@ func Eintraege() []core.Eintrag {
 // Abschnitte zerlegt den Volltext eines Eintrags wie beim Upload
 // (dienst.Hochladen): gleiche Obergrenze, Nr ab 1, Modul des Eintrags. Die
 // Embeddings fehlen noch; die setzt der Aufrufer.
-func Abschnitte(e core.Eintrag) []core.Abschnitt {
-	texte := core.ZerlegeInAbschnitte(e.Volltext, core.AbschnittMaxZeichen)
-	abschnitte := make([]core.Abschnitt, len(texte))
+func Abschnitte(e core.Entry) []core.Chunk {
+	texte := core.SplitIntoChunks(e.FullText, core.ChunkMaxChars)
+	abschnitte := make([]core.Chunk, len(texte))
 	for i, t := range texte {
-		abschnitte[i] = core.Abschnitt{EintragID: e.ID, Modul: e.Modul, Nr: i + 1, Text: t}
+		abschnitte[i] = core.Chunk{EntryID: e.ID, Module: e.Module, Position: i + 1, Text: t}
 	}
 	return abschnitte
 }
@@ -99,25 +99,25 @@ func utc(text string) time.Time {
 
 // textEintrag baut einen Eintrag, als wäre volltext per Text-Import gekommen.
 // Hash und Größe stimmen mit dem Text überein.
-func textEintrag(id, dateiID, typ string, datum, quelle *string, importdatum, volltext string, infos []core.Info) core.Eintrag {
+func textEintrag(id, dateiID, typ string, datum, quelle *string, importdatum, volltext string, infos []core.Fact) core.Entry {
 	hash := sha256.Sum256([]byte(volltext))
-	return core.Eintrag{
-		ID:            id,
-		Modul:         "gesundheit",
-		Typ:           typ,
-		Dokumentdatum: datum,
-		Importdatum:   utc(importdatum),
-		Quelle:        quelle,
-		Volltext:      volltext,
-		Infos:         infos,
-		Datei: core.Datei{
-			ID:        dateiID,
-			Dateiname: "text.txt",
-			MimeTyp:   "text/plain; charset=utf-8",
-			Groesse:   int64(len(volltext)),
-			Sha256:    hex.EncodeToString(hash[:]),
+	return core.Entry{
+		ID:           id,
+		Module:       "gesundheit",
+		Type:         typ,
+		DocumentDate: datum,
+		ImportedAt:   utc(importdatum),
+		Issuer:       quelle,
+		FullText:     volltext,
+		Facts:        infos,
+		File: core.File{
+			ID:       dateiID,
+			FileName: "text.txt",
+			MimeType: "text/plain; charset=utf-8",
+			Size:     int64(len(volltext)),
+			Sha256:   hex.EncodeToString(hash[:]),
 		},
-		Korrekturen: []core.Korrektur{},
+		Corrections: []core.Correction{},
 	}
 }
 
@@ -131,27 +131,27 @@ func textEintrag(id, dateiID, typ string, datum, quelle *string, importdatum, vo
 // Einheitsvektor (1, 0, 0, …): kein Gemini-Aufruf. Sein Score zu echten
 // Fragen liegt um 0,5, weit unter core.MinScore; die Suche zeigt ihn also
 // nicht an.
-func Wegwerf(id, dateiID string, jetzt time.Time) (core.Eintrag, []core.Abschnitt) {
+func Wegwerf(id, dateiID string, jetzt time.Time) (core.Entry, []core.Chunk) {
 	jetzt = jetzt.UTC().Truncate(time.Millisecond)
 	volltext := "Wegwerf-Eintrag zum Testen des Löschens.\n\nAngelegt am " +
 		jetzt.Format(time.RFC3339Nano) + ". Enthält keine Gesundheitsdaten."
 	hash := sha256.Sum256([]byte(volltext))
-	e := core.Eintrag{
-		ID:          id,
-		Modul:       "gesundheit",
-		Typ:         "sonstiges",
-		Importdatum: jetzt,
-		Quelle:      zeiger("Wegwerf-Test"),
-		Volltext:    volltext,
-		Infos:       []core.Info{},
-		Datei: core.Datei{
-			ID:        dateiID,
-			Dateiname: "wegwerf.txt",
-			MimeTyp:   "text/plain; charset=utf-8",
-			Groesse:   int64(len(volltext)),
-			Sha256:    hex.EncodeToString(hash[:]),
+	e := core.Entry{
+		ID:         id,
+		Module:     "gesundheit",
+		Type:       "sonstiges",
+		ImportedAt: jetzt,
+		Issuer:     zeiger("Wegwerf-Test"),
+		FullText:   volltext,
+		Facts:      []core.Fact{},
+		File: core.File{
+			ID:       dateiID,
+			FileName: "wegwerf.txt",
+			MimeType: "text/plain; charset=utf-8",
+			Size:     int64(len(volltext)),
+			Sha256:   hex.EncodeToString(hash[:]),
 		},
-		Korrekturen: []core.Korrektur{},
+		Corrections: []core.Correction{},
 	}
 	abschnitte := Abschnitte(e)
 	for i := range abschnitte {

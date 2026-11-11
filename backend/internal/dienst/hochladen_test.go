@@ -22,8 +22,8 @@ type speicherAttrappe struct {
 	hashes     map[string]string // sha256 → Eintrag-ID (vorhandene Einträge)
 	fehler     map[string]error  // Methodenname → Fehler
 	protokoll  []string
-	eintraege  []core.Eintrag
-	abschnitte []core.Abschnitt
+	eintraege  []core.Entry
+	abschnitte []core.Chunk
 	dateien    map[string][]byte
 }
 
@@ -55,7 +55,7 @@ func (s *speicherAttrappe) DateiLoeschen(_ context.Context, id string) error {
 	return nil
 }
 
-func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Abschnitt) error {
+func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Chunk) error {
 	s.protokoll = append(s.protokoll, "AbschnitteSpeichern")
 	if err := s.fehler["AbschnitteSpeichern"]; err != nil {
 		return err
@@ -66,16 +66,16 @@ func (s *speicherAttrappe) AbschnitteSpeichern(_ context.Context, a []core.Absch
 
 func (s *speicherAttrappe) AbschnitteLoeschen(_ context.Context, eintragID string) error {
 	s.protokoll = append(s.protokoll, "AbschnitteLoeschen")
-	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a core.Abschnitt) bool { return a.EintragID == eintragID })
+	s.abschnitte = slices.DeleteFunc(s.abschnitte, func(a core.Chunk) bool { return a.EntryID == eintragID })
 	return nil
 }
 
-func (s *speicherAttrappe) EintragSpeichern(_ context.Context, e core.Eintrag) error {
+func (s *speicherAttrappe) EintragSpeichern(_ context.Context, e core.Entry) error {
 	s.protokoll = append(s.protokoll, "EintragSpeichern")
 	if err := s.fehler["EintragSpeichern"]; err != nil {
-		if errors.Is(err, core.ErrDuplikat) {
+		if errors.Is(err, core.ErrDuplicate) {
 			// Wie bei einem gleichzeitigen Upload: Jetzt existiert der andere.
-			s.hashes[e.Datei.Sha256] = "aaaaaaaaaaaaaaaaaaaaaaaa"
+			s.hashes[e.File.Sha256] = "aaaaaaaaaaaaaaaaaaaaaaaa"
 		}
 		return err
 	}
@@ -92,16 +92,16 @@ func zeiger(s string) *string { return &s }
 
 const pdf = "%PDF-1.7\nsynthetischer Befund"
 
-func erkennung() core.Erkennung {
-	return core.Erkennung{
-		Lesbar:        true,
-		Dokumentdatum: zeiger("2026-10-14"),
-		Quelle:        zeiger("Labor Muster GmbH"),
-		Typ:           "laborbefund",
-		Volltext:      "Labor Muster GmbH\n\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/dl",
-		Infos: []core.ErkannteInfo{
-			{Name: "Hämoglobin", Wert: "14,2", Einheit: zeiger("g/dl")},
-			{Name: "CRP", Wert: "<0,5", Einheit: zeiger("mg/dl")},
+func erkennung() core.Extraction {
+	return core.Extraction{
+		Readable:     true,
+		DocumentDate: zeiger("2026-10-14"),
+		Issuer:       zeiger("Labor Muster GmbH"),
+		Type:         "laborbefund",
+		FullText:     "Labor Muster GmbH\n\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/dl",
+		Facts: []core.ExtractedFact{
+			{Name: "Hämoglobin", Value: "14,2", Unit: zeiger("g/dl")},
+			{Name: "CRP", Value: "<0,5", Unit: zeiger("mg/dl")},
 		},
 	}
 }
@@ -141,24 +141,24 @@ func TestHochladen_Erfolg(t *testing.T) {
 		t.Errorf("Reihenfolge = %v, erwartet %v", a.speicher.protokoll, erwartet)
 	}
 
-	if e.ID == "" || e.Datei.ID == "" || e.ID == e.Datei.ID {
-		t.Errorf("IDs: Eintrag %q, Datei %q", e.ID, e.Datei.ID)
+	if e.ID == "" || e.File.ID == "" || e.ID == e.File.ID {
+		t.Errorf("IDs: Eintrag %q, Datei %q", e.ID, e.File.ID)
 	}
-	if e.Modul != "gesundheit" || e.Typ != "laborbefund" {
-		t.Errorf("Modul/Typ = %q/%q", e.Modul, e.Typ)
+	if e.Module != "gesundheit" || e.Type != "laborbefund" {
+		t.Errorf("Modul/Typ = %q/%q", e.Module, e.Type)
 	}
-	if !e.Importdatum.Equal(time.Date(2026, 11, 4, 13, 0, 0, 123000000, time.UTC)) {
-		t.Errorf("Importdatum = %v, erwartet auf Millisekunden gekürzt", e.Importdatum)
+	if !e.ImportedAt.Equal(time.Date(2026, 11, 4, 13, 0, 0, 123000000, time.UTC)) {
+		t.Errorf("Importdatum = %v, erwartet auf Millisekunden gekürzt", e.ImportedAt)
 	}
-	d := e.Datei
-	if d.MimeTyp != core.MimePDF || d.Groesse != int64(len(pdf)) || d.Dateiname != "befund.pdf" || len(d.Sha256) != 64 {
+	d := e.File
+	if d.MimeType != core.MimePDF || d.Size != int64(len(pdf)) || d.FileName != "befund.pdf" || len(d.Sha256) != 64 {
 		t.Errorf("Datei = %+v", d)
 	}
-	if e.Korrekturen == nil || len(e.Korrekturen) != 0 {
-		t.Errorf("Korrekturen = %#v", e.Korrekturen)
+	if e.Corrections == nil || len(e.Corrections) != 0 {
+		t.Errorf("Korrekturen = %#v", e.Corrections)
 	}
-	if len(e.Infos) != 2 || e.Infos[0].ID != "i1" {
-		t.Errorf("Infos = %+v", e.Infos)
+	if len(e.Facts) != 2 || e.Facts[0].ID != "i1" {
+		t.Errorf("Infos = %+v", e.Facts)
 	}
 
 	// Abschnitte gehören zum Eintrag, tragen das Modul und sind nummeriert.
@@ -167,7 +167,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 		t.Fatal("keine Abschnitte gespeichert")
 	}
 	for i, x := range ab {
-		if x.EintragID != e.ID || x.Modul != "gesundheit" || x.Nr != i+1 || len(x.Embedding) != modell.EmbeddingDimensionen {
+		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != modell.EmbeddingDimensionen {
 			t.Errorf("Abschnitt %d = %+v", i, x)
 		}
 	}
@@ -185,7 +185,7 @@ func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
 		t.Fatal(err)
 	}
 	vorhanden := a.speicher.eintraege[0]
-	a.speicher.hashes[vorhanden.Datei.Sha256] = vorhanden.ID
+	a.speicher.hashes[vorhanden.File.Sha256] = vorhanden.ID
 	leserVorher, einbetterVorher := a.leser.Aufrufe(), a.einbetter.Aufrufe()
 
 	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
@@ -194,7 +194,7 @@ func TestHochladen_DuplikatVorModellaufruf(t *testing.T) {
 	if !errors.As(err, &df) || df.EintragID != vorhanden.ID {
 		t.Fatalf("erwartet DuplikatFehler mit %q, bekommen %v", vorhanden.ID, err)
 	}
-	if !errors.Is(err, core.ErrDuplikat) {
+	if !errors.Is(err, core.ErrDuplicate) {
 		t.Error("DuplikatFehler muss auch core.ErrDuplikat sein")
 	}
 	if a.leser.Aufrufe() != leserVorher || a.einbetter.Aufrufe() != einbetterVorher {
@@ -211,10 +211,10 @@ func TestHochladen_PruefungenVorJedemAufruf(t *testing.T) {
 		upload Upload
 		fehler error
 	}{
-		{"leere Datei", Upload{Daten: nil}, core.ErrDateiLeer},
-		{"zu groß", Upload{Daten: append([]byte("%PDF-"), make([]byte, core.MaxDateiBytes)...)}, core.ErrDateiZuGross},
-		{"falscher Typ", Upload{Daten: []byte("nur Text")}, core.ErrDateitypNichtUnterstuetzt},
-		{"unbekanntes Modul", Upload{Daten: []byte(pdf), Modul: "sport"}, core.ErrUnbekanntesModul},
+		{"leere Datei", Upload{Daten: nil}, core.ErrFileEmpty},
+		{"zu groß", Upload{Daten: append([]byte("%PDF-"), make([]byte, core.MaxFileBytes)...)}, core.ErrFileTooLarge},
+		{"falscher Typ", Upload{Daten: []byte("nur Text")}, core.ErrUnsupportedFileType},
+		{"unbekanntes Modul", Upload{Daten: []byte(pdf), Modul: "sport"}, core.ErrUnknownModule},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -232,9 +232,9 @@ func TestHochladen_PruefungenVorJedemAufruf(t *testing.T) {
 
 func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
 	nichtLesbar := erkennung()
-	nichtLesbar.Lesbar = false
+	nichtLesbar.Readable = false
 	falscherTyp := erkennung()
-	falscherTyp.Typ = "kochrezept"
+	falscherTyp.Type = "kochrezept"
 
 	faelle := []struct {
 		name      string
@@ -244,8 +244,8 @@ func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
 	}{
 		{"Vision-LLM nicht erreichbar", &attrappe.Leser{Err: modell.ErrNichtErreichbar}, &attrappe.Einbetter{}, modell.ErrNichtErreichbar},
 		{"Antwort ungültig", &attrappe.Leser{Err: modell.ErrAntwortUngueltig}, &attrappe.Einbetter{}, modell.ErrAntwortUngueltig},
-		{"nicht lesbar", &attrappe.Leser{Erkennung: nichtLesbar}, &attrappe.Einbetter{}, core.ErrNichtLesbar},
-		{"Erkennung ungültig", &attrappe.Leser{Erkennung: falscherTyp}, &attrappe.Einbetter{}, core.ErrErkennungUngueltig},
+		{"nicht lesbar", &attrappe.Leser{Erkennung: nichtLesbar}, &attrappe.Einbetter{}, core.ErrUnreadable},
+		{"Erkennung ungültig", &attrappe.Leser{Erkennung: falscherTyp}, &attrappe.Einbetter{}, core.ErrInvalidExtraction},
 		{"Embedding nicht erreichbar", &attrappe.Leser{Erkennung: erkennung()}, &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
 	}
 	for _, f := range faelle {
@@ -303,7 +303,7 @@ func TestHochladen_GleichzeitigesDuplikat(t *testing.T) {
 	// Beide Uploads kommen an der Prüfung in Schritt 2 vorbei; erst der
 	// eindeutige Index beim Speichern merkt es.
 	a := neuerAufbau()
-	a.speicher.fehler["EintragSpeichern"] = core.ErrDuplikat
+	a.speicher.fehler["EintragSpeichern"] = core.ErrDuplicate
 
 	_, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
 
@@ -342,7 +342,7 @@ func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(alt) })
 
 	e := erkennung()
-	e.Infos = append(e.Infos, core.ErkannteInfo{Name: "", Wert: "GEHEIMER-WERT-42"})
+	e.Facts = append(e.Facts, core.ExtractedFact{Name: "", Value: "GEHEIMER-WERT-42"})
 	a := neuerAufbau()
 	a.dienst.leser = &attrappe.Leser{Erkennung: e}
 
@@ -350,8 +350,8 @@ func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(eintrag.Infos) != 2 {
-		t.Errorf("Infos = %+v, die unvollständige muss fehlen", eintrag.Infos)
+	if len(eintrag.Facts) != 2 {
+		t.Errorf("Infos = %+v, die unvollständige muss fehlen", eintrag.Facts)
 	}
 	if !strings.Contains(log.String(), "infos[2].name") {
 		t.Errorf("Feld fehlt im Log: %s", log.String())

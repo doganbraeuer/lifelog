@@ -23,7 +23,7 @@ func TestKalibrierfragen_Aufbau(t *testing.T) {
 			t.Errorf("Frage doppelt: %q", f.Text)
 		}
 		texte[f.Text] = true
-		if _, err := core.PruefeFrage(f.Text); err != nil {
+		if _, err := core.CheckQuestion(f.Text); err != nil {
 			t.Errorf("%q: %v", f.Text, err)
 		}
 		if f.Gruppe != passend {
@@ -68,15 +68,15 @@ func TestKalibrierfragen_Aufbau(t *testing.T) {
 func datum(s string) *string { return &s }
 
 func TestAufloesen(t *testing.T) {
-	liste := []core.EintragKurz{
-		{ID: "T1", Typ: "arztbrief", Dokumentdatum: datum("2026-09-02")},
-		{ID: "D1", Typ: "laborbefund", Dokumentdatum: datum("2026-01-20")},
-		{ID: "D2", Typ: "laborbefund", Dokumentdatum: datum("2026-07-22")},
-		{ID: "D3", Typ: "laborbefund", Dokumentdatum: datum("2026-10-14")},
-		{ID: "D4", Typ: "laborbefund", Dokumentdatum: datum("2026-10-14")},
-		{ID: "N1", Typ: "sonstiges", Dokumentdatum: nil},
-		{ID: "O1", Typ: "arztbrief", Dokumentdatum: datum("2026-03-05"), Quelle: datum("Orthopädie, Dr. Probe, Facharzt")},
-		{ID: "O2", Typ: "sonstiges", Dokumentdatum: datum("2026-03-05"), Quelle: datum("Orthopädie, Dr. Probe")},
+	liste := []core.EntrySummary{
+		{ID: "T1", Type: "arztbrief", DocumentDate: datum("2026-09-02")},
+		{ID: "D1", Type: "laborbefund", DocumentDate: datum("2026-01-20")},
+		{ID: "D2", Type: "laborbefund", DocumentDate: datum("2026-07-22")},
+		{ID: "D3", Type: "laborbefund", DocumentDate: datum("2026-10-14")},
+		{ID: "D4", Type: "laborbefund", DocumentDate: datum("2026-10-14")},
+		{ID: "N1", Type: "sonstiges", DocumentDate: nil},
+		{ID: "O1", Type: "arztbrief", DocumentDate: datum("2026-03-05"), Issuer: datum("Orthopädie, Dr. Probe, Facharzt")},
+		{ID: "O2", Type: "sonstiges", DocumentDate: datum("2026-03-05"), Issuer: datum("Orthopädie, Dr. Probe")},
 	}
 	jan := ziel{Typ: "laborbefund", Datum: "2026-01-20"}
 	juli := ziel{Typ: "laborbefund", Datum: "2026-07-22"}
@@ -133,14 +133,14 @@ func TestAufloesen(t *testing.T) {
 func TestMessen(t *testing.T) {
 	f := kalibrierfrage{Text: "x", Gruppe: passend, Erwartet: []ziel{{ID: "B"}}}
 	// Absichtlich unsortiert; Eintrag B kommt mit zwei Abschnitten vor.
-	m := messen(f, []string{"B"}, []core.Treffer{
-		{EintragID: "B", Score: 0.81}, {EintragID: "A", Score: 0.90}, {EintragID: "B", Score: 0.85},
+	m := messen(f, []string{"B"}, []core.Hit{
+		{EntryID: "B", Score: 0.81}, {EntryID: "A", Score: 0.90}, {EntryID: "B", Score: 0.85},
 	})
 	if m.Bester != 0.90 || m.BesterEintrag != "A" || m.Erwartet[0] != 0.85 || m.RichtigOben() || m.massgeblich() != 0.85 {
 		t.Errorf("= %+v, RichtigOben %v", m, m.RichtigOben())
 	}
 
-	m = messen(f, []string{"B"}, []core.Treffer{{EintragID: "B", Score: 0.88}})
+	m = messen(f, []string{"B"}, []core.Hit{{EntryID: "B", Score: 0.88}})
 	if !m.RichtigOben() || m.Erwartet[0] != 0.88 || !m.AlleGefunden() {
 		t.Errorf("richtig oben: %+v", m)
 	}
@@ -152,20 +152,20 @@ func TestMessen(t *testing.T) {
 
 	// Zwei Einträge: maßgeblich ist der schwächere; oben genügt einer davon.
 	zwei := kalibrierfrage{Text: "z", Gruppe: passend, Erwartet: []ziel{{ID: "B"}, {ID: "C"}}}
-	m = messen(zwei, []string{"B", "C"}, []core.Treffer{
-		{EintragID: "C", Score: 0.89}, {EintragID: "A", Score: 0.86}, {EintragID: "B", Score: 0.84},
+	m = messen(zwei, []string{"B", "C"}, []core.Hit{
+		{EntryID: "C", Score: 0.89}, {EntryID: "A", Score: 0.86}, {EntryID: "B", Score: 0.84},
 	})
 	if !m.RichtigOben() || !m.AlleGefunden() || m.massgeblich() != 0.84 {
 		t.Errorf("zwei: %+v", m)
 	}
-	m = messen(zwei, []string{"B", "C"}, []core.Treffer{{EintragID: "C", Score: 0.89}})
+	m = messen(zwei, []string{"B", "C"}, []core.Hit{{EntryID: "C", Score: 0.89}})
 	if !m.RichtigOben() || m.AlleGefunden() || m.massgeblich() != 0 {
 		t.Errorf("zwei, B fehlt: %+v", m)
 	}
 
 	// Bei fachfremden Fragen gibt es keinen erwarteten Eintrag, auch wenn
 	// zufällig ein Treffer eine leere ID hätte.
-	m = messen(kalibrierfrage{Gruppe: fachfremd}, nil, []core.Treffer{{EintragID: "", Score: 0.7}})
+	m = messen(kalibrierfrage{Gruppe: fachfremd}, nil, []core.Hit{{EntryID: "", Score: 0.7}})
 	if len(m.Erwartet) != 0 || m.RichtigOben() || m.massgeblich() != 0.7 {
 		t.Errorf("fachfremd: %+v", m)
 	}

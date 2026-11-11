@@ -20,18 +20,18 @@ import (
 
 // hochladerAttrappe merkt sich den Upload und liefert eintrag bzw. err.
 type hochladerAttrappe struct {
-	eintrag    core.Eintrag
+	eintrag    core.Entry
 	err        error
 	upload     *dienst.Upload
 	textUpload *dienst.TextUpload
 }
 
-func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u dienst.Upload) (core.Eintrag, error) {
+func (h *hochladerAttrappe) Ausfuehren(_ context.Context, u dienst.Upload) (core.Entry, error) {
 	h.upload = &u
 	return h.eintrag, h.err
 }
 
-func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u dienst.TextUpload) (core.Eintrag, error) {
+func (h *hochladerAttrappe) TextAusfuehren(_ context.Context, u dienst.TextUpload) (core.Entry, error) {
 	h.textUpload = &u
 	return h.eintrag, h.err
 }
@@ -65,21 +65,21 @@ func hochladen(t *testing.T, h *hochladerAttrappe, r *http.Request) *httptest.Re
 	return rec
 }
 
-func vollerEintrag() core.Eintrag {
+func vollerEintrag() core.Entry {
 	z := func(s string) *string { return &s }
-	return core.Eintrag{
-		ID: "6727a1f3c2b4e5d6f7a8b9c0", Modul: "gesundheit", Typ: "laborbefund",
-		Dokumentdatum: z("2026-10-14"),
-		Importdatum:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Quelle:        z("Labor Muster GmbH, Salzburg"),
-		Volltext:      "Hämoglobin 14,2 g/dl",
-		Infos: []core.Info{
-			{ID: "i1", Name: "Hämoglobin", Wert: "14,2", Einheit: z("g/dl")},
-			{ID: "i2", Name: "Befundart", Wert: "Blutbild klein"},
+	return core.Entry{
+		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit", Type: "laborbefund",
+		DocumentDate: z("2026-10-14"),
+		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
+		Issuer:       z("Labor Muster GmbH, Salzburg"),
+		FullText:     "Hämoglobin 14,2 g/dl",
+		Facts: []core.Fact{
+			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: z("g/dl")},
+			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
 		},
-		Datei: core.Datei{ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "befund.pdf",
-			MimeTyp: "application/pdf", Groesse: 184320, Sha256: strings.Repeat("ab", 32)},
-		Korrekturen: nil, // muss trotzdem als [] herauskommen
+		File: core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund.pdf",
+			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32)},
+		Corrections: nil, // muss trotzdem als [] herauskommen
 	}
 }
 
@@ -144,7 +144,7 @@ func TestHochladen_Formularfehler(t *testing.T) {
 			return formular(t, map[string][]byte{"a.pdf": pdf, "b.pdf": pdf}, nil)
 		}, 400, CodeUngueltigeAnfrage},
 		{"Anfrage viel zu groß", func(t *testing.T) *http.Request {
-			return formular(t, map[string][]byte{"gross.pdf": make([]byte, core.MaxDateiBytes+2*formularPuffer)}, nil)
+			return formular(t, map[string][]byte{"gross.pdf": make([]byte, core.MaxFileBytes+2*formularPuffer)}, nil)
 		}, 413, CodeDateiZuGross},
 	}
 	for _, f := range faelle {
@@ -178,14 +178,14 @@ func TestHochladen_FehlerDesDienstes(t *testing.T) {
 		code    string
 		details map[string]any
 	}{
-		{core.ErrUnbekanntesModul, 400, CodeUngueltigeAnfrage, map[string]any{"feld": "modul", "wert": "sport"}},
-		{core.ErrDateiLeer, 400, CodeDateiFehlt, nil},
-		{core.ErrDateiZuGross, 413, CodeDateiZuGross, nil},
-		{core.ErrDateitypNichtUnterstuetzt, 415, CodeDateitypNichtUnterstuetzt, nil},
+		{core.ErrUnknownModule, 400, CodeUngueltigeAnfrage, map[string]any{"feld": "modul", "wert": "sport"}},
+		{core.ErrFileEmpty, 400, CodeDateiFehlt, nil},
+		{core.ErrFileTooLarge, 413, CodeDateiZuGross, nil},
+		{core.ErrUnsupportedFileType, 415, CodeDateitypNichtUnterstuetzt, nil},
 		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
 			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
-		{core.ErrNichtLesbar, 422, CodeNichtLesbar, nil},
-		{&core.ErkennungFehler{Feld: "typ", Grund: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},
+		{core.ErrUnreadable, 422, CodeNichtLesbar, nil},
+		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},
 		{fmt.Errorf("JSON kaputt: %w", modell.ErrAntwortUngueltig), 502, CodeAuslesenFehlgeschlagen, nil},
 		{fmt.Errorf("Gemini HTTP 503: %w", modell.ErrNichtErreichbar), 503, CodeModellNichtErreichbar, nil},
 		{errors.New("Datenbank weg"), 500, CodeInternerFehler, nil},

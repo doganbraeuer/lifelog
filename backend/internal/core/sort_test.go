@@ -7,33 +7,34 @@ import (
 	"time"
 )
 
-// e baut einen Kurz-Eintrag. datum "" bedeutet: kein Dokumentdatum (null).
-// importMinute ist die Minute des Imports am 03.11.2026, das hält die Fälle kurz.
-func e(id, datum string, importMinute int) EintragKurz {
-	k := EintragKurz{
-		ID:          id,
-		Importdatum: time.Date(2026, 11, 3, 18, importMinute, 0, 0, time.UTC),
+// e builds an entry summary. date "" means: no document date (null).
+// importMinute is the minute of the import on 2026-11-03, which keeps the
+// cases short.
+func e(id, date string, importMinute int) EntrySummary {
+	s := EntrySummary{
+		ID:         id,
+		ImportedAt: time.Date(2026, 11, 3, 18, importMinute, 0, 0, time.UTC),
 	}
-	if datum != "" {
-		k.Dokumentdatum = &datum
+	if date != "" {
+		s.DocumentDate = &date
 	}
-	return k
+	return s
 }
 
-func ids(eintraege []EintragKurz) []string {
-	out := make([]string, len(eintraege))
-	for i, x := range eintraege {
+func ids(entries []EntrySummary) []string {
+	out := make([]string, len(entries))
+	for i, x := range entries {
 		out[i] = x.ID
 	}
 	return out
 }
 
-func TestSortiere(t *testing.T) {
-	// Gemischter Bestand für mehrere Fälle:
-	// a: 14.10., Import :10 | b: 02.09., Import :20 | c: ohne Datum, Import :05
-	// d: ohne Datum, Import :30 | e: 14.10., Import :40 (gleiches Datum wie a)
-	bestand := func() []EintragKurz {
-		return []EintragKurz{
+func TestSortEntries(t *testing.T) {
+	// Mixed set for several cases:
+	// a: 14 Oct, import :10 | b: 2 Sep, import :20 | c: no date, import :05
+	// d: no date, import :30 | e: 14 Oct, import :40 (same date as a)
+	set := func() []EntrySummary {
+		return []EntrySummary{
 			e("a", "2026-10-14", 10),
 			e("c", "", 5),
 			e("b", "2026-09-02", 20),
@@ -42,140 +43,140 @@ func TestSortiere(t *testing.T) {
 		}
 	}
 
-	faelle := []struct {
-		name       string
-		eingabe    []EintragKurz
-		sortierung Sortierung
-		richtung   Richtung
-		erwartet   []string
+	cases := []struct {
+		name  string
+		input []EntrySummary
+		sort  Sort
+		order SortOrder
+		want  []string
 	}{
 		{
-			name:    "Regel 1+2+3: Dokumentdatum absteigend, null am Ende, Gleichstand nach Import absteigend",
-			eingabe: bestand(), sortierung: NachDokumentdatum, richtung: Absteigend,
-			erwartet: []string{"e", "a", "b", "d", "c"},
+			name:  "rules 1+2+3: document date descending, null at the end, tie by import descending",
+			input: set(), sort: ByDocumentDate, order: Descending,
+			want: []string{"e", "a", "b", "d", "c"},
 		},
 		{
-			name:    "Regel 2: null auch aufsteigend am Ende und untereinander absteigend",
-			eingabe: bestand(), sortierung: NachDokumentdatum, richtung: Aufsteigend,
-			erwartet: []string{"b", "a", "e", "d", "c"},
+			name:  "rule 2: null at the end also ascending, and descending among themselves",
+			input: set(), sort: ByDocumentDate, order: Ascending,
+			want: []string{"b", "a", "e", "d", "c"},
 		},
 		{
-			name:    "Importdatum absteigend, Dokumentdatum spielt keine Rolle",
-			eingabe: bestand(), sortierung: NachImportdatum, richtung: Absteigend,
-			erwartet: []string{"e", "d", "b", "a", "c"},
+			name:  "import descending, document date does not matter",
+			input: set(), sort: ByImportedAt, order: Descending,
+			want: []string{"e", "d", "b", "a", "c"},
 		},
 		{
-			name:    "Importdatum aufsteigend",
-			eingabe: bestand(), sortierung: NachImportdatum, richtung: Aufsteigend,
-			erwartet: []string{"c", "a", "b", "d", "e"},
+			name:  "import ascending",
+			input: set(), sort: ByImportedAt, order: Ascending,
+			want: []string{"c", "a", "b", "d", "e"},
 		},
 		{
-			name: "Regel 3: gleiches Datum und gleicher Import, dann id absteigend",
-			eingabe: []EintragKurz{
+			name: "rule 3: same date and same import, then id descending",
+			input: []EntrySummary{
 				e("x1", "2026-10-14", 10), e("x3", "2026-10-14", 10), e("x2", "2026-10-14", 10),
 			},
-			sortierung: NachDokumentdatum, richtung: Absteigend,
-			erwartet: []string{"x3", "x2", "x1"},
+			sort: ByDocumentDate, order: Descending,
+			want: []string{"x3", "x2", "x1"},
 		},
 		{
-			name: "Regel 3: gleiches Datum und gleicher Import, dann id aufsteigend",
-			eingabe: []EintragKurz{
+			name: "rule 3: same date and same import, then id ascending",
+			input: []EntrySummary{
 				e("x1", "2026-10-14", 10), e("x3", "2026-10-14", 10), e("x2", "2026-10-14", 10),
 			},
-			sortierung: NachDokumentdatum, richtung: Aufsteigend,
-			erwartet: []string{"x1", "x2", "x3"},
+			sort: ByDocumentDate, order: Ascending,
+			want: []string{"x1", "x2", "x3"},
 		},
 		{
-			name: "Zwei Einträge ohne Datum mit gleichem Import: id absteigend",
-			eingabe: []EintragKurz{
+			name: "two entries without date with the same import: id descending",
+			input: []EntrySummary{
 				e("n1", "", 10), e("n2", "", 10),
 			},
-			sortierung: NachDokumentdatum, richtung: Aufsteigend,
-			erwartet: []string{"n2", "n1"},
+			sort: ByDocumentDate, order: Ascending,
+			want: []string{"n2", "n1"},
 		},
 		{
-			name: "Gleicher Import bei Sortierung nach Import: id in derselben Richtung",
-			eingabe: []EintragKurz{
+			name: "same import when sorting by import: id in the same order",
+			input: []EntrySummary{
 				e("m1", "2026-01-01", 10), e("m2", "", 10),
 			},
-			sortierung: NachImportdatum, richtung: Absteigend,
-			erwartet: []string{"m2", "m1"},
+			sort: ByImportedAt, order: Descending,
+			want: []string{"m2", "m1"},
 		},
 		{
-			name: "Jahreswechsel: Text-Vergleich der Daten stimmt zeitlich",
-			eingabe: []EintragKurz{
-				e("alt", "2025-12-31", 10), e("neu", "2026-01-01", 10),
+			name: "turn of the year: text comparison of dates is chronological",
+			input: []EntrySummary{
+				e("old", "2025-12-31", 10), e("new", "2026-01-01", 10),
 			},
-			sortierung: NachDokumentdatum, richtung: Absteigend,
-			erwartet: []string{"neu", "alt"},
+			sort: ByDocumentDate, order: Descending,
+			want: []string{"new", "old"},
 		},
 		{
-			name: "Leere Liste", eingabe: []EintragKurz{},
-			sortierung: NachDokumentdatum, richtung: Absteigend, erwartet: []string{},
+			name: "empty list", input: []EntrySummary{},
+			sort: ByDocumentDate, order: Descending, want: []string{},
 		},
 	}
 
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			Sortiere(f.eingabe, f.sortierung, f.richtung)
-			if got := ids(f.eingabe); !slices.Equal(got, f.erwartet) {
-				t.Errorf("Reihenfolge = %v, erwartet %v", got, f.erwartet)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			SortEntries(c.input, c.sort, c.order)
+			if got := ids(c.input); !slices.Equal(got, c.want) {
+				t.Errorf("order = %v, want %v", got, c.want)
 			}
 		})
 	}
 }
 
-func TestSortiere_UnabhaengigVonEingabereihenfolge(t *testing.T) {
-	// Eindeutige Reihenfolge heißt: Jede Permutation ergibt dasselbe Ergebnis.
-	basis := []EintragKurz{
+func TestSortEntries_IndependentOfInputOrder(t *testing.T) {
+	// A unique order means: every permutation gives the same result.
+	base := []EntrySummary{
 		e("a", "2026-10-14", 10), e("b", "2026-10-14", 10), e("c", "", 10),
 		e("d", "", 10), e("e", "2026-09-02", 10),
 	}
-	var referenz []string
+	var reference []string
 	for i := range 20 {
-		kopie := slices.Clone(basis)
-		// einfache, deterministische Durchmischung
-		for j := range kopie {
-			k := (j*7 + i*3) % len(kopie)
-			kopie[j], kopie[k] = kopie[k], kopie[j]
+		cp := slices.Clone(base)
+		// simple, deterministic shuffle
+		for j := range cp {
+			k := (j*7 + i*3) % len(cp)
+			cp[j], cp[k] = cp[k], cp[j]
 		}
-		Sortiere(kopie, NachDokumentdatum, Absteigend)
-		if referenz == nil {
-			referenz = ids(kopie)
+		SortEntries(cp, ByDocumentDate, Descending)
+		if reference == nil {
+			reference = ids(cp)
 			continue
 		}
-		if got := ids(kopie); !slices.Equal(got, referenz) {
-			t.Fatalf("Durchlauf %d: %v, erwartet %v", i, got, referenz)
+		if got := ids(cp); !slices.Equal(got, reference) {
+			t.Fatalf("run %d: %v, want %v", i, got, reference)
 		}
 	}
 }
 
-func TestSortierungAus(t *testing.T) {
-	faelle := map[string]Sortierung{"": NachDokumentdatum, "dokumentdatum": NachDokumentdatum, "importdatum": NachImportdatum}
-	for wert, erwartet := range faelle {
-		got, err := SortierungAus(wert)
-		if err != nil || got != erwartet {
-			t.Errorf("SortierungAus(%q) = %q, %v", wert, got, err)
+func TestParseSort(t *testing.T) {
+	cases := map[string]Sort{"": ByDocumentDate, "dokumentdatum": ByDocumentDate, "importdatum": ByImportedAt}
+	for value, want := range cases {
+		got, err := ParseSort(value)
+		if err != nil || got != want {
+			t.Errorf("ParseSort(%q) = %q, %v", value, got, err)
 		}
 	}
-	for _, wert := range []string{"quelle", "Dokumentdatum", " importdatum"} {
-		if _, err := SortierungAus(wert); !errors.Is(err, ErrUnbekannterWert) {
-			t.Errorf("SortierungAus(%q): erwartet ErrUnbekannterWert, bekommen %v", wert, err)
+	for _, value := range []string{"quelle", "Dokumentdatum", " importdatum"} {
+		if _, err := ParseSort(value); !errors.Is(err, ErrUnknownValue) {
+			t.Errorf("ParseSort(%q): want ErrUnknownValue, got %v", value, err)
 		}
 	}
 }
 
-func TestRichtungAus(t *testing.T) {
-	faelle := map[string]Richtung{"": Absteigend, "absteigend": Absteigend, "aufsteigend": Aufsteigend}
-	for wert, erwartet := range faelle {
-		got, err := RichtungAus(wert)
-		if err != nil || got != erwartet {
-			t.Errorf("RichtungAus(%q) = %q, %v", wert, got, err)
+func TestParseSortOrder(t *testing.T) {
+	cases := map[string]SortOrder{"": Descending, "absteigend": Descending, "aufsteigend": Ascending}
+	for value, want := range cases {
+		got, err := ParseSortOrder(value)
+		if err != nil || got != want {
+			t.Errorf("ParseSortOrder(%q) = %q, %v", value, got, err)
 		}
 	}
-	for _, wert := range []string{"desc", "asc", "Absteigend"} {
-		if _, err := RichtungAus(wert); !errors.Is(err, ErrUnbekannterWert) {
-			t.Errorf("RichtungAus(%q): erwartet ErrUnbekannterWert, bekommen %v", wert, err)
+	for _, value := range []string{"desc", "asc", "Absteigend"} {
+		if _, err := ParseSortOrder(value); !errors.Is(err, ErrUnknownValue) {
+			t.Errorf("ParseSortOrder(%q): want ErrUnknownValue, got %v", value, err)
 		}
 	}
 }

@@ -6,32 +6,32 @@ import (
 	"testing"
 )
 
-func TestPruefeText(t *testing.T) {
+func TestCheckText(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		text string
 		want error
 	}{
 		{"normal", "Überweisung vom 21.10.2026", nil},
-		{"Leerraum am Rand erlaubt", "  \n Text \r\n", nil},
-		{"leer", "", ErrDateiLeer},
-		{"nur Leerzeichen", " \t\r\n ", ErrDateiLeer},
-		{"geschütztes Leerzeichen zählt als Leerraum", "  ", ErrDateiLeer},
-		{"ungültiges UTF-8", "Text \xff\xfe", ErrTextKeinUTF8},
-		{"abgeschnittenes Zeichen", "Gr\xc3", ErrTextKeinUTF8},
-		{"genau 100 000 Zeichen", strings.Repeat("a", MaxTextZeichen), nil},
-		{"100 001 Zeichen", strings.Repeat("a", MaxTextZeichen+1), ErrTextZuLang},
-		// 200 000 Bytes, aber 100 000 Zeichen: erlaubt.
-		{"100 000 Umlaute", strings.Repeat("ü", MaxTextZeichen), nil},
-		{"100 001 Umlaute", strings.Repeat("ü", MaxTextZeichen+1), ErrTextZuLang},
-		// 4 Bytes pro Zeichen.
-		{"100 000 Emoji", strings.Repeat("🩺", MaxTextZeichen), nil},
-		// Leer geht vor ungültig, ungültig vor zu lang.
-		{"zu lang und ungültig", strings.Repeat("a", MaxTextZeichen+1) + "\xff", ErrTextKeinUTF8},
+		{"whitespace at the edges allowed", "  \n Text \r\n", nil},
+		{"empty", "", ErrFileEmpty},
+		{"only spaces", " \t\r\n ", ErrFileEmpty},
+		{"no-break space counts as whitespace", "  ", ErrFileEmpty},
+		{"invalid UTF-8", "Text \xff\xfe", ErrTextNotUTF8},
+		{"truncated character", "Gr\xc3", ErrTextNotUTF8},
+		{"exactly 100,000 characters", strings.Repeat("a", MaxTextChars), nil},
+		{"100,001 characters", strings.Repeat("a", MaxTextChars+1), ErrTextTooLong},
+		// 200,000 bytes but 100,000 characters: allowed.
+		{"100,000 umlauts", strings.Repeat("ü", MaxTextChars), nil},
+		{"100,001 umlauts", strings.Repeat("ü", MaxTextChars+1), ErrTextTooLong},
+		// 4 bytes per character.
+		{"100,000 emoji", strings.Repeat("🩺", MaxTextChars), nil},
+		// Empty comes before invalid, invalid before too long.
+		{"too long and invalid", strings.Repeat("a", MaxTextChars+1) + "\xff", ErrTextNotUTF8},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := PruefeText(tc.text); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
-				t.Errorf("PruefeText = %v, erwartet %v", err, tc.want)
+			if err := CheckText(tc.text); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
+				t.Errorf("CheckText = %v, want %v", err, tc.want)
 			}
 		})
 	}

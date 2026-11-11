@@ -7,29 +7,29 @@ import (
 	"unicode/utf8"
 )
 
-// Synthetischer Laborbefund wie in docs/API.md.
-const laborbefund = "Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\n" +
+// Synthetic lab report as in docs/API.md. Document content stays German.
+const labReport = "Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\n" +
 	"Laborbefund vom 14.10.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\n" +
 	"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)\n" +
 	"CRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein"
 
-func TestZerlege_KurzerTextIstEinAbschnitt(t *testing.T) {
-	got := ZerlegeInAbschnitte(laborbefund, AbschnittMaxZeichen)
-	if len(got) != 1 || got[0] != laborbefund {
-		t.Errorf("erwartet den ganzen Text als einen Abschnitt, bekommen %q", got)
+func TestSplit_ShortTextIsOneChunk(t *testing.T) {
+	got := SplitIntoChunks(labReport, ChunkMaxChars)
+	if len(got) != 1 || got[0] != labReport {
+		t.Errorf("want the whole text as one chunk, got %q", got)
 	}
 }
 
-func TestZerlege_AbsaetzeUndZeilen(t *testing.T) {
-	// max 60. Längen in Zeichen:
-	//   Absatz 1: 17 + 1 + 29 = 47      → passt, bleibt ganz
-	//   Absatz 2: 26 + 1 + 40 = 67      → zu lang, wird an der Zeile geteilt
-	//   Absatz 3: 37 | 34 | 26 | 25     → Zeilen werden zusammengefasst,
-	//             solange es passt: 37+1+34 = 72 nein, 34+1+26 = 61 nein,
-	//             26+1+25 = 52 ja
-	// Absätze 1 und 2 zusammen (47 + 2 + 26) wären auch zu lang.
-	got := ZerlegeInAbschnitte(laborbefund, 60)
-	erwartet := []string{
+func TestSplit_ParagraphsAndLines(t *testing.T) {
+	// max 60. Lengths in characters:
+	//   paragraph 1: 17 + 1 + 29 = 47      → fits, stays whole
+	//   paragraph 2: 26 + 1 + 40 = 67      → too long, split at the line
+	//   paragraph 3: 37 | 34 | 26 | 25     → lines are merged as long as
+	//                they fit: 37+1+34 = 72 no, 34+1+26 = 61 no,
+	//                26+1+25 = 52 yes
+	// Paragraphs 1 and 2 together (47 + 2 + 26) would also be too long.
+	got := SplitIntoChunks(labReport, 60)
+	want := []string{
 		"Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg",
 		"Laborbefund vom 14.10.2026",
 		"Patient: Max Mustermann, geb. 01.01.1990",
@@ -37,102 +37,102 @@ func TestZerlege_AbsaetzeUndZeilen(t *testing.T) {
 		"Leukozyten 6,8 G/l (Ref. 4,0-10,0)",
 		"CRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
 	}
-	if !slices.Equal(got, erwartet) {
-		t.Errorf("Abschnitte:\n%q\nerwartet:\n%q", got, erwartet)
+	if !slices.Equal(got, want) {
+		t.Errorf("chunks:\n%q\nwant:\n%q", got, want)
 	}
 }
 
-func TestZerlege_KleineAbsaetzeWerdenZusammengefasst(t *testing.T) {
-	got := ZerlegeInAbschnitte("A\n\nB\n\nC", 4)
-	// "A\n\nB" hat genau 4 Zeichen, C passt nicht mehr dazu.
+func TestSplit_SmallParagraphsAreMerged(t *testing.T) {
+	got := SplitIntoChunks("A\n\nB\n\nC", 4)
+	// "A\n\nB" has exactly 4 characters, C no longer fits.
 	if !slices.Equal(got, []string{"A\n\nB", "C"}) {
 		t.Errorf("= %q", got)
 	}
 }
 
-func TestZerlege_ZuLangeZeileWirdAnWoertenGeteilt(t *testing.T) {
-	got := ZerlegeInAbschnitte("eins zwei drei vier", 9)
+func TestSplit_LongLineIsSplitAtWords(t *testing.T) {
+	got := SplitIntoChunks("eins zwei drei vier", 9)
 	if !slices.Equal(got, []string{"eins zwei", "drei vier"}) {
 		t.Errorf("= %q", got)
 	}
 }
 
-func TestZerlege_UeberlangesWortWirdHartGeschnitten(t *testing.T) {
-	got := ZerlegeInAbschnitte(strings.Repeat("ä", 7), 3)
+func TestSplit_OverlongWordIsCutHard(t *testing.T) {
+	got := SplitIntoChunks(strings.Repeat("ä", 7), 3)
 	if !slices.Equal(got, []string{"äää", "äää", "ä"}) {
 		t.Errorf("= %q", got)
 	}
-	for _, a := range got {
-		if !utf8.ValidString(a) {
-			t.Errorf("Umlaut zerschnitten: %q", a)
+	for _, c := range got {
+		if !utf8.ValidString(c) {
+			t.Errorf("umlaut cut in half: %q", c)
 		}
 	}
 }
 
-func TestZerlege_UmlauteZaehlenAlsEinZeichen(t *testing.T) {
-	// 5 Zeichen, aber 10 Bytes: passt in max 5.
-	if got := ZerlegeInAbschnitte("äöüßé", 5); !slices.Equal(got, []string{"äöüßé"}) {
+func TestSplit_UmlautsCountAsOneCharacter(t *testing.T) {
+	// 5 characters but 10 bytes: fits into max 5.
+	if got := SplitIntoChunks("äöüßé", 5); !slices.Equal(got, []string{"äöüßé"}) {
 		t.Errorf("= %q", got)
 	}
 }
 
-func TestZerlege_Leerraum(t *testing.T) {
+func TestSplit_Whitespace(t *testing.T) {
 	for _, text := range []string{"", "   ", "\n\n\n", " \t\n \n"} {
-		got := ZerlegeInAbschnitte(text, 10)
+		got := SplitIntoChunks(text, 10)
 		if got == nil || len(got) != 0 {
-			t.Errorf("ZerlegeInAbschnitte(%q) = %#v, erwartet leere Liste", text, got)
+			t.Errorf("SplitIntoChunks(%q) = %#v, want empty list", text, got)
 		}
 	}
 }
 
-func TestZerlege_ZeilenendenUndLeerzeilenMitLeerzeichen(t *testing.T) {
-	// Windows-Zeilenenden werden zu "\n", und eine "Leerzeile" mit
-	// Leerzeichen trennt Absätze. max 30 ist absichtlich groß genug, dass
-	// alles in EINEN Abschnitt passt (12 + 2 + 5 = 19). So entscheidet nicht
-	// die Länge, sondern nur das Zerlegen, wie das Ergebnis aussieht:
-	//   - Leerzeichen-Zeile nicht als Trenner erkannt → "Kopf\nZeile 2\n  \nRumpf"
-	//   - "\r\n" nicht umgewandelt                    → Ergebnis enthält "\r"
-	got := ZerlegeInAbschnitte("Kopf\r\nZeile 2\r\n  \r\nRumpf", 30)
+func TestSplit_LineEndingsAndBlankLinesWithSpaces(t *testing.T) {
+	// Windows line endings become "\n", and a "blank line" containing spaces
+	// separates paragraphs. max 30 is deliberately large enough for
+	// everything to fit into ONE chunk (12 + 2 + 5 = 19). So not the length
+	// but only the splitting decides what the result looks like:
+	//   - line with spaces not recognized as separator → "Kopf\nZeile 2\n  \nRumpf"
+	//   - "\r\n" not converted                         → result contains "\r"
+	got := SplitIntoChunks("Kopf\r\nZeile 2\r\n  \r\nRumpf", 30)
 	if !slices.Equal(got, []string{"Kopf\nZeile 2\n\nRumpf"}) {
 		t.Errorf("= %q", got)
 	}
 }
 
-func TestZerlege_Invarianten(t *testing.T) {
-	// Längerer synthetischer Text mit allen Fällen gemischt.
-	text := strings.Repeat(laborbefund+"\n\n", 6) +
+func TestSplit_Invariants(t *testing.T) {
+	// Longer synthetic text with all cases mixed.
+	text := strings.Repeat(labReport+"\n\n", 6) +
 		strings.Repeat("Wort ", 300) + "\n\n" + strings.Repeat("x", 1200)
 
-	for _, max := range []int{1, 7, 50, 120, AbschnittMaxZeichen} {
-		got := ZerlegeInAbschnitte(text, max)
+	for _, max := range []int{1, 7, 50, 120, ChunkMaxChars} {
+		got := SplitIntoChunks(text, max)
 		if len(got) == 0 {
-			t.Fatalf("max %d: keine Abschnitte", max)
+			t.Fatalf("max %d: no chunks", max)
 		}
-		for i, a := range got {
-			if strings.TrimSpace(a) == "" {
-				t.Errorf("max %d: Abschnitt %d ist leer", max, i)
+		for i, c := range got {
+			if strings.TrimSpace(c) == "" {
+				t.Errorf("max %d: chunk %d is empty", max, i)
 			}
-			if n := utf8.RuneCountInString(a); n > max {
-				t.Errorf("max %d: Abschnitt %d hat %d Zeichen", max, i, n)
+			if n := utf8.RuneCountInString(c); n > max {
+				t.Errorf("max %d: chunk %d has %d characters", max, i, n)
 			}
 		}
-		// Nichts geht verloren: Alle Nicht-Leerzeichen bleiben in Reihenfolge.
-		if ohneLeerraum(strings.Join(got, "")) != ohneLeerraum(text) {
-			t.Errorf("max %d: Inhalt verändert", max)
+		// Nothing is lost: all non-whitespace stays in order.
+		if withoutWhitespace(strings.Join(got, "")) != withoutWhitespace(text) {
+			t.Errorf("max %d: content changed", max)
 		}
-		// Deterministisch.
-		if !slices.Equal(got, ZerlegeInAbschnitte(text, max)) {
-			t.Errorf("max %d: zweiter Aufruf liefert anderes Ergebnis", max)
+		// Deterministic.
+		if !slices.Equal(got, SplitIntoChunks(text, max)) {
+			t.Errorf("max %d: second call gives a different result", max)
 		}
 	}
 }
 
-func TestZerlege_UngueltigesMaxNimmtStandard(t *testing.T) {
-	if got := ZerlegeInAbschnitte(laborbefund, 0); len(got) != 1 {
-		t.Errorf("max 0 soll AbschnittMaxZeichen verwenden, bekommen %d Abschnitte", len(got))
+func TestSplit_InvalidMaxUsesDefault(t *testing.T) {
+	if got := SplitIntoChunks(labReport, 0); len(got) != 1 {
+		t.Errorf("max 0 should use ChunkMaxChars, got %d chunks", len(got))
 	}
 }
 
-func ohneLeerraum(s string) string {
+func withoutWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), "")
 }

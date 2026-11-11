@@ -8,10 +8,10 @@ import (
 	"slices"
 )
 
-// MaxDateiBytes ist die größte erlaubte Datei (API.md 3.1: 10 MB).
-const MaxDateiBytes = 10 << 20 // 10 MiB = 10 485 760 Bytes
+// MaxFileBytes is the largest allowed file (API.md 3.1: 10 MB).
+const MaxFileBytes = 10 << 20 // 10 MiB = 10,485,760 bytes
 
-// Erlaubte Dateitypen (API.md 3.1).
+// Allowed file types (API.md 3.1).
 const (
 	MimeJPEG = "image/jpeg"
 	MimePNG  = "image/png"
@@ -20,33 +20,33 @@ const (
 )
 
 var (
-	ErrDateiLeer                 = errors.New("Datei ist leer")
-	ErrDateiZuGross              = errors.New("Datei ist größer als 10 MB")
-	ErrDateitypNichtUnterstuetzt = errors.New("Dateityp wird nicht unterstützt")
+	ErrFileEmpty           = errors.New("file is empty")
+	ErrFileTooLarge        = errors.New("file is larger than 10 MB")
+	ErrUnsupportedFileType = errors.New("file type is not supported")
 )
 
-// PruefeDatei prüft Größe und Typ einer hochgeladenen Datei und liefert den
-// MIME-Typ. Der Typ wird am Inhalt erkannt, nicht an Dateiname oder
-// Content-Type des Uploads. Beides kann die App (oder jemand anderes) frei
-// setzen, die ersten Bytes einer Datei aber nicht.
+// CheckFile checks size and type of an uploaded file and returns the MIME
+// type. The type is detected from the content, not from the file name or the
+// Content-Type of the upload. The app (or anyone else) can set both freely,
+// but not the first bytes of a file.
 //
-// Fehler: ErrDateiLeer (→ 400 DATEI_FEHLT), ErrDateiZuGross (→ 413),
-// ErrDateitypNichtUnterstuetzt (→ 415).
-func PruefeDatei(daten []byte) (string, error) {
-	if len(daten) == 0 {
-		return "", ErrDateiLeer
+// Errors: ErrFileEmpty (→ 400 DATEI_FEHLT), ErrFileTooLarge (→ 413),
+// ErrUnsupportedFileType (→ 415).
+func CheckFile(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", ErrFileEmpty
 	}
-	if len(daten) > MaxDateiBytes {
-		return "", ErrDateiZuGross
+	if len(data) > MaxFileBytes {
+		return "", ErrFileTooLarge
 	}
-	return ErkenneDateityp(daten)
+	return DetectFileType(data)
 }
 
-// ErkenneDateityp erkennt JPEG, PNG, PDF und HEIC an den ersten Bytes.
-func ErkenneDateityp(daten []byte) (string, error) {
-	// http.DetectContentType kennt JPEG, PNG und PDF anhand ihrer
-	// „magischen Bytes“ (z. B. beginnt jedes PDF mit "%PDF-").
-	switch http.DetectContentType(daten) {
+// DetectFileType recognizes JPEG, PNG, PDF and HEIC from the first bytes.
+func DetectFileType(data []byte) (string, error) {
+	// http.DetectContentType knows JPEG, PNG and PDF by their "magic bytes"
+	// (e.g. every PDF starts with "%PDF-").
+	switch http.DetectContentType(data) {
 	case MimeJPEG:
 		return MimeJPEG, nil
 	case MimePNG:
@@ -54,51 +54,52 @@ func ErkenneDateityp(daten []byte) (string, error) {
 	case MimePDF:
 		return MimePDF, nil
 	}
-	// HEIC (Standardformat der iPhone-Kamera) kennt Go nicht, darum selbst.
-	if istHEIC(daten) {
+	// Go does not know HEIC (the default format of the iPhone camera), so we
+	// check it ourselves.
+	if isHEIC(data) {
 		return MimeHEIC, nil
 	}
-	return "", ErrDateitypNichtUnterstuetzt
+	return "", ErrUnsupportedFileType
 }
 
-// HEIC-Dateien beginnen mit einer „ftyp-Box“:
+// HEIC files start with an "ftyp box":
 //
-//	Byte 0–3   Größe der Box (big-endian)
-//	Byte 4–7   "ftyp"
-//	Byte 8–11  Hauptmarke (major brand), z. B. "heic"
-//	Byte 12–15 Version
-//	ab Byte 16 kompatible Marken, je 4 Bytes
+//	bytes 0–3   size of the box (big-endian)
+//	bytes 4–7   "ftyp"
+//	bytes 8–11  major brand, e.g. "heic"
+//	bytes 12–15 version
+//	from byte 16 compatible brands, 4 bytes each
 //
-// "mif1"/"msf1" bedeuten nur „irgendein HEIF-Bild“. Das kann auch AVIF sein
-// (anderer Codec). Dann zählt, ob eine HEVC-Marke unter den kompatiblen ist.
+// "mif1"/"msf1" only mean "some HEIF image". That can also be AVIF (another
+// codec). Then it matters whether an HEVC brand is among the compatible ones.
 var (
-	heicMarken    = [][]byte{[]byte("heic"), []byte("heix"), []byte("heim"), []byte("heis"), []byte("hevc"), []byte("hevx")}
-	heifAllgemein = [][]byte{[]byte("mif1"), []byte("msf1")}
+	heicBrands  = [][]byte{[]byte("heic"), []byte("heix"), []byte("heim"), []byte("heis"), []byte("hevc"), []byte("hevx")}
+	heifGeneric = [][]byte{[]byte("mif1"), []byte("msf1")}
 )
 
-func istHEIC(d []byte) bool {
+func isHEIC(d []byte) bool {
 	if len(d) < 16 || !bytes.Equal(d[4:8], []byte("ftyp")) {
 		return false
 	}
-	hauptmarke := d[8:12]
-	if enthaeltMarke(heicMarken, hauptmarke) {
+	major := d[8:12]
+	if containsBrand(heicBrands, major) {
 		return true
 	}
-	if !enthaeltMarke(heifAllgemein, hauptmarke) {
+	if !containsBrand(heifGeneric, major) {
 		return false
 	}
 
-	// Kompatible Marken lesen, aber nie über die Box oder die Datei hinaus.
-	ende := int(binary.BigEndian.Uint32(d[0:4]))
-	ende = min(ende, len(d))
-	for i := 16; i+4 <= ende; i += 4 {
-		if enthaeltMarke(heicMarken, d[i:i+4]) {
+	// Read compatible brands, but never beyond the box or the file.
+	end := int(binary.BigEndian.Uint32(d[0:4]))
+	end = min(end, len(d))
+	for i := 16; i+4 <= end; i += 4 {
+		if containsBrand(heicBrands, d[i:i+4]) {
 			return true
 		}
 	}
 	return false
 }
 
-func enthaeltMarke(marken [][]byte, marke []byte) bool {
-	return slices.ContainsFunc(marken, func(m []byte) bool { return bytes.Equal(m, marke) })
+func containsBrand(brands [][]byte, brand []byte) bool {
+	return slices.ContainsFunc(brands, func(b []byte) bool { return bytes.Equal(b, brand) })
 }
