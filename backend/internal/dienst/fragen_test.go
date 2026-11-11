@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
-	"lifelog/backend/internal/modell/attrappe"
+	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/llm/fake"
 )
 
 type suchAttrappe struct {
@@ -59,8 +59,8 @@ func suchBestand() *suchAttrappe {
 
 func TestFragen_Treffer(t *testing.T) {
 	s := suchBestand()
-	a := &attrappe.Antworter{Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1]."}
-	f := NeuFragen(s, &attrappe.Einbetter{}, a)
+	a := &fake.Antworter{Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1]."}
+	f := NeuFragen(s, &fake.Einbetter{}, a)
 
 	antwort, err := f.Ausfuehren(context.Background(), "  Wie hoch war mein Hb?  ", "")
 	if err != nil {
@@ -90,9 +90,9 @@ func TestFragen_Treffer(t *testing.T) {
 func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
 	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idLabor, Score: 0.77, Text: "Wetter?"}},
 		eintraege: suchBestand().eintraege}
-	a := &attrappe.Antworter{Text: "sollte nie kommen [1]"}
+	a := &fake.Antworter{Text: "sollte nie kommen [1]"}
 
-	antwort, err := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
+	antwort, err := NeuFragen(s, &fake.Einbetter{}, a).Ausfuehren(context.Background(), "Wie wird das Wetter?", "")
 
 	if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || antwort.Sources == nil || len(antwort.Sources) != 0 {
 		t.Errorf("Antwort = %+v, %v; erwartet fester Satz", antwort, err)
@@ -104,8 +104,8 @@ func TestFragen_UnterSchwelleKeinModellaufruf(t *testing.T) {
 
 func TestFragen_NurVerwaisteTreffer(t *testing.T) {
 	s := &suchAttrappe{treffer: []core.Hit{{EntryID: idWeg, Score: 0.95}}, eintraege: map[string]core.EntrySummary{}}
-	a := &attrappe.Antworter{}
-	antwort, _ := NeuFragen(s, &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
+	a := &fake.Antworter{}
+	antwort, _ := NeuFragen(s, &fake.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
 	if antwort.Found || a.Aufrufe() != 0 {
 		t.Errorf("verwaiste Abschnitte dürfen nicht ans Modell: %+v, %d Aufrufe", antwort, a.Aufrufe())
 	}
@@ -115,8 +115,8 @@ func TestFragen_ModellOhneVerweis(t *testing.T) {
 	// Zweite Schicht: Das Modell antwortet selbst mit dem festen Satz oder
 	// ohne Quelle; beides wird zu "nichts gefunden".
 	for _, text := range []string{core.NotFoundAnswer, "Der Wert war 14,2."} {
-		a := &attrappe.Antworter{Text: text}
-		antwort, err := NeuFragen(suchBestand(), &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
+		a := &fake.Antworter{Text: text}
+		antwort, err := NeuFragen(suchBestand(), &fake.Einbetter{}, a).Ausfuehren(context.Background(), "x", "")
 		if err != nil || antwort.Found || antwort.Text != core.NotFoundAnswer || len(antwort.Sources) != 0 {
 			t.Errorf("%q → %+v, %v", text, antwort, err)
 		}
@@ -129,16 +129,16 @@ func TestFragen_Fehler(t *testing.T) {
 		frage     string
 		modul     string
 		suche     *suchAttrappe
-		einbetter *attrappe.Einbetter
-		antworter *attrappe.Antworter
+		einbetter *fake.Einbetter
+		antworter *fake.Antworter
 		fehler    error
 	}{
-		{"Frage leer", "  ", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrQuestionMissing},
-		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrQuestionTooLong},
-		{"Modul unbekannt", "x", "sport", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{}, core.ErrUnknownModule},
-		{"Embedding nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, &attrappe.Antworter{}, modell.ErrNichtErreichbar},
-		{"Antworter nicht erreichbar", "x", "", suchBestand(), &attrappe.Einbetter{}, &attrappe.Antworter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
-		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &attrappe.Einbetter{}, &attrappe.Antworter{}, nil},
+		{"Frage leer", "  ", "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrQuestionMissing},
+		{"Frage zu lang", strings.Repeat("a", 501), "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrQuestionTooLong},
+		{"Modul unbekannt", "x", "sport", suchBestand(), &fake.Einbetter{}, &fake.Antworter{}, core.ErrUnknownModule},
+		{"Embedding nicht erreichbar", "x", "", suchBestand(), &fake.Einbetter{Err: llm.ErrNichtErreichbar}, &fake.Antworter{}, llm.ErrNichtErreichbar},
+		{"Antworter nicht erreichbar", "x", "", suchBestand(), &fake.Einbetter{}, &fake.Antworter{Err: llm.ErrNichtErreichbar}, llm.ErrNichtErreichbar},
+		{"Vektorsuche scheitert", "x", "", &suchAttrappe{err: errors.New("Index fehlt")}, &fake.Einbetter{}, &fake.Antworter{}, nil},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -159,8 +159,8 @@ func TestFragen_FrageUndTexteNichtImLog(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(alt) })
 
-	a := &attrappe.Antworter{Text: "GEHEIME-ANTWORT [1]"}
-	_, _ = NeuFragen(suchBestand(), &attrappe.Einbetter{}, a).Ausfuehren(context.Background(), "GEHEIME-FRAGE", "")
+	a := &fake.Antworter{Text: "GEHEIME-ANTWORT [1]"}
+	_, _ = NeuFragen(suchBestand(), &fake.Einbetter{}, a).Ausfuehren(context.Background(), "GEHEIME-FRAGE", "")
 
 	for _, geheim := range []string{"GEHEIME-FRAGE", "GEHEIME-ANTWORT", "Hämoglobin"} {
 		if strings.Contains(log.String(), geheim) {

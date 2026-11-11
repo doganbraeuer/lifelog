@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 func TestEintraege_GueltigUndEindeutig(t *testing.T) {
@@ -67,7 +67,7 @@ func TestWegwerf(t *testing.T) {
 		t.Fatal("keine Abschnitte")
 	}
 	for _, a := range abschnitte {
-		if a.EntryID != id || len(a.Embedding) != modell.EmbeddingDimensionen || a.Embedding[0] != 1 {
+		if a.EntryID != id || len(a.Embedding) != llm.EmbeddingDimensionen || a.Embedding[0] != 1 {
 			t.Errorf("Abschnitt %d: eintrag %s, %d Dimensionen", a.Position, a.EntryID, len(a.Embedding))
 		}
 	}

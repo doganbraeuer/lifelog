@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Die Tests hier arbeiten mit echten, aber kurzen Fristen (Millisekunden
@@ -84,7 +84,7 @@ func TestReserve_OhneErsatzBekommtHauptmodellDasGanzeLimit(t *testing.T) {
 
 	_, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 
-	if !errors.Is(err, modell.ErrNichtErreichbar) {
+	if !errors.Is(err, llm.ErrNichtErreichbar) {
 		t.Errorf("err = %v", err)
 	}
 	if r := z.rest["haupt"]; r < 280*time.Millisecond {
@@ -103,7 +103,7 @@ func TestReserve_NullHeisstKeinErsatzBeimHaengen(t *testing.T) {
 
 	_, err := g.DokumentLesen(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
 
-	if !errors.Is(err, modell.ErrNichtErreichbar) {
+	if !errors.Is(err, llm.ErrNichtErreichbar) {
 		t.Errorf("err = %v", err)
 	}
 	if _, aufgerufen := z.rest["ersatz"]; aufgerufen {

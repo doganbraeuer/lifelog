@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
-	"lifelog/backend/internal/modell/attrappe"
+	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/llm/fake"
 )
 
 // speicherAttrappe protokolliert alle Aufrufe in Reihenfolge und kann bei
@@ -108,16 +108,16 @@ func erkennung() core.Extraction {
 
 type aufbau struct {
 	speicher  *speicherAttrappe
-	leser     *attrappe.Leser
-	einbetter *attrappe.Einbetter
+	leser     *fake.Leser
+	einbetter *fake.Einbetter
 	dienst    *Hochladen
 }
 
 func neuerAufbau() aufbau {
 	a := aufbau{
 		speicher:  neuerSpeicher(),
-		leser:     &attrappe.Leser{Erkennung: erkennung()},
-		einbetter: &attrappe.Einbetter{},
+		leser:     &fake.Leser{Erkennung: erkennung()},
+		einbetter: &fake.Einbetter{},
 	}
 	n := 0
 	a.dienst = NeuHochladen(a.speicher, a.leser, a.einbetter, func() string {
@@ -167,7 +167,7 @@ func TestHochladen_Erfolg(t *testing.T) {
 		t.Fatal("keine Abschnitte gespeichert")
 	}
 	for i, x := range ab {
-		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != modell.EmbeddingDimensionen {
+		if x.EntryID != e.ID || x.Module != "gesundheit" || x.Position != i+1 || len(x.Embedding) != llm.EmbeddingDimensionen {
 			t.Errorf("Abschnitt %d = %+v", i, x)
 		}
 	}
@@ -238,15 +238,15 @@ func TestHochladen_FehlerVorDemSpeichern(t *testing.T) {
 
 	faelle := []struct {
 		name      string
-		leser     *attrappe.Leser
-		einbetter *attrappe.Einbetter
+		leser     *fake.Leser
+		einbetter *fake.Einbetter
 		fehler    error
 	}{
-		{"Vision-LLM nicht erreichbar", &attrappe.Leser{Err: modell.ErrNichtErreichbar}, &attrappe.Einbetter{}, modell.ErrNichtErreichbar},
-		{"Antwort ungültig", &attrappe.Leser{Err: modell.ErrAntwortUngueltig}, &attrappe.Einbetter{}, modell.ErrAntwortUngueltig},
-		{"nicht lesbar", &attrappe.Leser{Erkennung: nichtLesbar}, &attrappe.Einbetter{}, core.ErrUnreadable},
-		{"Erkennung ungültig", &attrappe.Leser{Erkennung: falscherTyp}, &attrappe.Einbetter{}, core.ErrInvalidExtraction},
-		{"Embedding nicht erreichbar", &attrappe.Leser{Erkennung: erkennung()}, &attrappe.Einbetter{Err: modell.ErrNichtErreichbar}, modell.ErrNichtErreichbar},
+		{"Vision-LLM nicht erreichbar", &fake.Leser{Err: llm.ErrNichtErreichbar}, &fake.Einbetter{}, llm.ErrNichtErreichbar},
+		{"Antwort ungültig", &fake.Leser{Err: llm.ErrAntwortUngueltig}, &fake.Einbetter{}, llm.ErrAntwortUngueltig},
+		{"nicht lesbar", &fake.Leser{Erkennung: nichtLesbar}, &fake.Einbetter{}, core.ErrUnreadable},
+		{"Erkennung ungültig", &fake.Leser{Erkennung: falscherTyp}, &fake.Einbetter{}, core.ErrInvalidExtraction},
+		{"Embedding nicht erreichbar", &fake.Leser{Erkennung: erkennung()}, &fake.Einbetter{Err: llm.ErrNichtErreichbar}, llm.ErrNichtErreichbar},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -344,7 +344,7 @@ func TestHochladen_AusgelasseneInfosNurAlsFeldImLog(t *testing.T) {
 	e := erkennung()
 	e.Facts = append(e.Facts, core.ExtractedFact{Name: "", Value: "GEHEIMER-WERT-42"})
 	a := neuerAufbau()
-	a.dienst.leser = &attrappe.Leser{Erkennung: e}
+	a.dienst.leser = &fake.Leser{Erkennung: e}
 
 	eintrag, err := a.dienst.Ausfuehren(context.Background(), Upload{Daten: []byte(pdf)})
 	if err != nil {

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 func fundstellen() []core.Source {
@@ -62,7 +62,7 @@ func TestTextAusAntwort(t *testing.T) {
 		"abgeschnitten": antwort("Hb 14", genai.FinishReasonMaxTokens),
 		"Sicherheit":    antwort("x", genai.FinishReasonSafety),
 	} {
-		if _, err := textAusAntwort(resp); !errors.Is(err, modell.ErrAntwortUngueltig) {
+		if _, err := textAusAntwort(resp); !errors.Is(err, llm.ErrAntwortUngueltig) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}

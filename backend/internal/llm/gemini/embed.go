@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // gemini-embedding-2 kennt kein task_type. Stattdessen sagt ein Präfix im
@@ -51,17 +51,17 @@ func vektorenAusAntwort(resp *genai.EmbedContentResponse, anzahl int) ([][]float
 		if resp != nil {
 			erhalten = len(resp.Embeddings)
 		}
-		return nil, fmt.Errorf("%d Embeddings erwartet, %d erhalten: %w", anzahl, erhalten, modell.ErrAntwortUngueltig)
+		return nil, fmt.Errorf("%d Embeddings erwartet, %d erhalten: %w", anzahl, erhalten, llm.ErrAntwortUngueltig)
 	}
 	vektoren := make([][]float32, anzahl)
 	for i, e := range resp.Embeddings {
-		if e == nil || len(e.Values) != modell.EmbeddingDimensionen {
+		if e == nil || len(e.Values) != llm.EmbeddingDimensionen {
 			laenge := 0
 			if e != nil {
 				laenge = len(e.Values)
 			}
 			return nil, fmt.Errorf("Embedding %d hat %d statt %d Dimensionen: %w",
-				i, laenge, modell.EmbeddingDimensionen, modell.ErrAntwortUngueltig)
+				i, laenge, llm.EmbeddingDimensionen, llm.ErrAntwortUngueltig)
 		}
 		vektoren[i] = e.Values
 	}

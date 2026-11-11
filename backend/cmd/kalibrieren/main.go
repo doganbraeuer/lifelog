@@ -28,8 +28,8 @@ import (
 
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
-	"lifelog/backend/internal/modell/gemini"
+	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/speicher"
 	"strings"
 )
@@ -110,7 +110,7 @@ func ausfuehren(schwelle float64) error {
 	for i, f := range fragen {
 		vektor, err := g.FrageEinbetten(ctx, f.Text)
 		if err != nil {
-			if errors.Is(err, modell.ErrNichtErreichbar) {
+			if errors.Is(err, llm.ErrNichtErreichbar) {
 				return fmt.Errorf("Frage %d: Embedding-Modell nicht erreichbar, später noch einmal: %w", i+1, err)
 			}
 			return fmt.Errorf("Frage %d: %w", i+1, err)

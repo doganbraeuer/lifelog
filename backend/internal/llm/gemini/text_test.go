@@ -11,7 +11,7 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 func TestTextSchema_OhneLesbarUndVolltext(t *testing.T) {
@@ -100,7 +100,7 @@ func TestTextErkennungAusText(t *testing.T) {
 
 	for _, kaputt := range []string{"", "kein JSON", `{"typ": 3}`, `{"infos": [{"wert": 14.2}]}`} {
 		_, err := textErkennungAusText(kaputt)
-		if !errors.Is(err, modell.ErrAntwortUngueltig) {
+		if !errors.Is(err, llm.ErrAntwortUngueltig) {
 			t.Errorf("%q: %v, erwartet ErrAntwortUngueltig", kaputt, err)
 		}
 	}
@@ -136,7 +136,7 @@ func TestTextLesen_WiederholungUndErsatz(t *testing.T) {
 				if err != nil || e.Type != "laborbefund" || !e.Readable || e.FullText != "" {
 					t.Errorf("erwartet Erfolg ohne Volltext: %+v, %v", e, err)
 				}
-			} else if !errors.Is(err, modell.ErrNichtErreichbar) {
+			} else if !errors.Is(err, llm.ErrNichtErreichbar) {
 				t.Errorf("%v, erwartet ErrNichtErreichbar", err)
 			}
 		})
@@ -168,7 +168,7 @@ func TestTextLesen_SchicktTextAnfrage(t *testing.T) {
 	g.erzeugen = func(context.Context, string, []*genai.Content, *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 		return antwort(`{"typ": "sonst`, genai.FinishReasonMaxTokens), nil
 	}
-	if _, err := g.TextLesen(context.Background(), text, []string{"sonstiges"}); !errors.Is(err, modell.ErrAntwortUngueltig) {
+	if _, err := g.TextLesen(context.Background(), text, []string{"sonstiges"}); !errors.Is(err, llm.ErrAntwortUngueltig) {
 		t.Errorf("abgeschnitten: %v", err)
 	}
 }

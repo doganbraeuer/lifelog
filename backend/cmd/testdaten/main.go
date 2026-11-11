@@ -31,7 +31,7 @@ import (
 	"lifelog/backend/internal/beispieldaten"
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell/gemini"
+	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/speicher"
 )
 

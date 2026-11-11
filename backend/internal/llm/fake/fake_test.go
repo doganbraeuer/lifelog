@@ -1,4 +1,4 @@
-package attrappe
+package fake
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 func TestEinbetter(t *testing.T) {
@@ -15,7 +15,7 @@ func TestEinbetter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(v) != 3 || len(v[0]) != modell.EmbeddingDimensionen {
+	if len(v) != 3 || len(v[0]) != llm.EmbeddingDimensionen {
 		t.Fatalf("Form = %d × %d", len(v), len(v[0]))
 	}
 	if !slices.Equal(v[0], v[2]) || slices.Equal(v[0], v[1]) {
@@ -29,15 +29,15 @@ func TestEinbetter(t *testing.T) {
 		t.Errorf("Aufrufe = %d", e.Aufrufe())
 	}
 
-	kaputt := &Einbetter{Err: modell.ErrNichtErreichbar}
-	if _, err := kaputt.AbschnitteEinbetten(context.Background(), []string{"x"}); !errors.Is(err, modell.ErrNichtErreichbar) {
+	kaputt := &Einbetter{Err: llm.ErrNichtErreichbar}
+	if _, err := kaputt.AbschnitteEinbetten(context.Background(), []string{"x"}); !errors.Is(err, llm.ErrNichtErreichbar) {
 		t.Errorf("err = %v", err)
 	}
 }
 
 func TestLeser(t *testing.T) {
-	l := &Leser{Err: modell.ErrAntwortUngueltig}
-	if _, err := l.DokumentLesen(context.Background(), nil, "", nil); !errors.Is(err, modell.ErrAntwortUngueltig) {
+	l := &Leser{Err: llm.ErrAntwortUngueltig}
+	if _, err := l.DokumentLesen(context.Background(), nil, "", nil); !errors.Is(err, llm.ErrAntwortUngueltig) {
 		t.Errorf("err = %v", err)
 	}
 	if l.Aufrufe() != 1 {

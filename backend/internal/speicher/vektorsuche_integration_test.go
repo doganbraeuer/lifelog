@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // einheitsvektor hat eine 1 an Stelle i, sonst 0. Zwei verschiedene
 // Einheitsvektoren haben cos 0, also Atlas-Score 0,5.
 func einheitsvektor(i int) []float32 {
-	v := make([]float32, modell.EmbeddingDimensionen)
+	v := make([]float32, llm.EmbeddingDimensionen)
 	v[i] = 1
 	return v
 }

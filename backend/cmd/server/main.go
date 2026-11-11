@@ -15,7 +15,7 @@ import (
 	"lifelog/backend/internal/api"
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/modell/gemini"
+	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/speicher"
 )
 

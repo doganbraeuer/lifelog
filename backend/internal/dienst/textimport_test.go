@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
-	"lifelog/backend/internal/modell/attrappe"
+	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/llm/fake"
 )
 
 // Ein synthetischer Text mit Leerraum am Rand, \r\n und Umlauten: Er muss
@@ -154,12 +154,12 @@ func TestTextImport_ModellFehlerSpeichertNichts(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"nicht erreichbar", modell.ErrNichtErreichbar},
-		{"Antwort ungültig", modell.ErrAntwortUngueltig},
+		{"nicht erreichbar", llm.ErrNichtErreichbar},
+		{"Antwort ungültig", llm.ErrAntwortUngueltig},
 	} {
 		t.Run(f.name, func(t *testing.T) {
 			a := textAufbau()
-			a.dienst.leser = &attrappe.Leser{Err: f.err}
+			a.dienst.leser = &fake.Leser{Err: f.err}
 			_, err := a.dienst.TextAusfuehren(context.Background(), TextUpload{Text: eingabe})
 			if !errors.Is(err, f.err) {
 				t.Errorf("err = %v", err)

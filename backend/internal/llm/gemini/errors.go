@@ -9,11 +9,11 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/config"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // uebersetzeFehler macht aus einem Fehler des Gemini-SDK einen Fehler, den
-// der Rest des Backends versteht (modell.ErrNichtErreichbar usw.).
+// der Rest des Backends versteht (llm.ErrNichtErreichbar usw.).
 //
 // Der API-Schlüssel wird aus jeder Meldung entfernt. Das SDK schickt ihn
 // zwar im Header und nicht in der URL, aber Fehlermeldungen fremder
@@ -30,7 +30,7 @@ func uebersetzeFehler(err error, schluessel string) error {
 		case api.Code == 408, api.Code == 429, api.Code >= 500:
 			// Zeitüberschreitung, Limit erreicht oder Störung bei Google:
 			// Später noch einmal versuchen kann helfen.
-			return fmt.Errorf("Gemini HTTP %d: %s: %w", api.Code, text, modell.ErrNichtErreichbar)
+			return fmt.Errorf("Gemini HTTP %d: %s: %w", api.Code, text, llm.ErrNichtErreichbar)
 		default:
 			// 400, 401, 403, 404: Unsere Anfrage oder Konfiguration ist falsch
 			// (z. B. ungültiger Schlüssel, unbekanntes Modell). Das ist ein
@@ -45,7 +45,7 @@ func uebersetzeFehler(err error, schluessel string) error {
 	}
 	var netz net.Error
 	if errors.Is(err, context.DeadlineExceeded) || asFehler(err, &netz) {
-		return fmt.Errorf("Gemini: %s: %w", text, modell.ErrNichtErreichbar)
+		return fmt.Errorf("Gemini: %s: %w", text, llm.ErrNichtErreichbar)
 	}
 	return fmt.Errorf("Gemini: %s", text)
 }

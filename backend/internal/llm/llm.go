@@ -1,10 +1,10 @@
-// Package modell ist die einzige Stelle, über die das Backend Sprach-,
+// Package llm ist die einzige Stelle, über die das Backend Sprach-,
 // Vision- und Embedding-Modelle aufruft (CLAUDE.md: „Anbieter austauschbar“).
 //
 // Der Rest des Backends kennt nur diese Schnittstellen. Ein anderer Anbieter
 // bedeutet: ein neues Unterpaket neben gemini/, das sie umsetzt, und eine
 // Zeile in cmd/server/main.go.
-package modell
+package llm
 
 import (
 	"context"

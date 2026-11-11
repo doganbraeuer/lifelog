@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Die Definition im Repo muss zur Länge der Embeddings passen, sonst lehnt
@@ -26,8 +26,8 @@ func TestVektorindexDefinition(t *testing.T) {
 		switch {
 		case f.Type == "vector" && f.Path == "embedding":
 			vektor = true
-			if f.NumDimensions != modell.EmbeddingDimensionen {
-				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, modell.EmbeddingDimensionen)
+			if f.NumDimensions != llm.EmbeddingDimensionen {
+				t.Errorf("numDimensions = %d, Embeddings haben %d", f.NumDimensions, llm.EmbeddingDimensionen)
 			}
 			if f.Similarity != "cosine" {
 				t.Errorf("similarity = %q; core.MinScore ist für cosine berechnet", f.Similarity)

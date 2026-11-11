@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // UploadSpeicher ist, was der Upload von der Datenbank braucht. Umgesetzt
@@ -65,15 +65,15 @@ func (d *DuplikatFehler) Is(ziel error) bool { return ziel == core.ErrDuplicate 
 // Hochladen führt den Upload aus (docs/API.md 3.1).
 type Hochladen struct {
 	speicher  UploadSpeicher
-	leser     modell.Leser
-	einbetter modell.Einbetter
+	leser     llm.Leser
+	einbetter llm.Einbetter
 	neueID    func() string
 	jetzt     func() time.Time
 }
 
 // NeuHochladen erstellt den Dienst. neueID vergibt ObjectIds
 // (speicher.NeueID).
-func NeuHochladen(s UploadSpeicher, l modell.Leser, e modell.Einbetter, neueID func() string) *Hochladen {
+func NeuHochladen(s UploadSpeicher, l llm.Leser, e llm.Einbetter, neueID func() string) *Hochladen {
 	return &Hochladen{speicher: s, leser: l, einbetter: e, neueID: neueID, jetzt: time.Now}
 }
 
@@ -95,8 +95,8 @@ const aufraeumTimeout = 10 * time.Second
 //
 // Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrDateiZuGross,
 // core.ErrDateitypNichtUnterstuetzt, *DuplikatFehler, core.ErrNichtLesbar,
-// core.ErrErkennungUngueltig, modell.ErrAntwortUngueltig,
-// modell.ErrNichtErreichbar oder ein sonstiger (interner) Fehler.
+// core.ErrErkennungUngueltig, llm.ErrAntwortUngueltig,
+// llm.ErrNichtErreichbar oder ein sonstiger (interner) Fehler.
 func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (core.Entry, error) {
 	// 1. Prüfen, ohne Netz und ohne Datenbank.
 	modul, err := core.CheckModule(u.Modul)
@@ -132,7 +132,7 @@ func (h *Hochladen) Ausfuehren(ctx context.Context, u Upload) (core.Entry, error
 //
 // Fehler: core.ErrUnbekanntesModul, core.ErrDateiLeer, core.ErrTextKeinUTF8,
 // core.ErrTextZuLang, *DuplikatFehler, core.ErrErkennungUngueltig,
-// modell.ErrAntwortUngueltig, modell.ErrNichtErreichbar oder ein interner
+// llm.ErrAntwortUngueltig, llm.ErrNichtErreichbar oder ein interner
 // Fehler.
 func (h *Hochladen) TextAusfuehren(ctx context.Context, u TextUpload) (core.Entry, error) {
 	modul, err := core.CheckModule(u.Modul)
@@ -199,7 +199,7 @@ func (h *Hochladen) verarbeiten(ctx context.Context, ein eingang) (core.Entry, e
 	}
 	if len(vektoren) != len(texte) {
 		return core.Entry{}, fmt.Errorf("%d Embeddings für %d Abschnitte: %w",
-			len(vektoren), len(texte), modell.ErrAntwortUngueltig)
+			len(vektoren), len(texte), llm.ErrAntwortUngueltig)
 	}
 
 	// IDs und Metadaten vergeben. Millisekunden, weil MongoDB Zeitpunkte so

@@ -26,7 +26,7 @@ import (
 
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 func liveGemini(t *testing.T) *Gemini {
@@ -206,7 +206,7 @@ func TestLive_Einbetten(t *testing.T) {
 		t.Fatalf("%d Vektoren für %d Abschnitte", len(vektoren), len(abschnitte))
 	}
 	for i, v := range vektoren {
-		if len(v) != modell.EmbeddingDimensionen {
+		if len(v) != llm.EmbeddingDimensionen {
 			t.Errorf("Vektor %d hat %d Dimensionen", i, len(v))
 		}
 		t.Logf("Vektor %d: Länge (Norm) %.4f", i, norm(v))

@@ -13,7 +13,7 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // antwort baut eine (synthetische) Gemini-Antwort mit text als Inhalt.
@@ -89,7 +89,7 @@ func TestErkennungAusAntwort_Ungueltig(t *testing.T) {
 	}
 	for name, resp := range faelle {
 		t.Run(name, func(t *testing.T) {
-			if _, err := erkennungAusAntwort(resp); !errors.Is(err, modell.ErrAntwortUngueltig) {
+			if _, err := erkennungAusAntwort(resp); !errors.Is(err, llm.ErrAntwortUngueltig) {
 				t.Errorf("erwartet ErrAntwortUngueltig, bekommen %v", err)
 			}
 		})
@@ -174,10 +174,10 @@ func TestUebersetzeFehler(t *testing.T) {
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
 			err := uebersetzeFehler(f.err, schluessel)
-			if got := errors.Is(err, modell.ErrNichtErreichbar); got != f.nichtErreichbar {
+			if got := errors.Is(err, llm.ErrNichtErreichbar); got != f.nichtErreichbar {
 				t.Errorf("ErrNichtErreichbar = %v, erwartet %v (%v)", got, f.nichtErreichbar, err)
 			}
-			if errors.Is(err, modell.ErrAntwortUngueltig) {
+			if errors.Is(err, llm.ErrAntwortUngueltig) {
 				t.Errorf("Fehler beim Aufruf ist keine ungültige Antwort: %v", err)
 			}
 			if strings.Contains(err.Error(), schluessel) {
@@ -235,7 +235,7 @@ func TestStapel(t *testing.T) {
 
 func TestVektorenAusAntwort(t *testing.T) {
 	vektor := func(n int) *genai.ContentEmbedding { return &genai.ContentEmbedding{Values: make([]float32, n)} }
-	d := modell.EmbeddingDimensionen
+	d := llm.EmbeddingDimensionen
 
 	v, err := vektorenAusAntwort(&genai.EmbedContentResponse{Embeddings: []*genai.ContentEmbedding{vektor(d), vektor(d)}}, 2)
 	if err != nil || len(v) != 2 {
@@ -252,7 +252,7 @@ func TestVektorenAusAntwort(t *testing.T) {
 		"falsche Länge":       {&genai.EmbedContentResponse{Embeddings: []*genai.ContentEmbedding{vektor(3072)}}, 1},
 		"nil-Eintrag":         {&genai.EmbedContentResponse{Embeddings: []*genai.ContentEmbedding{nil}}, 1},
 	} {
-		if _, err := vektorenAusAntwort(f.resp, f.anzahl); !errors.Is(err, modell.ErrAntwortUngueltig) {
+		if _, err := vektorenAusAntwort(f.resp, f.anzahl); !errors.Is(err, llm.ErrAntwortUngueltig) {
 			t.Errorf("%s: erwartet ErrAntwortUngueltig, bekommen %v", name, err)
 		}
 	}

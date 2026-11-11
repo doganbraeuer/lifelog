@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // uhr ist eine virtuelle Uhr: schlafen stellt sie nur vor und merkt sich
@@ -173,7 +173,7 @@ func (n *netzAttrappe) einbetten(_ context.Context, m string, inhalte []*genai.C
 	}
 	resp := &genai.EmbedContentResponse{}
 	for range inhalte {
-		resp.Embeddings = append(resp.Embeddings, &genai.ContentEmbedding{Values: make([]float32, modell.EmbeddingDimensionen)})
+		resp.Embeddings = append(resp.Embeddings, &genai.ContentEmbedding{Values: make([]float32, llm.EmbeddingDimensionen)})
 	}
 	return resp, nil
 }
@@ -234,7 +234,7 @@ func TestDokumentLesen_WiederholungUndErsatz(t *testing.T) {
 			if !slices.Equal(n.aufrufe, f.aufrufe) {
 				t.Errorf("Aufrufe = %v, erwartet %v", n.aufrufe, f.aufrufe)
 			}
-			if got := errors.Is(err, modell.ErrNichtErreichbar); got != f.nichtErreichbar {
+			if got := errors.Is(err, llm.ErrNichtErreichbar); got != f.nichtErreichbar {
 				t.Errorf("ErrNichtErreichbar = %v, erwartet %v (%v)", got, f.nichtErreichbar, err)
 			}
 			if f.erfolg && (err != nil || e.Type != "laborbefund") {
@@ -261,7 +261,7 @@ func TestEinbetten_WiederholungOhneErsatz(t *testing.T) {
 	// Bleibt das Embedding-Modell überlastet, gibt es keinen Ersatz.
 	n = &netzAttrappe{fehler: map[string][]error{"embed": {e503, e503, e503}}}
 	g = testGemini(n, "ersatz")
-	if _, err := g.FrageEinbetten(context.Background(), "x"); !errors.Is(err, modell.ErrNichtErreichbar) {
+	if _, err := g.FrageEinbetten(context.Background(), "x"); !errors.Is(err, llm.ErrNichtErreichbar) {
 		t.Errorf("err = %v", err)
 	}
 	if !slices.Equal(n.aufrufe, []string{"embed", "embed", "embed"}) {

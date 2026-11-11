@@ -9,7 +9,7 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // leseAnweisung ist die Systemanweisung für das Vision-LLM. Die erlaubten
@@ -141,25 +141,25 @@ func erkennungAusAntwort(resp *genai.GenerateContentResponse) (core.Extraction, 
 // Gemeinsam für Lesen und Antworten.
 func textAusAntwort(resp *genai.GenerateContentResponse) (string, error) {
 	if resp == nil {
-		return "", fmt.Errorf("leere Antwort: %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("leere Antwort: %w", llm.ErrAntwortUngueltig)
 	}
 	if fb := resp.PromptFeedback; fb != nil && fb.BlockReason != "" {
-		return "", fmt.Errorf("Anfrage blockiert (%s): %w", fb.BlockReason, modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Anfrage blockiert (%s): %w", fb.BlockReason, llm.ErrAntwortUngueltig)
 	}
 	if len(resp.Candidates) == 0 || resp.Candidates[0] == nil {
-		return "", fmt.Errorf("keine Antwort-Kandidaten: %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("keine Antwort-Kandidaten: %w", llm.ErrAntwortUngueltig)
 	}
 	switch grund := resp.Candidates[0].FinishReason; grund {
 	case "", genai.FinishReasonStop:
 		// vollständig
 	case genai.FinishReasonMaxTokens:
-		return "", fmt.Errorf("Antwort abgeschnitten (Token-Grenze): %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Antwort abgeschnitten (Token-Grenze): %w", llm.ErrAntwortUngueltig)
 	default:
-		return "", fmt.Errorf("Antwort beendet mit %s: %w", grund, modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("Antwort beendet mit %s: %w", grund, llm.ErrAntwortUngueltig)
 	}
 	text := strings.TrimSpace(resp.Text())
 	if text == "" {
-		return "", fmt.Errorf("leerer Antworttext: %w", modell.ErrAntwortUngueltig)
+		return "", fmt.Errorf("leerer Antworttext: %w", llm.ErrAntwortUngueltig)
 	}
 	return text, nil
 }
@@ -172,7 +172,7 @@ func erkennungAusText(text string) (core.Extraction, error) {
 		return core.Extraction{}, err
 	}
 	if a.Lesbar == nil {
-		return core.Extraction{}, fmt.Errorf("Feld lesbar fehlt: %w", modell.ErrAntwortUngueltig)
+		return core.Extraction{}, fmt.Errorf("Feld lesbar fehlt: %w", llm.ErrAntwortUngueltig)
 	}
 	e := a.zuErkennung()
 	e.Readable = *a.Lesbar
@@ -197,14 +197,14 @@ func textErkennungAusText(text string) (core.Extraction, error) {
 func erkennungJSONLesen(text string) (erkennungJSON, error) {
 	text = ohneCodeBlock(text)
 	if text == "" {
-		return erkennungJSON{}, fmt.Errorf("leerer Antworttext: %w", modell.ErrAntwortUngueltig)
+		return erkennungJSON{}, fmt.Errorf("leerer Antworttext: %w", llm.ErrAntwortUngueltig)
 	}
 	var a erkennungJSON
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		// Typ-Fehler wie "cannot unmarshal number into … infos.wert" sind
 		// hilfreich und enthalten keine Werte. Syntaxfehler nennen nur die
 		// Position.
-		return erkennungJSON{}, fmt.Errorf("JSON nicht lesbar (%s): %w", jsonFehlerOhneInhalt(err), modell.ErrAntwortUngueltig)
+		return erkennungJSON{}, fmt.Errorf("JSON nicht lesbar (%s): %w", jsonFehlerOhneInhalt(err), llm.ErrAntwortUngueltig)
 	}
 	return a, nil
 }

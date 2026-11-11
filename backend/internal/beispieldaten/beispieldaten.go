@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Feste IDs der Testeinträge. Fest, damit cmd/testdaten genau diese wieder
@@ -155,7 +155,7 @@ func Wegwerf(id, dateiID string, jetzt time.Time) (core.Entry, []core.Chunk) {
 	}
 	abschnitte := Abschnitte(e)
 	for i := range abschnitte {
-		v := make([]float32, modell.EmbeddingDimensionen)
+		v := make([]float32, llm.EmbeddingDimensionen)
 		v[0] = 1
 		abschnitte[i].Embedding = v
 	}

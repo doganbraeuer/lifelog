@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // FragenSpeicher ist, was die Suche von der Datenbank braucht. Umgesetzt
@@ -18,11 +18,11 @@ type FragenSpeicher interface {
 // Fragen beantwortet Fragen zu den Dokumenten (docs/API.md 3.6).
 type Fragen struct {
 	speicher  FragenSpeicher
-	einbetter modell.Einbetter
-	antworter modell.Antworter
+	einbetter llm.Einbetter
+	antworter llm.Antworter
 }
 
-func NeuFragen(s FragenSpeicher, e modell.Einbetter, a modell.Antworter) *Fragen {
+func NeuFragen(s FragenSpeicher, e llm.Einbetter, a llm.Antworter) *Fragen {
 	return &Fragen{speicher: s, einbetter: e, antworter: a}
 }
 
@@ -40,7 +40,7 @@ func NeuFragen(s FragenSpeicher, e modell.Einbetter, a modell.Antworter) *Fragen
 // Ins Log kommen weder Frage noch Abschnittstexte, nur Zahlen.
 //
 // Fehler: core.ErrUnbekanntesModul, core.ErrFrageFehlt, core.ErrFrageZuLang,
-// modell.ErrNichtErreichbar, modell.ErrAntwortUngueltig oder intern.
+// llm.ErrNichtErreichbar, llm.ErrAntwortUngueltig oder intern.
 func (f *Fragen) Ausfuehren(ctx context.Context, frage, modul string) (core.Answer, error) {
 	modul, err := core.CheckModule(modul)
 	if err != nil {

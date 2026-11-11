@@ -11,7 +11,7 @@ import (
 
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Fehlercodes für den Upload (API.md 3.1).
@@ -154,11 +154,11 @@ func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a a
 	case errors.Is(err, core.ErrUnreadable):
 		schreibeFehler(w, http.StatusUnprocessableEntity, CodeNichtLesbar,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)
-	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, modell.ErrAntwortUngueltig):
+	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, llm.ErrAntwortUngueltig):
 		slog.Warn("Auslesen fehlgeschlagen", "fehler", err)
 		schreibeFehler(w, http.StatusBadGateway, CodeAuslesenFehlgeschlagen,
 			"Das Dokument konnte nicht ausgelesen werden. Bitte versuche es noch einmal.", nil)
-	case errors.Is(err, modell.ErrNichtErreichbar):
+	case errors.Is(err, llm.ErrNichtErreichbar):
 		slog.Warn("Modell nicht erreichbar", "fehler", err)
 		schreibeFehler(w, http.StatusServiceUnavailable, CodeModellNichtErreichbar,
 			"Die Texterkennung ist gerade nicht erreichbar. Bitte versuche es später noch einmal.", nil)

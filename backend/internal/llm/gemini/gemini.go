@@ -12,7 +12,7 @@ import (
 	"google.golang.org/genai"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Gesamtlimits je Vorgang, inklusive Wiederholungen und Ersatzmodell.
@@ -66,9 +66,9 @@ type Gemini struct {
 }
 
 var (
-	_ modell.Leser     = (*Gemini)(nil)
-	_ modell.Einbetter = (*Gemini)(nil)
-	_ modell.Antworter = (*Gemini)(nil)
+	_ llm.Leser     = (*Gemini)(nil)
+	_ llm.Einbetter = (*Gemini)(nil)
+	_ llm.Antworter = (*Gemini)(nil)
 )
 
 // Neu erstellt den Client. Es findet noch kein Netzwerkaufruf statt.
@@ -174,7 +174,7 @@ func (g *Gemini) erzeugenMitErsatz(ctx context.Context, limit time.Duration, auf
 
 	// ctx.Err() == nil: Das Gesamtlimit läuft noch und die App ist noch da.
 	// (Abgelaufen sein darf nur hauptCtx, dann ist die Reserve übrig.)
-	if errors.Is(err, modell.ErrNichtErreichbar) && g.e.ErsatzModell != "" && ctx.Err() == nil {
+	if errors.Is(err, llm.ErrNichtErreichbar) && g.e.ErsatzModell != "" && ctx.Err() == nil {
 		rest := time.Duration(0)
 		if frist, ok := ctx.Deadline(); ok {
 			rest = time.Until(frist).Round(time.Millisecond)
@@ -261,7 +261,7 @@ func (g *Gemini) FrageEinbetten(ctx context.Context, frage string) ([]float32, e
 
 // einbetten: ein Aufruf mit Wiederholung bei 429/503, ohne Ersatzmodell.
 func (g *Gemini) einbetten(ctx context.Context, eingaben []string) ([][]float32, error) {
-	dimensionen := int32(modell.EmbeddingDimensionen)
+	dimensionen := int32(llm.EmbeddingDimensionen)
 	cfg := &genai.EmbedContentConfig{OutputDimensionality: &dimensionen}
 	inhalte := embeddingInhalte(eingaben)
 

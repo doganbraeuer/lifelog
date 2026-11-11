@@ -1,7 +1,7 @@
-// Package attrappe ersetzt die Modelle in Tests: kein Netz, keine Kosten,
+// Package fake ersetzt die Modelle in Tests: kein Netz, keine Kosten,
 // vorhersagbare Antworten. Die Attrappen zählen ihre Aufrufe, damit Tests
 // prüfen können, dass z. B. bei einem Duplikat kein Modell gefragt wurde.
-package attrappe
+package fake
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"lifelog/backend/internal/core"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/llm"
 )
 
 // Leser liefert immer Erkennung bzw. Err.
@@ -24,7 +24,7 @@ type Leser struct {
 	letzterText string
 }
 
-var _ modell.Leser = (*Leser)(nil)
+var _ llm.Leser = (*Leser)(nil)
 
 func (l *Leser) DokumentLesen(_ context.Context, _ []byte, _ string, _ []string) (core.Extraction, error) {
 	l.mu.Lock()
@@ -67,7 +67,7 @@ type Einbetter struct {
 	aufrufe int
 }
 
-var _ modell.Einbetter = (*Einbetter)(nil)
+var _ llm.Einbetter = (*Einbetter)(nil)
 
 func (e *Einbetter) AbschnitteEinbetten(_ context.Context, texte []string) ([][]float32, error) {
 	e.mu.Lock()
@@ -111,7 +111,7 @@ type Antworter struct {
 	fundstellen []core.Source
 }
 
-var _ modell.Antworter = (*Antworter)(nil)
+var _ llm.Antworter = (*Antworter)(nil)
 
 func (a *Antworter) Antworten(_ context.Context, frage string, f []core.Source) (string, error) {
 	a.mu.Lock()
@@ -136,10 +136,10 @@ func (a *Antworter) LetzteAnfrage() (string, []core.Source) {
 }
 
 // Vektor erzeugt aus einem Text einen festen Pseudo-Vektor mit
-// modell.EmbeddingDimensionen Einträgen. Er hat keine Bedeutung, ist aber
+// llm.EmbeddingDimensionen Einträgen. Er hat keine Bedeutung, ist aber
 // deterministisch, das reicht für Tests.
 func Vektor(text string) []float32 {
-	v := make([]float32, modell.EmbeddingDimensionen)
+	v := make([]float32, llm.EmbeddingDimensionen)
 	block := sha256.Sum256([]byte(text))
 	for i := range v {
 		if i%8 == 0 && i > 0 {
