@@ -21,7 +21,7 @@ const VectorIndexName = "abschnitte_vektor"
 // The same file is pasted when creating the index in the Atlas UI
 // (backend/README.md, "Vektorindex").
 //
-//go:embed abschnitte_vektor.json
+//go:embed chunks_vector.json
 var vectorIndexDefinition []byte
 
 // numCandidates: Atlas considers this many candidates before it picks the
