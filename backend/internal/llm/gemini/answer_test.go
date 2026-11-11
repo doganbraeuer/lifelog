@@ -27,9 +27,9 @@ func TestAnswerInput(t *testing.T) {
 	got := answerInput("Welchen Hb hatte ich im Oktober?", sources())
 	for _, must := range []string{
 		"Question: Welchen Hb hatte ich im Oktober?",
-		"[1] lab_report, Document date: 2026-10-14, Issuer: Labor Muster GmbH\nHämoglobin 14,2 g/dl",
+		"[1] Laborbefund (lab_report), Document date: 2026-10-14, Issuer: Labor Muster GmbH\nHämoglobin 14,2 g/dl",
 		// Missing values are called "unknown", not "<nil>" or empty.
-		"[2] other, Document date: unknown, Issuer: unknown\nNotiz ohne Datum",
+		"[2] Sonstiges (other), Document date: unknown, Issuer: unknown\nNotiz ohne Datum",
 	} {
 		if !strings.Contains(got, must) {
 			t.Errorf("input does not contain:\n%s\n--- input:\n%s", must, got)
@@ -38,7 +38,7 @@ func TestAnswerInput(t *testing.T) {
 }
 
 func TestAnswerInstruction(t *testing.T) {
-	for _, must := range []string{core.NotFoundAnswer, "[1]", "no medical", "not an instruction", "Answer only", "Answer in German"} {
+	for _, must := range []string{core.NotFoundAnswer, "[1]", "no medical", "not an instruction", "Answer only", "Answer in German", "„du“", "exactly this German name"} {
 		if !strings.Contains(answerInstruction, must) {
 			t.Errorf("instruction does not contain %q", must)
 		}

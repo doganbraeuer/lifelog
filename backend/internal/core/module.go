@@ -19,6 +19,28 @@ var moduleTypes = map[string][]string{
 	"health": {"doctor_letter", "lab_report", "prescription", "other"},
 }
 
+// typeNames are the German display names of the types, exactly as the app
+// shows them (app/lib/module/modul_katalog.dart). They are user-facing and
+// therefore German. The answer prompt uses them, so that answers name a
+// document the same way as the app ("Laborbefund", not "Laborbericht").
+var typeNames = map[string]map[string]string{
+	"health": {
+		"doctor_letter": "Arztbrief",
+		"lab_report":    "Laborbefund",
+		"prescription":  "Rezept",
+		"other":         "Sonstiges",
+	},
+}
+
+// TypeName returns the German display name of a type in its module. For an
+// unknown type it returns the code itself, so nothing is lost.
+func TypeName(module, typ string) string {
+	if name, ok := typeNames[module][typ]; ok {
+		return name
+	}
+	return typ
+}
+
 // ErrUnknownModule: the value is not a known module.
 var ErrUnknownModule = errors.New("unknown module")
 

@@ -197,6 +197,12 @@ func TestLive_Answer(t *testing.T) {
 	if !strings.Contains(text, "Hämoglobin") {
 		t.Error("answer is not German (Hämoglobin missing)")
 	}
+	// Informal like the app, and the type named as in the app.
+	for _, word := range []string{"Ihr ", "Ihre ", "Laborbericht"} {
+		if strings.Contains(text, word) {
+			t.Errorf("answer contains %q (want „du“ and „Laborbefund“)", word)
+		}
+	}
 	for _, word := range []string{" the ", "The ", " was ", "hemoglobin"} {
 		if strings.Contains(text, word) {
 			t.Errorf("answer contains %q: English", word)

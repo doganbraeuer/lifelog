@@ -43,3 +43,19 @@ func TestTypes(t *testing.T) {
 		t.Errorf("Modules() = %v", got)
 	}
 }
+
+func TestTypeName_EveryTypeHasAName(t *testing.T) {
+	for _, module := range Modules() {
+		for _, typ := range AllowedTypes(module) {
+			if name := TypeName(module, typ); name == typ || name == "" {
+				t.Errorf("type %s in %s has no display name", typ, module)
+			}
+		}
+	}
+	if TypeName("health", "lab_report") != "Laborbefund" {
+		t.Error("lab_report must be called Laborbefund, as in the app")
+	}
+	if TypeName("health", "x_ray") != "x_ray" {
+		t.Error("unknown types keep their code")
+	}
+}
