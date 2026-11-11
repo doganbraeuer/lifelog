@@ -90,14 +90,43 @@ Chosen: **2500**.
   of the vision LLM.
 
 Images with a long side of at least 2500 pixels are not touched; real phone
-photos (3,000–4,000 pixels) are therefore read as they are. Next: measure a
-real phone photo of a printed demo document (`-extra`, see below).
+photos (3,000–4,000 pixels) are therefore read as they are.
 
-## Measuring a real photo
+## 2026-11-11: a real phone photo
+
+Result: [2026-11-11-tesseract-phone.md](2026-11-11-tesseract-phone.md).
+
+Lab report 01 was printed and photographed with an iPhone 14 Pro Max
+(2268 × 4032 pixels, JPEG): `demo/phone/01_lab_report_2026-01-20_phone.jpg`.
+Before it went into the repository, its metadata (EXIF with the GPS
+position, XMP) was removed; the image data is unchanged byte for byte.
+
+| Variant | Match | Facts (value + unit) | Facts (value only) | Mean OCR confidence | Time |
+|---|---|---|---|---|---|
+| Phone photo (real) | **100 %** | 5/5 | 5/5 | 91 | 0.7 s |
+| Demo photo of the same document (upscaled) | 57 % | 2/5 | 5/5 | 92 | 0.6 s |
+
+The real photo has enough pixels, so it is not scaled, and every unit is
+read as `mg/dl`; on the synthetic photo of the same document three of them
+are `mgj/dl`. The measurement now always includes `demo/phone/` (variant
+`phone`, its own row "Phone photo (real)" in the summary).
+
+**Decision (Dogan, 2026-11-11): Tesseract is enough for now.** PaddleOCR
+only if further real photos do clearly worse. One photo is a small sample
+(good light, flat paper, held straight); worth adding next: a photo in poor
+light, a crumpled page, one taken at an angle.
+
+The same day, `go run ./cmd/ocrcheck -recheck -write` checked every stored
+entry again with the upscaling: only the eye test uploaded by the app (L3)
+changed, from 3 of 6 to 6 of 6 confirmed.
+
+## Adding a real photo
 
 Print a demo document, photograph it with a phone and save the photo (JPEG
-or PNG; HEIC is not supported, see API.md) named after the document with
-`_phone`, e.g. `01_lab_report_2026-01-20_phone.jpg`. Then:
+or PNG) named after the document with `_phone`, e.g.
+`01_lab_report_2026-01-20_phone.jpg`. Remove the location before it goes
+into `demo/phone/` (on the iPhone: share, Options, switch off Location).
+To measure it once without adding it:
 
 ```sh
 cd backend && go run ./cmd/ocrcheck -values -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg

@@ -91,6 +91,7 @@ they are missing.
 ```sh
 go run ./cmd/ocrcheck            # show what it would fill in for old entries, and measure demo/
 go run ./cmd/ocrcheck -write     # store the verification of entries that were never checked
+go run ./cmd/ocrcheck -recheck   # show what checking every entry again would change (+ -write: store it)
 go run ./cmd/ocrcheck -values -out ../docs/ocr/<date>-tesseract.md   # measurement report
 go run ./cmd/ocrcheck -upscale 3000                    # measure another scaling (0 = off)
 go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a real photo
@@ -202,7 +203,7 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `cmd/seed` | Insert or remove the synthetic seed entries |
 | `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
 | `cmd/models` | List available Gemini models |
-| `cmd/ocrcheck` | Fill in the verification of old entries (`-write`), measure OCR on `demo/` |
+| `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
 | `internal/config` | Read and check environment variables, mask secrets |
 | `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original |

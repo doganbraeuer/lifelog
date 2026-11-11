@@ -4,6 +4,8 @@
 //
 //	go run ./cmd/ocrcheck                  # show what it would fill in, and measure
 //	go run ./cmd/ocrcheck -write           # fill in the verification of old entries
+//	go run ./cmd/ocrcheck -recheck         # show what checking every entry again would change
+//	go run ./cmd/ocrcheck -recheck -write  # check every entry again and store the result
 //	go run ./cmd/ocrcheck -values -out ../docs/ocr/2026-11-11-tesseract.md
 //	go run ./cmd/ocrcheck -upscale 0       # measure without scaling small images up
 //	go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
@@ -14,7 +16,9 @@
 //     (unchecked/not_run). ocrcheck reads their originals from the database
 //     and checks them as the upload does. Without -write it only prints
 //     the result it would store; with -write it stores the words
-//     (collection ocr) and the verification.
+//     (collection ocr) and the verification. With -recheck it checks every
+//     entry again (e.g. after a change to OCR or the rules), not only the
+//     unchecked ones, and shows old → new; it stores only with -write.
 //  2. Words without an entry: lists stored words whose entry no longer
 //     exists (deleting should remove them). Only reports, deletes nothing.
 //  3. Measure: reads every file in demo/ (PDFs once via the text layer and
@@ -48,7 +52,8 @@ import (
 )
 
 func main() {
-	write := flag.Bool("write", false, "store the verification of entries that were never checked (default: only show it)")
+	write := flag.Bool("write", false, "store the verification (default: only show it)")
+	recheck := flag.Bool("recheck", false, "check every entry again, not only those that were never checked")
 	demo := flag.String("demo", "../demo", "folder with the demo documents")
 	out := flag.String("out", "", "also write the measurement as Markdown to this file, e.g. ../docs/ocr/2026-11-11-tesseract.md")
 	values := flag.Bool("values", false, "list the fields that were not confirmed, with expected value and OCR row")
@@ -56,7 +61,7 @@ func main() {
 	extra := flag.String("extra", "", "comma-separated files outside demo/ to measure too, named like the document, e.g. 01_lab_report_2026-01-20_phone.jpg")
 	flag.Parse()
 
-	if err := run(options{write: *write, demoDir: *demo, out: *out, values: *values, upscale: *upscale, extra: *extra}); err != nil {
+	if err := run(options{write: *write, recheck: *recheck, demoDir: *demo, out: *out, values: *values, upscale: *upscale, extra: *extra}); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
@@ -64,6 +69,7 @@ func main() {
 
 type options struct {
 	write   bool
+	recheck bool
 	demoDir string
 	out     string
 	values  bool
@@ -121,7 +127,7 @@ func run(o options) error {
 	}
 	fmt.Printf("Database %q: %d entries. Programs: %s. No model is called.\n\n", c.MongoDB, len(entries), programs)
 
-	if err := fillIn(ctx, service.NewVerifier(db, pipeline), entries, o.write); err != nil {
+	if err := fillIn(ctx, service.NewVerifier(db, pipeline), entries, o.recheck, o.write); err != nil {
 		return err
 	}
 	if err := orphans(ctx, db, entries); err != nil {
@@ -167,29 +173,41 @@ func allEntries(ctx context.Context, db *store.Store) ([]core.Entry, error) {
 	return out, nil
 }
 
-// fillIn checks the entries that were never checked and, with write,
-// stores the result.
-func fillIn(ctx context.Context, v *service.Verifier, entries []core.Entry, write bool) error {
+// fillIn checks the entries that were never checked (with recheck: all
+// entries) and, with write, stores the result.
+func fillIn(ctx context.Context, v *service.Verifier, entries []core.Entry, recheck, write bool) error {
 	var todo []core.Entry
 	for _, e := range entries {
-		if service.NeedsCheck(e) {
+		if recheck || service.NeedsCheck(e) {
 			todo = append(todo, e)
 		}
 	}
-	fmt.Printf("Fill in: %d of %d entries were never checked (not_run).\n", len(todo), len(entries))
+	if recheck {
+		fmt.Printf("Recheck: all %d entries.\n", len(todo))
+	} else {
+		fmt.Printf("Fill in: %d of %d entries were never checked (not_run).\n", len(todo), len(entries))
+	}
+	changed := 0
 	for _, e := range todo {
 		ver, words, err := v.Check(ctx, e)
 		if err != nil {
 			return fmt.Errorf("entry %s: %w", e.ID, err)
 		}
-		result := ver.Status + "/" + ver.Reason
-		if ver.Status == core.VerificationChecked {
-			result = fmt.Sprintf("checked via %s, %d of %d confirmed", ver.Source, ver.Confirmed, ver.Total)
-			if words != nil {
-				result += fmt.Sprintf(", %d words", len(words.Words))
+		before, after := result(e.Verification), result(ver)
+		line := after
+		if recheck {
+			line = before + " → " + after
+			if before == after {
+				line = "unchanged: " + after
 			}
 		}
-		fmt.Printf("  %s  %-13s %-10s %-45s → %s\n", e.ID, e.Type, deref(e.DocumentDate), e.File.FileName, result)
+		if before != after {
+			changed++
+		}
+		if words != nil {
+			line += fmt.Sprintf(", %d words", len(words.Words))
+		}
+		fmt.Printf("  %s  %-13s %-10s %-45s %s\n", e.ID, e.Type, deref(e.DocumentDate), e.File.FileName, line)
 		if write {
 			if err := v.Save(ctx, e.ID, ver, words); err != nil {
 				return fmt.Errorf("entry %s: %w", e.ID, err)
@@ -199,12 +217,20 @@ func fillIn(ctx context.Context, v *service.Verifier, entries []core.Entry, writ
 	switch {
 	case len(todo) == 0:
 	case write:
-		fmt.Printf("Stored for %d entries.\n", len(todo))
+		fmt.Printf("Stored for %d entries (%d changed).\n", len(todo), changed)
 	default:
-		fmt.Println("Dry run: nothing was written. Run with -write to store these results.")
+		fmt.Printf("Dry run: nothing was written (%d would change). Run with -write to store these results.\n", changed)
 	}
 	fmt.Println()
 	return nil
+}
+
+// result: "checked via ocr, 5 of 6 confirmed" or "unchecked/not_run".
+func result(v core.Verification) string {
+	if v.Status != core.VerificationChecked {
+		return v.Status + "/" + v.Reason
+	}
+	return fmt.Sprintf("checked via %s, %d of %d confirmed", v.Source, v.Confirmed, v.Total)
 }
 
 // orphans reports stored words whose entry no longer exists.
@@ -295,7 +321,11 @@ func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir
 			if variant == "photo" && strings.HasPrefix(f.Path, "live") {
 				variant = "photo (live)" // a second photo of the same document, see demo/README.md
 			}
-			rep.Rows = append(rep.Rows, measureFile(ctx, p, f, data, mime, variant, kindPhoto, ref))
+			kind := kindPhoto
+			if variant == "phone" {
+				kind = kindPhone
+			}
+			rep.Rows = append(rep.Rows, measureFile(ctx, p, f, data, mime, variant, kind, ref))
 		}
 	}
 	return rep, nil

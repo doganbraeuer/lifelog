@@ -346,7 +346,7 @@ the text layer of a PDF, or OCR for photos and scans.
 | Programme mit Version und Sprache (Anzeige) | engine | `OCRResult.Engine` |
 | Rastern (PDF-Seite → Bild) | render | `poppler.RenderPage` |
 | Hochskalieren kleiner Bilder vor OCR | upscale | `tesseract.MinLongSide`, `DefaultMinLongSide`; `cmd/ocrcheck -upscale` |
-| echtes Handyfoto eines ausgedruckten Demo-Dokuments | phone photo, suffix `_phone` | `cmd/ocrcheck -extra` |
+| echtes Handyfoto eines ausgedruckten Demo-Dokuments | phone photo, suffix `_phone` | `demo/phone/`, `cmd/ocrcheck -extra` |
 
 ### API (entry JSON)
 
@@ -370,6 +370,7 @@ the text layer of a PDF, or OCR for photos and scans.
 | collection mit den gelesenen Wörtern (Textebene oder OCR) | `ocr` (`_id` = entry ID; `engine`, `pages`, `words`) |
 | entry field in MongoDB | `verification` (missing in old entries → `unchecked`/`not_run`) |
 | Messung der OCR-Qualität, Prüfung nachtragen | `cmd/ocrcheck` (`-write`, `-values`, `-out`, `-demo`) |
+| alle Einträge neu prüfen | recheck | `cmd/ocrcheck -recheck` (stores only with `-write`) |
 | Prüfung nachtragen (Service) | verifier | `service.Verifier`, `Check`, `Save`, `NeedsCheck` |
 | Messergebnisse | `docs/ocr/` |
 | OCR wählen / ausschalten | env `OCR_ENGINE` (`tesseract`, `none`) |

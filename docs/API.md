@@ -1148,10 +1148,14 @@ same way with `start`/`end` in `fullText`.
   pixels, at most twice the size): photos 93 %, every value read, 86 % of
   the facts with unit (the rest are misread units, which stay
   unconfirmed). The comparison stays strict (no tolerance for OCR
-  confusions). PaddleOCR only if real phone photos turn out worse.
+  confusions). A real phone photo of a printed demo document
+  (`demo/phone/`, iPhone, 2268 × 4032) reached 100 %. Decision: Tesseract
+  is enough for now; PaddleOCR only if further real photos do clearly
+  worse.
 - **Old entries:** entries stored before 2026-11-11 are `not_run`.
   `go run ./cmd/ocrcheck -write` fills in their verification (without
-  `-write` it only shows what it would store).
+  `-write` it only shows what it would store). After a change to OCR or
+  the rules, `-recheck -write` checks every entry again.
   `internal/ocr` is an interface like `internal/llm`; another engine is a
   new subpackage.
 - **Badge in the timeline:** the short form could carry `matchPercent`.

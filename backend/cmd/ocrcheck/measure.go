@@ -19,10 +19,11 @@ const (
 	kindPDFText = "PDF, text layer"
 	kindPDFOCR  = "PDF, OCR (forced)"
 	kindPhoto   = "Photo"
+	kindPhone   = "Phone photo (real)"
 	kindText    = "Text import"
 )
 
-var kindOrder = []string{kindPDFText, kindPDFOCR, kindPhoto, kindText}
+var kindOrder = []string{kindPDFText, kindPDFOCR, kindPhoto, kindPhone, kindText}
 
 // demoFile is one file in demo/, or one given with -extra.
 type demoFile struct {
@@ -48,7 +49,8 @@ func (f demoFile) variantName() string {
 }
 
 // documentKey: "04_prescription_2026-05-18_app.png" → "04_prescription_2026-05-18".
-// "_phone" marks a real phone photo of a printed demo document (-extra).
+// "_phone" marks a real phone photo of a printed demo document (demo/phone/
+// or -extra).
 func documentKey(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 	for _, suffix := range []string{"_photo", "_app", "_phone"} {
@@ -80,10 +82,10 @@ func extraFiles(paths []string) ([]demoFile, error) {
 }
 
 // demoFiles lists the files in the demo folder (pdf/, photos/, live/,
-// texts/), sorted by document and variant.
+// phone/, texts/), sorted by document and variant.
 func demoFiles(dir string) ([]demoFile, error) {
 	var files []demoFile
-	for _, sub := range []string{"pdf", "photos", "live", "texts"} {
+	for _, sub := range []string{"pdf", "photos", "live", "phone", "texts"} {
 		entries, err := os.ReadDir(filepath.Join(dir, sub))
 		if err != nil {
 			return nil, err
