@@ -17,7 +17,7 @@ var (
 // correctionEntry: synthetic lab report without corrections.
 func correctionEntry() Entry {
 	return Entry{
-		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit", Type: "laborbefund",
+		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "health", Type: "lab_report",
 		DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH"),
 		FullText: "Hämoglobin 14,2 g/dl …",
 		Facts: []Fact{
@@ -107,16 +107,16 @@ func TestCorrect_TypeTwice(t *testing.T) {
 	// Catches the pointer bug: read must not return a pointer into the field
 	// for the type, otherwise "recognized" would be the new value after
 	// writing and the correction would disappear as "reset".
-	e, _ := mustCorrect(t, correctionEntry(), Change{Type: ptr("arztbrief")}, t1)
+	e, _ := mustCorrect(t, correctionEntry(), Change{Type: ptr("doctor_letter")}, t1)
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "type", Recognized: ptr("laborbefund"), Corrected: ptr("arztbrief"), CorrectedAt: t1})
+		Correction{Field: "type", Recognized: ptr("lab_report"), Corrected: ptr("doctor_letter"), CorrectedAt: t1})
 
-	e, _ = mustCorrect(t, e, Change{Type: ptr("rezept")}, t2)
-	if e.Type != "rezept" {
+	e, _ = mustCorrect(t, e, Change{Type: ptr("prescription")}, t2)
+	if e.Type != "prescription" {
 		t.Errorf("type = %s", e.Type)
 	}
 	checkCorrections(t, e.Corrections,
-		Correction{Field: "type", Recognized: ptr("laborbefund"), Corrected: ptr("rezept"), CorrectedAt: t2})
+		Correction{Field: "type", Recognized: ptr("lab_report"), Corrected: ptr("prescription"), CorrectedAt: t2})
 }
 
 func TestCorrect_ResetRemovesCorrection(t *testing.T) {
@@ -125,7 +125,7 @@ func TestCorrect_ResetRemovesCorrection(t *testing.T) {
 		name        string
 		there, back Change
 	}{
-		{"type", Change{Type: ptr("rezept")}, Change{Type: ptr("laborbefund")}},
+		{"type", Change{Type: ptr("prescription")}, Change{Type: ptr("lab_report")}},
 		{"date", Change{DocumentDate: set("2026-10-15")}, Change{DocumentDate: set("2026-10-14")}},
 		{"date removed and back", Change{DocumentDate: remove}, Change{DocumentDate: set("2026-10-14")}},
 		{"issuer", Change{Issuer: set("Labor B")}, Change{Issuer: set("Labor Muster GmbH")}},
@@ -185,7 +185,7 @@ func TestCorrect_NoChangeNoCorrection(t *testing.T) {
 	noDate := correctionEntry()
 	noDate.DocumentDate = nil
 	for name, c := range map[string]Change{
-		"same type":        {Type: ptr(" laborbefund ")},
+		"same type":        {Type: ptr(" lab_report ")},
 		"same date":        {DocumentDate: set("2026-10-14")},
 		"same issuer":      {Issuer: set("  Labor Muster GmbH ")},
 		"same value":       {Facts: []FactChange{{ID: "f1", Value: ptr("14,2 ")}}},
@@ -208,12 +208,12 @@ func TestCorrect_NoChangeNoCorrection(t *testing.T) {
 
 func TestCorrect_Whitespace(t *testing.T) {
 	updated, _ := mustCorrect(t, correctionEntry(), Change{
-		Type:         ptr(" arztbrief\n"),
+		Type:         ptr(" doctor_letter\n"),
 		DocumentDate: set(" 2026-10-15 "),
 		Issuer:       set("   "), // empty → null
 		Facts:        []FactChange{{ID: "f2", Value: ptr(" 6,8 "), Unit: set("")}},
 	}, t1)
-	if updated.Type != "arztbrief" || text(updated.DocumentDate) != "2026-10-15" || updated.Issuer != nil ||
+	if updated.Type != "doctor_letter" || text(updated.DocumentDate) != "2026-10-15" || updated.Issuer != nil ||
 		updated.Facts[1].Value != "6,8" || updated.Facts[1].Unit != nil {
 		t.Errorf("= type %q date %s issuer %s value %q unit %s", updated.Type, text(updated.DocumentDate),
 			text(updated.Issuer), updated.Facts[1].Value, text(updated.Facts[1].Unit))
@@ -271,7 +271,7 @@ func deepCopy(e Entry) Entry {
 func TestCorrect_NilCorrectionsBecomeList(t *testing.T) {
 	e := correctionEntry()
 	e.Corrections = nil
-	updated, _ := mustCorrect(t, e, Change{Type: ptr("laborbefund")}, t1)
+	updated, _ := mustCorrect(t, e, Change{Type: ptr("lab_report")}, t1)
 	if updated.Corrections == nil {
 		t.Error("corrections nil")
 	}
@@ -279,7 +279,7 @@ func TestCorrect_NilCorrectionsBecomeList(t *testing.T) {
 
 func TestCorrect_CorrectedAtInUTC(t *testing.T) {
 	vienna := time.FixedZone("CET", 3600)
-	updated, _ := mustCorrect(t, correctionEntry(), Change{Type: ptr("rezept")}, t1.In(vienna))
+	updated, _ := mustCorrect(t, correctionEntry(), Change{Type: ptr("prescription")}, t1.In(vienna))
 	if updated.Corrections[0].CorrectedAt.Location() != time.UTC || !updated.Corrections[0].CorrectedAt.Equal(t1) {
 		t.Errorf("CorrectedAt = %v", updated.Corrections[0].CorrectedAt)
 	}
@@ -297,7 +297,7 @@ func TestCorrect_Errors(t *testing.T) {
 	}{
 		{"empty", Change{}, ErrInvalidCorrection, "", "", nil, "keine Änderung"},
 		{"unknown type", Change{Type: ptr("befund")}, ErrInvalidCorrection, "type", "", "befund",
-			"Erlaubt sind arztbrief, laborbefund, rezept, sonstiges."},
+			"Erlaubt sind doctor_letter, lab_report, prescription, other."},
 		{"date format", Change{DocumentDate: set("15.10.2026")}, ErrInvalidCorrection, "documentDate", "", "15.10.2026",
 			"Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden."},
 		{"date empty", Change{DocumentDate: set(" ")}, ErrInvalidCorrection, "documentDate", "", " ", "Format JJJJ-MM-TT"},

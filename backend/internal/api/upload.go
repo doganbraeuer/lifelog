@@ -138,7 +138,7 @@ func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind up
 			map[string]any{"entryId": duplicate.EntryID})
 	case errors.Is(err, core.ErrUnknownModule):
 		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
-			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
+			"Unbekanntes Modul. Im Prototyp gibt es nur health.",
 			map[string]any{"field": "module", "value": module})
 	case errors.Is(err, core.ErrFileEmpty):
 		writeError(w, http.StatusBadRequest, CodeFileMissing, "Die Datei ist leer.", nil)

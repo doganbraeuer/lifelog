@@ -68,7 +68,7 @@ func upload(t *testing.T, u *fakeUploader, r *http.Request) *httptest.ResponseRe
 func fullEntry() core.Entry {
 	p := func(s string) *string { return &s }
 	return core.Entry{
-		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit", Type: "laborbefund",
+		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "health", Type: "lab_report",
 		DocumentDate: p("2026-10-14"),
 		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
 		Issuer:       p("Labor Muster GmbH, Salzburg"),
@@ -87,7 +87,7 @@ func TestUpload_Success(t *testing.T) {
 	u := &fakeUploader{entry: fullEntry()}
 	rec := upload(t, u, form(t,
 		map[string][]byte{"befund.pdf": []byte("%PDF-1.7")},
-		map[string]string{"module": "gesundheit"}))
+		map[string]string{"module": "health"}))
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
@@ -95,7 +95,7 @@ func TestUpload_Success(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "/api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", loc)
 	}
-	if u.upload == nil || string(u.upload.Data) != "%PDF-1.7" || u.upload.FileName != "befund.pdf" || u.upload.Module != "gesundheit" {
+	if u.upload == nil || string(u.upload.Data) != "%PDF-1.7" || u.upload.FileName != "befund.pdf" || u.upload.Module != "health" {
 		t.Errorf("upload to the service = %+v", u.upload)
 	}
 
@@ -135,7 +135,7 @@ func TestUpload_FormErrors(t *testing.T) {
 			return r
 		}, 400, CodeInvalidRequest},
 		{"without file", func(t *testing.T) *http.Request {
-			return form(t, nil, map[string]string{"module": "gesundheit"})
+			return form(t, nil, map[string]string{"module": "health"})
 		}, 400, CodeFileMissing},
 		{"file and text", func(t *testing.T) *http.Request {
 			return form(t, map[string][]byte{"a.pdf": pdf}, map[string]string{"text": "Befund"})

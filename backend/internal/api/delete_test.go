@@ -101,7 +101,7 @@ func TestDelete_OtherMethodsUnaffected(t *testing.T) {
 		{http.MethodDelete, "/api/v1/entries/" + testID + "/file", http.StatusMethodNotAllowed},
 		{http.MethodDelete, "/api/v1/entries", http.StatusMethodNotAllowed},
 	} {
-		body := strings.NewReader(`{"type": "arztbrief"}`)
+		body := strings.NewReader(`{"type": "doctor_letter"}`)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, body))
 		if rec.Code != tc.status {

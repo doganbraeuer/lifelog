@@ -90,7 +90,7 @@ func writeQuestionError(w http.ResponseWriter, r *http.Request, err error, modul
 			"Die Frage ist zu lang. Erlaubt sind höchstens 500 Zeichen.", nil)
 	case errors.Is(err, core.ErrUnknownModule):
 		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
-			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
+			"Unbekanntes Modul. Im Prototyp gibt es nur health.",
 			map[string]any{"field": "module", "value": module})
 	case errors.Is(err, llm.ErrUnavailable), errors.Is(err, llm.ErrInvalidResponse):
 		slog.Warn("question: model unavailable or answer unusable", "error", err)

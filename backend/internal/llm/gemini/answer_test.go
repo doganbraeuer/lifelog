@@ -17,9 +17,9 @@ import (
 func sources() []core.Source {
 	p := func(s string) *string { return &s }
 	return []core.Source{
-		{Number: 1, EntryID: "a", Module: "gesundheit", Type: "laborbefund",
+		{Number: 1, EntryID: "a", Module: "health", Type: "lab_report",
 			DocumentDate: p("2026-10-14"), Issuer: p("Labor Muster GmbH"), Excerpt: "Hämoglobin 14,2 g/dl"},
-		{Number: 2, EntryID: "b", Module: "gesundheit", Type: "sonstiges", Excerpt: "Notiz ohne Datum"},
+		{Number: 2, EntryID: "b", Module: "health", Type: "other", Excerpt: "Notiz ohne Datum"},
 	}
 }
 
@@ -28,9 +28,9 @@ func TestAnswerInput(t *testing.T) {
 	got := answerInput("Welchen Hb hatte ich im Oktober?", sources())
 	for _, must := range []string{
 		"Frage: Welchen Hb hatte ich im Oktober?",
-		"[1] laborbefund, Dokumentdatum: 2026-10-14, Quelle: Labor Muster GmbH\nHämoglobin 14,2 g/dl",
+		"[1] lab_report, Dokumentdatum: 2026-10-14, Quelle: Labor Muster GmbH\nHämoglobin 14,2 g/dl",
 		// Missing values are called "unbekannt", not "<nil>" or empty.
-		"[2] sonstiges, Dokumentdatum: unbekannt, Quelle: unbekannt\nNotiz ohne Datum",
+		"[2] other, Dokumentdatum: unbekannt, Quelle: unbekannt\nNotiz ohne Datum",
 	} {
 		if !strings.Contains(got, must) {
 			t.Errorf("input does not contain:\n%s\n--- input:\n%s", must, got)

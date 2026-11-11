@@ -7,23 +7,23 @@ import (
 )
 
 // DefaultModule applies when a request names no module.
-const DefaultModule = "gesundheit"
+const DefaultModule = "health"
 
 // moduleTypes is the module catalog: which modules exist and which types are
-// allowed within each module. A type is only valid in its module, so a later
-// cooking recipe module may have a type "rezept" again.
+// allowed within each module. A type is only valid in its module, so another
+// module may use the same type code with a different meaning (e.g. "other").
 //
-// Further modules (ernaehrung, rezepte, sport) are added once their types are
+// Further modules (nutrition, recipes, sport) are added once their types are
 // defined (docs/API.md, section "Modules").
 var moduleTypes = map[string][]string{
-	"gesundheit": {"arztbrief", "laborbefund", "rezept", "sonstiges"},
+	"health": {"doctor_letter", "lab_report", "prescription", "other"},
 }
 
 // ErrUnknownModule: the value is not a known module.
 var ErrUnknownModule = errors.New("unknown module")
 
 // CheckModule returns the module for a request. An empty value gives the
-// default module. Case matters: "Gesundheit" is unknown.
+// default module. Case matters: "Health" is unknown.
 func CheckModule(value string) (string, error) {
 	if value == "" {
 		return DefaultModule, nil

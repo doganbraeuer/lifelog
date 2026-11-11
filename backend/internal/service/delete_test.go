@@ -87,7 +87,7 @@ func (s *fakeDeleteStore) DeleteEntry(ctx context.Context, id string) (bool, err
 func deleteData() *fakeDeleteStore {
 	return &fakeDeleteStore{
 		entry: &core.Entry{
-			ID: idLab, Module: "gesundheit", Type: "laborbefund",
+			ID: idLab, Module: "health", Type: "lab_report",
 			Issuer: ptr("Labor Geheim GmbH"), FullText: "Hämoglobin 14,2 g/dl",
 			Facts: []core.Fact{{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
 			File:  core.File{ID: throwawayFile, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
@@ -248,7 +248,7 @@ func TestDelete_LogOnlyID(t *testing.T) {
 	if !strings.Contains(text, "entry deleted") || !strings.Contains(text, idLab) {
 		t.Errorf("log without message or ID: %s", text)
 	}
-	for _, content := range []string{"Geheim", "geheim", "Hämoglobin", "14,2", "laborbefund", throwawayFile} {
+	for _, content := range []string{"Geheim", "geheim", "Hämoglobin", "14,2", "lab_report", throwawayFile} {
 		if strings.Contains(text, content) {
 			t.Errorf("log contains %q: %s", content, text)
 		}

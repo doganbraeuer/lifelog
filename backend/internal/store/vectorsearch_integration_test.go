@@ -28,8 +28,8 @@ func TestIntegration_VectorSearch(t *testing.T) {
 
 	entryA, entryB, entrySport := NewID(), NewID(), NewID()
 	chunks := []core.Chunk{
-		{EntryID: entryA, Module: "gesundheit", Position: 1, Text: "Hämoglobin 14,2 g/dl", Embedding: unitVector(0)},
-		{EntryID: entryB, Module: "gesundheit", Position: 1, Text: "Blutdruck 128/82", Embedding: unitVector(1)},
+		{EntryID: entryA, Module: "health", Position: 1, Text: "Hämoglobin 14,2 g/dl", Embedding: unitVector(0)},
+		{EntryID: entryB, Module: "health", Position: 1, Text: "Blutdruck 128/82", Embedding: unitVector(1)},
 		// Same vector as A, but another module: the filter must exclude it.
 		{EntryID: entrySport, Module: "sport", Position: 1, Text: "Lauf 10 km", Embedding: unitVector(0)},
 	}
@@ -55,7 +55,7 @@ func TestIntegration_VectorSearch(t *testing.T) {
 			t.Fatal(err)
 		}
 		if status == "READY" {
-			hits, err = s.SimilarChunks(ctx, unitVector(0), "gesundheit", core.MaxHits)
+			hits, err = s.SimilarChunks(ctx, unitVector(0), "health", core.MaxHits)
 			if err != nil {
 				t.Fatalf("vector search: %v", err)
 			}
@@ -104,7 +104,7 @@ func TestIntegration_SummariesByIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m) != 1 || m[a.ID].Type != "laborbefund" || m[a.ID].Issuer == nil {
+	if len(m) != 1 || m[a.ID].Type != "lab_report" || m[a.ID].Issuer == nil {
 		t.Errorf("map = %+v", m)
 	}
 	if _, ok := m[missing]; ok {

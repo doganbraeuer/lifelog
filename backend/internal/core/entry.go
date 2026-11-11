@@ -42,8 +42,8 @@ func CheckID(id string) error {
 // Entry is a full entry as in docs/API.md, section 2.
 type Entry struct {
 	ID           string    // ObjectId as hex string (24 characters)
-	Module       string    // e.g. "gesundheit"
-	Type         string    // e.g. "laborbefund", valid within the module
+	Module       string    // e.g. "health"
+	Type         string    // e.g. "lab_report", valid within the module
 	DocumentDate *string   // "YYYY-MM-DD" or nil if not recognized
 	ImportedAt   time.Time // UTC
 	Issuer       *string   // issuing body or nil

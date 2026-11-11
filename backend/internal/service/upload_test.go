@@ -96,7 +96,7 @@ func extraction() core.Extraction {
 		Readable:     true,
 		DocumentDate: ptr("2026-10-14"),
 		Issuer:       ptr("Labor Muster GmbH"),
-		Type:         "laborbefund",
+		Type:         "lab_report",
 		FullText:     "Labor Muster GmbH\n\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/dl",
 		Facts: []core.ExtractedFact{
 			{Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
@@ -143,7 +143,7 @@ func TestUpload_Success(t *testing.T) {
 	if e.ID == "" || e.File.ID == "" || e.ID == e.File.ID {
 		t.Errorf("IDs: entry %q, file %q", e.ID, e.File.ID)
 	}
-	if e.Module != "gesundheit" || e.Type != "laborbefund" {
+	if e.Module != "health" || e.Type != "lab_report" {
 		t.Errorf("module/type = %q/%q", e.Module, e.Type)
 	}
 	if !e.ImportedAt.Equal(time.Date(2026, 11, 4, 13, 0, 0, 123000000, time.UTC)) {
@@ -166,7 +166,7 @@ func TestUpload_Success(t *testing.T) {
 		t.Fatal("no chunks stored")
 	}
 	for i, c := range chunks {
-		if c.EntryID != e.ID || c.Module != "gesundheit" || c.Position != i+1 || len(c.Embedding) != llm.EmbeddingDimensions {
+		if c.EntryID != e.ID || c.Module != "health" || c.Position != i+1 || len(c.Embedding) != llm.EmbeddingDimensions {
 			t.Errorf("chunk %d = %+v", i, c)
 		}
 	}

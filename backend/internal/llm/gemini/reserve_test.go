@@ -59,10 +59,10 @@ func TestReserve_HangingMainModelLeavesTimeForFallback(t *testing.T) {
 	g := shortGemini(hangingMainModel(ct), "fallback", 300*time.Millisecond, 120*time.Millisecond)
 
 	start := time.Now()
-	x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"lab_report"})
 	duration := time.Since(start)
 
-	if err != nil || x.Type != "laborbefund" {
+	if err != nil || x.Type != "lab_report" {
 		t.Fatalf("want success via the fallback model, got %+v, %v", x, err)
 	}
 	// The main model saw a deadline of ~180 ms (300 − 120), not 300 ms.
@@ -82,7 +82,7 @@ func TestReserve_WithoutFallbackMainModelGetsTheWholeLimit(t *testing.T) {
 	ct := &callTimes{remaining: map[string]time.Duration{}}
 	g := shortGemini(hangingMainModel(ct), "", 300*time.Millisecond, 120*time.Millisecond)
 
-	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"lab_report"})
 
 	if !errors.Is(err, llm.ErrUnavailable) {
 		t.Errorf("err = %v", err)
@@ -101,7 +101,7 @@ func TestReserve_ZeroMeansNoFallbackWhenHanging(t *testing.T) {
 	ct := &callTimes{remaining: map[string]time.Duration{}}
 	g := shortGemini(hangingMainModel(ct), "fallback", 200*time.Millisecond, 0)
 
-	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+	_, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"lab_report"})
 
 	if !errors.Is(err, llm.ErrUnavailable) {
 		t.Errorf("err = %v", err)
@@ -119,7 +119,7 @@ func TestReserve_MainModelErrorInLog(t *testing.T) {
 
 	n := &fakeNetwork{errs: map[string][]error{"main": {e503, e503, e503}}}
 	g := testGemini(n, "fallback")
-	if _, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"}); err != nil {
+	if _, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"lab_report"}); err != nil {
 		t.Fatal(err)
 	}
 

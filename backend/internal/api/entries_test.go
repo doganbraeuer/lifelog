@@ -56,7 +56,7 @@ func (s *fakeStore) OpenFile(_ context.Context, fileID string) (io.ReadCloser, i
 
 func summary(id, date string, importMinute int) core.EntrySummary {
 	s := core.EntrySummary{
-		ID: id, Module: "gesundheit", Type: "laborbefund",
+		ID: id, Module: "health", Type: "lab_report",
 		ImportedAt: time.Date(2026, 11, 3, 18, importMinute, 7, 0, time.UTC),
 	}
 	if date != "" {
@@ -98,8 +98,8 @@ func TestList_DefaultsAndFormat(t *testing.T) {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	checkJSONHeader(t, rec)
-	if s.askedModule != "gesundheit" {
-		t.Errorf("module = %q, want gesundheit as default", s.askedModule)
+	if s.askedModule != "health" {
+		t.Errorf("module = %q, want health as default", s.askedModule)
 	}
 
 	var a struct {
@@ -150,7 +150,7 @@ func TestList_ParametersAreApplied(t *testing.T) {
 		summary("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-10-14", 30),
 		summary("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
 	}}
-	rec := list(t, s, "?module=gesundheit&sort=importedAt&order=asc")
+	rec := list(t, s, "?module=health&sort=importedAt&order=asc")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -167,7 +167,7 @@ func TestList_InvalidParameters(t *testing.T) {
 		{"?sort=issuer", "sort", "issuer"},
 		{"?order=absteigend", "order", "absteigend"},
 		{"?module=sport", "module", "sport"},
-		{"?module=Gesundheit", "module", "Gesundheit"},
+		{"?module=Health", "module", "Health"},
 	}
 	for _, c := range cases {
 		t.Run(c.query, func(t *testing.T) {

@@ -15,7 +15,7 @@ func valid() Extraction {
 		Readable:     true,
 		DocumentDate: ptr("2026-10-14"),
 		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
-		Type:         "laborbefund",
+		Type:         "lab_report",
 		FullText:     labReport,
 		Facts: []ExtractedFact{
 			{Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
@@ -26,14 +26,14 @@ func valid() Extraction {
 }
 
 func TestCheckExtraction_Valid(t *testing.T) {
-	e, dropped, err := CheckExtraction(valid(), "gesundheit")
+	e, dropped, err := CheckExtraction(valid(), "health")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if dropped == nil || len(dropped) != 0 {
 		t.Errorf("dropped = %#v, want empty list", dropped)
 	}
-	if e.Module != "gesundheit" || e.Type != "laborbefund" {
+	if e.Module != "health" || e.Type != "lab_report" {
 		t.Errorf("module/type = %q/%q", e.Module, e.Type)
 	}
 	if *e.DocumentDate != "2026-10-14" || *e.Issuer != "Labor Muster GmbH, Salzburg" {
@@ -68,7 +68,7 @@ func TestCheckExtraction_EmptyValuesBecomeNil(t *testing.T) {
 	x.Issuer = ptr("")
 	x.Facts = []ExtractedFact{{Name: " Hämoglobin ", Value: " 14,2 ", Unit: ptr(" ")}}
 
-	e, _, err := CheckExtraction(x, "gesundheit")
+	e, _, err := CheckExtraction(x, "health")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestCheckExtraction_EmptyValuesBecomeNil(t *testing.T) {
 func TestCheckExtraction_NoFactsGivesEmptyList(t *testing.T) {
 	x := valid()
 	x.Facts = nil
-	e, _, err := CheckExtraction(x, "gesundheit")
+	e, _, err := CheckExtraction(x, "health")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestCheckExtraction_NoFactsGivesEmptyList(t *testing.T) {
 func TestCheckExtraction_Unreadable(t *testing.T) {
 	x := valid()
 	x.Readable = false
-	if _, _, err := CheckExtraction(x, "gesundheit"); !errors.Is(err, ErrUnreadable) {
+	if _, _, err := CheckExtraction(x, "health"); !errors.Is(err, ErrUnreadable) {
 		t.Errorf("want ErrUnreadable, got %v", err)
 	}
 }
@@ -108,13 +108,13 @@ func TestCheckExtraction_Errors(t *testing.T) {
 		module string
 		field  string
 	}{
-		{"unknown type", func(x *Extraction) { x.Type = "kochrezept" }, "gesundheit", "typ"},
-		{"empty type", func(x *Extraction) { x.Type = "" }, "gesundheit", "typ"},
+		{"unknown type", func(x *Extraction) { x.Type = "kochrezept" }, "health", "typ"},
+		{"empty type", func(x *Extraction) { x.Type = "" }, "health", "typ"},
 		{"type in another module", func(x *Extraction) {}, "sport", "typ"},
-		{"empty full text", func(x *Extraction) { x.FullText = " \n " }, "gesundheit", "volltext"},
-		{"German date format", func(x *Extraction) { x.DocumentDate = ptr("14.10.2026") }, "gesundheit", "dokumentdatum"},
-		{"date does not exist", func(x *Extraction) { x.DocumentDate = ptr("2026-02-31") }, "gesundheit", "dokumentdatum"},
-		{"date with time", func(x *Extraction) { x.DocumentDate = ptr("2026-10-14T00:00:00Z") }, "gesundheit", "dokumentdatum"},
+		{"empty full text", func(x *Extraction) { x.FullText = " \n " }, "health", "volltext"},
+		{"German date format", func(x *Extraction) { x.DocumentDate = ptr("14.10.2026") }, "health", "dokumentdatum"},
+		{"date does not exist", func(x *Extraction) { x.DocumentDate = ptr("2026-02-31") }, "health", "dokumentdatum"},
+		{"date with time", func(x *Extraction) { x.DocumentDate = ptr("2026-10-14T00:00:00Z") }, "health", "dokumentdatum"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -136,7 +136,7 @@ func TestCheckExtraction_Errors(t *testing.T) {
 func TestCheckExtraction_ErrorContainsNoValues(t *testing.T) {
 	x := valid()
 	x.DocumentDate = ptr("Hämoglobin 14,2 geheim")
-	_, _, err := CheckExtraction(x, "gesundheit")
+	_, _, err := CheckExtraction(x, "health")
 	if err == nil || strings.Contains(err.Error(), "geheim") {
 		t.Errorf("error message must not contain the value: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestCheckExtraction_IncompleteFactsAreDropped(t *testing.T) {
 		{Name: "CRP", Value: "<0,5", Unit: ptr("mg/dl")},       // 4: kept → i2
 	}
 
-	e, dropped, err := CheckExtraction(x, "gesundheit")
+	e, dropped, err := CheckExtraction(x, "health")
 	if err != nil {
 		t.Fatalf("an incomplete fact must not reject the upload: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestCheckExtraction_AllFactsIncomplete(t *testing.T) {
 	x := valid()
 	x.Facts = []ExtractedFact{{Name: "", Value: "x"}}
 
-	e, dropped, err := CheckExtraction(x, "gesundheit")
+	e, dropped, err := CheckExtraction(x, "health")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestCheckExtraction_AllFactsIncomplete(t *testing.T) {
 func TestCheckExtraction_DroppedNeverNilEvenOnError(t *testing.T) {
 	x := valid()
 	x.Readable = false
-	if _, dropped, _ := CheckExtraction(x, "gesundheit"); dropped == nil {
+	if _, dropped, _ := CheckExtraction(x, "health"); dropped == nil {
 		t.Error("dropped must not be nil, even on errors")
 	}
 }

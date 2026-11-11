@@ -83,7 +83,7 @@ func testStore(t *testing.T) (*Store, context.Context) {
 // testEntry is synthetic. hash determines the file's sha256.
 func testEntry(id, fileID, hash string) core.Entry {
 	return core.Entry{
-		ID: id, Module: "gesundheit", Type: "laborbefund",
+		ID: id, Module: "health", Type: "lab_report",
 		DocumentDate: ptr("2026-10-14"),
 		ImportedAt:   time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC),
 		Issuer:       ptr("Labor Muster GmbH"),
@@ -127,8 +127,8 @@ func TestIntegration_SaveFindDelete(t *testing.T) {
 
 	// 2. Chunks.
 	chunks := []core.Chunk{
-		{EntryID: entryID, Module: "gesundheit", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
-		{EntryID: entryID, Module: "gesundheit", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
+		{EntryID: entryID, Module: "health", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
+		{EntryID: entryID, Module: "health", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}
 	if err := s.SaveChunks(ctx, chunks); err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestIntegration_SaveFindDelete(t *testing.T) {
 	if err != nil || !found || id != entryID {
 		t.Fatalf("EntryByHash = %q, %v, %v", id, found, err)
 	}
-	list, err := s.ListSummaries(ctx, "gesundheit")
+	list, err := s.ListSummaries(ctx, "health")
 	if err != nil || len(list) != 1 || list[0].ID != entryID {
 		t.Fatalf("ListSummaries = %+v, %v", list, err)
 	}

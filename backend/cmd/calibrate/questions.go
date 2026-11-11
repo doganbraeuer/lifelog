@@ -62,19 +62,19 @@ type question struct {
 }
 
 // Demo data (synthetic, uploaded on 2026-11-07/08). The read model
-// classified the vaccination certificate and the text notes as sonstiges.
-// The referral came in as rezept and is the only one on its day. It used to
+// classified the vaccination certificate and the text notes as other.
+// The referral came in as prescription and is the only one on its day. It used to
 // be found by its issuer, but since the upload on 2026-11-08 the doctor's
 // letter on the same day has the same issuer. If its type is ever corrected
 // in the app, adjust the target here.
 var (
-	labJanuary    = target{Type: "laborbefund", Date: "2026-01-20"}
-	labJuly       = target{Type: "laborbefund", Date: "2026-07-22"}
-	orthopedics   = target{Type: "arztbrief", Date: "2026-03-05"}
-	referral      = target{Type: "rezept", Date: "2026-03-05"}
-	tbe           = target{Type: "sonstiges", Date: "2026-06-10"}
-	physioEnd     = target{Type: "sonstiges", Date: "2026-08-12"}
-	bloodPressure = target{Type: "sonstiges", Date: "2026-09-23"}
+	labJanuary    = target{Type: "lab_report", Date: "2026-01-20"}
+	labJuly       = target{Type: "lab_report", Date: "2026-07-22"}
+	orthopedics   = target{Type: "doctor_letter", Date: "2026-03-05"}
+	referral      = target{Type: "prescription", Date: "2026-03-05"}
+	tbe           = target{Type: "other", Date: "2026-06-10"}
+	physioEnd     = target{Type: "other", Date: "2026-08-12"}
+	bloodPressure = target{Type: "other", Date: "2026-09-23"}
 )
 
 // questions is fixed, so measurements before and after a change (model,

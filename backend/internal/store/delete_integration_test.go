@@ -19,8 +19,8 @@ func create(t *testing.T, s *Store, ctx context.Context, hash string) core.Entry
 		t.Fatal(err)
 	}
 	if err := s.SaveChunks(ctx, []core.Chunk{
-		{EntryID: e.ID, Module: "gesundheit", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
-		{EntryID: e.ID, Module: "gesundheit", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
+		{EntryID: e.ID, Module: "health", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
+		{EntryID: e.ID, Module: "health", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}); err != nil {
 		t.Fatal(err)
 	}

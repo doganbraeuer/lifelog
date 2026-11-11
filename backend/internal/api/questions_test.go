@@ -39,21 +39,21 @@ func TestQuestions_Hit(t *testing.T) {
 	p := func(s string) *string { return &s }
 	a := &fakeAsker{answer: core.Answer{
 		Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1].", Found: true,
-		Sources: []core.Source{{Number: 1, EntryID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit",
-			Type: "laborbefund", Issuer: p("Labor Muster GmbH, Salzburg"), DocumentDate: p("2026-10-14"),
+		Sources: []core.Source{{Number: 1, EntryID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "health",
+			Type: "lab_report", Issuer: p("Labor Muster GmbH, Salzburg"), DocumentDate: p("2026-10-14"),
 			Excerpt: "Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}},
 	}}
-	rec := ask(t, a, `{"question": "Welchen Hämoglobinwert hatte ich im Oktober?", "module": "gesundheit"}`)
+	rec := ask(t, a, `{"question": "Welchen Hämoglobinwert hatte ich im Oktober?", "module": "health"}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if a.question != "Welchen Hämoglobinwert hatte ich im Oktober?" || a.module != "gesundheit" {
+	if a.question != "Welchen Hämoglobinwert hatte ich im Oktober?" || a.module != "health" {
 		t.Errorf("to the service: %q / %q", a.question, a.module)
 	}
 	// Exactly the form from API.md 3.6.
 	want := `{"answer":"Im Laborbefund steht Hämoglobin 14,2 g/dl [1].","found":true,"sources":[` +
-		`{"number":1,"entryId":"6727a1f3c2b4e5d6f7a8b9c0","module":"gesundheit","type":"laborbefund",` +
+		`{"number":1,"entryId":"6727a1f3c2b4e5d6f7a8b9c0","module":"health","type":"lab_report",` +
 		`"issuer":"Labor Muster GmbH, Salzburg","documentDate":"2026-10-14","excerpt":"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
@@ -61,7 +61,7 @@ func TestQuestions_Hit(t *testing.T) {
 }
 
 func TestQuestions_NoHitIsEmptyList(t *testing.T) {
-	// The app sends no module; that is allowed (default gesundheit).
+	// The app sends no module; that is allowed (default health).
 	a := &fakeAsker{answer: core.Answer{Text: core.NotFoundAnswer, Sources: nil}}
 	rec := ask(t, a, `{"question": "Wie wird das Wetter?"}`)
 

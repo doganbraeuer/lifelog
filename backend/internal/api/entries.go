@@ -29,7 +29,7 @@ func listEntriesHandler(s EntryStore) http.HandlerFunc {
 		module, err := core.CheckModule(q.Get("module"))
 		if err != nil {
 			writeInvalidParameter(w, "module", q.Get("module"),
-				"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.")
+				"Unbekanntes Modul. Im Prototyp gibt es nur health.")
 			return
 		}
 		sort, err := core.ParseSort(q.Get("sort"))

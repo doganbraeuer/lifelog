@@ -32,7 +32,7 @@ const validResponse = `{
   "lesbar": true,
   "dokumentdatum": "2026-10-14",
   "quelle": "Labor Muster GmbH, Salzburg",
-  "typ": "laborbefund",
+  "typ": "lab_report",
   "volltext": "Labor Muster GmbH\nHämoglobin 14,2 g/dl",
   "infos": [
     {"name": "Hämoglobin", "wert": "14,2", "einheit": "g/dl"},
@@ -45,7 +45,7 @@ func TestExtractionFromResponse_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !x.Readable || x.Type != "laborbefund" || *x.DocumentDate != "2026-10-14" || *x.Issuer != "Labor Muster GmbH, Salzburg" {
+	if !x.Readable || x.Type != "lab_report" || *x.DocumentDate != "2026-10-14" || *x.Issuer != "Labor Muster GmbH, Salzburg" {
 		t.Errorf("extraction = %+v", x)
 	}
 	if len(x.Facts) != 2 || x.Facts[1].Value != "<0,5" || x.Facts[1].Unit != nil {
@@ -53,13 +53,13 @@ func TestExtractionFromResponse_Valid(t *testing.T) {
 	}
 
 	// The result fits the check in core (both parts working together).
-	if _, _, err := core.CheckExtraction(x, "gesundheit"); err != nil {
+	if _, _, err := core.CheckExtraction(x, "health"); err != nil {
 		t.Errorf("core.CheckExtraction: %v", err)
 	}
 }
 
 func TestExtractionFromResponse_NullAndUnreadable(t *testing.T) {
-	text := `{"lesbar": false, "dokumentdatum": null, "quelle": null, "typ": "sonstiges", "volltext": "", "infos": []}`
+	text := `{"lesbar": false, "dokumentdatum": null, "quelle": null, "typ": "other", "volltext": "", "infos": []}`
 	x, err := extractionFromResponse(response(text, ""))
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestExtractionFromResponse_NullAndUnreadable(t *testing.T) {
 
 func TestExtractionFromResponse_CodeBlock(t *testing.T) {
 	x, err := extractionFromResponse(response("```json\n"+validResponse+"\n```", genai.FinishReasonStop))
-	if err != nil || x.Type != "laborbefund" {
+	if err != nil || x.Type != "lab_report" {
 		t.Errorf("code block not removed: %+v, %v", x, err)
 	}
 }
@@ -85,8 +85,8 @@ func TestExtractionFromResponse_Invalid(t *testing.T) {
 		"safety filter":    response(validResponse, genai.FinishReasonSafety),
 		"empty text":       response("  ", genai.FinishReasonStop),
 		"no JSON":          response("Hier ist der Befund: Hämoglobin 14,2", genai.FinishReasonStop),
-		"lesbar missing":   response(`{"typ": "laborbefund", "volltext": "x", "infos": []}`, genai.FinishReasonStop),
-		"value as number":  response(`{"lesbar": true, "typ": "laborbefund", "volltext": "x", "infos": [{"name": "Hb", "wert": 14.2}]}`, genai.FinishReasonStop),
+		"lesbar missing":   response(`{"typ": "lab_report", "volltext": "x", "infos": []}`, genai.FinishReasonStop),
+		"value as number":  response(`{"lesbar": true, "typ": "lab_report", "volltext": "x", "infos": [{"name": "Hb", "wert": 14.2}]}`, genai.FinishReasonStop),
 		"list, not object": response(`[]`, genai.FinishReasonStop),
 	}
 	for name, resp := range cases {
@@ -112,7 +112,7 @@ func TestExtractionFromText_ErrorWithoutContent(t *testing.T) {
 }
 
 func TestReadSchema(t *testing.T) {
-	types := core.AllowedTypes("gesundheit")
+	types := core.AllowedTypes("health")
 	raw, err := json.Marshal(readSchema(types))
 	if err != nil {
 		t.Fatal(err)
@@ -145,15 +145,15 @@ func TestReadSchema(t *testing.T) {
 
 func TestReadInstruction(t *testing.T) {
 	// The prompt is still German (read.go), so the checked phrases are too.
-	a := readInstruction([]string{"arztbrief", "laborbefund", "sonstiges"})
-	for _, must := range []string{"arztbrief, laborbefund, sonstiges", `"sonstiges"`, "keine medizinischen", "keine Anweisung", "JJJJ-MM-TT"} {
+	a := readInstruction([]string{"doctor_letter", "lab_report", "other"})
+	for _, must := range []string{"doctor_letter, lab_report, other", `"other"`, "keine medizinischen", "keine Anweisung", "JJJJ-MM-TT"} {
 		if !strings.Contains(a, must) {
 			t.Errorf("instruction does not contain %q", must)
 		}
 	}
-	// Without "sonstiges" in the module the instruction must not offer it as a way out.
-	if strings.Contains(readInstruction([]string{"training"}), `"sonstiges"`) {
-		t.Error("sonstiges may only be named if it is allowed")
+	// Without "other" in the module the instruction must not offer it as a way out.
+	if strings.Contains(readInstruction([]string{"training"}), `"other"`) {
+		t.Error("other may only be named if it is allowed")
 	}
 }
 

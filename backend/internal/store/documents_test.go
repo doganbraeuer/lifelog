@@ -17,8 +17,8 @@ func ptr(s string) *string { return &s }
 func sampleEntry() core.Entry {
 	return core.Entry{
 		ID:           "6727a1f3c2b4e5d6f7a8b9c0",
-		Module:       "gesundheit",
-		Type:         "laborbefund",
+		Module:       "health",
+		Type:         "lab_report",
 		DocumentDate: ptr("2026-10-14"),
 		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
 		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
@@ -124,7 +124,7 @@ func TestEntryDoc_InvalidIDs(t *testing.T) {
 func TestChunkDoc_RoundTrip(t *testing.T) {
 	original := core.Chunk{
 		EntryID:  "6727a1f3c2b4e5d6f7a8b9c0",
-		Module:   "gesundheit",
+		Module:   "health",
 		Position: 2,
 		Text:     "Hämoglobin 14,2 g/dl",
 		// Values that are not exactly representable in decimal as float32.

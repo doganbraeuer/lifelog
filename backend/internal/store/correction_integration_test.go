@@ -24,7 +24,7 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 	now := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC) // milliseconds as in the service
 	issuer := "Labor B"
 	updated, changed, err := core.Correct(e, core.Change{
-		Type:         &[]string{"arztbrief"}[0],
+		Type:         &[]string{"doctor_letter"}[0],
 		DocumentDate: core.Nullable{Set: true},
 		Issuer:       core.Nullable{Set: true, Value: &issuer},
 		Facts: []core.FactChange{

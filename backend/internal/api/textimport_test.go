@@ -48,7 +48,7 @@ func textEntry() core.Entry {
 func TestTextImport_Success(t *testing.T) {
 	text := "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
 	u := &fakeUploader{entry: textEntry()}
-	rec := upload(t, u, textForm(t, [2]string{"text", text}, [2]string{"module", "gesundheit"}))
+	rec := upload(t, u, textForm(t, [2]string{"text", text}, [2]string{"module", "health"}))
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
@@ -57,7 +57,7 @@ func TestTextImport_Success(t *testing.T) {
 		t.Errorf("Location = %q", rec.Header().Get("Location"))
 	}
 	// Unchanged to the service, including whitespace and \r\n.
-	if u.textUpload == nil || u.textUpload.Text != text || u.textUpload.Module != "gesundheit" || u.upload != nil {
+	if u.textUpload == nil || u.textUpload.Text != text || u.textUpload.Module != "health" || u.upload != nil {
 		t.Errorf("to the service: text %+v, file %+v", u.textUpload, u.upload)
 	}
 	for _, must := range []string{`"mimeType":"text/plain; charset=utf-8"`, `"fileName":"text.txt"`, `"corrections":[]`} {
@@ -76,7 +76,7 @@ func TestTextImport_FormErrors(t *testing.T) {
 		code    string
 		message string
 	}{
-		{"neither file nor text", [][2]string{{"module", "gesundheit"}}, 400, CodeFileMissing, "Datei"},
+		{"neither file nor text", [][2]string{{"module", "health"}}, 400, CodeFileMissing, "Datei"},
 		{"text empty", [][2]string{{"text", ""}}, 400, CodeFileMissing, "Text"},
 		{"text only whitespace", [][2]string{{"text", " \r\n\t "}}, 400, CodeFileMissing, "Text"},
 		{"file and text", [][2]string{{"file", "%PDF-"}, {"text", "Befund"}}, 400, CodeInvalidRequest, "nicht beides"},

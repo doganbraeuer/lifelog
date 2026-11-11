@@ -28,7 +28,7 @@ func textExtraction() core.Extraction {
 		FullText:     "vom Modell erfunden",
 		DocumentDate: ptr("2026-10-21"),
 		Issuer:       ptr("Hausarztpraxis Beispiel"),
-		Type:         "arztbrief",
+		Type:         "doctor_letter",
 		Facts:        []core.ExtractedFact{{Name: "Diagnose", Value: "Rückenschmerzen"}},
 	}
 }
@@ -72,7 +72,7 @@ func TestTextImport_Success(t *testing.T) {
 		t.Errorf("stored file = %q", got)
 	}
 
-	if e.Module != "gesundheit" || e.Type != "arztbrief" || len(e.Facts) != 1 || e.Facts[0].ID != "f1" {
+	if e.Module != "health" || e.Type != "doctor_letter" || len(e.Facts) != 1 || e.Facts[0].ID != "f1" {
 		t.Errorf("entry %+v", e)
 	}
 	if len(s.store.entries) != 1 || s.store.entries[0].FullText != enteredText {

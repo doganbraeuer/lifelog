@@ -62,8 +62,8 @@ func baseRules(where string) string {
 // texts.
 func fieldRules(allowedTypes []string, where, how string) string {
 	typeRule := "genau einer dieser Werte: " + strings.Join(allowedTypes, ", ") + "."
-	if slices.Contains(allowedTypes, "sonstiges") {
-		typeRule += ` Wenn keiner sicher passt: "sonstiges".`
+	if slices.Contains(allowedTypes, "other") {
+		typeRule += ` Wenn keiner sicher passt: "other".`
 	}
 	return `- dokumentdatum: das Datum, an dem das Dokument ausgestellt bzw. der Befund erstellt wurde, im Format JJJJ-MM-TT (z. B. 2026-10-14). Nicht das Geburtsdatum einer Person. null, wenn kein solches Datum erkennbar ist.
 - quelle: die ausstellende Stelle (Praxis, Labor, Klinik oder Person) so wie ` + where + ` geschrieben. null, wenn nicht erkennbar.

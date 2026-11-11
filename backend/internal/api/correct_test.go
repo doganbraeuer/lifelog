@@ -44,7 +44,7 @@ func ptr(s string) *string { return &s }
 func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 	at := time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC)
 	c := &fakeCorrector{entry: core.Entry{
-		ID: correctionID, Module: "gesundheit", Type: "laborbefund",
+		ID: correctionID, Module: "health", Type: "lab_report",
 		DocumentDate: ptr("2026-10-15"), ImportedAt: time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
 		Issuer: ptr("Labor Muster GmbH, Salzburg"), FullText: "Leukozyten 6,3 G/l",
 		Facts: []core.Fact{{ID: "f2", Name: "Leukozyten", Value: "6,8", Unit: ptr("G/l")}},
@@ -69,7 +69,7 @@ func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 	if !reflect.DeepEqual(c.change, want) {
 		t.Errorf("change = %+v, want %+v", c.change, want)
 	}
-	wantBody := `{"id":"6727a1f3c2b4e5d6f7a8b9c0","module":"gesundheit","type":"laborbefund","documentDate":"2026-10-15",` +
+	wantBody := `{"id":"6727a1f3c2b4e5d6f7a8b9c0","module":"health","type":"lab_report","documentDate":"2026-10-15",` +
 		`"importedAt":"2026-11-03T18:42:07Z","issuer":"Labor Muster GmbH, Salzburg","fullText":"Leukozyten 6,3 G/l",` +
 		`"facts":[{"id":"f2","name":"Leukozyten","value":"6,8","unit":"G/l"}],` +
 		`"file":{"id":"6727a1f3c2b4e5d6f7a8b9c1","fileName":"befund_oktober.pdf","mimeType":"application/pdf","size":184320,"sha256":"3f8a"},` +
@@ -83,9 +83,9 @@ func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 func TestParseChange_ThreeCases(t *testing.T) {
 	// missing / null / value, for all fields.
 	cases := map[string]core.Change{
-		`{"type": "rezept"}`:     {Type: ptr("rezept")},
-		`{"documentDate": null}`: {DocumentDate: core.Nullable{Set: true}},
-		`{"issuer": "  "}`:       {Issuer: core.Nullable{Set: true, Value: ptr("  ")}}, // core removes the whitespace
+		`{"type": "prescription"}`: {Type: ptr("prescription")},
+		`{"documentDate": null}`:   {DocumentDate: core.Nullable{Set: true}},
+		`{"issuer": "  "}`:         {Issuer: core.Nullable{Set: true, Value: ptr("  ")}}, // core removes the whitespace
 		`{"issuer": null, "documentDate": "2026-10-15"}`: {
 			Issuer: core.Nullable{Set: true}, DocumentDate: core.Nullable{Set: true, Value: ptr("2026-10-15")}},
 		`{"facts": []}`: {Facts: []core.FactChange{}},
@@ -106,7 +106,7 @@ func TestParseChange_ThreeCases(t *testing.T) {
 		}
 	}
 	// "facts" missing → nil, not an empty list (core tells them apart).
-	if c, _ := parseChange([]byte(`{"type": "rezept"}`)); c.Facts != nil {
+	if c, _ := parseChange([]byte(`{"type": "prescription"}`)); c.Facts != nil {
 		t.Error("facts without the field are not nil")
 	}
 }
@@ -122,7 +122,7 @@ func TestCorrect_JSONErrors(t *testing.T) {
 		{`kein json`, 400, CodeInvalidRequest, ""},
 		{`null`, 400, CodeInvalidRequest, ""},
 		{`["type"]`, 400, CodeInvalidRequest, ""},
-		{`{"type": "rezept"} {}`, 400, CodeInvalidRequest, ""},
+		{`{"type": "prescription"} {}`, 400, CodeInvalidRequest, ""},
 		{`{"fullText": "neu"}`, 400, CodeFieldNotCorrectable, "map[field:fullText]"},
 		{`{"module": "sport"}`, 400, CodeFieldNotCorrectable, "map[field:module]"},
 		{`{"corrections": []}`, 400, CodeFieldNotCorrectable, "map[field:corrections]"},
@@ -215,7 +215,7 @@ func TestCorrect_ServiceErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rec := correct(t, &fakeCorrector{err: c.err}, correctionID, `{"type": "rezept"}`)
+			rec := correct(t, &fakeCorrector{err: c.err}, correctionID, `{"type": "prescription"}`)
 			a := checkError(t, rec, c.status, c.code)
 			if details(a) != c.details {
 				t.Errorf("details = %s, want %s", details(a), c.details)
@@ -231,7 +231,7 @@ func TestCorrect_ServiceErrors(t *testing.T) {
 }
 
 func TestCorrect_CanceledWritesNothing(t *testing.T) {
-	rec := correct(t, &fakeCorrector{err: context.Canceled}, correctionID, `{"type": "rezept"}`)
+	rec := correct(t, &fakeCorrector{err: context.Canceled}, correctionID, `{"type": "prescription"}`)
 	if rec.Body.Len() != 0 {
 		t.Errorf("body on cancel: %s", rec.Body)
 	}

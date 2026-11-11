@@ -47,7 +47,7 @@ func (s *fakeCorrectionStore) SaveCorrection(_ context.Context, e core.Entry) (b
 
 func correctionData() *fakeCorrectionStore {
 	return &fakeCorrectionStore{entry: &core.Entry{
-		ID: idLab, Module: "gesundheit", Type: "laborbefund",
+		ID: idLab, Module: "health", Type: "lab_report",
 		DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH"),
 		Facts:       []core.Fact{{ID: "f2", Name: "Leukozyten", Value: "6,3", Unit: ptr("G/l")}},
 		Corrections: []core.Correction{},
@@ -100,7 +100,7 @@ func TestCorrect_NoChangeNoWrite(t *testing.T) {
 
 func TestCorrect_Errors(t *testing.T) {
 	internal := errors.New("database gone")
-	valid := core.Change{Type: ptr("arztbrief")}
+	valid := core.Change{Type: ptr("doctor_letter")}
 	cases := []struct {
 		name  string
 		s     *fakeCorrectionStore

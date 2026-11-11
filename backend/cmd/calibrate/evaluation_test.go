@@ -69,17 +69,17 @@ func date(s string) *string { return &s }
 
 func TestResolve(t *testing.T) {
 	list := []core.EntrySummary{
-		{ID: "T1", Type: "arztbrief", DocumentDate: date("2026-09-02")},
-		{ID: "D1", Type: "laborbefund", DocumentDate: date("2026-01-20")},
-		{ID: "D2", Type: "laborbefund", DocumentDate: date("2026-07-22")},
-		{ID: "D3", Type: "laborbefund", DocumentDate: date("2026-10-14")},
-		{ID: "D4", Type: "laborbefund", DocumentDate: date("2026-10-14")},
-		{ID: "N1", Type: "sonstiges", DocumentDate: nil},
-		{ID: "O1", Type: "arztbrief", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe, Facharzt")},
-		{ID: "O2", Type: "sonstiges", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe")},
+		{ID: "T1", Type: "doctor_letter", DocumentDate: date("2026-09-02")},
+		{ID: "D1", Type: "lab_report", DocumentDate: date("2026-01-20")},
+		{ID: "D2", Type: "lab_report", DocumentDate: date("2026-07-22")},
+		{ID: "D3", Type: "lab_report", DocumentDate: date("2026-10-14")},
+		{ID: "D4", Type: "lab_report", DocumentDate: date("2026-10-14")},
+		{ID: "N1", Type: "other", DocumentDate: nil},
+		{ID: "O1", Type: "doctor_letter", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe, Facharzt")},
+		{ID: "O2", Type: "other", DocumentDate: date("2026-03-05"), Issuer: date("Orthopädie, Dr. Probe")},
 	}
-	jan := target{Type: "laborbefund", Date: "2026-01-20"}
-	july := target{Type: "laborbefund", Date: "2026-07-22"}
+	jan := target{Type: "lab_report", Date: "2026-01-20"}
+	july := target{Type: "lab_report", Date: "2026-07-22"}
 	ref := target{Date: "2026-03-05", Issuer: "Orthopädie, Dr. Probe"}
 	q := func(targets ...target) question {
 		return question{Text: "x", Group: relevant, Expected: targets}
@@ -109,10 +109,10 @@ func TestResolve(t *testing.T) {
 		want string
 	}{
 		"ID missing":         {target{ID: "T9"}, "no entry for ID T9"},
-		"date missing":       {target{Type: "laborbefund", Date: "2026-08-12"}, "no entry for laborbefund 2026-08-12"},
-		"wrong type":         {target{Type: "rezept", Date: "2026-01-20"}, "no entry for rezept 2026-01-20"},
-		"twice":              {target{Type: "laborbefund", Date: "2026-10-14"}, "2 entries for laborbefund 2026-10-14"},
-		"never without date": {target{Type: "sonstiges", Date: ""}, "no entry for sonstiges "},
+		"date missing":       {target{Type: "lab_report", Date: "2026-08-12"}, "no entry for lab_report 2026-08-12"},
+		"wrong type":         {target{Type: "prescription", Date: "2026-01-20"}, "no entry for prescription 2026-01-20"},
+		"twice":              {target{Type: "lab_report", Date: "2026-10-14"}, "2 entries for lab_report 2026-10-14"},
+		"never without date": {target{Type: "other", Date: ""}, "no entry for other "},
 		"issuer missing":     {target{Date: "2026-03-05", Issuer: "Physiotherapie Beispiel"}, "no entry for 2026-03-05 (Physiotherapie Beispiel)"},
 		"only date":          {target{Date: "2026-03-05"}, "2 entries for 2026-03-05"},
 	} {
@@ -123,9 +123,9 @@ func TestResolve(t *testing.T) {
 	}
 
 	// Several problems come together, each only once.
-	missing := target{Type: "arztbrief", Date: "2026-04-01"}
+	missing := target{Type: "doctor_letter", Date: "2026-04-01"}
 	_, err = resolve([]question{q(missing), q(missing, target{ID: "T9"})}, list)
-	if err == nil || strings.Count(err.Error(), "arztbrief 2026-04-01") != 1 || !strings.Contains(err.Error(), "ID T9") {
+	if err == nil || strings.Count(err.Error(), "doctor_letter 2026-04-01") != 1 || !strings.Contains(err.Error(), "ID T9") {
 		t.Errorf("several errors: %v", err)
 	}
 }

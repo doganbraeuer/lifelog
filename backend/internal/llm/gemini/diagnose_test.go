@@ -82,7 +82,7 @@ func TestDiagnose_Read(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	contents, cfg := readRequest(data, mimeType, core.AllowedTypes("gesundheit"))
+	contents, cfg := readRequest(data, mimeType, core.AllowedTypes("health"))
 	thinking := string(cfg.ThinkingConfig.ThinkingLevel)
 	if os.Getenv("LIFELOG_DIAGNOSE_THINKING") == "off" {
 		cfg.ThinkingConfig, thinking = nil, "off"
@@ -137,7 +137,7 @@ func TestDiagnose_Read(t *testing.T) {
 			t.Errorf("response not usable: %v", err)
 			return
 		}
-		entry, dropped, err := core.CheckExtraction(x, "gesundheit")
+		entry, dropped, err := core.CheckExtraction(x, "health")
 		if err != nil {
 			t.Errorf("check: %v", err)
 			return

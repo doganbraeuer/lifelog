@@ -66,7 +66,7 @@ func testFile(t *testing.T, name string) []byte {
 
 func TestLive_ReadDocument(t *testing.T) {
 	g := liveGemini(t)
-	types := core.AllowedTypes("gesundheit")
+	types := core.AllowedTypes("health")
 
 	for _, name := range []string{"lab_report.pdf", "lab_report.png"} {
 		t.Run(name, func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestLive_ReadDocument(t *testing.T) {
 			}
 			t.Logf("duration %v", duration.Round(time.Millisecond))
 
-			entry, dropped, err := core.CheckExtraction(x, "gesundheit")
+			entry, dropped, err := core.CheckExtraction(x, "health")
 			if err != nil {
 				t.Fatalf("check: %v", err)
 			}
@@ -92,7 +92,7 @@ func TestLive_ReadDocument(t *testing.T) {
 				t.Logf("dropped: %v", dropped)
 			}
 
-			if entry.Type != "laborbefund" {
+			if entry.Type != "lab_report" {
 				t.Errorf("type = %q", entry.Type)
 			}
 			if entry.DocumentDate == nil || *entry.DocumentDate != "2026-10-14" {
@@ -130,7 +130,7 @@ func TestLive_ReadText(t *testing.T) {
 	text := string(testFile(t, "lab_report.txt"))
 
 	start := time.Now()
-	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("gesundheit"))
+	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("health"))
 	duration := time.Since(start).Round(time.Millisecond)
 	if err != nil {
 		t.Fatalf("after %v: %v", duration, err)
@@ -139,14 +139,14 @@ func TestLive_ReadText(t *testing.T) {
 
 	// As in the service: the full text is the entered text.
 	x.FullText = text
-	entry, dropped, err := core.CheckExtraction(x, "gesundheit")
+	entry, dropped, err := core.CheckExtraction(x, "health")
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
 	if len(dropped) > 0 {
 		t.Logf("dropped: %v", dropped)
 	}
-	if entry.Type != "laborbefund" {
+	if entry.Type != "lab_report" {
 		t.Errorf("type = %q", entry.Type)
 	}
 	if deref(entry.DocumentDate) != "2026-10-14" {
@@ -180,11 +180,11 @@ func TestLive_BlankPageIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	x, err := g.ReadDocument(context.Background(), buf.Bytes(), core.MimePNG, core.AllowedTypes("gesundheit"))
+	x, err := g.ReadDocument(context.Background(), buf.Bytes(), core.MimePNG, core.AllowedTypes("health"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := core.CheckExtraction(x, "gesundheit"); !errors.Is(err, core.ErrUnreadable) {
+	if _, _, err := core.CheckExtraction(x, "health"); !errors.Is(err, core.ErrUnreadable) {
 		t.Errorf("blank page: want ErrUnreadable, got %v (readable=%v)", err, x.Readable)
 	}
 }

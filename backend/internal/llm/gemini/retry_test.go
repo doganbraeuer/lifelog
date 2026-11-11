@@ -229,7 +229,7 @@ func TestReadDocument_RetriesAndFallback(t *testing.T) {
 			n := &fakeNetwork{errs: c.errs}
 			g := testGemini(n, c.fallback)
 
-			x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"laborbefund"})
+			x, err := g.ReadDocument(context.Background(), []byte("%PDF-"), "application/pdf", []string{"lab_report"})
 
 			if !slices.Equal(n.calls, c.calls) {
 				t.Errorf("calls = %v, want %v", n.calls, c.calls)
@@ -237,7 +237,7 @@ func TestReadDocument_RetriesAndFallback(t *testing.T) {
 			if got := errors.Is(err, llm.ErrUnavailable); got != c.unavailable {
 				t.Errorf("ErrUnavailable = %v, want %v (%v)", got, c.unavailable, err)
 			}
-			if c.success && (err != nil || x.Type != "laborbefund") {
+			if c.success && (err != nil || x.Type != "lab_report") {
 				t.Errorf("want success, got %+v, %v", x, err)
 			}
 			if !c.success && err == nil {

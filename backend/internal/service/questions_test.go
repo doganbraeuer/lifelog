@@ -51,8 +51,8 @@ func searchData() *fakeSearch {
 			{EntryID: idLetter, Position: 2, Text: "Kontrolle in 6 Monaten", Score: core.MinScore - 0.01}, // below
 		},
 		entries: map[string]core.EntrySummary{
-			idLab:    {ID: idLab, Module: "gesundheit", Type: "laborbefund", DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH")},
-			idLetter: {ID: idLetter, Module: "gesundheit", Type: "arztbrief", DocumentDate: ptr("2026-09-02"), Issuer: ptr("Dr. Erika Beispiel")},
+			idLab:    {ID: idLab, Module: "health", Type: "lab_report", DocumentDate: ptr("2026-10-14"), Issuer: ptr("Labor Muster GmbH")},
+			idLetter: {ID: idLetter, Module: "health", Type: "doctor_letter", DocumentDate: ptr("2026-09-02"), Issuer: ptr("Dr. Erika Beispiel")},
 		},
 	}
 }
@@ -66,7 +66,7 @@ func TestAsk_Hit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.askedModule != "gesundheit" || s.askedK != core.MaxHits {
+	if s.askedModule != "health" || s.askedK != core.MaxHits {
 		t.Errorf("search with module %q, k %d", s.askedModule, s.askedK)
 	}
 
@@ -78,7 +78,7 @@ func TestAsk_Hit(t *testing.T) {
 	if len(sources) != 2 || sources[0].Number != 1 || sources[0].EntryID != idLab || sources[1].Number != 2 || sources[1].EntryID != idLetter {
 		t.Fatalf("sources = %+v", sources)
 	}
-	if sources[0].Type != "laborbefund" || *sources[0].DocumentDate != "2026-10-14" || *sources[0].Issuer != "Labor Muster GmbH" || sources[0].Module != "gesundheit" {
+	if sources[0].Type != "lab_report" || *sources[0].DocumentDate != "2026-10-14" || *sources[0].Issuer != "Labor Muster GmbH" || sources[0].Module != "health" {
 		t.Errorf("details from the entry missing: %+v", sources[0])
 	}
 

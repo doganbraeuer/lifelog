@@ -7,14 +7,14 @@ import (
 )
 
 func TestCheckModule(t *testing.T) {
-	for value, want := range map[string]string{"": "gesundheit", "gesundheit": "gesundheit"} {
+	for value, want := range map[string]string{"": "health", "health": "health"} {
 		got, err := CheckModule(value)
 		if err != nil || got != want {
 			t.Errorf("CheckModule(%q) = %q, %v", value, got, err)
 		}
 	}
 	// Modules from the app that are not yet valid in the backend are errors.
-	for _, value := range []string{"ernaehrung", "sport", "Gesundheit", " gesundheit"} {
+	for _, value := range []string{"nutrition", "sport", "Health", " health", "gesundheit"} {
 		if _, err := CheckModule(value); !errors.Is(err, ErrUnknownModule) {
 			t.Errorf("CheckModule(%q): want ErrUnknownModule, got %v", value, err)
 		}
@@ -22,10 +22,10 @@ func TestCheckModule(t *testing.T) {
 }
 
 func TestTypes(t *testing.T) {
-	if !TypeAllowed("gesundheit", "laborbefund") {
-		t.Error("laborbefund must be allowed in gesundheit")
+	if !TypeAllowed("health", "lab_report") {
+		t.Error("lab_report must be allowed in health")
 	}
-	if TypeAllowed("gesundheit", "kochrezept") || TypeAllowed("sport", "rezept") {
+	if TypeAllowed("health", "kochrezept") || TypeAllowed("sport", "prescription") {
 		t.Error("unknown type or unknown module must not be allowed")
 	}
 	if len(AllowedTypes("sport")) != 0 {
@@ -33,13 +33,13 @@ func TestTypes(t *testing.T) {
 	}
 
 	// AllowedTypes returns a copy; the catalog stays unchanged.
-	types := AllowedTypes("gesundheit")
+	types := AllowedTypes("health")
 	types[0] = "broken"
-	if TypeAllowed("gesundheit", "broken") {
+	if TypeAllowed("health", "broken") {
 		t.Error("catalog was changed through the returned list")
 	}
 
-	if got := Modules(); !slices.Equal(got, []string{"gesundheit"}) {
+	if got := Modules(); !slices.Equal(got, []string{"health"}) {
 		t.Errorf("Modules() = %v", got)
 	}
 }

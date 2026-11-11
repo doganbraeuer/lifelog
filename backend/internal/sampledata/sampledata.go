@@ -33,7 +33,7 @@ const (
 func Entries() []core.Entry {
 	return []core.Entry{
 		textEntry(
-			LabReport, "6727a1f3c2b4e5d6f7a8b9c1", "laborbefund",
+			LabReport, "6727a1f3c2b4e5d6f7a8b9c1", "lab_report",
 			ptr("2026-10-14"), ptr("Labor Muster GmbH, Salzburg"), "2026-11-03T18:42:07Z",
 			"Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\nLaborbefund vom 14.10.2026\n"+
 				"Patient: Max Mustermann, geb. 01.01.1990\n\n"+
@@ -47,7 +47,7 @@ func Entries() []core.Entry {
 			},
 		),
 		textEntry(
-			DoctorLetter, "6727a20bc2b4e5d6f7a8b9d5", "arztbrief",
+			DoctorLetter, "6727a20bc2b4e5d6f7a8b9d5", "doctor_letter",
 			ptr("2026-09-02"), ptr("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T18:50:12Z",
 			"Dr. Erika Beispiel, Allgemeinmedizin\nBeispielgasse 7, 5020 Salzburg\n\n"+
 				"Arztbrief vom 02.09.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\n"+
@@ -59,13 +59,13 @@ func Entries() []core.Entry {
 			},
 		),
 		textEntry(
-			Note, "6727a2a9c2b4e5d6f7a8b9e8", "sonstiges",
+			Note, "6727a2a9c2b4e5d6f7a8b9e8", "other",
 			nil, nil, "2026-11-03T19:01:44Z",
 			"Notiz ohne Datum und ohne Absender.\nImpfpass liegt in der Schublade.",
 			[]core.Fact{},
 		),
 		textEntry(
-			Prescription, "6727a2f0c2b4e5d6f7a8b9f3", "rezept",
+			Prescription, "6727a2f0c2b4e5d6f7a8b9f3", "prescription",
 			ptr("2026-10-14"), ptr("Dr. Erika Beispiel, Allgemeinmedizin"), "2026-11-03T19:10:00Z",
 			"Dr. Erika Beispiel, Allgemeinmedizin\n\nRezept vom 14.10.2026\n"+
 				"Patient: Max Mustermann\n\nBeispielin 100 mg, 1-0-0, 30 Stück",
@@ -106,7 +106,7 @@ func textEntry(id, fileID, typ string, date, issuer *string, importedAt, fullTex
 	hash := sha256.Sum256([]byte(fullText))
 	return core.Entry{
 		ID:           id,
-		Module:       "gesundheit",
+		Module:       "health",
 		Type:         typ,
 		DocumentDate: date,
 		ImportedAt:   utc(importedAt),
@@ -141,8 +141,8 @@ func Throwaway(id, fileID string, now time.Time) (core.Entry, []core.Chunk) {
 	hash := sha256.Sum256([]byte(fullText))
 	e := core.Entry{
 		ID:         id,
-		Module:     "gesundheit",
-		Type:       "sonstiges",
+		Module:     "health",
+		Type:       "other",
 		ImportedAt: now,
 		Issuer:     ptr("Wegwerf-Test"),
 		FullText:   fullText,

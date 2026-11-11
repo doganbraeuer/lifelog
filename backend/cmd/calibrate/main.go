@@ -13,7 +13,7 @@
 //	go run ./cmd/calibrate                    # with the threshold core.MinScore
 //	go run ./cmd/calibrate -threshold 0.82    # compute another threshold
 //
-// It searches the module gesundheit across all chunks. The table names type
+// It searches the module health across all chunks. The table names type
 // and document date (MM-DD) of the best hit.
 package main
 
@@ -88,7 +88,7 @@ func run(threshold float64) error {
 
 	// Read only: resolve targets (type + document date or seed ID) to IDs
 	// before the first embedding costs quota.
-	list, err := db.ListSummaries(ctx, "gesundheit")
+	list, err := db.ListSummaries(ctx, "health")
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func run(threshold float64) error {
 			}
 			return fmt.Errorf("question %d: %w", i+1, err)
 		}
-		hits, err := db.SimilarChunks(ctx, vector, "gesundheit", core.MaxHits)
+		hits, err := db.SimilarChunks(ctx, vector, "health", core.MaxHits)
 		if err != nil {
 			return fmt.Errorf("question %d: %w", i+1, err)
 		}
@@ -135,7 +135,7 @@ func run(threshold float64) error {
 	return nil
 }
 
-// shortName for the table, e.g. "laborbefund 07-22".
+// shortName for the table, e.g. "lab_report 07-22".
 func shortName(e core.EntrySummary) string {
 	if e.DocumentDate == nil || len(*e.DocumentDate) != 10 {
 		return e.Type + " no date"
