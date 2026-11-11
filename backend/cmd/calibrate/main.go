@@ -121,7 +121,7 @@ func run(threshold float64) error {
 
 	fmt.Printf("%d questions, %d entries, embedding model %s, database %q, top %d\n\n",
 		len(qs), len(list), c.GeminiEmbeddingModel, c.MongoDB, core.MaxHits)
-	fmt.Println(" No  Group      Best    Hit                Right          Question")
+	fmt.Println(" No  Group      Best    Hit                 Right          Question")
 
 	measurements := make([]measurement, 0, len(qs))
 	for i, q := range qs {
@@ -143,7 +143,7 @@ func run(threshold float64) error {
 		}
 		m := measure(q, expected, hits)
 		measurements = append(measurements, m)
-		fmt.Printf("%3d  %-9s  %s   %-18s %-14s %s\n",
+		fmt.Printf("%3d  %-9s  %s   %-19s %-14s %s\n",
 			i+1, q.Group, score(m.Best), entryName(names, m.BestEntry), mark(m), q.Text)
 	}
 
