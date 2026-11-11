@@ -11,88 +11,88 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Fehlercodes für einzelne Einträge (API.md 3.3, 3.4).
+// Error codes for single entries (API.md 3.3, 3.4).
 const (
-	CodeUngueltigeID         = "UNGUELTIGE_ID"
-	CodeEintragNichtGefunden = "EINTRAG_NICHT_GEFUNDEN"
+	CodeInvalidID     = "UNGUELTIGE_ID"
+	CodeEntryNotFound = "EINTRAG_NICHT_GEFUNDEN"
 )
 
-// eintragHandler beantwortet GET /api/v1/eintraege/{id} (API.md 3.3).
-func eintragHandler(s EintragSpeicher) http.HandlerFunc {
+// entryHandler answers GET /api/v1/eintraege/{id} (API.md 3.3).
+func entryHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		e, ok := ladeEintrag(w, r, s)
+		e, ok := loadEntry(w, r, s)
 		if !ok {
 			return
 		}
-		schreibeJSON(w, http.StatusOK, eintragZuJSON(e))
+		writeJSON(w, http.StatusOK, entryToJSON(e))
 	}
 }
 
-// dateiHandler beantwortet GET /api/v1/eintraege/{id}/datei (API.md 3.4):
-// die Originaldatei als Binärdaten. Fehler kommen trotzdem als JSON.
-func dateiHandler(s EintragSpeicher) http.HandlerFunc {
+// fileHandler answers GET /api/v1/eintraege/{id}/datei (API.md 3.4): the
+// original file as binary data. Errors still come as JSON.
+func fileHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		e, ok := ladeEintrag(w, r, s)
+		e, ok := loadEntry(w, r, s)
 		if !ok {
 			return
 		}
 
-		inhalt, laenge, err := s.OpenFile(r.Context(), e.File.ID)
+		content, length, err := s.OpenFile(r.Context(), e.File.ID)
 		if err != nil {
 			if errors.Is(err, core.ErrOriginalMissing) {
-				// Darf nicht vorkommen: Eintrag ohne Datei ist ein Datenfehler.
-				slog.Error("Originaldatei fehlt", "eintrag", e.ID, "datei", e.File.ID)
+				// Must not happen: an entry without a file is a data error.
+				slog.Error("original file missing", "entry", e.ID, "file", e.File.ID)
 			}
-			schreibeInternenFehler(w, r, err)
+			writeInternalError(w, r, err)
 			return
 		}
-		defer inhalt.Close()
+		defer content.Close()
 
 		h := w.Header()
 		h.Set("Content-Type", e.File.MimeType)
-		h.Set("Content-Length", strconv.FormatInt(laenge, 10))
-		h.Set("Content-Disposition", inlineMitName(e.File.FileName))
-		// Der Browser/die WebView soll den Typ nicht selbst erraten.
+		h.Set("Content-Length", strconv.FormatInt(length, 10))
+		h.Set("Content-Disposition", inlineWithName(e.File.FileName))
+		// The browser/WebView must not guess the type itself.
 		h.Set("X-Content-Type-Options", "nosniff")
-		// Gesundheitsdokumente nicht in Zwischenspeichern ablegen.
+		// Do not keep health documents in caches.
 		h.Set("Cache-Control", "private, no-store")
 		w.WriteHeader(http.StatusOK)
 
-		// Ab hier ist der Status gesendet. Bricht die Übertragung ab (z. B.
-		// App geschlossen), bleibt nur das Log.
-		if _, err := io.Copy(w, inhalt); err != nil {
-			slog.Warn("Datei nicht vollständig übertragen", "eintrag", e.ID, "fehler", err)
+		// From here on the status is sent. If the transfer breaks off (e.g.
+		// app closed), only the log remains.
+		if _, err := io.Copy(w, content); err != nil {
+			slog.Warn("file not transferred completely", "entry", e.ID, "error", err)
 		}
 	}
 }
 
-// ladeEintrag prüft die ID aus dem Pfad und lädt den Eintrag. Bei einem
-// Fehler ist die Antwort schon geschrieben und ok ist false.
-func ladeEintrag(w http.ResponseWriter, r *http.Request, s EintragSpeicher) (core.Entry, bool) {
+// loadEntry checks the ID from the path and loads the entry. On an error
+// the response is already written and ok is false.
+func loadEntry(w http.ResponseWriter, r *http.Request, s EntryStore) (core.Entry, bool) {
 	id := r.PathValue("id")
 	if err := core.CheckID(id); err != nil {
-		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
+		writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
 		return core.Entry{}, false
 	}
-	e, gefunden, err := s.GetEntry(r.Context(), id)
+	e, found, err := s.GetEntry(r.Context(), id)
 	if err != nil {
-		schreibeInternenFehler(w, r, err)
+		writeInternalError(w, r, err)
 		return core.Entry{}, false
 	}
-	if !gefunden {
-		schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
+	if !found {
+		writeError(w, http.StatusNotFound, CodeEntryNotFound, "Diesen Eintrag gibt es nicht.", nil)
 		return core.Entry{}, false
 	}
 	return e, true
 }
 
-// inlineMitName baut den Content-Disposition-Header. mime.FormatMediaType
-// setzt Anführungszeichen und kodiert Umlaute nach RFC 2231 (Parameter
-// filename* mit Zeichensatz utf-8 und Prozent-Kodierung), damit kein
-// Dateiname den Header zerbrechen kann.
-func inlineMitName(dateiname string) string {
-	if wert := mime.FormatMediaType("inline", map[string]string{"filename": dateiname}); wert != "" {
-		return wert
+// inlineWithName builds the Content-Disposition header.
+// mime.FormatMediaType adds quotes and encodes umlauts per RFC 2231
+// (parameter filename* with charset utf-8 and percent encoding), so no file
+// name can break the header.
+func inlineWithName(fileName string) string {
+	if value := mime.FormatMediaType("inline", map[string]string{"filename": fileName}); value != "" {
+		return value
 	}
 	return "inline"
 }

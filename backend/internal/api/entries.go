@@ -8,55 +8,55 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Fehlercodes für die Einträge-Endpunkte (API.md, Abschnitt 1).
+// Error codes for the entry endpoints (API.md, section 1).
 const (
-	CodeUngueltigerParameter = "UNGUELTIGER_PARAMETER"
+	CodeInvalidParameter = "UNGUELTIGER_PARAMETER"
 )
 
-// EintragSpeicher ist das, was die Einträge-Handler von der Datenbank
-// brauchen. Umgesetzt von speicher.Speicher, im Test von einer Attrappe.
-type EintragSpeicher interface {
-	ListSummaries(ctx context.Context, modul string) ([]core.EntrySummary, error)
-	GetEntry(ctx context.Context, id string) (e core.Entry, gefunden bool, err error)
-	OpenFile(ctx context.Context, dateiID string) (inhalt io.ReadCloser, laenge int64, err error)
+// EntryStore is what the entry handlers need from the database. Implemented
+// by store.Store, in tests by a fake.
+type EntryStore interface {
+	ListSummaries(ctx context.Context, module string) ([]core.EntrySummary, error)
+	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
+	OpenFile(ctx context.Context, fileID string) (content io.ReadCloser, length int64, err error)
 }
 
-// eintraegeListeHandler beantwortet GET /api/v1/eintraege (API.md, 3.2).
-func eintraegeListeHandler(speicher EintragSpeicher) http.HandlerFunc {
+// listEntriesHandler answers GET /api/v1/eintraege (API.md, 3.2).
+func listEntriesHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		modul, err := core.CheckModule(q.Get("modul"))
+		module, err := core.CheckModule(q.Get("modul"))
 		if err != nil {
-			schreibeUngueltigenParameter(w, "modul", q.Get("modul"),
+			writeInvalidParameter(w, "modul", q.Get("modul"),
 				"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.")
 			return
 		}
-		sortierung, err := core.ParseSort(q.Get("sortierung"))
+		sort, err := core.ParseSort(q.Get("sortierung"))
 		if err != nil {
-			schreibeUngueltigenParameter(w, "sortierung", q.Get("sortierung"),
+			writeInvalidParameter(w, "sortierung", q.Get("sortierung"),
 				"Unbekannte Sortierung. Erlaubt sind dokumentdatum und importdatum.")
 			return
 		}
-		richtung, err := core.ParseSortOrder(q.Get("richtung"))
+		order, err := core.ParseSortOrder(q.Get("richtung"))
 		if err != nil {
-			schreibeUngueltigenParameter(w, "richtung", q.Get("richtung"),
+			writeInvalidParameter(w, "richtung", q.Get("richtung"),
 				"Unbekannte Richtung. Erlaubt sind absteigend und aufsteigend.")
 			return
 		}
 
-		liste, err := speicher.ListSummaries(r.Context(), modul)
+		list, err := s.ListSummaries(r.Context(), module)
 		if err != nil {
-			schreibeInternenFehler(w, r, err)
+			writeInternalError(w, r, err)
 			return
 		}
-		core.SortEntries(liste, sortierung, richtung)
+		core.SortEntries(list, sort, order)
 
-		schreibeJSON(w, http.StatusOK, eintraegeListeZuJSON(liste))
+		writeJSON(w, http.StatusOK, entryListToJSON(list))
 	}
 }
 
-func schreibeUngueltigenParameter(w http.ResponseWriter, parameter, wert, nachricht string) {
-	schreibeFehler(w, http.StatusBadRequest, CodeUngueltigerParameter, nachricht,
-		map[string]any{"parameter": parameter, "wert": wert})
+func writeInvalidParameter(w http.ResponseWriter, parameter, value, message string) {
+	writeError(w, http.StatusBadRequest, CodeInvalidParameter, message,
+		map[string]any{"parameter": parameter, "wert": value})
 }

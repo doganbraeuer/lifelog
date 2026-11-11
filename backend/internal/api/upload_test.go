@@ -18,37 +18,37 @@ import (
 	"lifelog/backend/internal/service"
 )
 
-// hochladerAttrappe merkt sich den Upload und liefert eintrag bzw. err.
-type hochladerAttrappe struct {
-	eintrag    core.Entry
+// fakeUploader remembers the upload and returns entry or err.
+type fakeUploader struct {
+	entry      core.Entry
 	err        error
 	upload     *service.Upload
 	textUpload *service.TextUpload
 }
 
-func (h *hochladerAttrappe) Upload(_ context.Context, u service.Upload) (core.Entry, error) {
-	h.upload = &u
-	return h.eintrag, h.err
+func (u *fakeUploader) Upload(_ context.Context, up service.Upload) (core.Entry, error) {
+	u.upload = &up
+	return u.entry, u.err
 }
 
-func (h *hochladerAttrappe) UploadText(_ context.Context, u service.TextUpload) (core.Entry, error) {
-	h.textUpload = &u
-	return h.eintrag, h.err
+func (u *fakeUploader) UploadText(_ context.Context, up service.TextUpload) (core.Entry, error) {
+	u.textUpload = &up
+	return u.entry, u.err
 }
 
-// formular baut eine multipart-Anfrage. dateien: Dateiname → Inhalt.
-func formular(t *testing.T, dateien map[string][]byte, felder map[string]string) *http.Request {
+// form builds a multipart request. files: file name → content.
+func form(t *testing.T, files map[string][]byte, fields map[string]string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	for name, inhalt := range dateien {
+	for name, content := range files {
 		fw, err := mw.CreateFormFile("datei", name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fw.Write(inhalt)
+		fw.Write(content)
 	}
-	for k, v := range felder {
+	for k, v := range fields {
 		mw.WriteField(k, v)
 	}
 	mw.Close()
@@ -57,179 +57,179 @@ func formular(t *testing.T, dateien map[string][]byte, felder map[string]string)
 	return r
 }
 
-func hochladen(t *testing.T, h *hochladerAttrappe, r *http.Request) *httptest.ResponseRecorder {
+func upload(t *testing.T, u *fakeUploader, r *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Hochladen: h})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Uploader: u})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, r)
 	return rec
 }
 
-func vollerEintrag() core.Entry {
-	z := func(s string) *string { return &s }
+func fullEntry() core.Entry {
+	p := func(s string) *string { return &s }
 	return core.Entry{
 		ID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit", Type: "laborbefund",
-		DocumentDate: z("2026-10-14"),
+		DocumentDate: p("2026-10-14"),
 		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Issuer:       z("Labor Muster GmbH, Salzburg"),
+		Issuer:       p("Labor Muster GmbH, Salzburg"),
 		FullText:     "Hämoglobin 14,2 g/dl",
 		Facts: []core.Fact{
-			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: z("g/dl")},
+			{ID: "i1", Name: "Hämoglobin", Value: "14,2", Unit: p("g/dl")},
 			{ID: "i2", Name: "Befundart", Value: "Blutbild klein"},
 		},
 		File: core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund.pdf",
 			MimeType: "application/pdf", Size: 184320, Sha256: strings.Repeat("ab", 32)},
-		Corrections: nil, // muss trotzdem als [] herauskommen
+		Corrections: nil, // must still come out as []
 	}
 }
 
-func TestHochladen_Erfolg(t *testing.T) {
-	h := &hochladerAttrappe{eintrag: vollerEintrag()}
-	rec := hochladen(t, h, formular(t,
+func TestUpload_Success(t *testing.T) {
+	u := &fakeUploader{entry: fullEntry()}
+	rec := upload(t, u, form(t,
 		map[string][]byte{"befund.pdf": []byte("%PDF-1.7")},
 		map[string]string{"modul": "gesundheit"}))
 
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	if loc := rec.Header().Get("Location"); loc != "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", loc)
 	}
-	if h.upload == nil || string(h.upload.Data) != "%PDF-1.7" || h.upload.FileName != "befund.pdf" || h.upload.Module != "gesundheit" {
-		t.Errorf("Upload an den Dienst = %+v", h.upload)
+	if u.upload == nil || string(u.upload.Data) != "%PDF-1.7" || u.upload.FileName != "befund.pdf" || u.upload.Module != "gesundheit" {
+		t.Errorf("upload to the service = %+v", u.upload)
 	}
 
 	body := rec.Body.String()
-	for _, muss := range []string{
+	for _, must := range []string{
 		`"korrekturen":[]`,
 		`"importdatum":"2026-11-03T18:42:07Z"`,
 		`"mimeTyp":"application/pdf"`,
-		`{"id":"i2","name":"Befundart","wert":"Blutbild klein"}`, // ohne einheit
+		`{"id":"i2","name":"Befundart","wert":"Blutbild klein"}`, // without einheit
 		`"volltext":"Hämoglobin 14,2 g/dl"`,
 	} {
-		if !strings.Contains(body, muss) {
-			t.Errorf("Antwort enthält %s nicht:\n%s", muss, body)
+		if !strings.Contains(body, must) {
+			t.Errorf("response does not contain %s:\n%s", must, body)
 		}
 	}
 }
 
-func TestHochladen_OhneModulIstLeer(t *testing.T) {
-	h := &hochladerAttrappe{eintrag: vollerEintrag()}
-	hochladen(t, h, formular(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, nil))
-	if h.upload == nil || h.upload.Module != "" {
-		t.Errorf("Modul = %+v (leer heißt Standard, das entscheidet der Dienst)", h.upload)
+func TestUpload_WithoutModuleIsEmpty(t *testing.T) {
+	u := &fakeUploader{entry: fullEntry()}
+	upload(t, u, form(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, nil))
+	if u.upload == nil || u.upload.Module != "" {
+		t.Errorf("module = %+v (empty means default, the service decides)", u.upload)
 	}
 }
 
-func TestHochladen_Formularfehler(t *testing.T) {
+func TestUpload_FormErrors(t *testing.T) {
 	pdf := []byte("%PDF-")
-	faelle := []struct {
+	cases := []struct {
 		name    string
-		anfrage func(t *testing.T) *http.Request
+		request func(t *testing.T) *http.Request
 		status  int
 		code    string
 	}{
-		{"kein multipart", func(t *testing.T) *http.Request {
+		{"not multipart", func(t *testing.T) *http.Request {
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/eintraege", strings.NewReader(`{"datei":"x"}`))
 			r.Header.Set("Content-Type", "application/json")
 			return r
-		}, 400, CodeUngueltigeAnfrage},
-		{"ohne datei", func(t *testing.T) *http.Request {
-			return formular(t, nil, map[string]string{"modul": "gesundheit"})
-		}, 400, CodeDateiFehlt},
-		{"datei und text", func(t *testing.T) *http.Request {
-			return formular(t, map[string][]byte{"a.pdf": pdf}, map[string]string{"text": "Befund"})
-		}, 400, CodeUngueltigeAnfrage},
-		{"zwei Dateien", func(t *testing.T) *http.Request {
-			return formular(t, map[string][]byte{"a.pdf": pdf, "b.pdf": pdf}, nil)
-		}, 400, CodeUngueltigeAnfrage},
-		{"Anfrage viel zu groß", func(t *testing.T) *http.Request {
-			return formular(t, map[string][]byte{"gross.pdf": make([]byte, core.MaxFileBytes+2*formularPuffer)}, nil)
-		}, 413, CodeDateiZuGross},
+		}, 400, CodeInvalidRequest},
+		{"without file", func(t *testing.T) *http.Request {
+			return form(t, nil, map[string]string{"modul": "gesundheit"})
+		}, 400, CodeFileMissing},
+		{"file and text", func(t *testing.T) *http.Request {
+			return form(t, map[string][]byte{"a.pdf": pdf}, map[string]string{"text": "Befund"})
+		}, 400, CodeInvalidRequest},
+		{"two files", func(t *testing.T) *http.Request {
+			return form(t, map[string][]byte{"a.pdf": pdf, "b.pdf": pdf}, nil)
+		}, 400, CodeInvalidRequest},
+		{"request much too large", func(t *testing.T) *http.Request {
+			return form(t, map[string][]byte{"large.pdf": make([]byte, core.MaxFileBytes+2*formOverhead)}, nil)
+		}, 413, CodeFileTooLarge},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			h := &hochladerAttrappe{}
-			rec := hochladen(t, h, f.anfrage(t))
-			pruefeFehler(t, rec, f.status, f.code)
-			if h.upload != nil || h.textUpload != nil {
-				t.Error("bei einem Formularfehler darf der Dienst nicht aufgerufen werden")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			u := &fakeUploader{}
+			rec := upload(t, u, c.request(t))
+			checkError(t, rec, c.status, c.code)
+			if u.upload != nil || u.textUpload != nil {
+				t.Error("the service must not be called on a form error")
 			}
 		})
 	}
 }
 
-func TestHochladen_LeererTextZaehltNicht(t *testing.T) {
-	// "Leer oder nur Leerzeichen gilt als fehlend" (API.md 3.1): datei + leerer text ist ok.
-	h := &hochladerAttrappe{eintrag: vollerEintrag()}
-	rec := hochladen(t, h, formular(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"text": "  "}))
+func TestUpload_EmptyTextDoesNotCount(t *testing.T) {
+	// "Empty or only whitespace counts as missing" (API.md 3.1): file + empty text is ok.
+	u := &fakeUploader{entry: fullEntry()}
+	rec := upload(t, u, form(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"text": "  "}))
 	if rec.Code != http.StatusCreated {
-		t.Errorf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Errorf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if h.upload == nil || h.textUpload != nil {
-		t.Error("muss als Datei-Upload laufen")
+	if u.upload == nil || u.textUpload != nil {
+		t.Error("must run as a file upload")
 	}
 }
 
-func TestHochladen_FehlerDesDienstes(t *testing.T) {
-	faelle := []struct {
+func TestUpload_ServiceErrors(t *testing.T) {
+	cases := []struct {
 		err     error
 		status  int
 		code    string
 		details map[string]any
 	}{
-		{core.ErrUnknownModule, 400, CodeUngueltigeAnfrage, map[string]any{"feld": "modul", "wert": "sport"}},
-		{core.ErrFileEmpty, 400, CodeDateiFehlt, nil},
-		{core.ErrFileTooLarge, 413, CodeDateiZuGross, nil},
-		{core.ErrUnsupportedFileType, 415, CodeDateitypNichtUnterstuetzt, nil},
-		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
+		{core.ErrUnknownModule, 400, CodeInvalidRequest, map[string]any{"feld": "modul", "wert": "sport"}},
+		{core.ErrFileEmpty, 400, CodeFileMissing, nil},
+		{core.ErrFileTooLarge, 413, CodeFileTooLarge, nil},
+		{core.ErrUnsupportedFileType, 415, CodeUnsupportedFileType, nil},
+		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplicate,
 			map[string]any{"eintragId": "6727a1f3c2b4e5d6f7a8b9c0"}},
-		{core.ErrUnreadable, 422, CodeNichtLesbar, nil},
-		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeAuslesenFehlgeschlagen, nil},
-		{fmt.Errorf("JSON kaputt: %w", llm.ErrInvalidResponse), 502, CodeAuslesenFehlgeschlagen, nil},
-		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModellNichtErreichbar, nil},
-		{errors.New("Datenbank weg"), 500, CodeInternerFehler, nil},
+		{core.ErrUnreadable, 422, CodeUnreadable, nil},
+		{&core.ExtractionError{Field: "typ", Reason: "x"}, 502, CodeExtractionFailed, nil},
+		{fmt.Errorf("broken JSON: %w", llm.ErrInvalidResponse), 502, CodeExtractionFailed, nil},
+		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModelUnavailable, nil},
+		{errors.New("database gone"), 500, CodeInternalError, nil},
 	}
-	for _, f := range faelle {
-		t.Run(f.code, func(t *testing.T) {
-			h := &hochladerAttrappe{err: f.err}
-			rec := hochladen(t, h, formular(t,
+	for _, c := range cases {
+		t.Run(c.code, func(t *testing.T) {
+			u := &fakeUploader{err: c.err}
+			rec := upload(t, u, form(t,
 				map[string][]byte{"a.pdf": []byte("%PDF-")}, map[string]string{"modul": "sport"}))
 
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if f.details != nil && fmt.Sprint(a.Fehler.Details) != fmt.Sprint(f.details) {
-				t.Errorf("details = %v, erwartet %v", a.Fehler.Details, f.details)
+			a := checkError(t, rec, c.status, c.code)
+			if c.details != nil && fmt.Sprint(a.Error.Details) != fmt.Sprint(c.details) {
+				t.Errorf("details = %v, want %v", a.Error.Details, c.details)
 			}
-			// Interne Ursachen (z. B. Gemini-Meldungen) gehören nicht in die Antwort.
-			for _, intern := range []string{"Datenbank weg", "Gemini", "JSON kaputt"} {
-				if strings.Contains(rec.Body.String(), intern) {
-					t.Errorf("interne Ursache %q in der Antwort: %s", intern, rec.Body)
+			// Internal causes (e.g. Gemini messages) do not belong in the response.
+			for _, internal := range []string{"database gone", "Gemini", "broken JSON"} {
+				if strings.Contains(rec.Body.String(), internal) {
+					t.Errorf("internal cause %q in the response: %s", internal, rec.Body)
 				}
 			}
 		})
 	}
 }
 
-func TestHochladen_Abbruch(t *testing.T) {
-	h := &hochladerAttrappe{err: context.Canceled}
-	rec := hochladen(t, h, formular(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, nil))
-	// Die App ist weg; es wird nichts Sinnvolles mehr geschrieben.
+func TestUpload_Canceled(t *testing.T) {
+	u := &fakeUploader{err: context.Canceled}
+	rec := upload(t, u, form(t, map[string][]byte{"a.pdf": []byte("%PDF-")}, nil))
+	// The app is gone; nothing useful is written anymore.
 	if rec.Body.Len() != 0 {
-		t.Errorf("Body nach Abbruch: %s", rec.Body)
+		t.Errorf("body after cancel: %s", rec.Body)
 	}
 }
 
-func pruefeFehler(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) fehlerAntwort {
+func checkError(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) errorResponse {
 	t.Helper()
 	if rec.Code != status {
-		t.Errorf("Status = %d, erwartet %d (Body %s)", rec.Code, status, rec.Body)
+		t.Errorf("status = %d, want %d (body %s)", rec.Code, status, rec.Body)
 	}
-	var a fehlerAntwort
+	var a errorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
-		t.Fatalf("kein Fehler-JSON: %v (%s)", err, rec.Body)
+		t.Fatalf("no error JSON: %v (%s)", err, rec.Body)
 	}
-	if a.Fehler.Code != code || a.Fehler.Nachricht == "" {
-		t.Errorf("Fehler = %+v, erwartet Code %s", a.Fehler, code)
+	if a.Error.Code != code || a.Error.Message == "" {
+		t.Errorf("error = %+v, want code %s", a.Error, code)
 	}
 	return a
 }

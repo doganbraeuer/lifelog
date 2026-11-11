@@ -14,24 +14,24 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-const idKorrektur = "6727a1f3c2b4e5d6f7a8b9c0"
+const correctionID = "6727a1f3c2b4e5d6f7a8b9c0"
 
-type korrigiererAttrappe struct {
-	eintrag    core.Entry
-	err        error
-	aufgerufen bool
-	id         string
-	aenderung  core.Change
+type fakeCorrector struct {
+	entry  core.Entry
+	err    error
+	called bool
+	id     string
+	change core.Change
 }
 
-func (k *korrigiererAttrappe) Correct(_ context.Context, id string, a core.Change) (core.Entry, error) {
-	k.aufgerufen, k.id, k.aenderung = true, id, a
-	return k.eintrag, k.err
+func (c *fakeCorrector) Correct(_ context.Context, id string, ch core.Change) (core.Entry, error) {
+	c.called, c.id, c.change = true, id, ch
+	return c.entry, c.err
 }
 
-func korrigieren(t *testing.T, k *korrigiererAttrappe, id, body string) *httptest.ResponseRecorder {
+func correct(t *testing.T, c *fakeCorrector, id, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Korrigieren: k})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Corrector: c})
 	r := httptest.NewRequest(http.MethodPatch, "/api/v1/eintraege/"+id, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -39,200 +39,200 @@ func korrigieren(t *testing.T, k *korrigiererAttrappe, id, body string) *httptes
 	return rec
 }
 
-func zt(s string) *string { return &s }
+func ptr(s string) *string { return &s }
 
-func TestKorrigieren_ErfolgGenauWieAPIBeispiel(t *testing.T) {
-	zeit := time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC)
-	k := &korrigiererAttrappe{eintrag: core.Entry{
-		ID: idKorrektur, Module: "gesundheit", Type: "laborbefund",
-		DocumentDate: zt("2026-10-15"), ImportedAt: time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Issuer: zt("Labor Muster GmbH, Salzburg"), FullText: "Leukozyten 6,3 G/l",
-		Facts: []core.Fact{{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: zt("G/l")}},
+func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
+	at := time.Date(2026, 11, 3, 19, 5, 31, 0, time.UTC)
+	c := &fakeCorrector{entry: core.Entry{
+		ID: correctionID, Module: "gesundheit", Type: "laborbefund",
+		DocumentDate: ptr("2026-10-15"), ImportedAt: time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
+		Issuer: ptr("Labor Muster GmbH, Salzburg"), FullText: "Leukozyten 6,3 G/l",
+		Facts: []core.Fact{{ID: "i2", Name: "Leukozyten", Value: "6,8", Unit: ptr("G/l")}},
 		File:  core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "befund_oktober.pdf", MimeType: "application/pdf", Size: 184320, Sha256: "3f8a"},
 		Corrections: []core.Correction{
-			{Field: "dokumentdatum", Recognized: zt("2026-10-14"), Corrected: zt("2026-10-15"), CorrectedAt: zeit},
-			{Field: "infos.i2.wert", Recognized: zt("6,3"), Corrected: zt("6,8"), CorrectedAt: zeit},
+			{Field: "dokumentdatum", Recognized: ptr("2026-10-14"), Corrected: ptr("2026-10-15"), CorrectedAt: at},
+			{Field: "infos.i2.wert", Recognized: ptr("6,3"), Corrected: ptr("6,8"), CorrectedAt: at},
 		},
 	}}
-	rec := korrigieren(t, k, idKorrektur, `{"dokumentdatum": "2026-10-15", "infos": [{"id": "i2", "wert": "6,8"}]}`)
+	rec := correct(t, c, correctionID, `{"dokumentdatum": "2026-10-15", "infos": [{"id": "i2", "wert": "6,8"}]}`)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	if k.id != idKorrektur {
-		t.Errorf("ID an den Dienst: %q", k.id)
+	if c.id != correctionID {
+		t.Errorf("ID to the service: %q", c.id)
 	}
 	want := core.Change{
-		DocumentDate: core.Nullable{Set: true, Value: zt("2026-10-15")},
-		Facts:        []core.FactChange{{ID: "i2", Value: zt("6,8")}},
+		DocumentDate: core.Nullable{Set: true, Value: ptr("2026-10-15")},
+		Facts:        []core.FactChange{{ID: "i2", Value: ptr("6,8")}},
 	}
-	if !reflect.DeepEqual(k.aenderung, want) {
-		t.Errorf("Änderung = %+v, erwartet %+v", k.aenderung, want)
+	if !reflect.DeepEqual(c.change, want) {
+		t.Errorf("change = %+v, want %+v", c.change, want)
 	}
-	soll := `{"id":"6727a1f3c2b4e5d6f7a8b9c0","modul":"gesundheit","typ":"laborbefund","dokumentdatum":"2026-10-15",` +
+	wantBody := `{"id":"6727a1f3c2b4e5d6f7a8b9c0","modul":"gesundheit","typ":"laborbefund","dokumentdatum":"2026-10-15",` +
 		`"importdatum":"2026-11-03T18:42:07Z","quelle":"Labor Muster GmbH, Salzburg","volltext":"Leukozyten 6,3 G/l",` +
 		`"infos":[{"id":"i2","name":"Leukozyten","wert":"6,8","einheit":"G/l"}],` +
 		`"datei":{"id":"6727a1f3c2b4e5d6f7a8b9c1","dateiname":"befund_oktober.pdf","mimeTyp":"application/pdf","groesse":184320,"sha256":"3f8a"},` +
 		`"korrekturen":[{"feld":"dokumentdatum","erkannt":"2026-10-14","korrigiert":"2026-10-15","zeitpunkt":"2026-11-03T19:05:31Z"},` +
 		`{"feld":"infos.i2.wert","erkannt":"6,3","korrigiert":"6,8","zeitpunkt":"2026-11-03T19:05:31Z"}]}`
-	if got := strings.TrimSpace(rec.Body.String()); got != soll {
-		t.Errorf("Body =\n%s\nerwartet\n%s", got, soll)
+	if got := strings.TrimSpace(rec.Body.String()); got != wantBody {
+		t.Errorf("body =\n%s\nwant\n%s", got, wantBody)
 	}
 }
 
-func TestLeseAenderung_DreiFaelle(t *testing.T) {
-	// fehlt / null / Wert, für alle Felder.
-	faelle := map[string]core.Change{
-		`{"typ": "rezept"}`:       {Type: zt("rezept")},
+func TestParseChange_ThreeCases(t *testing.T) {
+	// missing / null / value, for all fields.
+	cases := map[string]core.Change{
+		`{"typ": "rezept"}`:       {Type: ptr("rezept")},
 		`{"dokumentdatum": null}`: {DocumentDate: core.Nullable{Set: true}},
-		`{"quelle": "  "}`:        {Issuer: core.Nullable{Set: true, Value: zt("  ")}}, // Leerraum entfernt erst kern
+		`{"quelle": "  "}`:        {Issuer: core.Nullable{Set: true, Value: ptr("  ")}}, // core removes the whitespace
 		`{"quelle": null, "dokumentdatum": "2026-10-15"}`: {
-			Issuer: core.Nullable{Set: true}, DocumentDate: core.Nullable{Set: true, Value: zt("2026-10-15")}},
+			Issuer: core.Nullable{Set: true}, DocumentDate: core.Nullable{Set: true, Value: ptr("2026-10-15")}},
 		`{"infos": []}`: {Facts: []core.FactChange{}},
 		`{"infos": [{"id": "i1", "einheit": null}, {"id": "i2", "wert": "1", "einheit": "mg"}]}`: {Facts: []core.FactChange{
 			{ID: "i1", Unit: core.Nullable{Set: true}},
-			{ID: "i2", Value: zt("1"), Unit: core.Nullable{Set: true, Value: zt("mg")}},
+			{ID: "i2", Value: ptr("1"), Unit: core.Nullable{Set: true, Value: ptr("mg")}},
 		}},
 		`{}`: {},
 	}
-	for body, want := range faelle {
-		got, err := leseAenderung([]byte(body))
+	for body, want := range cases {
+		got, err := parseChange([]byte(body))
 		if err != nil {
 			t.Errorf("%s: %v", body, err)
 			continue
 		}
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("%s:\n%+v\nerwartet\n%+v", body, got, want)
+			t.Errorf("%s:\n%+v\nwant\n%+v", body, got, want)
 		}
 	}
-	// "infos" fehlt → nil, nicht leere Liste (kern unterscheidet das).
-	if a, _ := leseAenderung([]byte(`{"typ": "rezept"}`)); a.Facts != nil {
-		t.Error("Infos ohne Feld nicht nil")
+	// "infos" missing → nil, not an empty list (core tells them apart).
+	if c, _ := parseChange([]byte(`{"typ": "rezept"}`)); c.Facts != nil {
+		t.Error("facts without the field are not nil")
 	}
 }
 
-func TestKorrigieren_JSONFehler(t *testing.T) {
-	faelle := []struct {
+func TestCorrect_JSONErrors(t *testing.T) {
+	cases := []struct {
 		body    string
 		status  int
 		code    string
-		details string // fmt von details, "" für keine
+		details string // fmt of details, "" for none
 	}{
-		{``, 400, CodeUngueltigeAnfrage, ""},
-		{`kein json`, 400, CodeUngueltigeAnfrage, ""},
-		{`null`, 400, CodeUngueltigeAnfrage, ""},
-		{`["typ"]`, 400, CodeUngueltigeAnfrage, ""},
-		{`{"typ": "rezept"} {}`, 400, CodeUngueltigeAnfrage, ""},
-		{`{"volltext": "neu"}`, 400, CodeFeldNichtKorrigierbar, "map[feld:volltext]"},
-		{`{"modul": "sport"}`, 400, CodeFeldNichtKorrigierbar, "map[feld:modul]"},
-		{`{"korrekturen": []}`, 400, CodeFeldNichtKorrigierbar, "map[feld:korrekturen]"},
-		{`{"datum": "2026-10-15"}`, 400, CodeUngueltigeAnfrage, "map[feld:datum]"},
-		{`{"typ": null}`, 400, CodeUngueltigeAnfrage, "map[feld:typ]"},
-		{`{"typ": 3}`, 400, CodeUngueltigeAnfrage, "map[feld:typ wert:3]"},
-		{`{"dokumentdatum": 20261015}`, 400, CodeUngueltigeAnfrage, "map[feld:dokumentdatum wert:2.0261015e+07]"},
-		{`{"quelle": true}`, 400, CodeUngueltigeAnfrage, "map[feld:quelle wert:true]"},
-		{`{"infos": null}`, 400, CodeUngueltigeAnfrage, "map[feld:infos]"},
-		{`{"infos": {"id": "i1"}}`, 400, CodeUngueltigeAnfrage, "map[feld:infos]"},
-		{`{"infos": ["i1"]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos]"},
-		{`{"infos": [{"wert": "1"}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos]"},
-		{`{"infos": [{"id": 1, "wert": "1"}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos]"},
-		{`{"infos": [{"id": "i1", "name": "Hb"}]}`, 400, CodeFeldNichtKorrigierbar, "map[feld:infos.i1.name]"},
-		{`{"infos": [{"id": "i1", "wret": "1"}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos.i1.wret]"},
-		{`{"infos": [{"id": "i1", "wert": null}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos.i1.wert]"},
-		{`{"infos": [{"id": "i1", "wert": 14.2}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos.i1.wert wert:14.2]"},
-		{`{"infos": [{"id": "i1", "einheit": 5}]}`, 400, CodeUngueltigeAnfrage, "map[feld:infos.i1.einheit wert:5]"},
+		{``, 400, CodeInvalidRequest, ""},
+		{`kein json`, 400, CodeInvalidRequest, ""},
+		{`null`, 400, CodeInvalidRequest, ""},
+		{`["typ"]`, 400, CodeInvalidRequest, ""},
+		{`{"typ": "rezept"} {}`, 400, CodeInvalidRequest, ""},
+		{`{"volltext": "neu"}`, 400, CodeFieldNotCorrectable, "map[feld:volltext]"},
+		{`{"modul": "sport"}`, 400, CodeFieldNotCorrectable, "map[feld:modul]"},
+		{`{"korrekturen": []}`, 400, CodeFieldNotCorrectable, "map[feld:korrekturen]"},
+		{`{"datum": "2026-10-15"}`, 400, CodeInvalidRequest, "map[feld:datum]"},
+		{`{"typ": null}`, 400, CodeInvalidRequest, "map[feld:typ]"},
+		{`{"typ": 3}`, 400, CodeInvalidRequest, "map[feld:typ wert:3]"},
+		{`{"dokumentdatum": 20261015}`, 400, CodeInvalidRequest, "map[feld:dokumentdatum wert:2.0261015e+07]"},
+		{`{"quelle": true}`, 400, CodeInvalidRequest, "map[feld:quelle wert:true]"},
+		{`{"infos": null}`, 400, CodeInvalidRequest, "map[feld:infos]"},
+		{`{"infos": {"id": "i1"}}`, 400, CodeInvalidRequest, "map[feld:infos]"},
+		{`{"infos": ["i1"]}`, 400, CodeInvalidRequest, "map[feld:infos]"},
+		{`{"infos": [{"wert": "1"}]}`, 400, CodeInvalidRequest, "map[feld:infos]"},
+		{`{"infos": [{"id": 1, "wert": "1"}]}`, 400, CodeInvalidRequest, "map[feld:infos]"},
+		{`{"infos": [{"id": "i1", "name": "Hb"}]}`, 400, CodeFieldNotCorrectable, "map[feld:infos.i1.name]"},
+		{`{"infos": [{"id": "i1", "wret": "1"}]}`, 400, CodeInvalidRequest, "map[feld:infos.i1.wret]"},
+		{`{"infos": [{"id": "i1", "wert": null}]}`, 400, CodeInvalidRequest, "map[feld:infos.i1.wert]"},
+		{`{"infos": [{"id": "i1", "wert": 14.2}]}`, 400, CodeInvalidRequest, "map[feld:infos.i1.wert wert:14.2]"},
+		{`{"infos": [{"id": "i1", "einheit": 5}]}`, 400, CodeInvalidRequest, "map[feld:infos.i1.einheit wert:5]"},
 	}
-	for _, f := range faelle {
-		t.Run(f.body, func(t *testing.T) {
-			k := &korrigiererAttrappe{}
-			a := pruefeFehler(t, korrigieren(t, k, idKorrektur, f.body), f.status, f.code)
-			if got := details(a); got != f.details {
-				t.Errorf("details = %s, erwartet %s", got, f.details)
+	for _, c := range cases {
+		t.Run(c.body, func(t *testing.T) {
+			fc := &fakeCorrector{}
+			a := checkError(t, correct(t, fc, correctionID, c.body), c.status, c.code)
+			if got := details(a); got != c.details {
+				t.Errorf("details = %s, want %s", got, c.details)
 			}
-			if k.aufgerufen {
-				t.Error("Dienst trotz JSON-Fehler aufgerufen")
+			if fc.called {
+				t.Error("service called despite a JSON error")
 			}
 		})
 	}
 }
 
-func details(a fehlerAntwort) string {
-	if len(a.Fehler.Details) == 0 {
+func details(a errorResponse) string {
+	if len(a.Error.Details) == 0 {
 		return ""
 	}
-	return fmt.Sprint(a.Fehler.Details) // fmt sortiert Map-Schlüssel
+	return fmt.Sprint(a.Error.Details) // fmt sorts map keys
 }
 
-func TestKorrigieren_FesteReihenfolgeDerFehler(t *testing.T) {
-	// Zwei Fehler: immer derselbe wird gemeldet (alphabetisch), egal wie
-	// Go die Map durchläuft.
+func TestCorrect_FixedOrderOfErrors(t *testing.T) {
+	// Two errors: always the same one is reported (alphabetically), however
+	// Go iterates the map.
 	for range 20 {
-		a := pruefeFehler(t, korrigieren(t, &korrigiererAttrappe{}, idKorrektur,
-			`{"volltext": "x", "modul": "y", "datei": {}}`), 400, CodeFeldNichtKorrigierbar)
+		a := checkError(t, correct(t, &fakeCorrector{}, correctionID,
+			`{"volltext": "x", "modul": "y", "datei": {}}`), 400, CodeFieldNotCorrectable)
 		if details(a) != "map[feld:datei]" {
 			t.Fatalf("details = %s", details(a))
 		}
 	}
 }
 
-func TestKorrigieren_UngueltigeIDVorDemBody(t *testing.T) {
-	k := &korrigiererAttrappe{}
-	pruefeFehler(t, korrigieren(t, k, "abc", `kein json`), 400, CodeUngueltigeID)
-	if k.aufgerufen {
-		t.Error("Dienst aufgerufen")
+func TestCorrect_InvalidIDBeforeBody(t *testing.T) {
+	c := &fakeCorrector{}
+	checkError(t, correct(t, c, "abc", `kein json`), 400, CodeInvalidID)
+	if c.called {
+		t.Error("service called")
 	}
 }
 
-func TestKorrigieren_ZuGrosserBody(t *testing.T) {
-	k := &korrigiererAttrappe{}
-	body := `{"quelle": "` + strings.Repeat("a", maxKorrekturBody) + `"}`
-	pruefeFehler(t, korrigieren(t, k, idKorrektur, body), 400, CodeUngueltigeAnfrage)
-	if k.aufgerufen {
-		t.Error("Dienst aufgerufen")
+func TestCorrect_BodyTooLarge(t *testing.T) {
+	c := &fakeCorrector{}
+	body := `{"quelle": "` + strings.Repeat("a", maxCorrectionBody) + `"}`
+	checkError(t, correct(t, c, correctionID, body), 400, CodeInvalidRequest)
+	if c.called {
+		t.Error("service called")
 	}
 }
 
-func TestKorrigieren_FehlerDesDienstes(t *testing.T) {
-	faelle := []struct {
+func TestCorrect_ServiceErrors(t *testing.T) {
+	cases := []struct {
 		name    string
 		err     error
 		status  int
 		code    string
 		details string
-		meldung string
+		message string
 	}{
-		{"datum", core.Invalid("Das Dokumentdatum ist kein gültiges Kalenderdatum.", "dokumentdatum", "2026-02-31"),
-			400, CodeUngueltigeAnfrage, "map[feld:dokumentdatum wert:2026-02-31]", "kein gültiges Kalenderdatum"},
-		{"info doppelt", &core.CorrectionError{Kind: core.ErrInvalidCorrection, FactID: "i1", Message: "Die Info i1 kommt mehrfach vor."},
-			400, CodeUngueltigeAnfrage, "map[infoId:i1]", "mehrfach"},
-		{"leer", core.Invalid("Die Anfrage enthält keine Änderung.", "", nil), 400, CodeUngueltigeAnfrage, "", "keine Änderung"},
-		{"info unbekannt", &core.CorrectionError{Kind: core.ErrFactNotFound, FactID: "i9", Message: "Diese Info gibt es in dem Eintrag nicht."},
-			404, CodeInfoNichtGefunden, "map[infoId:i9]", "gibt es in dem Eintrag nicht"},
-		{"nicht korrigierbar", core.NotCorrectable("volltext"), 400, CodeFeldNichtKorrigierbar, "map[feld:volltext]", "volltext"},
-		{"eintrag fehlt", core.ErrEntryNotFound, 404, CodeEintragNichtGefunden, "", "gibt es nicht"},
-		{"id", core.ErrInvalidID, 400, CodeUngueltigeID, "", "ungültig"},
-		{"intern", errors.New("Mongo: Verbindung weg"), 500, CodeInternerFehler, "", "schiefgegangen"},
+		{"date", core.Invalid("Das Dokumentdatum ist kein gültiges Kalenderdatum.", "dokumentdatum", "2026-02-31"),
+			400, CodeInvalidRequest, "map[feld:dokumentdatum wert:2026-02-31]", "kein gültiges Kalenderdatum"},
+		{"fact twice", &core.CorrectionError{Kind: core.ErrInvalidCorrection, FactID: "i1", Message: "Die Info i1 kommt mehrfach vor."},
+			400, CodeInvalidRequest, "map[infoId:i1]", "mehrfach"},
+		{"empty", core.Invalid("Die Anfrage enthält keine Änderung.", "", nil), 400, CodeInvalidRequest, "", "keine Änderung"},
+		{"unknown fact", &core.CorrectionError{Kind: core.ErrFactNotFound, FactID: "i9", Message: "Diese Info gibt es in dem Eintrag nicht."},
+			404, CodeFactNotFound, "map[infoId:i9]", "gibt es in dem Eintrag nicht"},
+		{"not correctable", core.NotCorrectable("volltext"), 400, CodeFieldNotCorrectable, "map[feld:volltext]", "volltext"},
+		{"entry missing", core.ErrEntryNotFound, 404, CodeEntryNotFound, "", "gibt es nicht"},
+		{"id", core.ErrInvalidID, 400, CodeInvalidID, "", "ungültig"},
+		{"internal", errors.New("Mongo: connection gone"), 500, CodeInternalError, "", "schiefgegangen"},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			rec := korrigieren(t, &korrigiererAttrappe{err: f.err}, idKorrektur, `{"typ": "rezept"}`)
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if details(a) != f.details {
-				t.Errorf("details = %s, erwartet %s", details(a), f.details)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := correct(t, &fakeCorrector{err: c.err}, correctionID, `{"typ": "rezept"}`)
+			a := checkError(t, rec, c.status, c.code)
+			if details(a) != c.details {
+				t.Errorf("details = %s, want %s", details(a), c.details)
 			}
-			if !strings.Contains(a.Fehler.Nachricht, f.meldung) {
-				t.Errorf("Nachricht %q enthält nicht %q", a.Fehler.Nachricht, f.meldung)
+			if !strings.Contains(a.Error.Message, c.message) {
+				t.Errorf("message %q does not contain %q", a.Error.Message, c.message)
 			}
 			if strings.Contains(rec.Body.String(), "Mongo") {
-				t.Errorf("interne Ursache in der Antwort: %s", rec.Body)
+				t.Errorf("internal cause in the response: %s", rec.Body)
 			}
 		})
 	}
 }
 
-func TestKorrigieren_AbgebrochenSchreibtNichts(t *testing.T) {
-	rec := korrigieren(t, &korrigiererAttrappe{err: context.Canceled}, idKorrektur, `{"typ": "rezept"}`)
+func TestCorrect_CanceledWritesNothing(t *testing.T) {
+	rec := correct(t, &fakeCorrector{err: context.Canceled}, correctionID, `{"typ": "rezept"}`)
 	if rec.Body.Len() != 0 {
-		t.Errorf("Body bei Abbruch: %s", rec.Body)
+		t.Errorf("body on cancel: %s", rec.Body)
 	}
 }

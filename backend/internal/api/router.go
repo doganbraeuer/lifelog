@@ -2,34 +2,35 @@ package api
 
 import "net/http"
 
-// Abhaengigkeiten sind alles, was die Handler von außen brauchen. Mit jedem
-// Schritt kommen Felder dazu (Speicher, Dienste). Über Schnittstellen statt
-// konkreter Typen lassen sich die Handler ohne Datenbank testen.
-type Abhaengigkeiten struct {
-	DB          Pinger
-	Eintraege   EintragSpeicher
-	Hochladen   Hochlader
-	Fragen      Frager
-	Korrigieren Korrigierer
-	Loeschen    Loescher
+// Dependencies is everything the handlers need from outside. Through
+// interfaces instead of concrete types, the handlers can be tested without a
+// database.
+type Dependencies struct {
+	DB        Pinger
+	Entries   EntryStore
+	Uploader  Uploader
+	Asker     Asker
+	Corrector Corrector
+	Deleter   Deleter
 }
 
-// NeuerRouter verbindet die Pfade aus docs/API.md mit den Handlern.
+// NewRouter connects the paths from docs/API.md with the handlers.
 //
-// Seit Go 1.22 versteht http.ServeMux Methode und Platzhalter im Muster,
-// z. B. "GET /api/v1/eintraege/{id}". Ein Framework brauchen wir nicht.
-func NeuerRouter(abh Abhaengigkeiten) http.Handler {
+// Since Go 1.22, http.ServeMux understands the method and placeholders in
+// the pattern, e.g. "GET /api/v1/eintraege/{id}". We do not need a
+// framework.
+func NewRouter(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/status", statusHandler(abh.DB))
-	mux.HandleFunc("GET /api/v1/eintraege", eintraegeListeHandler(abh.Eintraege))
-	mux.HandleFunc("POST /api/v1/eintraege", hochladenHandler(abh.Hochladen))
-	mux.HandleFunc("GET /api/v1/eintraege/{id}", eintragHandler(abh.Eintraege))
-	mux.HandleFunc("PATCH /api/v1/eintraege/{id}", korrigierenHandler(abh.Korrigieren))
-	mux.HandleFunc("DELETE /api/v1/eintraege/{id}", loeschenHandler(abh.Loeschen))
-	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", dateiHandler(abh.Eintraege))
-	mux.HandleFunc("POST /api/v1/fragen", fragenHandler(abh.Fragen))
+	mux.HandleFunc("GET /api/v1/status", statusHandler(deps.DB))
+	mux.HandleFunc("GET /api/v1/eintraege", listEntriesHandler(deps.Entries))
+	mux.HandleFunc("POST /api/v1/eintraege", uploadHandler(deps.Uploader))
+	mux.HandleFunc("GET /api/v1/eintraege/{id}", entryHandler(deps.Entries))
+	mux.HandleFunc("PATCH /api/v1/eintraege/{id}", correctHandler(deps.Corrector))
+	mux.HandleFunc("DELETE /api/v1/eintraege/{id}", deleteHandler(deps.Deleter))
+	mux.HandleFunc("GET /api/v1/eintraege/{id}/datei", fileHandler(deps.Entries))
+	mux.HandleFunc("POST /api/v1/fragen", questionsHandler(deps.Asker))
 
-	// Reihenfolge: Log ganz außen, damit auch abgefangene panics mit
-	// Status 500 im Log erscheinen.
-	return mitLog(mitAbfangen(mux))
+	// Order: logging outermost, so recovered panics also appear in the log
+	// with status 500.
+	return withLogging(withRecover(mux))
 }

@@ -77,13 +77,13 @@ func starten() error {
 
 	server := &http.Server{
 		Addr: k.ListenAddress(),
-		Handler: api.NeuerRouter(api.Abhaengigkeiten{
-			DB:          db,
-			Eintraege:   db,
-			Hochladen:   service.NewUploader(db, g, g, store.NewID),
-			Fragen:      service.NewAsker(db, g, g),
-			Korrigieren: service.NewCorrector(db),
-			Loeschen:    service.NewDeleter(db),
+		Handler: api.NewRouter(api.Dependencies{
+			DB:        db,
+			Entries:   db,
+			Uploader:  service.NewUploader(db, g, g, store.NewID),
+			Asker:     service.NewAsker(db, g, g),
+			Corrector: service.NewCorrector(db),
+			Deleter:   service.NewDeleter(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz

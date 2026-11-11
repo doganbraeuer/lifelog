@@ -8,55 +8,55 @@ import (
 	"time"
 )
 
-// statusMerker merkt sich den gesendeten HTTP-Status fürs Log.
-type statusMerker struct {
+// statusRecorder remembers the HTTP status sent, for the log.
+type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
-func (s *statusMerker) WriteHeader(status int) {
+func (s *statusRecorder) WriteHeader(status int) {
 	s.status = status
 	s.ResponseWriter.WriteHeader(status)
 }
 
-func (s *statusMerker) Write(b []byte) (int, error) {
+func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.status == 0 {
 		s.status = http.StatusOK
 	}
 	return s.ResponseWriter.Write(b)
 }
 
-// Unwrap erlaubt http.ResponseController, an den echten Writer zu kommen.
-func (s *statusMerker) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+// Unwrap allows http.ResponseController to reach the real writer.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// mitLog schreibt pro Anfrage eine Zeile: Methode, Pfad, Status, Dauer.
-// Bewusst NICHT geloggt: Query, Body, Dateiinhalte, Fragen. Darin können
-// Gesundheitsdaten stehen.
-func mitLog(next http.Handler) http.Handler {
+// withLogging writes one line per request: method, path, status, duration.
+// Deliberately NOT logged: query, body, file contents, questions. They can
+// contain health data.
+func withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		m := &statusMerker{ResponseWriter: w}
-		next.ServeHTTP(m, r)
-		slog.Info("anfrage",
-			"methode", r.Method,
-			"pfad", r.URL.Path,
-			"status", m.status,
-			"dauer_ms", time.Since(start).Milliseconds(),
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
 }
 
-// mitAbfangen fängt einen panic in einem Handler ab und antwortet mit
-// 500 INTERNER_FEHLER, statt die Verbindung kommentarlos abzubrechen.
-func mitAbfangen(next http.Handler) http.Handler {
+// withRecover catches a panic in a handler and answers with
+// 500 INTERNER_FEHLER instead of dropping the connection without a word.
+func withRecover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if p := recover(); p != nil {
-				if p == http.ErrAbortHandler { // gewollter Abbruch, weiterreichen
+				if p == http.ErrAbortHandler { // intended abort, pass it on
 					panic(p)
 				}
-				slog.Error("panic im Handler", "stack", string(debug.Stack()))
-				schreibeInternenFehler(w, r, fmt.Errorf("panic: %v", p))
+				slog.Error("panic in handler", "stack", string(debug.Stack()))
+				writeInternalError(w, r, fmt.Errorf("panic: %v", p))
 			}
 		}()
 		next.ServeHTTP(w, r)

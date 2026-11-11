@@ -13,21 +13,21 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-type fragerAttrappe struct {
-	antwort      core.Answer
-	err          error
-	frage, modul string
-	aufgerufen   bool
+type fakeAsker struct {
+	answer           core.Answer
+	err              error
+	question, module string
+	called           bool
 }
 
-func (f *fragerAttrappe) Ask(_ context.Context, frage, modul string) (core.Answer, error) {
-	f.aufgerufen, f.frage, f.modul = true, frage, modul
-	return f.antwort, f.err
+func (a *fakeAsker) Ask(_ context.Context, question, module string) (core.Answer, error) {
+	a.called, a.question, a.module = true, question, module
+	return a.answer, a.err
 }
 
-func fragen(t *testing.T, f *fragerAttrappe, body string) *httptest.ResponseRecorder {
+func ask(t *testing.T, a *fakeAsker, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Fragen: f})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Asker: a})
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/fragen", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -35,89 +35,89 @@ func fragen(t *testing.T, f *fragerAttrappe, body string) *httptest.ResponseReco
 	return rec
 }
 
-func TestFragen_Treffer(t *testing.T) {
-	z := func(s string) *string { return &s }
-	f := &fragerAttrappe{antwort: core.Answer{
+func TestQuestions_Hit(t *testing.T) {
+	p := func(s string) *string { return &s }
+	a := &fakeAsker{answer: core.Answer{
 		Text: "Im Laborbefund steht Hämoglobin 14,2 g/dl [1].", Found: true,
 		Sources: []core.Source{{Number: 1, EntryID: "6727a1f3c2b4e5d6f7a8b9c0", Module: "gesundheit",
-			Type: "laborbefund", Issuer: z("Labor Muster GmbH, Salzburg"), DocumentDate: z("2026-10-14"),
+			Type: "laborbefund", Issuer: p("Labor Muster GmbH, Salzburg"), DocumentDate: p("2026-10-14"),
 			Excerpt: "Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}},
 	}}
-	rec := fragen(t, f, `{"frage": "Welchen Hämoglobinwert hatte ich im Oktober?", "modul": "gesundheit"}`)
+	rec := ask(t, a, `{"frage": "Welchen Hämoglobinwert hatte ich im Oktober?", "modul": "gesundheit"}`)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if f.frage != "Welchen Hämoglobinwert hatte ich im Oktober?" || f.modul != "gesundheit" {
-		t.Errorf("an den Dienst: %q / %q", f.frage, f.modul)
+	if a.question != "Welchen Hämoglobinwert hatte ich im Oktober?" || a.module != "gesundheit" {
+		t.Errorf("to the service: %q / %q", a.question, a.module)
 	}
-	// Genau die Form aus API.md 3.6.
+	// Exactly the form from API.md 3.6.
 	want := `{"antwort":"Im Laborbefund steht Hämoglobin 14,2 g/dl [1].","gefunden":true,"quellen":[` +
 		`{"nr":1,"eintragId":"6727a1f3c2b4e5d6f7a8b9c0","modul":"gesundheit","typ":"laborbefund",` +
 		`"quelle":"Labor Muster GmbH, Salzburg","dokumentdatum":"2026-10-14","auszug":"Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)"}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("Body =\n%s\nerwartet\n%s", got, want)
+		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
 }
 
-func TestFragen_KeinTrefferIstLeereListe(t *testing.T) {
-	// Die App schickt kein modul mit; das ist erlaubt (Standard gesundheit).
-	f := &fragerAttrappe{antwort: core.Answer{Text: core.NotFoundAnswer, Sources: nil}}
-	rec := fragen(t, f, `{"frage": "Wie wird das Wetter?"}`)
+func TestQuestions_NoHitIsEmptyList(t *testing.T) {
+	// The app sends no module; that is allowed (default gesundheit).
+	a := &fakeAsker{answer: core.Answer{Text: core.NotFoundAnswer, Sources: nil}}
+	rec := ask(t, a, `{"frage": "Wie wird das Wetter?"}`)
 
 	want := `{"antwort":"Dazu finde ich nichts in deinen Dokumenten.","gefunden":false,"quellen":[]}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != 200 || got != want {
 		t.Errorf("%d %s", rec.Code, got)
 	}
-	if f.modul != "" {
-		t.Errorf("Modul = %q, leer heißt Standard (entscheidet der Dienst)", f.modul)
+	if a.module != "" {
+		t.Errorf("module = %q, empty means default (the service decides)", a.module)
 	}
 }
 
-func TestFragen_UngueltigesJSON(t *testing.T) {
+func TestQuestions_InvalidJSON(t *testing.T) {
 	for _, body := range []string{
 		``, `kein json`, `{"frage": 42}`, `{"frge": "Tippfehler"}`,
 		`{"frage": "a"} {"frage": "b"}`, `["frage"]`,
 	} {
 		t.Run(body, func(t *testing.T) {
-			f := &fragerAttrappe{}
-			pruefeFehler(t, fragen(t, f, body), 400, CodeUngueltigeAnfrage)
-			if f.aufgerufen {
-				t.Error("Dienst bei ungültigem JSON aufgerufen")
+			a := &fakeAsker{}
+			checkError(t, ask(t, a, body), 400, CodeInvalidRequest)
+			if a.called {
+				t.Error("service called for invalid JSON")
 			}
 		})
 	}
 }
 
-func TestFragen_ZuGrosserBody(t *testing.T) {
-	f := &fragerAttrappe{}
-	body := `{"frage": "` + strings.Repeat("a", maxFrageBody) + `"}`
-	pruefeFehler(t, fragen(t, f, body), 400, CodeUngueltigeAnfrage)
+func TestQuestions_BodyTooLarge(t *testing.T) {
+	a := &fakeAsker{}
+	body := `{"frage": "` + strings.Repeat("a", maxQuestionBody) + `"}`
+	checkError(t, ask(t, a, body), 400, CodeInvalidRequest)
 }
 
-func TestFragen_FehlerDesDienstes(t *testing.T) {
-	faelle := []struct {
+func TestQuestions_ServiceErrors(t *testing.T) {
+	cases := []struct {
 		err    error
 		status int
 		code   string
 	}{
-		{core.ErrQuestionMissing, 400, CodeFrageFehlt},
-		{core.ErrQuestionTooLong, 400, CodeFrageZuLang},
-		{core.ErrUnknownModule, 400, CodeUngueltigeAnfrage},
-		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModellNichtErreichbar},
-		{fmt.Errorf("blockiert: %w", llm.ErrInvalidResponse), 503, CodeModellNichtErreichbar},
-		{errors.New("Vektorindex fehlt"), 500, CodeInternerFehler},
+		{core.ErrQuestionMissing, 400, CodeQuestionMissing},
+		{core.ErrQuestionTooLong, 400, CodeQuestionTooLong},
+		{core.ErrUnknownModule, 400, CodeInvalidRequest},
+		{fmt.Errorf("Gemini HTTP 503: %w", llm.ErrUnavailable), 503, CodeModelUnavailable},
+		{fmt.Errorf("blocked: %w", llm.ErrInvalidResponse), 503, CodeModelUnavailable},
+		{errors.New("vector index missing"), 500, CodeInternalError},
 	}
-	for _, f := range faelle {
-		t.Run(f.code, func(t *testing.T) {
-			rec := fragen(t, &fragerAttrappe{err: f.err}, `{"frage": "x", "modul": "sport"}`)
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if errors.Is(f.err, core.ErrUnknownModule) && fmt.Sprint(a.Fehler.Details) != "map[feld:modul wert:sport]" {
-				t.Errorf("details = %v", a.Fehler.Details)
+	for _, c := range cases {
+		t.Run(c.code, func(t *testing.T) {
+			rec := ask(t, &fakeAsker{err: c.err}, `{"frage": "x", "modul": "sport"}`)
+			a := checkError(t, rec, c.status, c.code)
+			if errors.Is(c.err, core.ErrUnknownModule) && fmt.Sprint(a.Error.Details) != "map[feld:modul wert:sport]" {
+				t.Errorf("details = %v", a.Error.Details)
 			}
-			for _, intern := range []string{"Gemini", "blockiert", "Vektorindex"} {
-				if strings.Contains(rec.Body.String(), intern) {
-					t.Errorf("interne Ursache in der Antwort: %s", rec.Body)
+			for _, internal := range []string{"Gemini", "blocked", "vector index"} {
+				if strings.Contains(rec.Body.String(), internal) {
+					t.Errorf("internal cause in the response: %s", rec.Body)
 				}
 			}
 		})

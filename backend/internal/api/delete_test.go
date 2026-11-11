@@ -11,90 +11,90 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-type loescherAttrappe struct {
+type fakeDeleter struct {
 	err error
 	ids []string
 }
 
-func (l *loescherAttrappe) Delete(_ context.Context, id string) error {
-	l.ids = append(l.ids, id)
-	return l.err
+func (d *fakeDeleter) Delete(_ context.Context, id string) error {
+	d.ids = append(d.ids, id)
+	return d.err
 }
 
-func loeschen(t *testing.T, l *loescherAttrappe, id string) *httptest.ResponseRecorder {
+func deleteEntry(t *testing.T, d *fakeDeleter, id string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Eintraege: speicherMitEintrag(), Loeschen: l})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(), Deleter: d})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/eintraege/"+id, nil))
 	return rec
 }
 
-func TestLoeschen_204OhneBody(t *testing.T) {
-	l := &loescherAttrappe{}
-	rec := loeschen(t, l, testID)
+func TestDelete_204WithoutBody(t *testing.T) {
+	d := &fakeDeleter{}
+	rec := deleteEntry(t, d, testID)
 	if rec.Code != http.StatusNoContent {
-		t.Fatalf("Status %d, erwartet 204 (%s)", rec.Code, rec.Body)
+		t.Fatalf("status %d, want 204 (%s)", rec.Code, rec.Body)
 	}
 	if rec.Body.Len() != 0 {
-		t.Errorf("Body bei 204: %q", rec.Body)
+		t.Errorf("body with 204: %q", rec.Body)
 	}
-	if len(l.ids) != 1 || l.ids[0] != testID {
-		t.Errorf("Dienst bekam %v, erwartet [%s]", l.ids, testID)
+	if len(d.ids) != 1 || d.ids[0] != testID {
+		t.Errorf("service got %v, want [%s]", d.ids, testID)
 	}
 }
 
-func TestLoeschen_Fehler(t *testing.T) {
+func TestDelete_Errors(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		err    error
 		status int
 		code   string
 	}{
-		{"ungültige ID", core.ErrInvalidID, http.StatusBadRequest, CodeUngueltigeID},
-		{"nicht gefunden", core.ErrEntryNotFound, http.StatusNotFound, CodeEintragNichtGefunden},
-		{"Datenbank", errors.New("Abschnitte löschen: Verbindung weg"), http.StatusInternalServerError, CodeInternerFehler},
+		{"invalid ID", core.ErrInvalidID, http.StatusBadRequest, CodeInvalidID},
+		{"not found", core.ErrEntryNotFound, http.StatusNotFound, CodeEntryNotFound},
+		{"database", errors.New("delete chunks: connection gone"), http.StatusInternalServerError, CodeInternalError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := loeschen(t, &loescherAttrappe{err: tc.err}, testID)
-			a := pruefeFehler(t, rec, tc.status, tc.code)
-			pruefeJSONHeader(t, rec)
-			if a.Fehler.Details != nil {
-				t.Errorf("Details: %v", a.Fehler.Details)
+			rec := deleteEntry(t, &fakeDeleter{err: tc.err}, testID)
+			a := checkError(t, rec, tc.status, tc.code)
+			checkJSONHeader(t, rec)
+			if a.Error.Details != nil {
+				t.Errorf("details: %v", a.Error.Details)
 			}
-			// Interne Fehlermeldungen gehen nur ins Log, nicht an die App.
-			if strings.Contains(rec.Body.String(), "Verbindung weg") {
-				t.Errorf("interner Fehler in der Antwort: %s", rec.Body)
+			// Internal error messages only go into the log, not to the app.
+			if strings.Contains(rec.Body.String(), "connection gone") {
+				t.Errorf("internal error in the response: %s", rec.Body)
 			}
 		})
 	}
 }
 
-// Die ID prüft der Dienst; der Handler reicht sie unverändert durch.
-func TestLoeschen_UngueltigeIDAusDemPfad(t *testing.T) {
-	l := &loescherAttrappe{err: core.ErrInvalidID}
-	rec := loeschen(t, l, "abc")
-	pruefeFehler(t, rec, http.StatusBadRequest, CodeUngueltigeID)
-	if len(l.ids) != 1 || l.ids[0] != "abc" {
-		t.Errorf("Dienst bekam %v", l.ids)
+// The service checks the ID; the handler passes it through unchanged.
+func TestDelete_InvalidIDFromPath(t *testing.T) {
+	d := &fakeDeleter{err: core.ErrInvalidID}
+	rec := deleteEntry(t, d, "abc")
+	checkError(t, rec, http.StatusBadRequest, CodeInvalidID)
+	if len(d.ids) != 1 || d.ids[0] != "abc" {
+		t.Errorf("service got %v", d.ids)
 	}
 }
 
-func TestLoeschen_Abbruch(t *testing.T) {
-	rec := loeschen(t, &loescherAttrappe{err: context.Canceled}, testID)
+func TestDelete_Canceled(t *testing.T) {
+	rec := deleteEntry(t, &fakeDeleter{err: context.Canceled}, testID)
 	if rec.Body.Len() != 0 {
-		t.Errorf("Body nach Abbruch: %s", rec.Body)
+		t.Errorf("body after cancel: %s", rec.Body)
 	}
 }
 
-// Die neue Route darf GET und PATCH auf demselben Pfad nicht stören, und
-// DELETE auf /datei gibt es nicht.
-func TestLoeschen_AndereMethodenUnberuehrt(t *testing.T) {
-	l := &loescherAttrappe{}
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Eintraege: speicherMitEintrag(),
-		Korrigieren: &korrigiererAttrappe{err: core.ErrEntryNotFound}, Loeschen: l})
+// The new route must not disturb GET and PATCH on the same path, and there
+// is no DELETE on /datei.
+func TestDelete_OtherMethodsUnaffected(t *testing.T) {
+	d := &fakeDeleter{}
+	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(),
+		Corrector: &fakeCorrector{err: core.ErrEntryNotFound}, Deleter: d})
 	for _, tc := range []struct {
-		methode, pfad string
-		status        int
+		method, path string
+		status       int
 	}{
 		{http.MethodGet, "/api/v1/eintraege/" + testID, http.StatusOK},
 		{http.MethodPatch, "/api/v1/eintraege/" + testID, http.StatusNotFound},
@@ -103,12 +103,12 @@ func TestLoeschen_AndereMethodenUnberuehrt(t *testing.T) {
 	} {
 		body := strings.NewReader(`{"typ": "arztbrief"}`)
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(tc.methode, tc.pfad, body))
+		router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, body))
 		if rec.Code != tc.status {
-			t.Errorf("%s %s: Status %d, erwartet %d", tc.methode, tc.pfad, rec.Code, tc.status)
+			t.Errorf("%s %s: status %d, want %d", tc.method, tc.path, rec.Code, tc.status)
 		}
 	}
-	if len(l.ids) != 0 {
-		t.Errorf("Löschen aufgerufen: %v", l.ids)
+	if len(d.ids) != 0 {
+		t.Errorf("delete called: %v", d.ids)
 	}
 }

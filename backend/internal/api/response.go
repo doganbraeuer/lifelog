@@ -1,5 +1,9 @@
-// Package api enthält die HTTP-Schicht: Router, Handler, das Fehlerformat
-// aus docs/API.md und die JSON-Antworttypen.
+// Package api contains the HTTP layer: router, handlers, the error format
+// from docs/API.md and the JSON response types.
+//
+// The JSON field names, paths, error code values and details keys are still
+// German; they change together with docs/API.md (plan step B7). The message
+// texts stay German, because the app shows them.
 package api
 
 import (
@@ -9,57 +13,57 @@ import (
 	"net/http"
 )
 
-// Fehlercodes aus docs/API.md, Abschnitt 1. Weitere kommen mit den Endpunkten.
+// Error codes from docs/API.md, section 1. More come with the endpoints.
 const (
-	CodeInternerFehler = "INTERNER_FEHLER"
+	CodeInternalError = "INTERNER_FEHLER"
 )
 
-type fehlerAntwort struct {
-	Fehler fehlerInhalt `json:"fehler"`
+type errorResponse struct {
+	Error errorBody `json:"fehler"`
 }
 
-type fehlerInhalt struct {
-	Code      string         `json:"code"`
-	Nachricht string         `json:"nachricht"`
-	Details   map[string]any `json:"details,omitempty"`
+type errorBody struct {
+	Code    string         `json:"code"`
+	Message string         `json:"nachricht"`
+	Details map[string]any `json:"details,omitempty"`
 }
 
-// schreibeJSON schreibt wert als JSON mit dem Status.
+// writeJSON writes value as JSON with the status.
 //
-// SetEscapeHTML(false): Sonst würde Go "<0,5" als "<0,5" ausgeben. Das
-// ist zwar gültiges JSON, aber Laborwerte sollen lesbar bleiben.
+// SetEscapeHTML(false): otherwise Go would write "<0,5" as "<0,5". That
+// is valid JSON, but lab values should stay readable.
 //
-// Das JSON wird erst in einen Puffer geschrieben. Scheitert das Umwandeln,
-// ist noch kein Status gesendet, und wir können sauber mit 500 antworten.
-func schreibeJSON(w http.ResponseWriter, status int, wert any) {
-	var puffer bytes.Buffer
-	enc := json.NewEncoder(&puffer)
+// The JSON is written into a buffer first. If encoding fails, no status has
+// been sent yet, and we can cleanly answer with 500.
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(wert); err != nil {
-		slog.Error("JSON-Antwort konnte nicht erzeugt werden", "fehler", err)
+	if err := enc.Encode(value); err != nil {
+		slog.Error("could not encode JSON response", "error", err)
 		status = http.StatusInternalServerError
-		puffer.Reset()
-		puffer.WriteString(`{"fehler":{"code":"INTERNER_FEHLER","nachricht":"Interner Fehler im Backend."}}` + "\n")
+		buf.Reset()
+		buf.WriteString(`{"fehler":{"code":"INTERNER_FEHLER","nachricht":"Interner Fehler im Backend."}}` + "\n")
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write(puffer.Bytes())
+	_, _ = w.Write(buf.Bytes())
 }
 
-// schreibeFehler antwortet im einheitlichen Fehlerformat. details darf nil
-// sein, dann fehlt das Feld im JSON.
-func schreibeFehler(w http.ResponseWriter, status int, code, nachricht string, details map[string]any) {
-	schreibeJSON(w, status, fehlerAntwort{Fehler: fehlerInhalt{
-		Code:      code,
-		Nachricht: nachricht,
-		Details:   details,
+// writeError answers in the common error format. details may be nil; then
+// the field is missing in the JSON.
+func writeError(w http.ResponseWriter, status int, code, message string, details map[string]any) {
+	writeJSON(w, status, errorResponse{Error: errorBody{
+		Code:    code,
+		Message: message,
+		Details: details,
 	}})
 }
 
-// schreibeInternenFehler ist die Antwort für unerwartete Fehler. Die
-// Ursache landet nur im Log, nie in der Antwort.
-func schreibeInternenFehler(w http.ResponseWriter, r *http.Request, err error) {
-	slog.Error("interner Fehler", "methode", r.Method, "pfad", r.URL.Path, "fehler", err)
-	schreibeFehler(w, http.StatusInternalServerError, CodeInternerFehler,
+// writeInternalError is the response for unexpected errors. The cause only
+// goes into the log, never into the response.
+func writeInternalError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.Error("internal error", "method", r.Method, "path", r.URL.Path, "error", err)
+	writeError(w, http.StatusInternalServerError, CodeInternalError,
 		"Da ist im Backend etwas schiefgegangen. Bitte versuche es später noch einmal.", nil)
 }

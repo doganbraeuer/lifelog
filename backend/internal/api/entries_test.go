@@ -16,197 +16,197 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// speicherAttrappe merkt sich, mit welchem Modul gefragt wurde.
-type speicherAttrappe struct {
-	liste        []core.EntrySummary
-	err          error
-	aufrufe      int
-	gefragtModul string
+// fakeStore remembers with which module it was asked.
+type fakeStore struct {
+	list        []core.EntrySummary
+	err         error
+	calls       int
+	askedModule string
 
-	eintraege map[string]core.Entry // ID → Eintrag (für GET /eintraege/{id})
-	dateien   map[string][]byte     // Datei-ID → Inhalt (für …/datei)
-	dateiErr  error                 // wenn gesetzt, scheitert DateiOeffnen damit
+	entries map[string]core.Entry // ID → entry (for GET /eintraege/{id})
+	files   map[string][]byte     // file ID → content (for …/datei)
+	fileErr error                 // if set, OpenFile fails with it
 }
 
-func (s *speicherAttrappe) ListSummaries(_ context.Context, modul string) ([]core.EntrySummary, error) {
-	s.aufrufe++
-	s.gefragtModul = modul
-	return slices.Clone(s.liste), s.err
+func (s *fakeStore) ListSummaries(_ context.Context, module string) ([]core.EntrySummary, error) {
+	s.calls++
+	s.askedModule = module
+	return slices.Clone(s.list), s.err
 }
 
-func (s *speicherAttrappe) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
-	s.aufrufe++
+func (s *fakeStore) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
+	s.calls++
 	if s.err != nil {
 		return core.Entry{}, false, s.err
 	}
-	e, ok := s.eintraege[id]
+	e, ok := s.entries[id]
 	return e, ok, nil
 }
 
-func (s *speicherAttrappe) OpenFile(_ context.Context, dateiID string) (io.ReadCloser, int64, error) {
-	if s.dateiErr != nil {
-		return nil, 0, s.dateiErr
+func (s *fakeStore) OpenFile(_ context.Context, fileID string) (io.ReadCloser, int64, error) {
+	if s.fileErr != nil {
+		return nil, 0, s.fileErr
 	}
-	d, ok := s.dateien[dateiID]
+	d, ok := s.files[fileID]
 	if !ok {
 		return nil, 0, core.ErrOriginalMissing
 	}
 	return io.NopCloser(bytes.NewReader(d)), int64(len(d)), nil
 }
 
-func kurz(id, datum string, importMinute int) core.EntrySummary {
-	k := core.EntrySummary{
+func summary(id, date string, importMinute int) core.EntrySummary {
+	s := core.EntrySummary{
 		ID: id, Module: "gesundheit", Type: "laborbefund",
 		ImportedAt: time.Date(2026, 11, 3, 18, importMinute, 7, 0, time.UTC),
 	}
-	if datum != "" {
-		k.DocumentDate = &datum
+	if date != "" {
+		s.DocumentDate = &date
 	}
-	return k
+	return s
 }
 
-func liste(t *testing.T, s *speicherAttrappe, query string) *httptest.ResponseRecorder {
+func list(t *testing.T, s *fakeStore, query string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Eintraege: s})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: s})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/eintraege"+query, nil))
 	return rec
 }
 
-func TestListe_LeerIstLeeresArray(t *testing.T) {
-	// Die Attrappe liefert nil, so wie ein Speicher ohne Treffer es könnte.
-	rec := liste(t, &speicherAttrappe{liste: nil}, "")
+func TestList_EmptyIsEmptyArray(t *testing.T) {
+	// The fake returns nil, as a store without hits could.
+	rec := list(t, &fakeStore{list: nil}, "")
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d", rec.Code)
+		t.Fatalf("status = %d", rec.Code)
 	}
 	want := `{"eintraege":[],"anzahl":0}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("Body = %s, erwartet %s", got, want)
+		t.Errorf("body = %s, want %s", got, want)
 	}
 }
 
-func TestListe_StandardwerteUndFormat(t *testing.T) {
-	s := &speicherAttrappe{liste: []core.EntrySummary{
-		kurz("aaaaaaaaaaaaaaaaaaaaaaaa", "", 30),
-		kurz("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
-		kurz("cccccccccccccccccccccccc", "2026-10-14", 10),
+func TestList_DefaultsAndFormat(t *testing.T) {
+	s := &fakeStore{list: []core.EntrySummary{
+		summary("aaaaaaaaaaaaaaaaaaaaaaaa", "", 30),
+		summary("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
+		summary("cccccccccccccccccccccccc", "2026-10-14", 10),
 	}}
-	rec := liste(t, s, "")
+	rec := list(t, s, "")
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	pruefeJSONHeader(t, rec)
-	if s.gefragtModul != "gesundheit" {
-		t.Errorf("Modul = %q, erwartet gesundheit als Standard", s.gefragtModul)
+	checkJSONHeader(t, rec)
+	if s.askedModule != "gesundheit" {
+		t.Errorf("module = %q, want gesundheit as default", s.askedModule)
 	}
 
 	var a struct {
-		Eintraege []map[string]any `json:"eintraege"`
-		Anzahl    int              `json:"anzahl"`
+		Entries []map[string]any `json:"eintraege"`
+		Count   int              `json:"anzahl"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
 		t.Fatal(err)
 	}
-	if a.Anzahl != 3 || len(a.Eintraege) != 3 {
-		t.Fatalf("anzahl = %d, Einträge = %d", a.Anzahl, len(a.Eintraege))
+	if a.Count != 3 || len(a.Entries) != 3 {
+		t.Fatalf("count = %d, entries = %d", a.Count, len(a.Entries))
 	}
 
-	// Standard: Dokumentdatum absteigend, ohne Datum am Ende.
-	var reihenfolge []string
-	for _, e := range a.Eintraege {
-		reihenfolge = append(reihenfolge, e["id"].(string)[:1])
+	// Default: document date descending, without date at the end.
+	var order []string
+	for _, e := range a.Entries {
+		order = append(order, e["id"].(string)[:1])
 	}
-	if !slices.Equal(reihenfolge, []string{"c", "b", "a"}) {
-		t.Errorf("Reihenfolge = %v, erwartet [c b a]", reihenfolge)
-	}
-
-	erster := a.Eintraege[0]
-	if erster["importdatum"] != "2026-11-03T18:10:07Z" {
-		t.Errorf("importdatum = %v", erster["importdatum"])
-	}
-	if erster["dokumentdatum"] != "2026-10-14" {
-		t.Errorf("dokumentdatum = %v", erster["dokumentdatum"])
+	if !slices.Equal(order, []string{"c", "b", "a"}) {
+		t.Errorf("order = %v, want [c b a]", order)
 	}
 
-	// null bleibt als null sichtbar, das Feld fehlt nicht.
-	letzter := a.Eintraege[2]
-	for _, feld := range []string{"dokumentdatum", "quelle"} {
-		if v, ok := letzter[feld]; !ok || v != nil {
-			t.Errorf("%s = %v (vorhanden: %v), erwartet null", feld, v, ok)
+	first := a.Entries[0]
+	if first["importdatum"] != "2026-11-03T18:10:07Z" {
+		t.Errorf("importdatum = %v", first["importdatum"])
+	}
+	if first["dokumentdatum"] != "2026-10-14" {
+		t.Errorf("dokumentdatum = %v", first["dokumentdatum"])
+	}
+
+	// null stays visible as null; the field is not missing.
+	last := a.Entries[2]
+	for _, field := range []string{"dokumentdatum", "quelle"} {
+		if v, ok := last[field]; !ok || v != nil {
+			t.Errorf("%s = %v (present: %v), want null", field, v, ok)
 		}
 	}
-	// Die Kurzform enthält keine Detailfelder.
-	for _, feld := range []string{"volltext", "infos", "datei", "korrekturen"} {
-		if _, ok := erster[feld]; ok {
-			t.Errorf("Kurzform enthält %s", feld)
+	// The short form contains no detail fields.
+	for _, field := range []string{"volltext", "infos", "datei", "korrekturen"} {
+		if _, ok := first[field]; ok {
+			t.Errorf("short form contains %s", field)
 		}
 	}
 }
 
-func TestListe_ParameterWerdenAngewendet(t *testing.T) {
-	s := &speicherAttrappe{liste: []core.EntrySummary{
-		kurz("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-10-14", 30),
-		kurz("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
+func TestList_ParametersAreApplied(t *testing.T) {
+	s := &fakeStore{list: []core.EntrySummary{
+		summary("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-10-14", 30),
+		summary("bbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-02", 20),
 	}}
-	rec := liste(t, s, "?modul=gesundheit&sortierung=importdatum&richtung=aufsteigend")
+	rec := list(t, s, "?modul=gesundheit&sortierung=importdatum&richtung=aufsteigend")
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d", rec.Code)
+		t.Fatalf("status = %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), `"eintraege":[{"id":"bbbb`) {
-		t.Errorf("b (Import :20) muss zuerst kommen: %s", rec.Body)
+		t.Errorf("b (import :20) must come first: %s", rec.Body)
 	}
 }
 
-func TestListe_UngueltigeParameter(t *testing.T) {
-	faelle := []struct {
-		query, parameter, wert string
+func TestList_InvalidParameters(t *testing.T) {
+	cases := []struct {
+		query, parameter, value string
 	}{
 		{"?sortierung=quelle", "sortierung", "quelle"},
 		{"?richtung=desc", "richtung", "desc"},
 		{"?modul=sport", "modul", "sport"},
 		{"?modul=Gesundheit", "modul", "Gesundheit"},
 	}
-	for _, f := range faelle {
-		t.Run(f.query, func(t *testing.T) {
-			s := &speicherAttrappe{}
-			rec := liste(t, s, f.query)
+	for _, c := range cases {
+		t.Run(c.query, func(t *testing.T) {
+			s := &fakeStore{}
+			rec := list(t, s, c.query)
 
 			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("Status = %d, erwartet 400", rec.Code)
+				t.Fatalf("status = %d, want 400", rec.Code)
 			}
-			var a fehlerAntwort
+			var a errorResponse
 			if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
 				t.Fatal(err)
 			}
-			if a.Fehler.Code != CodeUngueltigerParameter {
-				t.Errorf("code = %q", a.Fehler.Code)
+			if a.Error.Code != CodeInvalidParameter {
+				t.Errorf("code = %q", a.Error.Code)
 			}
-			if a.Fehler.Details["parameter"] != f.parameter || a.Fehler.Details["wert"] != f.wert {
-				t.Errorf("details = %v", a.Fehler.Details)
+			if a.Error.Details["parameter"] != c.parameter || a.Error.Details["wert"] != c.value {
+				t.Errorf("details = %v", a.Error.Details)
 			}
-			if a.Fehler.Nachricht == "" {
-				t.Error("nachricht fehlt")
+			if a.Error.Message == "" {
+				t.Error("message missing")
 			}
-			if s.aufrufe != 0 {
-				t.Error("bei ungültigen Parametern darf die Datenbank nicht gefragt werden")
+			if s.calls != 0 {
+				t.Error("the database must not be asked for invalid parameters")
 			}
 		})
 	}
 }
 
-func TestListe_Datenbankfehler(t *testing.T) {
-	rec := liste(t, &speicherAttrappe{err: errors.New("verbindung zu cluster0 verloren")}, "")
+func TestList_DatabaseError(t *testing.T) {
+	rec := list(t, &fakeStore{err: errors.New("connection to cluster0 lost")}, "")
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("Status = %d, erwartet 500", rec.Code)
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), CodeInternerFehler) {
-		t.Errorf("Body = %s", rec.Body)
+	if !strings.Contains(rec.Body.String(), CodeInternalError) {
+		t.Errorf("body = %s", rec.Body)
 	}
 	if strings.Contains(rec.Body.String(), "cluster0") {
-		t.Error("interne Ursache darf nicht in der Antwort stehen")
+		t.Error("the internal cause must not be in the response")
 	}
 }

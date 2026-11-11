@@ -12,91 +12,92 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Fehlercodes für Korrekturen (API.md 3.5).
+// Error codes for corrections (API.md 3.5).
 const (
-	CodeFeldNichtKorrigierbar = "FELD_NICHT_KORRIGIERBAR"
-	CodeInfoNichtGefunden     = "INFO_NICHT_GEFUNDEN"
+	CodeFieldNotCorrectable = "FELD_NICHT_KORRIGIERBAR"
+	CodeFactNotFound        = "INFO_NICHT_GEFUNDEN"
 )
 
-// maxKorrekturBody: Grenze für den ganzen Body; eigene Längengrenzen für
-// einzelne Werte gibt es noch nicht (API.md 4, Längengrenzen).
-const maxKorrekturBody = 64 << 10
+// maxCorrectionBody: limit for the whole body; there are no separate length
+// limits for single values yet (API.md 4, length limits).
+const maxCorrectionBody = 64 << 10
 
-// Korrigierer korrigiert einen Eintrag. Umgesetzt von dienst.Korrigieren.
-type Korrigierer interface {
-	Correct(ctx context.Context, id string, a core.Change) (core.Entry, error)
+// Corrector corrects an entry. Implemented by service.Corrector.
+type Corrector interface {
+	Correct(ctx context.Context, id string, c core.Change) (core.Entry, error)
 }
 
-// Felder des Eintrags, die es gibt, aber nicht korrigiert werden dürfen.
-// Sie bekommen FELD_NICHT_KORRIGIERBAR statt "unbekanntes Feld".
-var nichtKorrigierbar = []string{"datei", "id", "importdatum", "korrekturen", "modul", "volltext"}
+// Fields of the entry that exist but must not be corrected. They get
+// FELD_NICHT_KORRIGIERBAR instead of "unknown field".
+var notCorrectableFields = []string{"datei", "id", "importdatum", "korrekturen", "modul", "volltext"}
 
-// korrigierenHandler beantwortet PATCH /api/v1/eintraege/{id} (API.md 3.5).
-func korrigierenHandler(k Korrigierer) http.HandlerFunc {
+// correctHandler answers PATCH /api/v1/eintraege/{id} (API.md 3.5).
+func correctHandler(c Corrector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		// ID vor dem Body prüfen: "/eintraege/abc" ist immer UNGUELTIGE_ID.
+		// Check the ID before the body: "/eintraege/abc" is always UNGUELTIGE_ID.
 		if err := core.CheckID(id); err != nil {
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
+			writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
 			return
 		}
 
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxKorrekturBody))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCorrectionBody))
 		if err != nil {
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 				"Die Anfrage ist zu groß oder unvollständig.", nil)
 			return
 		}
-		aenderung, err := leseAenderung(body)
+		change, err := parseChange(body)
 		if err != nil {
-			schreibeKorrekturFehler(w, r, err)
+			writeCorrectionError(w, r, err)
 			return
 		}
 
-		e, err := k.Correct(r.Context(), id, aenderung)
+		e, err := c.Correct(r.Context(), id, change)
 		if err != nil {
-			schreibeKorrekturFehler(w, r, err)
+			writeCorrectionError(w, r, err)
 			return
 		}
-		schreibeJSON(w, http.StatusOK, eintragZuJSON(e))
+		writeJSON(w, http.StatusOK, entryToJSON(e))
 	}
 }
 
-func schreibeKorrekturFehler(w http.ResponseWriter, r *http.Request, err error) {
-	var kf *core.CorrectionError
+func writeCorrectionError(w http.ResponseWriter, r *http.Request, err error) {
+	var ce *core.CorrectionError
 	switch {
-	case errors.As(err, &kf):
-		status, code := http.StatusBadRequest, CodeUngueltigeAnfrage
+	case errors.As(err, &ce):
+		status, code := http.StatusBadRequest, CodeInvalidRequest
 		switch {
 		case errors.Is(err, core.ErrFieldNotCorrectable):
-			code = CodeFeldNichtKorrigierbar
+			code = CodeFieldNotCorrectable
 		case errors.Is(err, core.ErrFactNotFound):
-			status, code = http.StatusNotFound, CodeInfoNichtGefunden
+			status, code = http.StatusNotFound, CodeFactNotFound
 		}
-		schreibeFehler(w, status, code, kf.Message, korrekturDetails(kf))
+		writeError(w, status, code, ce.Message, correctionDetails(ce))
 	case errors.Is(err, core.ErrInvalidID):
-		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
+		writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
 	case errors.Is(err, core.ErrEntryNotFound):
-		schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
+		writeError(w, http.StatusNotFound, CodeEntryNotFound, "Diesen Eintrag gibt es nicht.", nil)
 	case errors.Is(err, context.Canceled):
-		// Die App hat aufgegeben; niemand liest die Antwort.
+		// The app gave up; nobody reads the response.
 	default:
-		schreibeInternenFehler(w, r, err)
+		writeInternalError(w, r, err)
 	}
 }
 
-// korrekturDetails: feld, wert und infoId, soweit vorhanden (API.md 3.5).
-// Der Wert geht nur an die App zurück, die ihn geschickt hat, nie ins Log.
-func korrekturDetails(kf *core.CorrectionError) map[string]any {
+// correctionDetails: field, value and fact ID, as far as present (API.md
+// 3.5). The value only goes back to the app that sent it, never into the
+// log.
+func correctionDetails(ce *core.CorrectionError) map[string]any {
 	d := map[string]any{}
-	if kf.Field != "" {
-		d["feld"] = kf.Field
+	if ce.Field != "" {
+		d["feld"] = ce.Field
 	}
-	if kf.Value != nil {
-		d["wert"] = kf.Value
+	if ce.Value != nil {
+		d["wert"] = ce.Value
 	}
-	if kf.FactID != "" {
-		d["infoId"] = kf.FactID
+	if ce.FactID != "" {
+		d["infoId"] = ce.FactID
 	}
 	if len(d) == 0 {
 		return nil
@@ -104,149 +105,150 @@ func korrekturDetails(kf *core.CorrectionError) map[string]any {
 	return d
 }
 
-// leseAenderung übersetzt den JSON-Body in eine core.Aenderung. Hier fällt
-// alles auf, was am JSON selbst nicht stimmt (falscher Typ, unbekanntes
-// Feld, null, wo keins erlaubt ist). Was den Eintrag braucht (Typ im Modul,
-// gültiges Datum, Info vorhanden), prüft core.Korrigiere.
+// parseChange translates the JSON body into a core.Change. This catches
+// everything that is wrong with the JSON itself (wrong type, unknown field,
+// null where none is allowed). What needs the entry (type in the module,
+// valid date, fact exists) is checked by core.Correct.
 //
-// Warum nicht einfach in ein struct dekodieren? Dann wären "feld fehlt" und
-// "feld": null beide nil. Über json.RawMessage sehen wir den Unterschied.
+// Why not simply decode into a struct? Then "field missing" and
+// "field": null would both be nil. With json.RawMessage we see the
+// difference.
 //
-// Felder werden alphabetisch geprüft, damit dieselbe Anfrage immer
-// denselben Fehler liefert (eine Go-Map hat keine feste Reihenfolge).
-func leseAenderung(body []byte) (core.Change, error) {
-	var felder map[string]json.RawMessage
-	if err := json.Unmarshal(body, &felder); err != nil || felder == nil {
+// Fields are checked alphabetically, so the same request always gives the
+// same error (a Go map has no fixed order).
+func parseChange(body []byte) (core.Change, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		return core.Change{}, core.Invalid(
 			"Bitte die Änderung als JSON-Objekt schicken, z. B. {\"quelle\": \"…\"}.", "", nil)
 	}
 
-	namen := sortierteSchluessel(felder)
-	for _, name := range namen {
+	names := sortedKeys(fields)
+	for _, name := range names {
 		switch {
-		case slices.Contains(nichtKorrigierbar, name):
+		case slices.Contains(notCorrectableFields, name):
 			return core.Change{}, core.NotCorrectable(name)
 		case !slices.Contains([]string{"dokumentdatum", "infos", "quelle", "typ"}, name):
 			return core.Change{}, core.Invalid("Unbekanntes Feld: "+name+".", name, nil)
 		}
 	}
 
-	var a core.Change
-	if roh, ok := felder["typ"]; ok {
-		typ, ist := alsText(roh)
-		if !ist {
-			return core.Change{}, core.Invalid("Der Typ muss ein Text sein.", "typ", alsWert(roh))
+	var c core.Change
+	if raw, ok := fields["typ"]; ok {
+		typ, isString := asString(raw)
+		if !isString {
+			return core.Change{}, core.Invalid("Der Typ muss ein Text sein.", "typ", asValue(raw))
 		}
-		a.Type = &typ
+		c.Type = &typ
 	}
-	if roh, ok := felder["dokumentdatum"]; ok {
-		f, ok := alsFeld(roh)
+	if raw, ok := fields["dokumentdatum"]; ok {
+		n, ok := asNullable(raw)
 		if !ok {
 			return core.Change{}, core.Invalid("Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.",
-				"dokumentdatum", alsWert(roh))
+				"dokumentdatum", asValue(raw))
 		}
-		a.DocumentDate = f
+		c.DocumentDate = n
 	}
-	if roh, ok := felder["quelle"]; ok {
-		f, ok := alsFeld(roh)
+	if raw, ok := fields["quelle"]; ok {
+		n, ok := asNullable(raw)
 		if !ok {
-			return core.Change{}, core.Invalid("Die Quelle muss ein Text oder null sein.", "quelle", alsWert(roh))
+			return core.Change{}, core.Invalid("Die Quelle muss ein Text oder null sein.", "quelle", asValue(raw))
 		}
-		a.Issuer = f
+		c.Issuer = n
 	}
-	if roh, ok := felder["infos"]; ok {
-		infos, err := leseInfos(roh)
+	if raw, ok := fields["infos"]; ok {
+		facts, err := parseFacts(raw)
 		if err != nil {
 			return core.Change{}, err
 		}
-		a.Facts = infos
+		c.Facts = facts
 	}
-	return a, nil
+	return c, nil
 }
 
-// leseInfos: "infos" muss eine Liste von Objekten mit id und wert und/oder
-// einheit sein. Das Ergebnis ist nie nil, auch bei "infos": [].
-func leseInfos(roh json.RawMessage) ([]core.FactChange, error) {
-	var liste []json.RawMessage
-	if err := json.Unmarshal(roh, &liste); err != nil || liste == nil {
+// parseFacts: "infos" must be a list of objects with id and value and/or
+// unit. The result is never nil, also for "infos": [].
+func parseFacts(raw json.RawMessage) ([]core.FactChange, error) {
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err != nil || list == nil {
 		return nil, core.Invalid("\"infos\" muss eine Liste sein.", "infos", nil)
 	}
-	infos := make([]core.FactChange, 0, len(liste))
-	for _, element := range liste {
-		var felder map[string]json.RawMessage
-		if err := json.Unmarshal(element, &felder); err != nil || felder == nil {
+	facts := make([]core.FactChange, 0, len(list))
+	for _, element := range list {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(element, &fields); err != nil || fields == nil {
 			return nil, core.Invalid("Jede Info muss ein Objekt sein.", "infos", nil)
 		}
-		id, ist := alsText(felder["id"])
-		if !ist || id == "" {
+		id, isString := asString(fields["id"])
+		if !isString || id == "" {
 			return nil, core.Invalid("Jede Info braucht eine id.", "infos", nil)
 		}
-		pfad := "infos." + id + "."
+		path := "infos." + id + "."
 
-		for _, name := range sortierteSchluessel(felder) {
+		for _, name := range sortedKeys(fields) {
 			switch name {
 			case "id", "wert", "einheit":
 			case "name":
-				return nil, core.NotCorrectable(pfad + "name")
+				return nil, core.NotCorrectable(path + "name")
 			default:
-				return nil, core.Invalid("Unbekanntes Feld: "+pfad+name+".", pfad+name, nil)
+				return nil, core.Invalid("Unbekanntes Feld: "+path+name+".", path+name, nil)
 			}
 		}
 
-		info := core.FactChange{ID: id}
-		if roh, ok := felder["wert"]; ok {
-			wert, ist := alsText(roh)
-			if !ist {
-				return nil, core.Invalid("Der Wert muss ein Text sein.", pfad+"wert", alsWert(roh))
+		fact := core.FactChange{ID: id}
+		if raw, ok := fields["wert"]; ok {
+			value, isString := asString(raw)
+			if !isString {
+				return nil, core.Invalid("Der Wert muss ein Text sein.", path+"wert", asValue(raw))
 			}
-			info.Value = &wert
+			fact.Value = &value
 		}
-		if roh, ok := felder["einheit"]; ok {
-			f, ok := alsFeld(roh)
+		if raw, ok := fields["einheit"]; ok {
+			n, ok := asNullable(raw)
 			if !ok {
-				return nil, core.Invalid("Die Einheit muss ein Text oder null sein.", pfad+"einheit", alsWert(roh))
+				return nil, core.Invalid("Die Einheit muss ein Text oder null sein.", path+"einheit", asValue(raw))
 			}
-			info.Unit = f
+			fact.Unit = n
 		}
-		infos = append(infos, info)
+		facts = append(facts, fact)
 	}
-	return infos, nil
+	return facts, nil
 }
 
-// alsText: Ist roh ein JSON-String? null, Zahlen usw. sind es nicht.
-func alsText(roh json.RawMessage) (string, bool) {
+// asString: is raw a JSON string? null, numbers etc. are not.
+func asString(raw json.RawMessage) (string, bool) {
 	var s string
-	if len(roh) == 0 || roh[0] != '"' || json.Unmarshal(roh, &s) != nil {
+	if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &s) != nil {
 		return "", false
 	}
 	return s, true
 }
 
-// alsFeld: null oder ein String, für Felder, die entfernt werden dürfen.
-func alsFeld(roh json.RawMessage) (core.Nullable, bool) {
-	if bytes.Equal(bytes.TrimSpace(roh), []byte("null")) {
+// asNullable: null or a string, for fields that may be removed.
+func asNullable(raw json.RawMessage) (core.Nullable, bool) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return core.Nullable{Set: true}, true
 	}
-	s, ok := alsText(roh)
+	s, ok := asString(raw)
 	if !ok {
 		return core.Nullable{}, false
 	}
 	return core.Nullable{Set: true, Value: &s}, true
 }
 
-// alsWert dekodiert einen abgelehnten Wert für details.wert. null ergibt
-// nil, und details.wert fehlt dann.
-func alsWert(roh json.RawMessage) any {
-	var w any
-	_ = json.Unmarshal(roh, &w)
-	return w
+// asValue decodes a rejected value for details. null gives nil, and the
+// value is then missing in details.
+func asValue(raw json.RawMessage) any {
+	var v any
+	_ = json.Unmarshal(raw, &v)
+	return v
 }
 
-func sortierteSchluessel(m map[string]json.RawMessage) []string {
-	namen := make([]string, 0, len(m))
+func sortedKeys(m map[string]json.RawMessage) []string {
+	names := make([]string, 0, len(m))
 	for n := range m {
-		namen = append(namen, n)
+		names = append(names, n)
 	}
-	slices.Sort(namen)
-	return namen
+	slices.Sort(names)
+	return names
 }

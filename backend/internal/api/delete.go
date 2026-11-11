@@ -8,27 +8,27 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Loescher löscht einen Eintrag. Umgesetzt von dienst.Loeschen.
-type Loescher interface {
+// Deleter deletes an entry. Implemented by service.Deleter.
+type Deleter interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// loeschenHandler beantwortet DELETE /api/v1/eintraege/{id} (API.md 3.7):
-// 204 ohne Body.
-func loeschenHandler(l Loescher) http.HandlerFunc {
+// deleteHandler answers DELETE /api/v1/eintraege/{id} (API.md 3.7): 204
+// without a body.
+func deleteHandler(d Deleter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := l.Delete(r.Context(), r.PathValue("id"))
+		err := d.Delete(r.Context(), r.PathValue("id"))
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusNoContent)
 		case errors.Is(err, core.ErrInvalidID):
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeID, "Diese Eintrag-ID ist ungültig.", nil)
+			writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
 		case errors.Is(err, core.ErrEntryNotFound):
-			schreibeFehler(w, http.StatusNotFound, CodeEintragNichtGefunden, "Diesen Eintrag gibt es nicht.", nil)
+			writeError(w, http.StatusNotFound, CodeEntryNotFound, "Diesen Eintrag gibt es nicht.", nil)
 		case errors.Is(err, context.Canceled):
-			// Die App hat vor dem Löschen aufgegeben; niemand liest die Antwort.
+			// The app gave up before deleting; nobody reads the response.
 		default:
-			schreibeInternenFehler(w, r, err)
+			writeInternalError(w, r, err)
 		}
 	}
 }

@@ -6,109 +6,109 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Die JSON-Typen der API. Sie werden nur über die zuJSON-Funktionen gebaut.
-// Diese machen aus nil-Listen immer leere Listen, denn Go würde eine
-// nil-Slice als null ausgeben, und die API verspricht [] (API.md, Abschnitt 1).
+// The JSON types of the API. They are only built through the toJSON
+// functions. These always turn nil lists into empty lists, because Go would
+// write a nil slice as null, and the API promises [] (API.md, section 1).
 
-type eintragKurzJSON struct {
-	ID            string  `json:"id"`
-	Modul         string  `json:"modul"`
-	Typ           string  `json:"typ"`
-	Dokumentdatum *string `json:"dokumentdatum"` // ohne omitempty: null bleibt sichtbar
-	Importdatum   string  `json:"importdatum"`
-	Quelle        *string `json:"quelle"`
+type entrySummaryJSON struct {
+	ID           string  `json:"id"`
+	Module       string  `json:"modul"`
+	Type         string  `json:"typ"`
+	DocumentDate *string `json:"dokumentdatum"` // without omitempty: null stays visible
+	ImportedAt   string  `json:"importdatum"`
+	Issuer       *string `json:"quelle"`
 }
 
-type eintraegeListeJSON struct {
-	Eintraege []eintragKurzJSON `json:"eintraege"`
-	Anzahl    int               `json:"anzahl"`
+type entryListJSON struct {
+	Entries []entrySummaryJSON `json:"eintraege"`
+	Count   int                `json:"anzahl"`
 }
 
-// zeitpunktJSON formatiert einen Zeitpunkt als RFC 3339 in UTC, z. B.
-// "2026-11-03T18:42:07Z" (API.md, Abschnitt „Datum und Zeit“).
-func zeitpunktJSON(t time.Time) string {
+// timeJSON formats a time as RFC 3339 in UTC, e.g. "2026-11-03T18:42:07Z"
+// (API.md, section "Dates and times").
+func timeJSON(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func eintragKurzZuJSON(e core.EntrySummary) eintragKurzJSON {
-	return eintragKurzJSON{
-		ID:            e.ID,
-		Modul:         e.Module,
-		Typ:           e.Type,
-		Dokumentdatum: e.DocumentDate,
-		Importdatum:   zeitpunktJSON(e.ImportedAt),
-		Quelle:        e.Issuer,
+func summaryToJSON(e core.EntrySummary) entrySummaryJSON {
+	return entrySummaryJSON{
+		ID:           e.ID,
+		Module:       e.Module,
+		Type:         e.Type,
+		DocumentDate: e.DocumentDate,
+		ImportedAt:   timeJSON(e.ImportedAt),
+		Issuer:       e.Issuer,
 	}
 }
 
-// eintragJSON ist der vollständige Eintrag (API.md, Abschnitt 2).
-type eintragJSON struct {
-	ID            string          `json:"id"`
-	Modul         string          `json:"modul"`
-	Typ           string          `json:"typ"`
-	Dokumentdatum *string         `json:"dokumentdatum"`
-	Importdatum   string          `json:"importdatum"`
-	Quelle        *string         `json:"quelle"`
-	Volltext      string          `json:"volltext"`
-	Infos         []infoJSON      `json:"infos"`
-	Datei         dateiJSON       `json:"datei"`
-	Korrekturen   []korrekturJSON `json:"korrekturen"`
+// entryJSON is the full entry (API.md, section 2).
+type entryJSON struct {
+	ID           string           `json:"id"`
+	Module       string           `json:"modul"`
+	Type         string           `json:"typ"`
+	DocumentDate *string          `json:"dokumentdatum"`
+	ImportedAt   string           `json:"importdatum"`
+	Issuer       *string          `json:"quelle"`
+	FullText     string           `json:"volltext"`
+	Facts        []factJSON       `json:"infos"`
+	File         fileJSON         `json:"datei"`
+	Corrections  []correctionJSON `json:"korrekturen"`
 }
 
-type infoJSON struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Wert    string  `json:"wert"`
-	Einheit *string `json:"einheit,omitempty"` // fehlt, wenn das Dokument keine nennt
+type factJSON struct {
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Value string  `json:"wert"`
+	Unit  *string `json:"einheit,omitempty"` // missing if the document names none
 }
 
-type dateiJSON struct {
-	ID        string `json:"id"`
-	Dateiname string `json:"dateiname"`
-	MimeTyp   string `json:"mimeTyp"`
-	Groesse   int64  `json:"groesse"`
-	Sha256    string `json:"sha256"`
+type fileJSON struct {
+	ID       string `json:"id"`
+	FileName string `json:"dateiname"`
+	MimeType string `json:"mimeTyp"`
+	Size     int64  `json:"groesse"`
+	Sha256   string `json:"sha256"`
 }
 
-type korrekturJSON struct {
-	Feld       string  `json:"feld"`
-	Erkannt    *string `json:"erkannt"`
-	Korrigiert *string `json:"korrigiert"`
-	Zeitpunkt  string  `json:"zeitpunkt"`
+type correctionJSON struct {
+	Field       string  `json:"feld"`
+	Recognized  *string `json:"erkannt"`
+	Corrected   *string `json:"korrigiert"`
+	CorrectedAt string  `json:"zeitpunkt"`
 }
 
-func eintragZuJSON(e core.Entry) eintragJSON {
-	infos := make([]infoJSON, 0, len(e.Facts)) // nie nil
-	for _, i := range e.Facts {
-		infos = append(infos, infoJSON{ID: i.ID, Name: i.Name, Wert: i.Value, Einheit: i.Unit})
+func entryToJSON(e core.Entry) entryJSON {
+	facts := make([]factJSON, 0, len(e.Facts)) // never nil
+	for _, f := range e.Facts {
+		facts = append(facts, factJSON{ID: f.ID, Name: f.Name, Value: f.Value, Unit: f.Unit})
 	}
-	korrekturen := make([]korrekturJSON, 0, len(e.Corrections)) // nie nil
-	for _, k := range e.Corrections {
-		korrekturen = append(korrekturen, korrekturJSON{
-			Feld: k.Field, Erkannt: k.Recognized, Korrigiert: k.Corrected, Zeitpunkt: zeitpunktJSON(k.CorrectedAt),
+	corrections := make([]correctionJSON, 0, len(e.Corrections)) // never nil
+	for _, c := range e.Corrections {
+		corrections = append(corrections, correctionJSON{
+			Field: c.Field, Recognized: c.Recognized, Corrected: c.Corrected, CorrectedAt: timeJSON(c.CorrectedAt),
 		})
 	}
-	return eintragJSON{
-		ID:            e.ID,
-		Modul:         e.Module,
-		Typ:           e.Type,
-		Dokumentdatum: e.DocumentDate,
-		Importdatum:   zeitpunktJSON(e.ImportedAt),
-		Quelle:        e.Issuer,
-		Volltext:      e.FullText,
-		Infos:         infos,
-		Datei: dateiJSON{
-			ID: e.File.ID, Dateiname: e.File.FileName, MimeTyp: e.File.MimeType,
-			Groesse: e.File.Size, Sha256: e.File.Sha256,
+	return entryJSON{
+		ID:           e.ID,
+		Module:       e.Module,
+		Type:         e.Type,
+		DocumentDate: e.DocumentDate,
+		ImportedAt:   timeJSON(e.ImportedAt),
+		Issuer:       e.Issuer,
+		FullText:     e.FullText,
+		Facts:        facts,
+		File: fileJSON{
+			ID: e.File.ID, FileName: e.File.FileName, MimeType: e.File.MimeType,
+			Size: e.File.Size, Sha256: e.File.Sha256,
 		},
-		Korrekturen: korrekturen,
+		Corrections: corrections,
 	}
 }
 
-func eintraegeListeZuJSON(liste []core.EntrySummary) eintraegeListeJSON {
-	out := make([]eintragKurzJSON, 0, len(liste)) // nie nil
-	for _, e := range liste {
-		out = append(out, eintragKurzZuJSON(e))
+func entryListToJSON(list []core.EntrySummary) entryListJSON {
+	out := make([]entrySummaryJSON, 0, len(list)) // never nil
+	for _, e := range list {
+		out = append(out, summaryToJSON(e))
 	}
-	return eintraegeListeJSON{Eintraege: out, Anzahl: len(out)}
+	return entryListJSON{Entries: out, Count: len(out)}
 }

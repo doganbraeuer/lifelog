@@ -14,176 +14,175 @@ import (
 	"lifelog/backend/internal/service"
 )
 
-// Fehlercodes für den Upload (API.md 3.1).
+// Error codes for the upload (API.md 3.1).
 const (
-	CodeUngueltigeAnfrage         = "UNGUELTIGE_ANFRAGE"
-	CodeDateiFehlt                = "DATEI_FEHLT"
-	CodeDuplikat                  = "DUPLIKAT"
-	CodeDateiZuGross              = "DATEI_ZU_GROSS"
-	CodeDateitypNichtUnterstuetzt = "DATEITYP_NICHT_UNTERSTUETZT"
-	CodeNichtLesbar               = "NICHT_LESBAR"
-	CodeAuslesenFehlgeschlagen    = "AUSLESEN_FEHLGESCHLAGEN"
-	CodeModellNichtErreichbar     = "MODELL_NICHT_ERREICHBAR"
+	CodeInvalidRequest      = "UNGUELTIGE_ANFRAGE"
+	CodeFileMissing         = "DATEI_FEHLT"
+	CodeDuplicate           = "DUPLIKAT"
+	CodeFileTooLarge        = "DATEI_ZU_GROSS"
+	CodeUnsupportedFileType = "DATEITYP_NICHT_UNTERSTUETZT"
+	CodeUnreadable          = "NICHT_LESBAR"
+	CodeExtractionFailed    = "AUSLESEN_FEHLGESCHLAGEN"
+	CodeModelUnavailable    = "MODELL_NICHT_ERREICHBAR"
 )
 
-// formularPuffer: Platz für Formular-Overhead (Grenzen, Kopfzeilen, Feld
-// modul) zusätzlich zur Datei. Ist die Datei selbst über 10 MB, meldet
-// core.PruefeDatei das genau; alles darüber bricht schon beim Lesen ab.
-const formularPuffer = 1 << 20 // 1 MiB
+// formOverhead: room for the form overhead (boundaries, headers, field
+// modul) in addition to the file. If the file itself is over 10 MB,
+// core.CheckFile reports that precisely; anything beyond breaks off while
+// reading.
+const formOverhead = 1 << 20 // 1 MiB
 
-// Hochlader führt den Upload bzw. Text-Import aus. Umgesetzt von
-// service.Hochladen.
-type Hochlader interface {
+// Uploader runs the upload or text import. Implemented by service.Uploader.
+type Uploader interface {
 	Upload(ctx context.Context, u service.Upload) (core.Entry, error)
 	UploadText(ctx context.Context, u service.TextUpload) (core.Entry, error)
 }
 
-// art: Datei-Upload oder Text-Import. Bestimmt nur die Fehlermeldungen.
-type art int
+// uploadKind: file upload or text import. Only decides the error messages.
+type uploadKind int
 
 const (
-	artDatei art = iota
-	artText
+	kindFile uploadKind = iota
+	kindText
 )
 
-// hochladenHandler beantwortet POST /api/v1/eintraege (API.md 3.1).
-func hochladenHandler(h Hochlader) http.HandlerFunc {
+// uploadHandler answers POST /api/v1/eintraege (API.md 3.1).
+func uploadHandler(u Uploader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formularPuffer)
+		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formOverhead)
 
-		// maxMemory so groß wie die erlaubte Anfrage: Das ganze Formular
-		// bleibt im Arbeitsspeicher. Sonst legt Go große Dateien als
-		// temporäre Dateien auf der Festplatte ab, und Gesundheitsdokumente
-		// sollen dort nicht herumliegen.
-		if err := r.ParseMultipartForm(core.MaxFileBytes + formularPuffer); err != nil {
-			var zuGross *http.MaxBytesError
+		// maxMemory as large as the allowed request: the whole form stays in
+		// memory. Otherwise Go stores large files as temporary files on disk,
+		// and health documents should not lie around there.
+		if err := r.ParseMultipartForm(core.MaxFileBytes + formOverhead); err != nil {
+			var tooLarge *http.MaxBytesError
 			switch {
-			case errors.As(err, &zuGross):
-				schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross, "Die Datei ist größer als 10 MB.", nil)
+			case errors.As(err, &tooLarge):
+				writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge, "Die Datei ist größer als 10 MB.", nil)
 			case errors.Is(err, http.ErrNotMultipart):
-				schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+				writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 					"Bitte die Datei als multipart/form-data im Feld datei schicken.", nil)
 			default:
-				schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage, "Das Formular ist nicht lesbar.", nil)
+				writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Das Formular ist nicht lesbar.", nil)
 			}
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
 
-		dateien := r.MultipartForm.File["datei"]
-		texte := r.MultipartForm.Value["text"]
-		// Leer oder nur Leerraum gilt als fehlend (API.md 3.1).
-		hatText := len(texte) > 0 && strings.TrimSpace(texte[0]) != ""
-		modul := ersterWert(r.MultipartForm.Value["modul"])
+		files := r.MultipartForm.File["datei"]
+		texts := r.MultipartForm.Value["text"]
+		// Empty or only whitespace counts as missing (API.md 3.1).
+		hasText := len(texts) > 0 && strings.TrimSpace(texts[0]) != ""
+		module := firstValue(r.MultipartForm.Value["modul"])
 		switch {
-		case len(texte) > 1:
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage, "Bitte genau einen Text schicken.", nil)
+		case len(texts) > 1:
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Bitte genau einen Text schicken.", nil)
 			return
-		case len(dateien) > 0 && hatText:
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+		case len(files) > 0 && hasText:
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 				"Bitte entweder eine Datei oder einen Text schicken, nicht beides.", nil)
 			return
-		case hatText:
-			// Der Text geht unverändert weiter, nicht getrimmt.
-			eintrag, err := h.UploadText(r.Context(), service.TextUpload{Text: texte[0], Module: modul})
-			schreibeErgebnis(w, r, eintrag, err, artText, modul)
+		case hasText:
+			// The text goes on unchanged, not trimmed.
+			entry, err := u.UploadText(r.Context(), service.TextUpload{Text: texts[0], Module: module})
+			writeUploadResult(w, r, entry, err, kindText, module)
 			return
-		case len(dateien) == 0 && len(texte) == 1:
-			schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
+		case len(files) == 0 && len(texts) == 1:
+			writeError(w, http.StatusBadRequest, CodeFileMissing, "Bitte einen Text eingeben.", nil)
 			return
-		case len(dateien) == 0:
-			schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte eine Datei auswählen.", nil)
+		case len(files) == 0:
+			writeError(w, http.StatusBadRequest, CodeFileMissing, "Bitte eine Datei auswählen.", nil)
 			return
-		case len(dateien) > 1:
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage, "Bitte genau eine Datei schicken.", nil)
+		case len(files) > 1:
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Bitte genau eine Datei schicken.", nil)
 			return
 		}
 
-		daten, err := leseDatei(dateien[0])
+		data, err := readFile(files[0])
 		if err != nil {
-			schreibeInternenFehler(w, r, err)
+			writeInternalError(w, r, err)
 			return
 		}
-		eintrag, err := h.Upload(r.Context(), service.Upload{
-			Data: daten, FileName: dateien[0].Filename, Module: modul,
+		entry, err := u.Upload(r.Context(), service.Upload{
+			Data: data, FileName: files[0].Filename, Module: module,
 		})
-		schreibeErgebnis(w, r, eintrag, err, artDatei, modul)
+		writeUploadResult(w, r, entry, err, kindFile, module)
 	}
 }
 
-// schreibeErgebnis: 201 mit Location und Eintrag, oder der passende Fehler.
-func schreibeErgebnis(w http.ResponseWriter, r *http.Request, eintrag core.Entry, err error, a art, modul string) {
+// writeUploadResult: 201 with Location and entry, or the matching error.
+func writeUploadResult(w http.ResponseWriter, r *http.Request, entry core.Entry, err error, kind uploadKind, module string) {
 	if err != nil {
-		schreibeUploadFehler(w, r, err, a, modul)
+		writeUploadError(w, r, err, kind, module)
 		return
 	}
-	w.Header().Set("Location", "/api/v1/eintraege/"+eintrag.ID)
-	schreibeJSON(w, http.StatusCreated, eintragZuJSON(eintrag))
+	w.Header().Set("Location", "/api/v1/eintraege/"+entry.ID)
+	writeJSON(w, http.StatusCreated, entryToJSON(entry))
 }
 
-// schreibeUploadFehler ordnet jedem Fehler des Dienstes den Code aus
-// API.md 3.1 zu.
-func schreibeUploadFehler(w http.ResponseWriter, r *http.Request, err error, a art, modul string) {
-	var duplikat *service.DuplicateError
+// writeUploadError maps every error of the service to the code from
+// API.md 3.1.
+func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind uploadKind, module string) {
+	var duplicate *service.DuplicateError
 	switch {
-	case a == artText && errors.Is(err, core.ErrFileEmpty):
-		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Bitte einen Text eingeben.", nil)
+	case kind == kindText && errors.Is(err, core.ErrFileEmpty):
+		writeError(w, http.StatusBadRequest, CodeFileMissing, "Bitte einen Text eingeben.", nil)
 	case errors.Is(err, core.ErrTextNotUTF8):
-		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 			"Der Text ist kein gültiges UTF-8.", map[string]any{"feld": "text"})
 	case errors.Is(err, core.ErrTextTooLong):
-		schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross,
+		writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge,
 			"Der Text ist länger als 100 000 Zeichen.", map[string]any{"maxZeichen": core.MaxTextChars})
-	case a == artText && errors.As(err, &duplikat):
-		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diesen Text hast du schon importiert.",
-			map[string]any{"eintragId": duplikat.EntryID})
+	case kind == kindText && errors.As(err, &duplicate):
+		writeError(w, http.StatusConflict, CodeDuplicate, "Diesen Text hast du schon importiert.",
+			map[string]any{"eintragId": duplicate.EntryID})
 	case errors.Is(err, core.ErrUnknownModule):
-		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
-			map[string]any{"feld": "modul", "wert": modul})
+			map[string]any{"feld": "modul", "wert": module})
 	case errors.Is(err, core.ErrFileEmpty):
-		schreibeFehler(w, http.StatusBadRequest, CodeDateiFehlt, "Die Datei ist leer.", nil)
+		writeError(w, http.StatusBadRequest, CodeFileMissing, "Die Datei ist leer.", nil)
 	case errors.Is(err, core.ErrFileTooLarge):
-		schreibeFehler(w, http.StatusRequestEntityTooLarge, CodeDateiZuGross, "Die Datei ist größer als 10 MB.", nil)
+		writeError(w, http.StatusRequestEntityTooLarge, CodeFileTooLarge, "Die Datei ist größer als 10 MB.", nil)
 	case errors.Is(err, core.ErrUnsupportedFileType):
-		schreibeFehler(w, http.StatusUnsupportedMediaType, CodeDateitypNichtUnterstuetzt,
+		writeError(w, http.StatusUnsupportedMediaType, CodeUnsupportedFileType,
 			"Dieser Dateityp wird nicht unterstützt. Erlaubt sind JPEG, PNG, HEIC und PDF.", nil)
-	case errors.As(err, &duplikat):
-		schreibeFehler(w, http.StatusConflict, CodeDuplikat, "Diese Datei hast du schon hochgeladen.",
-			map[string]any{"eintragId": duplikat.EntryID})
+	case errors.As(err, &duplicate):
+		writeError(w, http.StatusConflict, CodeDuplicate, "Diese Datei hast du schon hochgeladen.",
+			map[string]any{"eintragId": duplicate.EntryID})
 	case errors.Is(err, core.ErrUnreadable):
-		schreibeFehler(w, http.StatusUnprocessableEntity, CodeNichtLesbar,
+		writeError(w, http.StatusUnprocessableEntity, CodeUnreadable,
 			"Darauf ist kein lesbares Dokument zu erkennen. Versuche es mit einem schärferen Foto.", nil)
 	case errors.Is(err, core.ErrInvalidExtraction), errors.Is(err, llm.ErrInvalidResponse):
-		slog.Warn("Auslesen fehlgeschlagen", "fehler", err)
-		schreibeFehler(w, http.StatusBadGateway, CodeAuslesenFehlgeschlagen,
+		slog.Warn("extraction failed", "error", err)
+		writeError(w, http.StatusBadGateway, CodeExtractionFailed,
 			"Das Dokument konnte nicht ausgelesen werden. Bitte versuche es noch einmal.", nil)
 	case errors.Is(err, llm.ErrUnavailable):
-		slog.Warn("Modell nicht erreichbar", "fehler", err)
-		schreibeFehler(w, http.StatusServiceUnavailable, CodeModellNichtErreichbar,
+		slog.Warn("model unavailable", "error", err)
+		writeError(w, http.StatusServiceUnavailable, CodeModelUnavailable,
 			"Die Texterkennung ist gerade nicht erreichbar. Bitte versuche es später noch einmal.", nil)
 	case errors.Is(err, context.Canceled):
-		// Die App hat die Verbindung getrennt; niemand liest die Antwort mehr.
-		slog.Info("Upload abgebrochen")
+		// The app dropped the connection; nobody reads the response anymore.
+		slog.Info("upload canceled")
 	default:
-		schreibeInternenFehler(w, r, err)
+		writeInternalError(w, r, err)
 	}
 }
 
-func leseDatei(fh *multipart.FileHeader) ([]byte, error) {
+func readFile(fh *multipart.FileHeader) ([]byte, error) {
 	f, err := fh.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	// Ein Byte mehr als erlaubt lesen, damit core.PruefeDatei "zu groß"
-	// erkennt, statt eine abgeschnittene Datei zu prüfen.
+	// Read one byte more than allowed, so core.CheckFile recognizes "too
+	// large" instead of checking a truncated file.
 	return io.ReadAll(io.LimitReader(f, core.MaxFileBytes+1))
 }
 
-func ersterWert(werte []string) string {
-	if len(werte) == 0 {
+func firstValue(values []string) string {
+	if len(values) == 0 {
 		return ""
 	}
-	return werte[0]
+	return values[0]
 }

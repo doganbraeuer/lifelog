@@ -13,109 +13,109 @@ import (
 )
 
 const (
-	testID      = "6727a1f3c2b4e5d6f7a8b9c0"
-	testDateiID = "6727a1f3c2b4e5d6f7a8b9c1"
+	testID     = "6727a1f3c2b4e5d6f7a8b9c0"
+	testFileID = "6727a1f3c2b4e5d6f7a8b9c1"
 )
 
-func speicherMitEintrag() *speicherAttrappe {
-	e := vollerEintrag() // aus hochladen_test.go, ID testID, Datei testDateiID
-	return &speicherAttrappe{
-		eintraege: map[string]core.Entry{testID: e},
-		dateien:   map[string][]byte{testDateiID: []byte("%PDF-1.7 synthetisch")},
+func storeWithEntry() *fakeStore {
+	e := fullEntry() // from upload_test.go, ID testID, file testFileID
+	return &fakeStore{
+		entries: map[string]core.Entry{testID: e},
+		files:   map[string][]byte{testFileID: []byte("%PDF-1.7 synthetisch")},
 	}
 }
 
-func abrufen(t *testing.T, s *speicherAttrappe, pfad string) *httptest.ResponseRecorder {
+func get(t *testing.T, s *fakeStore, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Eintraege: s})
+	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: s})
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, pfad, nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	return rec
 }
 
-func TestEintrag_Gefunden(t *testing.T) {
-	rec := abrufen(t, speicherMitEintrag(), "/api/v1/eintraege/"+testID)
+func TestEntry_Found(t *testing.T) {
+	rec := get(t, storeWithEntry(), "/api/v1/eintraege/"+testID)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	pruefeJSONHeader(t, rec)
+	checkJSONHeader(t, rec)
 	var a map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
 		t.Fatal(err)
 	}
-	// Vollständiger Eintrag: alle Felder aus API.md Abschnitt 2 vorhanden.
-	for _, feld := range []string{"id", "modul", "typ", "dokumentdatum", "importdatum", "quelle", "volltext", "infos", "datei", "korrekturen"} {
-		if _, ok := a[feld]; !ok {
-			t.Errorf("Feld %s fehlt", feld)
+	// Full entry: all fields from API.md section 2 are present.
+	for _, field := range []string{"id", "modul", "typ", "dokumentdatum", "importdatum", "quelle", "volltext", "infos", "datei", "korrekturen"} {
+		if _, ok := a[field]; !ok {
+			t.Errorf("field %s missing", field)
 		}
 	}
-	if k, ok := a["korrekturen"].([]any); !ok || len(k) != 0 {
-		t.Errorf("korrekturen = %#v, erwartet []", a["korrekturen"])
+	if c, ok := a["korrekturen"].([]any); !ok || len(c) != 0 {
+		t.Errorf("korrekturen = %#v, want []", a["korrekturen"])
 	}
 }
 
-func TestEintrag_Fehler(t *testing.T) {
-	faelle := []struct {
-		name, pfad string
-		speicher   *speicherAttrappe
+func TestEntry_Errors(t *testing.T) {
+	cases := []struct {
+		name, path string
+		store      *fakeStore
 		status     int
 		code       string
 	}{
-		{"ungültige ID", "/api/v1/eintraege/abc", speicherMitEintrag(), 400, CodeUngueltigeID},
-		{"ID mit Nicht-Hex", "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9zz", speicherMitEintrag(), 400, CodeUngueltigeID},
-		{"unbekannt", "/api/v1/eintraege/000000000000000000000000", speicherMitEintrag(), 404, CodeEintragNichtGefunden},
-		{"Datenbankfehler", "/api/v1/eintraege/" + testID, &speicherAttrappe{err: errors.New("weg")}, 500, CodeInternerFehler},
-		{"Datei: ungültige ID", "/api/v1/eintraege/abc/datei", speicherMitEintrag(), 400, CodeUngueltigeID},
-		{"Datei: unbekannt", "/api/v1/eintraege/000000000000000000000000/datei", speicherMitEintrag(), 404, CodeEintragNichtGefunden},
+		{"invalid ID", "/api/v1/eintraege/abc", storeWithEntry(), 400, CodeInvalidID},
+		{"ID with non-hex", "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9zz", storeWithEntry(), 400, CodeInvalidID},
+		{"unknown", "/api/v1/eintraege/000000000000000000000000", storeWithEntry(), 404, CodeEntryNotFound},
+		{"database error", "/api/v1/eintraege/" + testID, &fakeStore{err: errors.New("gone")}, 500, CodeInternalError},
+		{"file: invalid ID", "/api/v1/eintraege/abc/datei", storeWithEntry(), 400, CodeInvalidID},
+		{"file: unknown", "/api/v1/eintraege/000000000000000000000000/datei", storeWithEntry(), 404, CodeEntryNotFound},
 	}
-	for _, f := range faelle {
-		t.Run(f.name, func(t *testing.T) {
-			rec := abrufen(t, f.speicher, f.pfad)
-			pruefeFehler(t, rec, f.status, f.code)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := get(t, c.store, c.path)
+			checkError(t, rec, c.status, c.code)
 		})
 	}
 }
 
-func TestEintrag_UngueltigeIDFragtDatenbankNicht(t *testing.T) {
-	s := speicherMitEintrag()
-	abrufen(t, s, "/api/v1/eintraege/abc")
-	if s.aufrufe != 0 {
-		t.Error("bei ungültiger ID darf die Datenbank nicht gefragt werden")
+func TestEntry_InvalidIDDoesNotAskDatabase(t *testing.T) {
+	s := storeWithEntry()
+	get(t, s, "/api/v1/eintraege/abc")
+	if s.calls != 0 {
+		t.Error("the database must not be asked for an invalid ID")
 	}
 }
 
-func TestDatei_Gefunden(t *testing.T) {
-	rec := abrufen(t, speicherMitEintrag(), "/api/v1/eintraege/"+testID+"/datei")
+func TestFile_Found(t *testing.T) {
+	rec := get(t, storeWithEntry(), "/api/v1/eintraege/"+testID+"/datei")
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d, Body %s", rec.Code, rec.Body)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	if rec.Body.String() != "%PDF-1.7 synthetisch" {
-		t.Errorf("Body = %q", rec.Body)
+		t.Errorf("body = %q", rec.Body)
 	}
 	h := rec.Header()
-	erwartet := map[string]string{
+	want := map[string]string{
 		"Content-Type":           "application/pdf",
 		"Content-Length":         "20",
 		"Content-Disposition":    `inline; filename=befund.pdf`,
 		"X-Content-Type-Options": "nosniff",
 		"Cache-Control":          "private, no-store",
 	}
-	for k, v := range erwartet {
+	for k, v := range want {
 		if h.Get(k) != v {
-			t.Errorf("%s = %q, erwartet %q", k, h.Get(k), v)
+			t.Errorf("%s = %q, want %q", k, h.Get(k), v)
 		}
 	}
 }
 
-func TestDatei_TextImport(t *testing.T) {
-	s := speicherMitEintrag()
-	e := s.eintraege[testID]
+func TestFile_TextImport(t *testing.T) {
+	s := storeWithEntry()
+	e := s.entries[testID]
 	e.File.FileName, e.File.MimeType = "text.txt", "text/plain; charset=utf-8"
-	s.eintraege[testID] = e
+	s.entries[testID] = e
 
-	rec := abrufen(t, s, "/api/v1/eintraege/"+testID+"/datei")
+	rec := get(t, s, "/api/v1/eintraege/"+testID+"/datei")
 	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
 		t.Errorf("Content-Type = %q", ct)
 	}
@@ -124,35 +124,35 @@ func TestDatei_TextImport(t *testing.T) {
 	}
 }
 
-func TestDatei_FehltIst500(t *testing.T) {
-	s := speicherMitEintrag()
-	s.dateien = map[string][]byte{} // Eintrag da, Datei weg
-	rec := abrufen(t, s, "/api/v1/eintraege/"+testID+"/datei")
-	pruefeFehler(t, rec, 500, CodeInternerFehler)
+func TestFile_MissingIs500(t *testing.T) {
+	s := storeWithEntry()
+	s.files = map[string][]byte{} // entry there, file gone
+	rec := get(t, s, "/api/v1/eintraege/"+testID+"/datei")
+	checkError(t, rec, 500, CodeInternalError)
 }
 
-func TestInlineMitName(t *testing.T) {
-	faelle := []string{
+func TestInlineWithName(t *testing.T) {
+	cases := []string{
 		"befund.pdf",
 		"Befund Ä Ö ü.pdf",
 		`böser"name;.pdf`,
 		"zeile\r\nX-Header: x.pdf",
 		"",
 	}
-	for _, name := range faelle {
-		wert := inlineMitName(name)
-		if strings.ContainsAny(wert, "\r\n") {
-			t.Errorf("%q: Header enthält Zeilenumbruch: %q", name, wert)
+	for _, name := range cases {
+		value := inlineWithName(name)
+		if strings.ContainsAny(value, "\r\n") {
+			t.Errorf("%q: header contains a line break: %q", name, value)
 			continue
 		}
-		// Der Wert muss sich zurücklesen lassen und den Namen unverändert enthalten.
-		art, params, err := mime.ParseMediaType(wert)
-		if err != nil || art != "inline" {
-			t.Errorf("%q → %q: nicht lesbar (%v)", name, wert, err)
+		// The value must be readable again and contain the name unchanged.
+		disposition, params, err := mime.ParseMediaType(value)
+		if err != nil || disposition != "inline" {
+			t.Errorf("%q → %q: not readable (%v)", name, value, err)
 			continue
 		}
 		if params["filename"] != name && !(name == "" || strings.ContainsAny(name, "\r\n")) {
-			t.Errorf("%q → %q: filename = %q", name, wert, params["filename"])
+			t.Errorf("%q → %q: filename = %q", name, value, params["filename"])
 		}
 	}
 }

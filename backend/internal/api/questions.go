@@ -11,94 +11,94 @@ import (
 	"lifelog/backend/internal/llm"
 )
 
-// Fehlercodes für Fragen (API.md 3.6).
+// Error codes for questions (API.md 3.6).
 const (
-	CodeFrageFehlt  = "FRAGE_FEHLT"
-	CodeFrageZuLang = "FRAGE_ZU_LANG"
+	CodeQuestionMissing = "FRAGE_FEHLT"
+	CodeQuestionTooLong = "FRAGE_ZU_LANG"
 )
 
-// maxFrageBody: Eine Frage hat höchstens 500 Zeichen (≤ 2000 Bytes); 64 KiB
-// lassen viel Luft und begrenzen trotzdem, was der Server liest.
-const maxFrageBody = 64 << 10
+// maxQuestionBody: a question has at most 500 characters (≤ 2000 bytes);
+// 64 KiB leave plenty of room and still limit what the server reads.
+const maxQuestionBody = 64 << 10
 
-// Frager beantwortet Fragen. Umgesetzt von dienst.Fragen.
-type Frager interface {
-	Ask(ctx context.Context, frage, modul string) (core.Answer, error)
+// Asker answers questions. Implemented by service.Asker.
+type Asker interface {
+	Ask(ctx context.Context, question, module string) (core.Answer, error)
 }
 
-type frageAnfrage struct {
-	Frage string `json:"frage"`
-	Modul string `json:"modul"`
+type questionRequest struct {
+	Question string `json:"frage"`
+	Module   string `json:"modul"`
 }
 
-type antwortJSON struct {
-	Antwort  string       `json:"antwort"`
-	Gefunden bool         `json:"gefunden"`
-	Quellen  []quelleJSON `json:"quellen"`
+type answerJSON struct {
+	Answer  string       `json:"antwort"`
+	Found   bool         `json:"gefunden"`
+	Sources []sourceJSON `json:"quellen"`
 }
 
-type quelleJSON struct {
-	Nr            int     `json:"nr"`
-	EintragID     string  `json:"eintragId"`
-	Modul         string  `json:"modul"`
-	Typ           string  `json:"typ"`
-	Quelle        *string `json:"quelle"`
-	Dokumentdatum *string `json:"dokumentdatum"`
-	Auszug        string  `json:"auszug"`
+type sourceJSON struct {
+	Number       int     `json:"nr"`
+	EntryID      string  `json:"eintragId"`
+	Module       string  `json:"modul"`
+	Type         string  `json:"typ"`
+	Issuer       *string `json:"quelle"`
+	DocumentDate *string `json:"dokumentdatum"`
+	Excerpt      string  `json:"auszug"`
 }
 
-func antwortZuJSON(a core.Answer) antwortJSON {
-	quellen := make([]quelleJSON, 0, len(a.Sources)) // nie nil
-	for _, q := range a.Sources {
-		quellen = append(quellen, quelleJSON{
-			Nr: q.Number, EintragID: q.EntryID, Modul: q.Module, Typ: q.Type,
-			Quelle: q.Issuer, Dokumentdatum: q.DocumentDate, Auszug: q.Excerpt,
+func answerToJSON(a core.Answer) answerJSON {
+	sources := make([]sourceJSON, 0, len(a.Sources)) // never nil
+	for _, s := range a.Sources {
+		sources = append(sources, sourceJSON{
+			Number: s.Number, EntryID: s.EntryID, Module: s.Module, Type: s.Type,
+			Issuer: s.Issuer, DocumentDate: s.DocumentDate, Excerpt: s.Excerpt,
 		})
 	}
-	return antwortJSON{Antwort: a.Text, Gefunden: a.Found, Quellen: quellen}
+	return answerJSON{Answer: a.Text, Found: a.Found, Sources: sources}
 }
 
-// fragenHandler beantwortet POST /api/v1/fragen (API.md 3.6).
-func fragenHandler(f Frager) http.HandlerFunc {
+// questionsHandler answers POST /api/v1/fragen (API.md 3.6).
+func questionsHandler(a Asker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var anfrage frageAnfrage
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFrageBody))
-		// Unbekannte Felder sind ein Fehler (API.md 1): Ein Tippfehler wie
-		// "frge" soll auffallen, statt still als "Frage fehlt" zu enden.
+		var req questionRequest
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionBody))
+		// Unknown fields are an error (API.md 1): a typo like "frge" should
+		// stand out instead of silently ending as "question missing".
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&anfrage); err != nil || dec.More() {
-			schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+		if err := dec.Decode(&req); err != nil || dec.More() {
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 				"Bitte die Frage als JSON schicken, z. B. {\"frage\": \"…\"}.", nil)
 			return
 		}
 
-		antwort, err := f.Ask(r.Context(), anfrage.Frage, anfrage.Modul)
+		answer, err := a.Ask(r.Context(), req.Question, req.Module)
 		if err != nil {
-			schreibeFragenFehler(w, r, err, anfrage.Modul)
+			writeQuestionError(w, r, err, req.Module)
 			return
 		}
-		schreibeJSON(w, http.StatusOK, antwortZuJSON(antwort))
+		writeJSON(w, http.StatusOK, answerToJSON(answer))
 	}
 }
 
-func schreibeFragenFehler(w http.ResponseWriter, r *http.Request, err error, modul string) {
+func writeQuestionError(w http.ResponseWriter, r *http.Request, err error, module string) {
 	switch {
 	case errors.Is(err, core.ErrQuestionMissing):
-		schreibeFehler(w, http.StatusBadRequest, CodeFrageFehlt, "Bitte stelle eine Frage.", nil)
+		writeError(w, http.StatusBadRequest, CodeQuestionMissing, "Bitte stelle eine Frage.", nil)
 	case errors.Is(err, core.ErrQuestionTooLong):
-		schreibeFehler(w, http.StatusBadRequest, CodeFrageZuLang,
+		writeError(w, http.StatusBadRequest, CodeQuestionTooLong,
 			"Die Frage ist zu lang. Erlaubt sind höchstens 500 Zeichen.", nil)
 	case errors.Is(err, core.ErrUnknownModule):
-		schreibeFehler(w, http.StatusBadRequest, CodeUngueltigeAnfrage,
+		writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 			"Unbekanntes Modul. Im Prototyp gibt es nur gesundheit.",
-			map[string]any{"feld": "modul", "wert": modul})
+			map[string]any{"feld": "modul", "wert": module})
 	case errors.Is(err, llm.ErrUnavailable), errors.Is(err, llm.ErrInvalidResponse):
-		slog.Warn("Frage: Modell nicht erreichbar oder Antwort unbrauchbar", "fehler", err)
-		schreibeFehler(w, http.StatusServiceUnavailable, CodeModellNichtErreichbar,
+		slog.Warn("question: model unavailable or answer unusable", "error", err)
+		writeError(w, http.StatusServiceUnavailable, CodeModelUnavailable,
 			"Die Suche ist gerade nicht erreichbar. Bitte versuche es später noch einmal.", nil)
 	case errors.Is(err, context.Canceled):
-		slog.Info("Frage abgebrochen")
+		slog.Info("question canceled")
 	default:
-		schreibeInternenFehler(w, r, err)
+		writeInternalError(w, r, err)
 	}
 }
