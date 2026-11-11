@@ -314,3 +314,51 @@ Until 2026-11-11 outside the repository in `lifelog-demo` and
 | Wiederholung | retry |
 | Lese-, Text-, Antwort-Anweisung | read, text, answer instruction (prompt) |
 | `lesbar` (schema field) | `readable` |
+
+## Verification (OCR)
+
+Added 2026-11-11. A second, independent reader (local OCR) checks the
+values the vision LLM extracted (docs/API.md, section 2, `verification`).
+
+| German | English | Go / Dart type |
+|---|---|---|
+| Texterkennung | OCR (optical character recognition) | package `internal/ocr` |
+| OCR-Schnittstelle, erkennen | recognizer, recognize | `ocr.Recognizer`, `Recognize` |
+| OCR-Ergebnis | OCR result | `OCRResult` |
+| erkanntes Wort | OCR word | `OCRWord` |
+| Seite / Zeile | page / line | `OCRPage`, `Page`, `Line` |
+| Rechteck (Wortposition, Pixel-unabhängig) | box | `Box` |
+| Konfidenz | confidence (0–100) | `Confidence` |
+| Fundstelle im Original | location | `Location` |
+| Prüfung (Abgleich LLM ↔ OCR) | verification | `Verification` |
+| Prüfung eines Felds | field check | `FieldCheck` |
+| geprüft / nicht geprüft | `checked` / `unchecked` | |
+| bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |
+| Grund (warum nicht geprüft) | reason | |
+| Übereinstimmung in Prozent | match percent | `matchPercent` |
+| Prüfquelle | source: `ocr` (file) / `text` (text import) | |
+| OCR-Programm mit Version und Sprache | engine | `Engine` |
+| Rastern (PDF → Bild) | render | `RenderPDF` |
+
+### API (entry JSON)
+
+| Field | Values |
+|---|---|
+| `verification.status` | `checked`, `unchecked` |
+| `verification.reason` | `null`, `ocr_unavailable`, `ocr_failed`, `unsupported_file_type`, `too_many_pages`, `no_text`, `not_run` |
+| `verification.source` | `ocr`, `text`, `null` |
+| `verification.engine`, `checkedAt`, `confirmed`, `total`, `matchPercent` | |
+| `verification.fields[].field` | `documentDate`, `issuer`, `facts.<id>` |
+| `verification.fields[].status` / `confidence` / `locations` | |
+| location in a file | `page`, `x`, `y`, `width`, `height` (fractions of the page) |
+| location in a text import | `start`, `end` (code point offsets in `fullText`) |
+
+### Backend
+
+| German | English |
+|---|---|
+| collection mit den OCR-Wörtern | `ocr` (unique index `ocr_entry_unique` on `entryId`) |
+| Messung der OCR-Qualität | `cmd/ocrcheck` |
+| Messergebnisse | `docs/ocr/` |
+| OCR wählen / ausschalten | env `OCR_ENGINE` (`tesseract`, `none`) |
+| Sprachpaket für Tesseract | env `TESSERACT_LANG` (default `deu`) |

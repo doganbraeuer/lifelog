@@ -1,6 +1,6 @@
 # Lifelog REST API (prototype)
 
-Status: 2026-11-09 · Version `v1` · Draft
+Status: 2026-11-11 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
 This document defines the interface between the Flutter app (`app/`) and the
@@ -135,7 +135,31 @@ return an entry:
       "corrected": "6,8",
       "correctedAt": "2026-11-03T19:05:31Z"
     }
-  ]
+  ],
+  "verification": {
+    "status": "checked",
+    "reason": null,
+    "source": "ocr",
+    "engine": "tesseract 5.5.4 deu",
+    "checkedAt": "2026-11-03T19:05:31Z",
+    "confirmed": 5,
+    "total": 6,
+    "matchPercent": 83,
+    "fields": [
+      { "field": "documentDate", "status": "confirmed", "confidence": 96,
+        "locations": [{ "page": 1, "x": 0.2803, "y": 0.1821, "width": 0.1105, "height": 0.0142 }] },
+      { "field": "issuer", "status": "confirmed", "confidence": 91,
+        "locations": [{ "page": 1, "x": 0.1210, "y": 0.0702, "width": 0.2104, "height": 0.0160 },
+                      { "page": 1, "x": 0.3391, "y": 0.0911, "width": 0.0802, "height": 0.0139 }] },
+      { "field": "facts.f1", "status": "confirmed", "confidence": 93,
+        "locations": [{ "page": 1, "x": 0.3012, "y": 0.2950, "width": 0.1120, "height": 0.0145 }] },
+      { "field": "facts.f2", "status": "confirmed", "confidence": 90,
+        "locations": [{ "page": 1, "x": 0.3018, "y": 0.3157, "width": 0.0988, "height": 0.0143 }] },
+      { "field": "facts.f3", "status": "unconfirmed", "confidence": null, "locations": [] },
+      { "field": "facts.f4", "status": "confirmed", "confidence": 88,
+        "locations": [{ "page": 1, "x": 0.2590, "y": 0.3571, "width": 0.1702, "height": 0.0151 }] }
+    ]
+  }
 }
 ```
 
@@ -153,6 +177,7 @@ return an entry:
 | `facts` | List | Extracted facts, see below |
 | `file` | Object | Reference to the original file |
 | `corrections` | List | Corrected fields with the originally recognized value |
+| `verification` | Object | Check of the recognized values by a second reader (OCR), see [verification](#verification). Always present. |
 
 **`facts`**
 
@@ -201,10 +226,103 @@ Rules for corrections:
 
 These rules are deterministic and are covered by tests in the backend.
 
+### Verification
+
+The vision LLM can misread or invent a value. A second, independent reader
+therefore checks the recognized values: local OCR (Tesseract, open source,
+runs in the backend, no extra model call). For each field the backend looks
+for the value in the OCR text. For a text import it looks in the entered
+text instead. The app can show which values are confirmed and jump to the
+place in the original.
+
+**`verification`**
+
+| Field | Type | Note |
+|---|---|---|
+| `status` | String | `checked` or `unchecked` |
+| `reason` | String or `null` | Only for `unchecked`, see below. `null` for `checked`. |
+| `source` | String or `null` | What was compared against: `ocr` (file) or `text` (text import). `null` for `unchecked`. |
+| `engine` | String or `null` | OCR program with version and language, e.g. `"tesseract 5.5.4 deu"`. `null` for a text import and for `unchecked`. |
+| `checkedAt` | String or `null` | Time of the last check (RFC 3339, UTC). `null` for `unchecked`. |
+| `confirmed` | Number | Number of confirmed fields |
+| `total` | Number | Number of checked fields |
+| `matchPercent` | Number or `null` | `confirmed / total` in percent, rounded to a whole number. `null` for `unchecked` and when `total` is 0. |
+| `fields` | List | One item per checked field. `[]` for `unchecked`. |
+
+**`fields[]`**
+
+| Field | Type | Note |
+|---|---|---|
+| `field` | String | `documentDate`, `issuer` or `facts.<id>`. Order: date, issuer, facts in the order of `facts`. |
+| `status` | String | `confirmed`: found in the OCR text (or entered text). `unconfirmed`: not found. |
+| `confidence` | Number or `null` | Lowest OCR confidence (0–100) of the matched words. `null` for `unconfirmed` and for a text import. |
+| `locations` | List | Where the value is in the original, best match first, at most 3. `[]` for `unconfirmed`. |
+
+A location in a **file** (`source: ocr`) is a rectangle on a page:
+
+| Field | Type | Note |
+|---|---|---|
+| `page` | Number | Page, starting at 1. A photo has one page. |
+| `x`, `y` | Number | Top left corner as a fraction of the page width and height (0–1, origin top left) |
+| `width`, `height` | Number | Size as a fraction of the page width and height |
+
+Fractions instead of pixels, so the location does not depend on the
+resolution: the app multiplies them by the size at which it shows the page
+or photo. A value that spans several lines has one location per line.
+
+A location in a **text import** (`source: text`) is a range in `fullText`:
+`{ "start": 37, "end": 47 }`. `start` is inclusive, `end` exclusive, both
+counted in Unicode code points (not bytes; in Dart `fullText.runes`).
+
+Which fields are checked:
+
+- `documentDate` and `issuer`, unless they are `null`.
+- Every fact: its `value`, and its `unit` if it has one. A fact with a unit
+  only counts as `confirmed` if value and unit are both found.
+
+How the backend compares (deterministic, covered by tests):
+
+1. Both sides are normalized: Unicode NFKC, lowercase, uniform dashes and
+   quotation marks, punctuation at the edges of a word removed (`<`, `>`,
+   `%`, `/`, `+` and `-` stay), a decimal comma between digits counts as a
+   point (`14,2` = `14.2`). Whitespace does not count: `14,2 g/dl` matches
+   `14,2g/dl`. A match must start and end at word boundaries, so `4` does
+   not match inside `14`.
+2. `documentDate` is searched in common German forms: `14.10.2026`,
+   `14.10.26`, `2026-10-14`, `14/10/2026`, `14. Oktober 2026` (also
+   Austrian `Jänner`, abbreviations like `Okt.`), with or without leading
+   zeros.
+3. `issuer` is confirmed if it appears as a whole (also across line breaks),
+   or if each of its comma-separated parts appears somewhere in the document
+   (`Labor Muster GmbH, Salzburg`: the name in the letterhead, the city in
+   the address).
+4. A fact's `value` must appear as a whole; its `unit` must follow in the
+   same line within the next three words. A short value without a unit (at
+   most 3 characters, e.g. `98`) only counts if the first word of the fact's
+   `name` is in the same line, so that an unrelated number elsewhere does
+   not confirm it. If a value appears several times, the match in the line
+   of the name comes first.
+
+`unchecked` means: the entry could not be checked. The upload still
+succeeds; a failed check is never an HTTP error. `reason`:
+
+| `reason` | When |
+|---|---|
+| `ocr_unavailable` | OCR is switched off or not installed on the server |
+| `ocr_failed` | OCR returned an error or took too long (30 s) |
+| `unsupported_file_type` | OCR cannot read the file type (HEIC) |
+| `too_many_pages` | PDF with more than 10 pages |
+| `no_text` | OCR found no text at all, e.g. a very blurry photo |
+| `not_run` | Entry from before 2026-11-11, never checked |
+
+`verification` describes the current values: after a correction
+(`PATCH`, section 3.5) the backend checks again. A corrected value that is
+not in the original therefore becomes `unconfirmed`.
+
 ### Short form for the timeline
 
-The list only returns what the timeline needs. `fullText`, `facts`, `file`
-and `corrections` are missing so the response stays small.
+The list only returns what the timeline needs. `fullText`, `facts`, `file`,
+`corrections` and `verification` are missing so the response stays small.
 
 ```json
 {
@@ -310,10 +428,17 @@ Hausarztpraxis Beispiel
    `name` or without `value` instead of rejecting the whole upload. It only
    logs which field was missing (e.g. `facts[2].value`), **never** a value.
    The remaining facts are numbered without gaps (`f1`, `f2`, …).
-5. Split the full text into chunks and compute embeddings.
-6. Store the entry, the chunks with embeddings and the original file.
+5. Check the recognized values (see [verification](#verification)). For a
+   file, OCR runs **in parallel** to step 3, so the upload does not take
+   longer; a PDF is first rendered into one image per page. For a text
+   import the values are compared against the entered text.
+6. Split the full text into chunks and compute embeddings.
+7. Store the original file, the chunks with embeddings, the OCR words and
+   the entry.
 
 If a step fails, the backend stores nothing. No half entry is left behind.
+Exception: if OCR fails, the upload still succeeds and the entry gets
+`"status": "unchecked"` with a `reason`. OCR never causes an error code.
 
 The call is **synchronous** and can take up to about 60 seconds. The app
 shows a loading indicator meanwhile and sets its HTTP timeout for this call
@@ -326,7 +451,7 @@ Location: /api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0
 ```
 
 The body is the full entry as in section 2, with an empty `corrections`
-list:
+list (`verification` shortened here, see section 2):
 
 ```json
 {
@@ -350,7 +475,34 @@ list:
     "size": 184320,
     "sha256": "3f8a1c0e9b7d2f4a6c5e8b1d0a9f7e3c2b4d6a8f0e1c3b5d7a9f2e4c6b8d0a1f"
   },
-  "corrections": []
+  "corrections": [],
+  "verification": {
+    "status": "checked",
+    "reason": null,
+    "source": "ocr",
+    "engine": "tesseract 5.5.4 deu",
+    "checkedAt": "2026-11-03T18:42:07Z",
+    "confirmed": 5,
+    "total": 6,
+    "matchPercent": 83,
+    "fields": [ "…" ]
+  }
+}
+```
+
+If OCR could not run, `verification` looks like this:
+
+```json
+"verification": {
+  "status": "unchecked",
+  "reason": "ocr_failed",
+  "source": null,
+  "engine": null,
+  "checkedAt": null,
+  "confirmed": 0,
+  "total": 0,
+  "matchPercent": null,
+  "fields": []
 }
 ```
 
@@ -589,6 +741,12 @@ Corrections only change `type`, `documentDate`, `issuer` and `facts`. The
 chunks and embeddings for search stay unchanged because they are derived
 from `fullText`.
 
+If at least one value changed, the backend checks the entry again
+([verification](#verification)) against the OCR words stored at upload (or
+against `fullText` for a text import). This needs no new OCR run. A
+corrected value that does not appear in the original becomes
+`unconfirmed`. An `unchecked` entry stays `unchecked`.
+
 **Response `200 OK`**
 
 The updated full entry. Excerpt for the example above:
@@ -767,8 +925,9 @@ No body. `{id}` is the ID of the entry.
 **Processing in the backend**
 
 1. Delete the entry's chunks with their embeddings.
-2. Delete the original file.
-3. Delete the entry.
+2. Delete the stored OCR words.
+3. Delete the original file.
+4. Delete the entry.
 
 The entry comes **last**. If a step fails, the backend responds with
 `500 INTERNAL_ERROR` and the entry stays visible. Calling again cleans up the
@@ -905,9 +1064,68 @@ Planned behaviour:
   maximum length of their own, only the limit for the whole body (64 KiB).
   Define later, e.g. matching what the app can display.
 
+### References `[n]` → place in the original (proposal, 2026-11-11)
+
+Answers should later link directly to the place in the original. Today a
+reference `[n]` points to `sources[n]`, i.e. to a chunk of `fullText`. Since
+upload stores the OCR words with their positions (collection `ocr`), two
+levels are possible, both without a new OCR run and without a model call:
+
+1. **Chunk level:** at upload, align each chunk's text with the OCR words
+   (same normalization as for the verification, longest runs of matching
+   words) and store the rectangles with the chunk. `sources[].locations`
+   then names the area the excerpt comes from (page and one rectangle per
+   line). Existing entries can be filled in afterwards from the stored OCR
+   words.
+2. **Value level:** for each `[n]`, take the sentence of the answer that
+   contains `[n]`. Facts of the source entry whose value (and unit) appear
+   both in that sentence and in the excerpt contribute their
+   `verification` locations as `sources[].highlights`. The app opens the
+   file at `page` and draws exactly this rectangle.
+
+Level 1 always gives something to show; level 2 is more precise but only
+works for answers that quote a fact. For a text import both levels work the
+same way with `start`/`end` in `fullText`.
+
+### Further points on verification
+
+- **Text layer of digital PDFs:** PDFs from a portal often contain the
+  exact text with positions (`pdftotext -bbox`). It would be more accurate
+  than OCR on a rendered page. For now every PDF is rendered and read with
+  OCR, so that the measurement (`cmd/ocrcheck`, results in `docs/ocr/`)
+  really tests OCR.
+- **Tesseract or PaddleOCR:** decided after the measurement on `demo/`.
+  `internal/ocr` is an interface like `internal/llm`; another engine is a
+  new subpackage.
+- **Badge in the timeline:** the short form could carry `matchPercent`.
+  Only if the app needs it.
+- **EXIF orientation:** a JPEG from a camera can carry its rotation in EXIF.
+  OCR reads the stored pixels; if the app shows the photo rotated, the
+  rectangles do not fit. The app's image picker re-encodes, so this has not
+  happened yet.
+- **HEIC** is not checked (`unsupported_file_type`).
+
 ---
 
 ## 5. Changes
+
+### 2026-11-11: Verification by OCR
+
+New field `verification` in the full entry (section 2,
+[verification](#verification)). Additive: no existing field changes, no new
+error code.
+
+1. **Upload** ([3.1](#31-upload-and-extract-a-file-or-text)): OCR runs in
+   parallel to the vision LLM and checks date, issuer and facts. A failed
+   OCR never fails the upload; the entry is then `unchecked` with a
+   `reason`.
+2. **Text import:** the same check against the entered text
+   (`source: text`, locations as `start`/`end`).
+3. **Correcting** ([3.5](#35-correct-recognized-values)): `verification` is
+   recomputed after a change.
+4. **Delete** ([3.7](#37-delete-an-entry)): also deletes the stored OCR
+   words.
+5. **Old entries:** `unchecked` with `reason: not_run`.
 
 ### 2026-11-09: English names
 
