@@ -96,6 +96,11 @@ func TestRecognizeImage_LabReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This tests the call and the TSV, not the scaling: the image has only
+	// 612 × 792 pixels (72 dpi), far below real photos, and any enlargement
+	// garbles parts of it. The scaling is measured with cmd/ocrcheck on the
+	// demo photos, and internal/ocr's end-to-end test uses the default.
+	tess.MinLongSide = 0
 	page, err := tess.RecognizeImage(context.Background(), img)
 	if err != nil {
 		t.Fatal(err)

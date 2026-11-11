@@ -39,21 +39,69 @@ a rendered PDF page reaches 96 % (one `mUy/l` instead of `mU/l`).
 pixels, roughly 120 dpi for an A4 page; Tesseract is made for about 300 dpi.
 A quick test outside the backend (photos scaled to 2,800 pixels on the long
 side with `sips`, then `tesseract`) read both lab reports correctly, units
-and triglycerides included, except one `mgj/dl`. The eye test, however,
-lost its numbers completely when scaled. The app uploads photos at their
+and triglycerides included, except one `mgj/dl`. The eye test seemed to
+lose its numbers when scaled; the measurement below shows that this was
+only how plain `tesseract` prints table cells. The app uploads photos at their
 original size (`demo/live/*_app.png` have the same size as the originals),
 so real phone photos (3,000–4,000 pixels) are likely read better than these
 synthetic ones. Real photos bring other problems instead (perspective,
 shadows, blur), which the demo photos only imitate.
 
-Options, not decided yet:
+Options considered: (a) scale up small images before Tesseract, (b)
+tolerate typical OCR confusions in units, (c) PaddleOCR. Decision (Dogan,
+2026-11-11): try (a); (b) not for now, the check stays strict.
 
-- **(a) Scale up small images before Tesseract** (e.g. to a long side of
-  2,500–3,500 pixels). Cheap, no new program; measure with this command
-  first, because it can also make things worse (eye test).
-- **(b) Tolerate typical OCR confusions in units** (`l`/`i`/`1`, `/`/`j`).
-  Raises the rate at once, but a tolerant comparison can also confirm a
-  value that is wrong. Only for units, never for values.
-- **(c) PaddleOCR** as a second engine (`internal/ocr` is prepared for it).
-  Needs Python and a model download on the server; worth measuring if (a)
-  does not reach about 90 % on photos.
+## 2026-11-11: scaling small images up before Tesseract
+
+Result: [2026-11-11-tesseract-upscale.md](2026-11-11-tesseract-upscale.md).
+
+The Tesseract adapter now scales an image whose long side is shorter than
+`tesseract.DefaultMinLongSide` up to that size (Catmull-Rom), at most to
+twice its size. Series on the demo photos (`go run ./cmd/ocrcheck -upscale
+<n>`):
+
+| Long side | Photo match mean (min) | Facts (value + unit) | Facts (value only) | PDF, forced OCR |
+|---|---|---|---|---|
+| not scaled | 75 % (29 %) | 21/36 (58 %) | 28/36 (78 %) | 96 % |
+| 2000 | 93 % (57 %) | 31/36 (86 %) | 36/36 (100 %) | 96 % |
+| **2500** | **93 % (57 %)** | **31/36 (86 %)** | **36/36 (100 %)** | 96 % |
+| 3000 | 94 % (71 %) | 32/36 (89 %) | 34/36 (94 %) | 96 % |
+| 3508 | 89 % (29 %) | 28/36 (78 %) | 36/36 (100 %) | 96 % |
+| 4000 | 89 % (43 %) | 28/36 (78 %) | 36/36 (100 %) | 85 % |
+
+Chosen: **2500**.
+
+- At 2000 and 2500 every value of every photo is read. What still fails is
+  the unit of five lab values, nearly always `mgj/dl` for `mg/dl`; the
+  strict rule leaves them unconfirmed, as intended.
+- At 3000 one more fact is confirmed, but the triglyceride row disappears
+  from both lab report photos: losing a value is worse than misreading a
+  unit. From 3508 on, results get worse again; at 4000 even rendered PDF
+  pages (3508 pixels) suffer.
+- **The eye test** is at 100 % from 2000 on (it was 50 %). Its numbers
+  („1,0“, „1,2“) were not lost by scaling, as plain `tesseract` output
+  suggested: Tesseract puts the table cells in blocks of their own, and the
+  rows built from positions (core) join them again.
+- **At most twice the size:** the 612 × 792 test image
+  (`backend/testdata/lab_report.png`, 72 dpi) scaled to 2500 read the date
+  as „14.18.2076“. Enlarging that much invents letter shapes. The demo
+  photos need a factor of 1.8 and are not affected by the limit.
+- Time per photo: about 0.5 s instead of 0.3 s, still well inside the time
+  of the vision LLM.
+
+Images with a long side of at least 2500 pixels are not touched; real phone
+photos (3,000–4,000 pixels) are therefore read as they are. Next: measure a
+real phone photo of a printed demo document (`-extra`, see below).
+
+## Measuring a real photo
+
+Print a demo document, photograph it with a phone and save the photo (JPEG
+or PNG; HEIC is not supported, see API.md) named after the document with
+`_phone`, e.g. `01_lab_report_2026-01-20_phone.jpg`. Then:
+
+```sh
+cd backend && go run ./cmd/ocrcheck -values -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
+```
+
+It is checked against the same entry as the PDF and the demo photo of that
+document.

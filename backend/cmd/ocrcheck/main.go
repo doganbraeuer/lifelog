@@ -5,6 +5,8 @@
 //	go run ./cmd/ocrcheck                  # show what it would fill in, and measure
 //	go run ./cmd/ocrcheck -write           # fill in the verification of old entries
 //	go run ./cmd/ocrcheck -values -out ../docs/ocr/2026-11-11-tesseract.md
+//	go run ./cmd/ocrcheck -upscale 0       # measure without scaling small images up
+//	go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
 //
 // It does three things:
 //
@@ -50,15 +52,34 @@ func main() {
 	demo := flag.String("demo", "../demo", "folder with the demo documents")
 	out := flag.String("out", "", "also write the measurement as Markdown to this file, e.g. ../docs/ocr/2026-11-11-tesseract.md")
 	values := flag.Bool("values", false, "list the fields that were not confirmed, with expected value and OCR row")
+	upscale := flag.Int("upscale", tesseract.DefaultMinLongSide, "scale images whose long side is shorter up to this many pixels before OCR; 0 = off")
+	extra := flag.String("extra", "", "comma-separated files outside demo/ to measure too, named like the document, e.g. 01_lab_report_2026-01-20_phone.jpg")
 	flag.Parse()
 
-	if err := run(*write, *demo, *out, *values); err != nil {
+	if err := run(options{write: *write, demoDir: *demo, out: *out, values: *values, upscale: *upscale, extra: *extra}); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(write bool, demoDir, out string, values bool) error {
+type options struct {
+	write   bool
+	demoDir string
+	out     string
+	values  bool
+	upscale int
+	extra   string
+}
+
+func run(o options) error {
+	if o.upscale < 0 {
+		return errors.New("-upscale must be 0 or more")
+	}
+	extra, err := extraFiles(strings.Split(o.extra, ","))
+	if err != nil {
+		return fmt.Errorf("-extra: %w", err)
+	}
+
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
@@ -80,6 +101,11 @@ func run(write bool, demoDir, out string, values bool) error {
 	if err != nil {
 		return fmt.Errorf("%w (see backend/README.md, verification)", err)
 	}
+	engine.MinLongSide = o.upscale
+	upscaleNote := fmt.Sprintf("scaled up to a long side of %d pixels if smaller", o.upscale)
+	if o.upscale == 0 {
+		upscaleNote = "not scaled"
+	}
 	pipeline := &ocr.Pipeline{Engine: engine, PDF: pdf}
 	programs := pdf.Name() + ", " + engine.Name()
 
@@ -95,26 +121,26 @@ func run(write bool, demoDir, out string, values bool) error {
 	}
 	fmt.Printf("Database %q: %d entries. Programs: %s. No model is called.\n\n", c.MongoDB, len(entries), programs)
 
-	if err := fillIn(ctx, service.NewVerifier(db, pipeline), entries, write); err != nil {
+	if err := fillIn(ctx, service.NewVerifier(db, pipeline), entries, o.write); err != nil {
 		return err
 	}
 	if err := orphans(ctx, db, entries); err != nil {
 		return err
 	}
 
-	rep, err := measure(ctx, pipeline, entries, demoDir)
+	rep, err := measure(ctx, pipeline, entries, o.demoDir, extra)
 	if err != nil {
 		return err
 	}
-	rep.Programs, rep.Database, rep.AllValues = programs, c.MongoDB, values
+	rep.Programs, rep.Database, rep.AllValues, rep.Upscale = programs, c.MongoDB, o.values, upscaleNote
 	rep.Date = time.Now().Format("2006-01-02")
 	md := rep.Markdown()
 	fmt.Println(md)
-	if out != "" {
-		if err := os.WriteFile(out, []byte(md), 0o644); err != nil {
+	if o.out != "" {
+		if err := os.WriteFile(o.out, []byte(md), 0o644); err != nil {
 			return err
 		}
-		fmt.Println("Measurement written to", out)
+		fmt.Println("Measurement written to", o.out)
 	}
 	return nil
 }
@@ -207,10 +233,20 @@ func orphans(ctx context.Context, db *store.Store, entries []core.Entry) error {
 
 // measure reads every demo file and checks it against the entry uploaded
 // from the same document.
-func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir string) (report, error) {
+func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir string, extra []demoFile) (report, error) {
 	files, err := demoFiles(demoDir)
 	if err != nil {
 		return report{}, fmt.Errorf("demo folder: %w", err)
+	}
+	// Extra files go after the demo files of their document.
+	for _, x := range extra {
+		i := len(files)
+		for j, f := range files {
+			if f.Doc == x.Doc {
+				i = j + 1
+			}
+		}
+		files = slices.Insert(files, i, x)
 	}
 	forced := &ocr.Pipeline{Engine: p.Engine, PDF: p.PDF, ForceOCR: true}
 
@@ -232,7 +268,11 @@ func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir
 			refs[f.Doc] = ref
 		}
 
-		data, err := os.ReadFile(filepath.Join(demoDir, f.Path))
+		path := filepath.Join(demoDir, f.Path)
+		if f.Extra {
+			path = f.Path
+		}
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return report{}, err
 		}
@@ -282,6 +322,9 @@ func reference(f demoFile, files []demoFile, entries []core.Entry, demoDir strin
 	for _, other := range files {
 		if other.Doc != f.Doc {
 			continue
+		}
+		if other.Extra {
+			continue // only demo files name the document's entry
 		}
 		if other.variantName() == "text" {
 			data, err := os.ReadFile(filepath.Join(demoDir, other.Path))

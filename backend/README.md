@@ -76,7 +76,9 @@ sudo apt install poppler-utils tesseract-ocr tesseract-ocr-deu   # Debian/Ubuntu
 
 - PDF pages with a text layer: `pdftotext -bbox-layout` (Poppler).
 - Photos and PDF pages without a text layer: `pdftoppm` renders the page,
-  Tesseract (`TESSERACT_LANG`, default `deu`) reads it.
+  Tesseract (`TESSERACT_LANG`, default `deu`) reads it. Images with a long
+  side under 2500 pixels are scaled up first (at most twice the size),
+  chosen by measurement (`docs/ocr/README.md`).
 
 It runs at the same time as the vision LLM (limit 30 s), so an upload does
 not take longer. The words with their positions are stored in the
@@ -90,6 +92,8 @@ they are missing.
 go run ./cmd/ocrcheck            # show what it would fill in for old entries, and measure demo/
 go run ./cmd/ocrcheck -write     # store the verification of entries that were never checked
 go run ./cmd/ocrcheck -values -out ../docs/ocr/<date>-tesseract.md   # measurement report
+go run ./cmd/ocrcheck -upscale 3000                    # measure another scaling (0 = off)
+go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a real photo
 ```
 
 `cmd/ocrcheck` calls no model. Results and their assessment: `docs/ocr/`.

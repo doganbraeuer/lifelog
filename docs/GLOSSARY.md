@@ -345,6 +345,8 @@ the text layer of a PDF, or OCR for photos and scans.
 | Prüfquelle | source: `pdf_text` (text layer), `ocr`, `text` (text import), `mixed` (entry only) | `Source` |
 | Programme mit Version und Sprache (Anzeige) | engine | `OCRResult.Engine` |
 | Rastern (PDF-Seite → Bild) | render | `poppler.RenderPage` |
+| Hochskalieren kleiner Bilder vor OCR | upscale | `tesseract.MinLongSide`, `DefaultMinLongSide`; `cmd/ocrcheck -upscale` |
+| echtes Handyfoto eines ausgedruckten Demo-Dokuments | phone photo, suffix `_phone` | `cmd/ocrcheck -extra` |
 
 ### API (entry JSON)
 

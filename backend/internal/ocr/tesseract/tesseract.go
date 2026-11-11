@@ -22,9 +22,19 @@ import (
 // DefaultLanguage: German, because the documents are German.
 const DefaultLanguage = "deu"
 
+// DefaultMinLongSide: smaller images are scaled up to this long side
+// before OCR (see upscale). Measured on 2026-11-11 (docs/ocr/README.md):
+// at 2000 and 2500 every value of the demo photos is read; at 3000 a whole
+// table row disappears, from 3508 on the results get worse again.
+const DefaultMinLongSide = 2500
+
 // Tesseract implements ocr.Engine.
 type Tesseract struct {
 	path, lang, version string
+
+	// MinLongSide: images with a shorter long side are scaled up first.
+	// 0 switches scaling off. New sets DefaultMinLongSide.
+	MinLongSide int
 }
 
 // New finds tesseract in PATH and checks that the language pack is
@@ -50,7 +60,7 @@ func New(lang string) (*Tesseract, error) {
 	if !hasLanguage(string(out), lang) {
 		return nil, fmt.Errorf("tesseract language %q not installed: %w", lang, ocr.ErrUnavailable)
 	}
-	return &Tesseract{path: path, lang: lang, version: version}, nil
+	return &Tesseract{path: path, lang: lang, version: version, MinLongSide: DefaultMinLongSide}, nil
 }
 
 // parseVersion takes "5.5.4" from "tesseract 5.5.4\n leptonica-1.87.0 …".
@@ -74,8 +84,13 @@ func hasLanguage(out, lang string) bool {
 // Name is e.g. "tesseract 5.5.4 deu".
 func (t *Tesseract) Name() string { return "tesseract " + t.version + " " + t.lang }
 
-// RecognizeImage runs `tesseract stdin stdout -l <lang> tsv`.
+// RecognizeImage scales a small image up (MinLongSide) and runs
+// `tesseract stdin stdout -l <lang> tsv`.
 func (t *Tesseract) RecognizeImage(ctx context.Context, image []byte) (ocr.Page, error) {
+	image, err := upscale(image, t.MinLongSide)
+	if err != nil {
+		return ocr.Page{}, fmt.Errorf("tesseract: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, t.path, "stdin", "stdout", "-l", t.lang, "tsv")
 	cmd.Stdin = bytes.NewReader(image)
 	var stdout, stderr bytes.Buffer

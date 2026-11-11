@@ -164,3 +164,22 @@ func TestRowWith_MostWords(t *testing.T) {
 		t.Errorf("got %q, want none", got)
 	}
 }
+
+func TestExtraFiles(t *testing.T) {
+	files, err := extraFiles([]string{"../../../demo/photos/01_lab_report_2026-01-20_photo.png", " "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Doc != "01_lab_report_2026-01-20" || !files[0].Extra || !strings.HasPrefix(files[0].Path, "/") {
+		t.Errorf("files %+v", files)
+	}
+	if got := documentKey("01_lab_report_2026-01-20_phone.jpg"); got != "01_lab_report_2026-01-20" {
+		t.Errorf("phone key %q", got)
+	}
+	if v := (demoFile{Name: "01_lab_report_2026-01-20_phone.jpg"}).variantName(); v != "phone" {
+		t.Errorf("variant %q", v)
+	}
+	if _, err := extraFiles([]string{"/does/not/exist_phone.jpg"}); err == nil {
+		t.Error("no error for a missing file")
+	}
+}

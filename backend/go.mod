@@ -5,6 +5,7 @@ go 1.25.4
 require (
 	github.com/joho/godotenv v1.5.1
 	go.mongodb.org/mongo-driver/v2 v2.9.3
+	golang.org/x/image v0.43.0
 	golang.org/x/text v0.39.0
 	google.golang.org/genai v1.77.0
 )

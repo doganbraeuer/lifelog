@@ -24,14 +24,15 @@ const (
 
 var kindOrder = []string{kindPDFText, kindPDFOCR, kindPhoto, kindText}
 
-// demoFile is one file in demo/.
+// demoFile is one file in demo/, or one given with -extra.
 type demoFile struct {
-	Path string // relative to the demo folder, e.g. "photos/01_…_photo.png"
-	Name string // file name
-	Doc  string // document it shows: the name without extension, "_photo" and "_app"
+	Path  string // relative to the demo folder, e.g. "photos/01_…_photo.png"; absolute for -extra
+	Name  string // file name
+	Doc   string // document it shows: the name without extension and suffix (_photo, _app, _phone)
+	Extra bool   // given with -extra, outside the demo folder
 }
 
-// variantName: "pdf", "photo", "app" or "text".
+// variantName: "pdf", "photo", "app", "phone" or "text".
 func (f demoFile) variantName() string {
 	switch {
 	case strings.HasSuffix(f.Name, ".pdf"):
@@ -40,17 +41,42 @@ func (f demoFile) variantName() string {
 		return "text"
 	case strings.Contains(f.Name, "_app."):
 		return "app"
+	case strings.Contains(f.Name, "_phone."):
+		return "phone"
 	}
 	return "photo"
 }
 
 // documentKey: "04_prescription_2026-05-18_app.png" → "04_prescription_2026-05-18".
+// "_phone" marks a real phone photo of a printed demo document (-extra).
 func documentKey(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
-	for _, suffix := range []string{"_photo", "_app"} {
+	for _, suffix := range []string{"_photo", "_app", "_phone"} {
 		base = strings.TrimSuffix(base, suffix)
 	}
 	return base
+}
+
+// extraFiles turns -extra paths into demo files. The name must start like
+// the document it shows, e.g. 01_lab_report_2026-01-20_phone.jpg.
+func extraFiles(paths []string) ([]demoFile, error) {
+	var out []demoFile
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(abs); err != nil {
+			return nil, err
+		}
+		name := filepath.Base(abs)
+		out = append(out, demoFile{Path: abs, Name: name, Doc: documentKey(name), Extra: true})
+	}
+	return out, nil
 }
 
 // demoFiles lists the files in the demo folder (pdf/, photos/, live/,
@@ -73,7 +99,7 @@ func demoFiles(dir string) ([]demoFile, error) {
 			}
 		}
 	}
-	order := map[string]int{"pdf": 0, "photo": 1, "app": 2, "text": 3}
+	order := map[string]int{"pdf": 0, "photo": 1, "app": 2, "phone": 3, "text": 4}
 	slices.SortFunc(files, func(a, b demoFile) int {
 		if a.Doc != b.Doc {
 			return strings.Compare(a.Doc, b.Doc)
@@ -296,6 +322,7 @@ type report struct {
 	Date      string
 	Programs  string
 	Database  string
+	Upscale   string // setting of the Tesseract upscaling
 	Rows      []row
 	Missing   []string // documents in demo/ without an entry in the database
 	AllValues bool     // -values: list the unconfirmed fields
@@ -308,6 +335,9 @@ func (rep report) Markdown() string {
 		"Reference values: the current values (including corrections) of the entries in database %q "+
 		"that were uploaded from `demo/`; every variant of a document is checked against the same "+
 		"entry. No model was called. Rules: docs/API.md, section verification.\n\n", rep.Programs, rep.Database)
+	if rep.Upscale != "" {
+		fmt.Fprintf(&b, "Images for Tesseract: %s.\n\n", rep.Upscale)
+	}
 	b.WriteString("\"Facts (value + unit)\" is the strict rule of the verification; \"value only\" " +
 		"ignores the unit and shows how many facts fail only because of the unit.\n\n")
 

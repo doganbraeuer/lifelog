@@ -1143,9 +1143,12 @@ same way with `start`/`end` in `fullText`.
 - **Tesseract or PaddleOCR:** measured on 2026-11-11 on `demo/`
   ([docs/ocr/](ocr/README.md), `cmd/ocrcheck`): PDFs 100 % via the text
   layer, photos 75 % (58 % of the facts with unit, 78 % by value only).
-  Most failures are units and decimal commas on low-resolution photos.
-  Options (scale up small images, tolerate OCR confusions in units,
-  PaddleOCR) are described there; not decided yet.
+  Most failures were units and decimal commas on low-resolution photos.
+  Since then small images are scaled up before Tesseract (long side 2500
+  pixels, at most twice the size): photos 93 %, every value read, 86 % of
+  the facts with unit (the rest are misread units, which stay
+  unconfirmed). The comparison stays strict (no tolerance for OCR
+  confusions). PaddleOCR only if real phone photos turn out worse.
 - **Old entries:** entries stored before 2026-11-11 are `not_run`.
   `go run ./cmd/ocrcheck -write` fills in their verification (without
   `-write` it only shows what it would store).
