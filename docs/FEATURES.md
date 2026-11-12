@@ -221,8 +221,10 @@ verwenden.“
 
 - **App:** `image_picker` (library, same 3000 px / JPEG 85 as the camera)
   and `file_picker` (only `.pdf`). Files over 10 MB are rejected before
-  uploading. `POST /api/v1/entries` as multipart with `file` and `module`,
-  HTTP timeout 90 s.
+  uploading. Like the backend, the app recognizes the type from the first
+  bytes (`api/mime_type.dart`): JPEG, PNG, HEIC, WebP (`RIFF` … `WEBP`) and
+  PDF. `POST /api/v1/entries` as multipart with `file` and `module`, HTTP
+  timeout 90 s.
 - **Backend** ([API.md 3.1](API.md#31-upload-and-extract-a-file-or-text)):
   1. Check size (10 MB) and type from the content, not the file name: JPEG,
      PNG, HEIC, WebP, PDF.
@@ -245,8 +247,12 @@ verwenden.“
 - Synchronous: the app waits up to about a minute; there is no
   background upload.
 - 10 MB per file, one file at a time.
-- The app's hint names JPEG, PNG, HEIC and PDF; WebP is accepted by the
-  backend too, but the photo library usually returns JPEG or HEIC.
+- The app's hint names JPEG, PNG, HEIC, WebP and PDF („Erlaubt sind JPEG,
+  PNG, HEIC, WebP und PDF bis 10 MB …“). The photo library usually returns
+  JPEG or HEIC. Whether a WebP from the library arrives as WebP is not yet
+  checked on the phone: `image_picker` scales and compresses the image
+  (3000 px, quality 85) and may hand it over as JPEG. A WebP that arrives as
+  WebP gets an image preview and is uploaded as `image/webp` (widget test).
 - PDFs with more than 10 pages are stored, but not checked by OCR
   (`too_many_pages`).
 - Android may not be able to show a HEIC preview; the app then shows an
@@ -951,15 +957,31 @@ Tab „Fragen“.
    documents.
 2. While searching: „Suche in deinen Dokumenten …“.
 3. The answer appears with references like [1]; below it „Quellen“: one
-   card per source with its number, type, issuer, date and the excerpt the
-   answer is based on.
+   compact card per source (see below).
 4. Tap a source to open its entry; „Zurück“ leads back to the answer.
 5. On an error: „Erneut versuchen“.
 
 **Compact sources:**
 
-> **TODO (Dylan):** what the compact view of the sources looks like and how
-> to see the full excerpt.
+- Each source is one line: the number as in the answer text, the type
+  icon, „Typ · Datum“ (e.g. „Laborbefund · 14.10.2026“) and the issuer
+  below it. A long issuer is shortened with „…“. The excerpt is hidden.
+- The card has two separate tap targets, divided by a thin vertical line:
+  - **Left part:** opens the entry.
+  - **Arrow on the right** (tooltip „Auszug anzeigen“): shows the excerpt
+    the answer is based on below the line, in italics and quotation marks.
+    The arrow turns up („Auszug ausblenden“) and hides it again. Expanding
+    never opens the entry.
+- Every card expands on its own. A new answer starts with all cards
+  collapsed; after „Zurück“ from an entry the cards stay as they were.
+- The number always comes from the backend, so gaps (e.g. only 1 and 3)
+  stay correct.
+- Screen reader: the left part reads e.g. „Quelle 1: Laborbefund,
+  14.10.2026, Labor Muster GmbH, Salzburg“ with the hint „Eintrag
+  öffnen“; the arrow reads „Auszug von Quelle 1 anzeigen“ (or
+  „… ausblenden“) and reports whether it is expanded.
+
+<img src="features/sources-compact.png" width="260" alt="Answer with two collapsed sources: 1 Laborbefund · 14.10.2026 and 2 Arztbrief · 02.09.2026, each with an arrow on the right"> <img src="features/sources-expanded.png" width="260" alt="Source 1 expanded: below the line the excerpt „Patient: Max Mustermann, geb. 01.01.1990“, the arrow points up">
 
 ### Behind the scenes
 
@@ -1000,7 +1022,7 @@ Tab „Fragen“.
 
 ### Status
 
-**Done**; compact sources **in progress** (Dylan).
+**Done**, including compact sources.
 
 ---
 
