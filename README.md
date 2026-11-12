@@ -12,7 +12,7 @@ Software practical course, winter term 2026/27, University of Salzburg.
 | [`app/`](app/) | Flutter app for iOS and Android |
 | [`backend/`](backend/README.md) | Go backend with the REST API |
 | [`demo/`](demo/README.md) | Synthetic demo documents and an upload script |
-| [`docs/`](docs/) | [API contract](docs/API.md), [glossary](docs/GLOSSARY.md), calibration measurements |
+| [`docs/`](docs/) | [features](docs/FEATURES.md), [API contract](docs/API.md), [glossary](docs/GLOSSARY.md), measurements (calibration, OCR, speech) |
 
 Secrets (API key, database access) are only in `.env`, never in the code;
 the template is `.env.example`. All test and demo data is synthetic.

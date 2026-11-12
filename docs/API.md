@@ -1160,8 +1160,9 @@ least 130 seconds and shows a loading indicator.
    silence ("Untertitel im Auftrag des ZDF").
 4. Whisper (whisper.cpp, model large-v3-turbo, running locally as its own
    server) with voice activity detection (only parts with speech are
-   decoded), language fixed to German, temperature 0, no context from
-   earlier text.
+   decoded), language fixed to German, temperature 0, and a list of
+   general medical terms as prompt (`whisper.Vocabulary`, since
+   2026-11-12; see docs/speech/README.md).
 5. Remove known phantom sentences and repeated identical segments; if
    nothing is left, `NO_SPEECH`.
 
