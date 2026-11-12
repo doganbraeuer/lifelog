@@ -203,3 +203,28 @@ func TestLoad_OCR(t *testing.T) {
 		t.Errorf("unknown engine: %v", err)
 	}
 }
+
+func TestLoad_Speech(t *testing.T) {
+	c, err := Load(env(complete()))
+	if err != nil || c.SpeechEngine != "whisper" || c.WhisperURL != "http://127.0.0.1:8178" {
+		t.Errorf("defaults: %q, %q, %v", c.SpeechEngine, c.WhisperURL, err)
+	}
+	e := complete()
+	e["SPEECH_ENGINE"], e["WHISPER_URL"] = " none ", "http://192.168.0.20:9000"
+	c, err = Load(env(e))
+	if err != nil || c.SpeechEngine != "none" || c.WhisperURL != "http://192.168.0.20:9000" {
+		t.Errorf("set: %q, %q, %v", c.SpeechEngine, c.WhisperURL, err)
+	}
+	for name, v := range map[string][2]string{
+		"unknown engine":   {"vosk", ""},
+		"no scheme":        {"", "127.0.0.1:8178"},
+		"other scheme":     {"", "ftp://127.0.0.1:8178"},
+		"not a URL at all": {"", "http://"},
+	} {
+		e := complete()
+		e["SPEECH_ENGINE"], e["WHISPER_URL"] = v[0], v[1]
+		if _, err := Load(env(e)); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}

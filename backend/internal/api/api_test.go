@@ -29,7 +29,7 @@ func TestStatus_DatabaseReachable(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
 		t.Fatalf("response is not JSON: %v", err)
 	}
-	if a.Status != "ok" || a.Database != "ok" {
+	if a.Status != "ok" || a.Database != "ok" || a.Speech != "off" {
 		t.Errorf("response = %+v", a)
 	}
 }
@@ -43,7 +43,7 @@ func TestStatus_DatabaseUnreachable(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
-	want := `{"status":"error","database":"unreachable"}`
+	want := `{"status":"error","database":"unreachable","speech":"off"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body = %s, want %s", got, want)
 	}

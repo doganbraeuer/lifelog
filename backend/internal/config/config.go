@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -54,6 +55,14 @@ const (
 	OCREngineNone        = "none"
 	DefaultOCREngine     = OCREngineTesseract
 	DefaultTesseractLang = "deu"
+
+	// Speech recognition (docs/API.md, 3.9): "whisper" converts recordings
+	// with ffmpeg and asks the local whisper-server at WHISPER_URL; "none"
+	// switches transcription off (/status says "off").
+	SpeechEngineWhisper = "whisper"
+	SpeechEngineNone    = "none"
+	DefaultSpeechEngine = SpeechEngineWhisper
+	DefaultWhisperURL   = "http://127.0.0.1:8178"
 )
 
 // renamedVariables maps the German variable names used until 2026-11-09 to
@@ -81,6 +90,8 @@ type Config struct {
 	Port                  string
 	OCREngine             string // OCREngineTesseract or OCREngineNone
 	TesseractLang         string // language pack, e.g. "deu" or "deu+eng"
+	SpeechEngine          string // SpeechEngineWhisper or SpeechEngineNone
+	WhisperURL            string // base URL of the local whisper-server
 }
 
 // ListenAddress returns e.g. "127.0.0.1:8080". net.JoinHostPort puts IPv6
@@ -161,6 +172,8 @@ func Load(getenv func(string) string) (Config, error) {
 		Port:          withDefault(getenv("PORT"), DefaultPort),
 		OCREngine:     withDefault(getenv("OCR_ENGINE"), DefaultOCREngine),
 		TesseractLang: withDefault(getenv("TESSERACT_LANG"), DefaultTesseractLang),
+		SpeechEngine:  withDefault(getenv("SPEECH_ENGINE"), DefaultSpeechEngine),
+		WhisperURL:    withDefault(getenv("WHISPER_URL"), DefaultWhisperURL),
 	}
 
 	var missing []string
@@ -183,6 +196,12 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.OCREngine != OCREngineTesseract && c.OCREngine != OCREngineNone {
 		return Config{}, errors.New("OCR_ENGINE must be tesseract or none")
+	}
+	if c.SpeechEngine != SpeechEngineWhisper && c.SpeechEngine != SpeechEngineNone {
+		return Config{}, errors.New("SPEECH_ENGINE must be whisper or none")
+	}
+	if u, err := url.Parse(c.WhisperURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return Config{}, errors.New("WHISPER_URL must be a URL like http://127.0.0.1:8178")
 	}
 
 	// Whether the reserve fits the read time limit is checked by gemini.Neu

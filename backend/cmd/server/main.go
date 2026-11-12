@@ -19,6 +19,9 @@ import (
 	"lifelog/backend/internal/ocr/poppler"
 	"lifelog/backend/internal/ocr/tesseract"
 	"lifelog/backend/internal/service"
+	"lifelog/backend/internal/speech"
+	"lifelog/backend/internal/speech/ffmpeg"
+	"lifelog/backend/internal/speech/whisper"
 	"lifelog/backend/internal/store"
 )
 
@@ -78,6 +81,7 @@ func run() error {
 		"reserve", c.GeminiFallbackReserve, "embedding", c.GeminiEmbeddingModel)
 
 	recognizer := newRecognizer(c)
+	transcriber := newTranscriber(ctx, c)
 
 	server := &http.Server{
 		Addr: c.ListenAddress(),
@@ -88,10 +92,12 @@ func run() error {
 			Asker:     service.NewAsker(db, g, g),
 			Corrector: service.NewCorrector(db),
 			Deleter:   service.NewDeleter(db),
+
+			Transcriber: transcriber,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // upload up to 10 MB, also over a slow mobile network
-		WriteTimeout:      120 * time.Second, // upload with the vision LLM takes up to ~60 s
+		WriteTimeout:      150 * time.Second, // upload with the vision LLM up to ~60 s, transcription up to 120 s
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -149,5 +155,28 @@ func newRecognizer(c config.Config) ocr.Recognizer {
 		names = append(names, p.Engine.Name())
 	}
 	slog.Info("verification", "programs", names)
+	return p
+}
+
+// newTranscriber builds the speech recognition (docs/API.md, 3.9). Like OCR,
+// nothing is fatal: without ffmpeg or with whisper-server not running, the
+// server starts, /status says speech "unavailable" and transcriptions
+// answer 503. whisper-server may also be started later. nil if
+// SPEECH_ENGINE=none.
+func newTranscriber(ctx context.Context, c config.Config) api.Transcriber {
+	if c.SpeechEngine == config.SpeechEngineNone {
+		slog.Info("speech recognition switched off (SPEECH_ENGINE=none)")
+		return nil
+	}
+	p := &speech.Pipeline{Engine: whisper.New(c.WhisperURL)}
+	if conv, err := ffmpeg.New(); err != nil {
+		slog.Warn("ffmpeg missing, transcription unavailable (backend/README.md, section speech)", "error", err)
+	} else {
+		p.Converter = conv
+		slog.Info("speech recognition", "converter", conv.Name(), "engine", p.Engine.Name(), "url", c.WhisperURL)
+	}
+	if err := p.Engine.Ping(ctx); err != nil {
+		slog.Warn("whisper-server not reachable yet; start it with backend/scripts/whisper-server.sh", "url", c.WhisperURL)
+	}
 	return p
 }

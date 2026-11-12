@@ -68,6 +68,7 @@ Base path stays `/api/v1`.
 | `DELETE /eintraege/{id}` | `DELETE /entries/{id}` |
 | `POST /fragen` | `POST /questions` |
 | `GET /status` | `GET /status` (unchanged) |
+| – | `POST /transcriptions` (since 2026-11-12, see "Speech") |
 
 ### Upload (multipart form fields)
 
@@ -172,6 +173,8 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 500 | `INTERNER_FEHLER` | `INTERNAL_ERROR` |
 | 502 | `AUSLESEN_FEHLGESCHLAGEN` | `EXTRACTION_FAILED` |
 | 503 | `MODELL_NICHT_ERREICHBAR` | `MODEL_UNAVAILABLE` |
+| 413 | – | `AUDIO_TOO_LONG` (since 2026-11-12) |
+| 422 | – | `NO_SPEECH` (since 2026-11-12) |
 
 ### App-only error codes
 
@@ -190,6 +193,7 @@ The backend never sends these; the app sets them itself in an
 |---|---|
 | `"status": "ok"` / `"fehler"` | `"status": "ok"` / `"error"` |
 | `"datenbank": "ok"` / `"nicht erreichbar"` | `"database": "ok"` / `"unreachable"` |
+| – | `"speech": "ok"` / `"unavailable"` / `"off"` (since 2026-11-12) |
 
 ## Module and type codes
 
@@ -263,6 +267,7 @@ Every place where the app talks to the backend:
 | `LIFELOG_LIVE`, `LIFELOG_MONGO_TEST`, `LIFELOG_DIAGNOSE`, `LIFELOG_DIAGNOSE_THINKING` | unchanged |
 | `LIFELOG_DIAGNOSE_DATEI` / `_MODELL` / `_VARIANTE` | `LIFELOG_DIAGNOSE_FILE` / `_MODEL` / `_VARIANT` |
 | `API_BASE_URL` (app) | unchanged |
+| – | `SPEECH_ENGINE`, `WHISPER_URL` (since 2026-11-12, see "Speech") |
 
 ## Commands (backend/cmd)
 
@@ -274,6 +279,7 @@ Every place where the app talks to the backend:
 | `cmd/testdaten` | `cmd/seed` (not `testdata`: Go skips folders with that name) |
 | `-entfernen` / `-ohne-abschnitte` / `-wegwerf` | `-remove` / `-no-chunks` / `-throwaway` |
 | calibration groups `passend` / `nah` / `fachfremd` | `relevant` / `near` / `unrelated` |
+| – | `cmd/speechcheck` (since 2026-11-12, see "Speech") |
 
 ## Backend packages and folders
 
@@ -393,3 +399,53 @@ the text layer of a PDF, or OCR for photos and scans.
 | Messergebnisse | `docs/ocr/` |
 | OCR wählen / ausschalten | env `OCR_ENGINE` (`tesseract`, `none`) |
 | Sprachpaket für Tesseract | env `TESSERACT_LANG` (default `deu`) |
+
+## Speech (transcription)
+
+Added 2026-11-12. Spoken notes become text: the app uploads a recording,
+the backend returns only the recognized text (nothing is stored), the
+user checks and edits it, and the app then sends it through the normal
+text import (docs/API.md, 3.9).
+
+| German | English | Go / Dart type |
+|---|---|---|
+| Spracherkennung | speech recognition | package `internal/speech` |
+| Transkription, transkribieren | transcription, transcribe | `speech.Transcriber`, `Transcribe`; endpoint `POST /transcriptions` |
+| Aufnahme | recording | form field `audio` |
+| erkannter Text | text | `text`, `core.Transcript` |
+| Dauer der Aufnahme | duration | `durationSeconds` |
+| Abschnitt der Erkennung (mit Start und Ende) | segment | `core.Segment` |
+| Umwandeln in 16 kHz mono PCM | convert | `speech.Converter` (ffmpeg) |
+| Spracherkennungsprogramm (whisper.cpp) | engine | `speech.Engine`, `Recognize` |
+| Ablauf Umwandeln → Prüfen → Erkennen → Bereinigen | pipeline | `speech.Pipeline` |
+| Sprachaktivitätserkennung | voice activity detection (VAD) | whisper.cpp `--vad` (Silero) |
+| hörbarer Anteil (Pegelprüfung) | speech seconds | `core.SpeechSeconds` |
+| keine Sprache, Stille | no speech | `NO_SPEECH`, `speech.ErrNoSpeech` |
+| zu lange Aufnahme | too long | `AUDIO_TOO_LONG`, `speech.ErrTooLong`, `core.MaxAudioSeconds` (300) |
+| erfundener Satz der Erkennung | hallucination | `core.CleanTranscript` |
+| Fachwortliste (Prompt für Whisper) | vocabulary | `whisper.Vocabulary`, `whisper.VocabularyTerms`; form field `prompt`; `cmd/speechcheck -vocabulary=false` measures without it. German on purpose: sample text, not an instruction |
+| Schlüsselbegriff (Messung) | key term | `cmd/speechcheck`, compared with `core.TextContains` |
+| Wortfehlerrate (Messung) | word error rate (WER) | `core.WordErrorRate` |
+| Audioformat erkennen | detect audio type | `core.DetectAudioType`, `core.CheckAudio` |
+
+| Item | Value |
+|---|---|
+| allowed MIME types | `audio/mp4`, `audio/3gpp`, `audio/amr`, `audio/wav`, `audio/ogg`, `audio/webm`, `audio/mpeg`, `audio/flac` |
+| response fields | `text`, `durationSeconds`, `language` (always `de`), `engine` |
+| status field | `speech`: `ok`, `unavailable`, `off` |
+| env | `SPEECH_ENGINE` (`whisper` default, `none`), `WHISPER_URL` (default `http://127.0.0.1:8178`) |
+| start script | `backend/scripts/whisper-server.sh` / `.ps1` (`download` fetches and verifies the models; without it: start, warm up with `scripts/warmup.wav`, start again after a crash); its env: `WHISPER_MODEL_DIR`, `WHISPER_PORT`, `WHISPER_SERVER` (Windows) |
+| local server | `whisper-server` (whisper.cpp), model `ggml-large-v3-turbo.bin`, VAD model `ggml-silero-*.bin` |
+| measurement | `cmd/speechcheck`, results in `docs/speech/`, reference texts in `demo/speech/` |
+
+### App checklist (speech)
+
+| What | Note |
+|---|---|
+| Recording | package `record`, `AudioEncoder.aacLc` (M4A), mono, 16 kHz, about 32 kbit/s |
+| Permissions | iOS `NSMicrophoneUsageDescription` in `Info.plist`; Android `RECORD_AUDIO` |
+| Upload | `POST /transcriptions`, form field `audio`, timeout at least 130 s |
+| Result | show `text` editable; save only on confirmation via `POST /entries` with `text` |
+| Microphone button | hide or disable when `/status` says `speech` is not `ok` |
+| Clean up | delete the local recording after the transcription |
+| New codes | `AUDIO_TOO_LONG`, `NO_SPEECH` (constants in `api/api_exception.dart`) |

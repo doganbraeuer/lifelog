@@ -106,6 +106,95 @@ go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a 
 
 `cmd/ocrcheck` calls no model. Results and their assessment: `docs/ocr/`.
 
+## Speech (transcription)
+
+`POST /api/v1/transcriptions` turns a spoken note into text
+(docs/API.md, 3.9). It runs locally, costs no model call and stores
+nothing. Two programs are needed:
+
+- **ffmpeg** converts the recording (M4A from the phone, WAV, OGG, …) to
+  16 kHz mono PCM. The backend calls it like Tesseract.
+- **whisper.cpp** recognizes the speech. It runs as **its own server**
+  (`whisper-server`), so the model (1.6 GB) is loaded once and not for
+  every recording. It listens only on `127.0.0.1:8178`.
+
+**macOS** (whisper.cpp 1.9.5 via Homebrew, uses the GPU through Metal):
+
+```sh
+brew install whisper-cpp ffmpeg
+backend/scripts/whisper-server.sh download   # models to ~/.local/share/lifelog/whisper, SHA-256 checked
+backend/scripts/whisper-server.sh            # start; keep this terminal open
+```
+
+**Windows** (not tested by us):
+
+```powershell
+winget install Gyan.FFmpeg
+# whisper.cpp: download whisper-bin-x64.zip (or the CUDA build for an NVIDIA
+# card) from https://github.com/ggml-org/whisper.cpp/releases, unpack it and
+# put the folder with whisper-server.exe into PATH (or set WHISPER_SERVER).
+powershell -File backend\scripts\whisper-server.ps1 download
+powershell -File backend\scripts\whisper-server.ps1
+```
+
+Without a graphics card large-v3-turbo is slow on Windows. The quantized
+`ggml-large-v3-turbo-q5_0.bin` (about 0.55 GB, same Hugging Face folder) is
+faster; it is not measured yet and the scripts do not download it.
+
+The models (`ggml-large-v3-turbo.bin`, `ggml-silero-v5.1.2.bin` for the
+voice activity detection) stay outside the repository.
+
+What the server is started with (scripts): German only (`--language de`),
+no temperature fallback (`--no-fallback`), non-speech tokens suppressed
+(`--suppress-nst`), voice activity detection (`--vad`), and the prompt kept
+for every 30-second window (`--carry-initial-prompt`). The backend sends a
+list of medical terms as prompt with every recording
+(`internal/speech/whisper/vocabulary.go`), so Whisper writes „1-0-1“
+instead of „101“ and knows terms like „Gonarthrose“. `--max-context 0`
+would switch that prompt off; see `docs/speech/README.md` for the
+measurement. The backend adds its own checks: recordings with less than 0.3 s of sound are
+answered with `NO_SPEECH` without asking Whisper, and known invented
+sentences ("Untertitel im Auftrag des ZDF") are removed.
+
+Privacy: the recording stays in memory, except for one temporary file for
+ffmpeg (mode 0600, deleted right after, also on errors). whisper-server
+gets the fixed file name `audio.wav` (it logs the file name, not the
+text). Our log has size, length and result, never the text.
+
+If ffmpeg is missing or whisper-server is not running, the backend still
+starts, `/status` says `"speech": "unavailable"` and transcriptions answer
+503. `SPEECH_ENGINE=none` switches it off (`"speech": "off"`).
+
+The start scripts keep whisper-server running: after the start they send
+`scripts/warmup.wav` once (a synthetic voice: „Guten Tag, das ist ein
+kurzer Test.“), and if whisper-server stops, they start it again after 2 s
+(up to 60 s if it keeps stopping) and warm it up again. Ctrl-C stops both.
+While it is down, the backend answers as above and is back to `"ok"` by
+itself; a transcription that is running when it crashes gets 503. The
+Windows script needs `curl.exe` (part of Windows 10 and 11).
+
+Known bug of whisper.cpp 1.9.5 (issue
+[#4156](https://github.com/ggml-org/whisper.cpp/issues/4156), fixed in
+[#4158](https://github.com/ggml-org/whisper.cpp/pull/4158) after 1.9.5): a
+freshly started whisper-server crashes when the first recording has no
+speech, because `verbose_json` runs a language detection on every request.
+The backend sends `no_language_probabilities=true`, which avoids the crash
+and saves about 0.6 s per recording (we fix the language anyway); the
+warm-up in the scripts protects other clients. Both can stay after an
+update.
+
+```sh
+LIFELOG_LIVE=1 go test ./internal/speech/whisper -run Live -v   # silence against the running whisper-server
+```
+
+Measure recognition, speed and silence on known sentences (results and
+evaluation in `docs/speech/README.md`):
+
+```sh
+go run ./cmd/speechcheck                                       # synthetic voice and generated audio
+go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech   # plus own recordings 01.m4a … 10.m4a
+```
+
 ## Vector index
 
 Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
@@ -211,15 +300,20 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
 | `cmd/models` | List available Gemini models |
 | `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
+| `cmd/speechcheck` | Measure the transcription on the sentences in `demo/speech/` (key terms, speed, silence) |
+| `scripts/whisper-server.sh`, `.ps1` | Download and verify the Whisper models, start whisper-server |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
 | `internal/config` | Read and check environment variables, mask secrets |
-| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original |
+| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original, audio type, loudness check and cleaning of transcripts |
 | `internal/llm` | Replaceable interface to the models (`Reader`, `Embedder`, `Answerer`) |
 | `internal/llm/gemini` | Implementation with Gemini, including retry and fallback model |
 | `internal/llm/fake` | Fake models for tests |
 | `internal/ocr` | Replaceable second reader: `Recognizer` (file), `Engine` (image), `PDF`; `Pipeline` uses the text layer where possible and OCR where needed |
 | `internal/ocr/poppler`, `internal/ocr/tesseract` | Implementations with the command line programs (stdin/stdout, no temporary files) |
 | `internal/ocr/fake` | Fake second reader for tests |
+| `internal/speech` | Replaceable speech recognition: `Transcriber`, `Converter` (audio → 16 kHz PCM), `Engine`; `Pipeline` checks length and loudness and cleans the text |
+| `internal/speech/ffmpeg`, `internal/speech/whisper` | Implementations: ffmpeg (one temporary file, deleted right after), whisper-server over HTTP |
+| `internal/speech/fake` | Fake transcriber for tests |
 | `internal/service` | Use cases: upload, text import, question, correction, delete |
 | `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), indexes |
 | `internal/api` | Router, handlers, error format, JSON types |
