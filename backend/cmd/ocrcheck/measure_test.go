@@ -38,8 +38,8 @@ func TestDemoFiles(t *testing.T) {
 		variants[f.Doc] = append(variants[f.Doc], f.variantName())
 	}
 	want := map[string][]string{
-		"01_lab_report_2026-01-20":         {"pdf", "photo", "phone", "phone"}, // phone/: HEIC and JPEG
-		"04_prescription_2026-05-18":       {"pdf", "photo", "photo", "app"},   // photos/ and live/
+		"01_lab_report_2026-01-20":         {"pdf", "photo", "phone", "phone", "paper"}, // phone/: screen HEIC and JPEG, paper JPEG
+		"04_prescription_2026-05-18":       {"pdf", "photo", "photo", "app"},            // photos/ and live/
 		"07_note_physiotherapy_2026-08-12": {"text"},
 		"L1_lab_report_2026-10-28":         {"pdf"},
 		"L3_eye_test_2026-09-15":           {"photo", "app"},
@@ -175,6 +175,12 @@ func TestExtraFiles(t *testing.T) {
 	}
 	if got := documentKey("01_lab_report_2026-01-20_phone.jpg"); got != "01_lab_report_2026-01-20" {
 		t.Errorf("phone key %q", got)
+	}
+	if got := documentKey("01_lab_report_2026-01-20_paper.jpg"); got != "01_lab_report_2026-01-20" {
+		t.Errorf("paper key %q", got)
+	}
+	if v := (demoFile{Name: "01_lab_report_2026-01-20_paper.jpg"}).variantName(); v != "paper" {
+		t.Errorf("paper variant %q", v)
 	}
 	if v := (demoFile{Name: "01_lab_report_2026-01-20_phone.jpg"}).variantName(); v != "phone" {
 		t.Errorf("variant %q", v)
