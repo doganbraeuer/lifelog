@@ -45,6 +45,7 @@ void main() {
       expect(detectAudioType(bytes('%PDF-'.codeUnits)), isNull);
       expect(detectAudioType(bytes([0xFF, 0xF1, 0x50])), isNull); // ADTS
       expect(detectAudioType(bytes('RIFF'.codeUnits)), isNull); // no WAVE
+      expect(detectAudioType(testWebpBytes()), isNull); // RIFF, but WebP
       expect(detectAudioType(Uint8List(0)), isNull);
       expect(detectAudioType(Uint8List.fromList([0xFF])), isNull);
     });

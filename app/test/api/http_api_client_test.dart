@@ -214,6 +214,23 @@ void main() {
     expect(entry.id, labReportId);
   });
 
+  test('upload of a WebP sends the content type image/webp', () async {
+    late http.Request captured;
+    final api = client((request) async {
+      captured = request;
+      return http.Response.bytes(
+        utf8.encode(sampleJson),
+        201,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    await api.upload(testWebpBytes(), 'befund.webp', module: 'health');
+
+    final body = latin1.decode(captured.bodyBytes).toLowerCase();
+    expect(body, contains('name="file"; filename="befund.webp"'));
+    expect(body, contains('content-type: image/webp'));
+  });
+
   test('importText sends multipart with "text" and "module"', () async {
     late http.Request captured;
     final api = client((request) async {

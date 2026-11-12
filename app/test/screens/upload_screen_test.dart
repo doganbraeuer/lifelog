@@ -91,6 +91,32 @@ void main() {
     );
   });
 
+  testWidgets('a WebP image gets an image preview and can be uploaded', (
+    tester,
+  ) async {
+    final mock = fastMock();
+    final chooser = FakeFileChooser()..image = testWebp('befund.webp');
+    await goToUpload(tester, mock, chooser);
+
+    await tester.tap(find.text('Bild auswählen'));
+    await tester.pumpAndSettle();
+    expect(find.text('befund.webp'), findsOneWidget);
+    // Shown as an image, not with the PDF icon.
+    final preview = tester.widget<Image>(find.byType(Image));
+    expect(preview.image, isA<MemoryImage>());
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsNothing);
+
+    final before = {
+      for (final e in await mock.listEntries(module: 'health')) e.id,
+    };
+    await tester.tap(uploadButton());
+    await tester.pumpAndSettle();
+    final added = (await mock.listEntries(module: 'health'))
+        .where((e) => !before.contains(e.id))
+        .single;
+    expect((await mock.getEntry(added.id)).file.mimeType, 'image/webp');
+  });
+
   testWidgets('X on the preview discards the file', (tester) async {
     final mock = fastMock();
     final chooser = FakeFileChooser()..pdf = testPdf('falsch.pdf');

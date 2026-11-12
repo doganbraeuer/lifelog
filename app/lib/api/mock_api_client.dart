@@ -304,7 +304,7 @@ class MockApiClient implements ApiClient {
         code: ErrorCode.unsupportedFileType,
         message:
             'Dieser Dateityp wird nicht unterstützt. '
-            'Erlaubt sind JPEG, PNG, HEIC und PDF.',
+            'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF.',
       );
     }
 

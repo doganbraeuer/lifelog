@@ -3,8 +3,8 @@ import 'dart:typed_data';
 /// Detects the file type from the first bytes ("magic bytes"), not from the
 /// file extension. According to docs/API.md the backend does the same.
 ///
-/// Returns `image/jpeg`, `image/png`, `image/heic`, `application/pdf` or
-/// `null` (not supported).
+/// Returns `image/jpeg`, `image/png`, `image/heic`, `image/webp`,
+/// `application/pdf` or `null` (not supported).
 String? detectMimeType(Uint8List bytes) {
   bool startsWith(List<int> pattern, [int offset = 0]) {
     if (bytes.length < offset + pattern.length) return false;
@@ -19,6 +19,12 @@ String? detectMimeType(Uint8List bytes) {
     return 'image/png';
   }
   if (startsWith('%PDF-'.codeUnits)) return 'application/pdf';
+
+  // WebP: a RIFF container with the form type "WEBP" at byte 8 (lossy,
+  // lossless and extended alike). Allowed by the backend since 2026-11-11.
+  if (startsWith('RIFF'.codeUnits) && startsWith('WEBP'.codeUnits, 8)) {
+    return 'image/webp';
+  }
 
   // HEIC: "ftyp" from byte 4, followed by the brand (e.g. "heic").
   if (startsWith('ftyp'.codeUnits, 4) && bytes.length >= 12) {

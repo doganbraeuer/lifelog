@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -131,6 +132,14 @@ ChosenFile testPdf(String name, [String content = '']) => ChosenFile(
   bytes: Uint8List.fromList('%PDF-1.4 $name $content'.codeUnits),
   name: name,
 );
+
+/// A real, decodable WebP image (1×1 pixel, lossy VP8).
+Uint8List testWebpBytes() =>
+    base64Decode('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA');
+
+/// [testWebpBytes] as a chosen file.
+ChosenFile testWebp(String name) =>
+    ChosenFile(bytes: testWebpBytes(), name: name);
 
 /// A small "M4A recording": an MP4 box `ftyp` with the brand `M4A `, as the
 /// package record writes it, then arbitrary bytes.

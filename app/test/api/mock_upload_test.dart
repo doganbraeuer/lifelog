@@ -92,6 +92,24 @@ void main() {
     );
   });
 
+  test('415 names the allowed types like the backend', () async {
+    await expectLater(
+      fastMock().upload(
+        Uint8List.fromList(utf8.encode('GIF89a Bild')),
+        'bild.gif',
+        module: 'health',
+      ),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          'Dieser Dateityp wird nicht unterstützt. '
+              'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF.',
+        ),
+      ),
+    );
+  });
+
   group('vision LLM errors via the file name', () {
     for (final (name, code, status) in [
       ('photo_unreadable.jpg', ErrorCode.unreadable, 422),
@@ -130,6 +148,17 @@ void main() {
       );
     });
 
+    test('WebP: lossy, lossless and extended', () {
+      Uint8List webp(String chunk) => bytes([
+        ...'RIFF'.codeUnits, 0x24, 0, 0, 0, ...'WEBP'.codeUnits, //
+        ...chunk.codeUnits, 0, 0, 0, 0,
+      ]);
+      expect(detectMimeType(webp('VP8 ')), 'image/webp');
+      expect(detectMimeType(webp('VP8L')), 'image/webp');
+      expect(detectMimeType(webp('VP8X')), 'image/webp');
+      expect(detectMimeType(testWebpBytes()), 'image/webp');
+    });
+
     test('unknown or too short', () {
       expect(detectMimeType(bytes([0xFF, 0xD8])), isNull);
       expect(detectMimeType(bytes(utf8.encode('GIF89a'))), isNull);
@@ -137,6 +166,33 @@ void main() {
         detectMimeType(bytes([0, 0, 0, 24, ...'ftypmp42'.codeUnits])),
         isNull,
       );
+      // RIFF alone is not enough: WAV is a RIFF too, and the form type at
+      // byte 8 must be complete.
+      expect(
+        detectMimeType(
+          bytes([...'RIFF'.codeUnits, 0, 0, 0, 0, ...'WAVE'.codeUnits]),
+        ),
+        isNull,
+      );
+      expect(
+        detectMimeType(
+          bytes([...'RIFF'.codeUnits, 0, 0, 0, 0, ...'WEB'.codeUnits]),
+        ),
+        isNull,
+      );
     });
+  });
+
+  test('WebP upload creates an entry with image/webp', () async {
+    final mock = fastMock();
+    final entry = await mock.upload(
+      testWebpBytes(),
+      'befund.webp',
+      module: 'health',
+    );
+    expect(entry.file.mimeType, 'image/webp');
+    final file = await mock.getFile(entry.id);
+    expect(file.mimeType, 'image/webp');
+    expect(file.bytes, testWebpBytes());
   });
 }
