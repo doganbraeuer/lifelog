@@ -176,7 +176,9 @@ void main() {
       final children = span.children!.cast<TextSpan>();
       expect(children.map((s) => s.text), ['Ibuprofen ', '400 mg']);
       expect(children[1].style!.backgroundColor, colors.tertiaryContainer);
-      expect(children[1].style!.color, colors.onTertiaryContainer);
+      expect(children[1].style!.fontWeight, FontWeight.w600);
+      // The color comes from the field, so a disabled field greys it out.
+      expect(children[1].style!.color, isNull);
       // The text itself has no marks.
       expect(controller.text, 'Ibuprofen 400 mg');
     });

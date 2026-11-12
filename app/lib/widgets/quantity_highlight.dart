@@ -112,10 +112,11 @@ class QuantityHighlightController extends TextEditingController {
         composing: withComposing && value.isComposingRangeValid
             ? value.composing
             : TextRange.empty,
+        // Only background and weight: the text color stays the field's, so
+        // the marks turn grey with the rest while the field is disabled
+        // (during saving). Bold, so the marks do not rely on color alone.
         marked: TextStyle(
           backgroundColor: colors.tertiaryContainer,
-          color: colors.onTertiaryContainer,
-          // Not by color alone: bold also shows up without color vision.
           fontWeight: FontWeight.w600,
         ),
       ),
