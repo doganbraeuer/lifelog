@@ -589,13 +589,13 @@ has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
 | `no_text` | „Im Original wurde kein lesbarer Text gefunden.“ |
 | `not_run` or unknown | „Dieser Eintrag wurde noch nicht geprüft.“ |
 
-<img src="features/verification-summary.png" width="260" alt="Entry „Laborbefund“: card „5 von 6 Werten im Original gefunden“, „Abgleich mit der Textebene des PDF · 1 Wert korrigiert“, info button; check marks at date and issuer"> <img src="features/verification-marks.png" width="260" alt="Facts of the lab report: check marks, a correction hint „· im Original gefunden“ and the grey line „Nicht im Original gefunden“ at CRP"> <img src="features/verification-unchecked.png" width="260" alt="Entry of a photo with the card „Nicht geprüft“ and „Die Prüfung ist auf diesem Server nicht eingerichtet.“">
+<img src="features/verification-summary.png" width="260" alt="Entry „Laborbefund“: card „5 von 6 Werten im Original gefunden (83 %)“, „Abgleich mit der Textebene des PDF · 1 Wert korrigiert“, info button; check marks at date and issuer"> <img src="features/verification-marks.png" width="260" alt="Facts of the lab report: check marks, a correction hint „· im Original gefunden“ and the grey line „Nicht im Original gefunden“ at CRP"> <img src="features/verification-unchecked.png" width="260" alt="Entry of a photo with the card „Nicht geprüft“ and „Die Prüfung ist auf diesem Server nicht eingerichtet.“">
 
 ### How to use
 
 1. Open an entry. The card under the original shows how many values were
-   found, e.g. „5 von 6 Werten im Original gefunden“, and what they were
-   compared against: „Abgleich mit der Textebene des PDF“, „Abgleich per
+   found, e.g. „5 von 6 Werten im Original gefunden (83 %)“, and what they
+   were compared against: „Abgleich mit der Textebene des PDF“, „Abgleich per
    Texterkennung im Foto“ (or „… im gescannten PDF“), „Abgleich mit dem
    eingegebenen Text“ or, for a PDF with digital and scanned pages,
    „Abgleich mit Textebene und Texterkennung im PDF“. If the user corrected
@@ -608,7 +608,7 @@ has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
    öffnen“). If one is wrong, correct it with the pencil
    ([Correction](#9-correction)). The app shows the check from the
    backend's response right away: the card and the mark of the value
-   change, e.g. to „4 von 6 Werten im Original gefunden“.
+   change, e.g. to „4 von 6 Werten im Original gefunden (67 %)“.
 4. The jump from a value to its place in the original is not built yet
    ([Original](#12-original)); the app already reads the `locations`.
 
@@ -809,7 +809,7 @@ From top to bottom:
 
 **Verification marks** ([section 8](#8-checking-values-with-ocr-verification)):
 between the original and „Angaben“ a card sums up the check („5 von 6
-Werten im Original gefunden“, or „Nicht geprüft“ with the reason) and has
+Werten im Original gefunden (83 %)“, or „Nicht geprüft“ with the reason) and has
 an info button for the explanation. „Dokumentdatum“, „Quelle“ and every
 fact carry a small check mark if the value was found in the original, or
 the grey line „Nicht im Original gefunden“ if not. A corrected value shows
