@@ -13,9 +13,9 @@ Generated on 2026-11-12 by `go run ./cmd/speechcheck` (docs/speech/README.md). E
 
 | Source | Recordings | Speech → text | WER (mean) | Key terms found | No speech → NO_SPEECH | Real-time factor (max) |
 |---|---|---|---|---|---|---|
-| iPhone | 10 | 9/9 | 10.4 % | 46/51 (90 %) | 1/1 | 0.11 |
-| Anna (say) | 8 | 8/8 | 12.0 % | 45/47 (96 %) | – | 0.17 |
-| generated | 5 | 1/1 | 7.7 % | 3/4 (75 %) | 4/4 | 0.17 |
+| iPhone | 10 | 9/9 | 10.4 % | 46/51 (90 %) | 1/1 | 0.07 |
+| Anna (say) | 8 | 8/8 | 12.0 % | 45/47 (96 %) | – | 0.09 |
+| generated | 5 | 1/1 | 7.7 % | 3/4 (75 %) | 4/4 | 0.10 |
 
 ## Criteria
 
@@ -23,8 +23,8 @@ Generated on 2026-11-12 by `go run ./cmd/speechcheck` (docs/speech/README.md). E
 - ✅ Key terms, Anna (say): 96 % (at least 95 %)
 - ✅ No text without speech: 5 of 5 recordings without speech gave NO_SPEECH
 - ✅ No term of the list written without being said, in 25 recordings (for recordings without speech also in what Whisper alone writes)
-- ✅ Speed, iPhone: 145 s of speech in 5.2 s, so 3 minutes take about 6 s (at most 30 s)
-- ✅ Speed, Anna (say): 98 s of speech in 4.5 s, so 3 minutes take about 8 s (at most 30 s)
+- ✅ Speed, iPhone: 145 s of speech in 4.6 s, so 3 minutes take about 6 s (at most 30 s)
+- ✅ Speed, Anna (say): 98 s of speech in 4.1 s, so 3 minutes take about 7 s (at most 30 s)
 
 ## Recordings without speech
 
@@ -42,31 +42,31 @@ Which check gave NO_SPEECH, and what Whisper writes for the same audio without t
 
 | Source | Recording | What | Length | Time | RTF | Result | WER | Key terms | Missing |
 |---|---|---|---|---|---|---|---|---|---|
-| iPhone | 01 | lab report, date and values | 22.4 s | 1.4 s | 0.06 | text | 6 % | 7/7 | – |
-| iPhone | 02 | prescription, dose scheme | 14.0 s | 1.3 s | 0.09 | text | 31 % | 5/5 | – |
-| iPhone | 03 | blood pressure note | 12.8 s | 1.3 s | 0.10 | text | 8 % | 3/4 | Puls 64 |
-| iPhone | 04 | referral, diagnosis and doctor | 14.3 s | 1.3 s | 0.09 | text | 8 % | 6/6 | – |
-| iPhone | 05 | vaccination, two dates | 12.0 s | 1.3 s | 0.11 | text | 0 % | 3/3 | – |
-| iPhone | 06 | lab values with decimal comma and units | 14.7 s | 1.3 s | 0.09 | text | 23 % | 4/5 | Milliunits pro Liter |
-| iPhone | 07 | follow-up, date and medication | 11.7 s | 1.3 s | 0.11 | text | 0 % | 5/5 | – |
-| iPhone | 08 | spoken doctor's letter (about 40 s) | 39.6 s | 2.3 s | 0.06 | text | 11 % | 10/12 | kein Erguss, sechs Einheiten |
-| iPhone | 09 | silence in a quiet room | 16.2 s | 0.6 s | 0.04 | NO_SPEECH | – | – | – |
-| iPhone | 10 | sentence 03 with background noise | 14.0 s | 1.3 s | 0.09 | text | 8 % | 3/4 | Puls 64 |
-| iPhone | 01–08 joined | all read sentences in one recording, 0.5 s apart | 145.0 s | 5.2 s | 0.04 | text | 11 % | 44/47 | Puls 64, Milliunits pro Liter, kein Erguss |
-| Anna (say) | 01 | lab report, date and values | 14.9 s | 1.4 s | 0.09 | text | 24 % | 7/7 | – |
-| Anna (say) | 02 | prescription, dose scheme | 8.1 s | 1.3 s | 0.16 | text | 31 % | 5/5 | – |
-| Anna (say) | 03 | blood pressure note | 7.6 s | 1.3 s | 0.17 | text | 0 % | 4/4 | – |
-| Anna (say) | 04 | referral, diagnosis and doctor | 8.8 s | 1.3 s | 0.15 | text | 8 % | 6/6 | – |
-| Anna (say) | 05 | vaccination, two dates | 8.8 s | 1.3 s | 0.15 | text | 0 % | 3/3 | – |
-| Anna (say) | 06 | lab values with decimal comma and units | 8.4 s | 1.3 s | 0.15 | text | 31 % | 3/5 | Milliunits pro Liter, Ferritin 85 |
-| Anna (say) | 07 | follow-up, date and medication | 8.6 s | 1.3 s | 0.15 | text | 0 % | 5/5 | – |
-| Anna (say) | 08 | spoken doctor's letter (about 40 s) | 29.6 s | 1.7 s | 0.06 | text | 3 % | 12/12 | – |
-| Anna (say) | 01–08 joined | all read sentences in one recording, 0.5 s apart | 98.3 s | 4.5 s | 0.05 | text | 12 % | 45/47 | Milliunits pro Liter, Ferritin 85 |
+| iPhone | 01 | lab report, date and values | 22.4 s | 0.8 s | 0.04 | text | 6 % | 7/7 | – |
+| iPhone | 02 | prescription, dose scheme | 14.0 s | 0.8 s | 0.05 | text | 31 % | 5/5 | – |
+| iPhone | 03 | blood pressure note | 12.8 s | 0.7 s | 0.06 | text | 8 % | 3/4 | Puls 64 |
+| iPhone | 04 | referral, diagnosis and doctor | 14.3 s | 0.8 s | 0.05 | text | 8 % | 6/6 | – |
+| iPhone | 05 | vaccination, two dates | 12.0 s | 0.8 s | 0.06 | text | 0 % | 3/3 | – |
+| iPhone | 06 | lab values with decimal comma and units | 14.7 s | 0.7 s | 0.05 | text | 23 % | 4/5 | Milliunits pro Liter |
+| iPhone | 07 | follow-up, date and medication | 11.7 s | 0.8 s | 0.07 | text | 0 % | 5/5 | – |
+| iPhone | 08 | spoken doctor's letter (about 40 s) | 39.6 s | 1.8 s | 0.04 | text | 11 % | 10/12 | kein Erguss, sechs Einheiten |
+| iPhone | 09 | silence in a quiet room | 16.2 s | 0.1 s | 0.00 | NO_SPEECH | – | – | – |
+| iPhone | 10 | sentence 03 with background noise | 14.0 s | 0.7 s | 0.05 | text | 8 % | 3/4 | Puls 64 |
+| iPhone | 01–08 joined | all read sentences in one recording, 0.5 s apart | 145.0 s | 4.6 s | 0.03 | text | 11 % | 44/47 | Puls 64, Milliunits pro Liter, kein Erguss |
+| Anna (say) | 01 | lab report, date and values | 14.9 s | 0.8 s | 0.05 | text | 24 % | 7/7 | – |
+| Anna (say) | 02 | prescription, dose scheme | 8.1 s | 0.7 s | 0.09 | text | 31 % | 5/5 | – |
+| Anna (say) | 03 | blood pressure note | 7.6 s | 0.7 s | 0.09 | text | 0 % | 4/4 | – |
+| Anna (say) | 04 | referral, diagnosis and doctor | 8.8 s | 0.8 s | 0.09 | text | 8 % | 6/6 | – |
+| Anna (say) | 05 | vaccination, two dates | 8.8 s | 0.8 s | 0.09 | text | 0 % | 3/3 | – |
+| Anna (say) | 06 | lab values with decimal comma and units | 8.4 s | 0.7 s | 0.09 | text | 31 % | 3/5 | Milliunits pro Liter, Ferritin 85 |
+| Anna (say) | 07 | follow-up, date and medication | 8.6 s | 0.7 s | 0.09 | text | 0 % | 5/5 | – |
+| Anna (say) | 08 | spoken doctor's letter (about 40 s) | 29.6 s | 1.2 s | 0.04 | text | 3 % | 12/12 | – |
+| Anna (say) | 01–08 joined | all read sentences in one recording, 0.5 s apart | 98.3 s | 4.1 s | 0.04 | text | 12 % | 45/47 | Milliunits pro Liter, Ferritin 85 |
 | generated | silence | 10 s digital silence | 10.0 s | 0.0 s | 0.00 | NO_SPEECH | – | – | – |
-| generated | noise | 10 s white noise at -30 dBFS | 10.0 s | 0.6 s | 0.06 | NO_SPEECH | – | – | – |
-| generated | quiet noise | 10 s white noise at -40 dBFS | 10.0 s | 0.6 s | 0.06 | NO_SPEECH | – | – | – |
-| generated | brown noise | 10 s brown noise (low rumble) at -30 dBFS | 10.0 s | 0.6 s | 0.06 | NO_SPEECH | – | – | – |
-| generated | 03 + noise | Anna's sentence 03 with white noise at -30 dBFS | 7.6 s | 1.3 s | 0.17 | text | 8 % | 3/4 | im Sitzen |
+| generated | noise | 10 s white noise at -30 dBFS | 10.0 s | 0.0 s | 0.00 | NO_SPEECH | – | – | – |
+| generated | quiet noise | 10 s white noise at -40 dBFS | 10.0 s | 0.1 s | 0.01 | NO_SPEECH | – | – | – |
+| generated | brown noise | 10 s brown noise (low rumble) at -30 dBFS | 10.0 s | 0.0 s | 0.00 | NO_SPEECH | – | – | – |
+| generated | 03 + noise | Anna's sentence 03 with white noise at -30 dBFS | 7.6 s | 0.7 s | 0.10 | text | 8 % | 3/4 | im Sitzen |
 
 ## Vocabulary
 

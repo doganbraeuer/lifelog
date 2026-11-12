@@ -201,6 +201,11 @@ because the gain (dose scheme, diagnosis) is larger than the loss, and
 Limits as above; in addition, only 18 of the 45 terms are tested by the
 sentences, three of them got better and two worse.
 
+Later the same day the backend started to send `no_language_probabilities`
+(backend/README.md, speech: avoids a crash of whisper-server 1.9.5). The
+report was generated again: the same text for every recording, each
+recording about 0.6 s faster (a short sentence 0.7 s instead of 1.3 s).
+
 ## Recordings
 
 Voice memos of iOS 27 contain, besides the audio, a time stamp, a UUID and

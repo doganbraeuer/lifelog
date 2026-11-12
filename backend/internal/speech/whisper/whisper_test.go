@@ -60,7 +60,7 @@ func TestRecognize(t *testing.T) {
 	if len(segs) != 2 || segs[0] != want[0] || segs[1] != want[1] {
 		t.Errorf("segments %+v", segs)
 	}
-	wantFields := map[string]string{"language": "de", "temperature": "0.0", "temperature_inc": "0.0", "response_format": "verbose_json", "prompt": Vocabulary}
+	wantFields := map[string]string{"language": "de", "temperature": "0.0", "temperature_inc": "0.0", "response_format": "verbose_json", "no_language_probabilities": "true", "prompt": Vocabulary}
 	for k, v := range wantFields {
 		if fields[k] != v {
 			t.Errorf("field %s = %q, want %q", k, fields[k], v)
@@ -108,6 +108,22 @@ func TestRecognize_ServerErrors(t *testing.T) {
 	defer srv.Close()
 	if _, err := New(srv.URL).Recognize(context.Background(), []byte("RIFF")); !errors.Is(err, speech.ErrUnavailable) {
 		t.Errorf("500: %v", err)
+	}
+
+	// The server dies in the middle of the request (whisper-server crashing):
+	// the connection is closed without an answer.
+	dying := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		conn.Close()
+	}))
+	defer dying.Close()
+	if _, err := New(dying.URL).Recognize(context.Background(), []byte("RIFF")); !errors.Is(err, speech.ErrUnavailable) {
+		t.Errorf("connection closed: %v", err)
 	}
 
 	// Nothing listens on the closed server's address.

@@ -165,6 +165,24 @@ If ffmpeg is missing or whisper-server is not running, the backend still
 starts, `/status` says `"speech": "unavailable"` and transcriptions answer
 503. `SPEECH_ENGINE=none` switches it off (`"speech": "off"`).
 
+The start scripts keep whisper-server running: after the start they send
+`scripts/warmup.wav` once (a synthetic voice: „Guten Tag, das ist ein
+kurzer Test.“), and if whisper-server stops, they start it again after 2 s
+(up to 60 s if it keeps stopping) and warm it up again. Ctrl-C stops both.
+While it is down, the backend answers as above and is back to `"ok"` by
+itself; a transcription that is running when it crashes gets 503. The
+Windows script needs `curl.exe` (part of Windows 10 and 11).
+
+Known bug of whisper.cpp 1.9.5 (issue
+[#4156](https://github.com/ggml-org/whisper.cpp/issues/4156), fixed in
+[#4158](https://github.com/ggml-org/whisper.cpp/pull/4158) after 1.9.5): a
+freshly started whisper-server crashes when the first recording has no
+speech, because `verbose_json` runs a language detection on every request.
+The backend sends `no_language_probabilities=true`, which avoids the crash
+and saves about 0.6 s per recording (we fix the language anyway); the
+warm-up in the scripts protects other clients. Both can stay after an
+update.
+
 ```sh
 LIFELOG_LIVE=1 go test ./internal/speech/whisper -run Live -v   # silence against the running whisper-server
 ```

@@ -98,6 +98,13 @@ func (w *Whisper) Recognize(ctx context.Context, wav []byte) ([]core.Segment, er
 // form builds the multipart request: language fixed to German,
 // temperature 0 without fallback, segments with times, and the prompt
 // unless it is empty.
+//
+// no_language_probabilities: verbose_json otherwise runs a language
+// detection on every request, although the language is fixed. On a freshly
+// started whisper-server 1.9.5 it crashes the server when the voice
+// activity detection finds no speech (whisper.cpp issue #4156, fixed in
+// #4158 after 1.9.5). Without it the server answers {"text":"",
+// "segments":[]} and is faster.
 func form(wav []byte, prompt string) (io.Reader, string, error) {
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
@@ -110,6 +117,7 @@ func form(wav []byte, prompt string) (io.Reader, string, error) {
 		{"temperature", "0.0"},
 		{"temperature_inc", "0.0"},
 		{"response_format", "verbose_json"},
+		{"no_language_probabilities", "true"},
 	}
 	if prompt != "" {
 		fields = append(fields, [2]string{"prompt", prompt})
