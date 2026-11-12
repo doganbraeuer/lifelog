@@ -106,7 +106,8 @@ class _ModuleShellState extends State<ModuleShell> {
   }
 
   void _uploaded(Entry entry) {
-    _timeline.currentState?.reload();
+    // The timeline starts at the top, so that the new entry is visible.
+    _timeline.currentState?.reload(toTop: true);
     _openEntry(entry.id);
   }
 

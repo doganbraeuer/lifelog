@@ -49,6 +49,13 @@ class TimelineScreenState extends State<TimelineScreen> {
   /// arrive in the wrong order; then only the last one counts.
   var _requestNumber = 0;
 
+  /// Part of the list's key. A new value builds a new list that starts at
+  /// the top, instead of re-ordering the rows of the old one.
+  var _listGeneration = 0;
+
+  /// Set by [reload] with `toTop`; the next loaded list is a new one.
+  var _newListPending = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,7 +64,17 @@ class TimelineScreenState extends State<TimelineScreen> {
 
   /// Reloads the list. Public, so that e.g. the upload can refresh the
   /// timeline after a new entry.
-  Future<void> reload() async {
+  ///
+  /// With [toTop] the loaded list starts at the top (after re-sorting and
+  /// after a new entry, so that it is visible). Otherwise the scroll
+  /// position stays, e.g. after a correction.
+  ///
+  /// [toTop] also replaces the list instead of re-ordering it: each row is
+  /// an `OpenContainer` with global keys inside, and moving those rows in
+  /// place while the user scrolled crashed the element tree on the phone
+  /// (`_elements.contains(element)`).
+  Future<void> reload({bool toTop = false}) async {
+    if (toTop) _newListPending = true;
     final number = ++_requestNumber;
     setState(() {
       _loading = true;
@@ -74,6 +91,11 @@ class TimelineScreenState extends State<TimelineScreen> {
         // The backend only returns entries of the module (?module=), sorted.
         _entries = entries;
         _loading = false;
+        // Only now, with the new order, so the new list is built in it.
+        if (_newListPending) {
+          _newListPending = false;
+          _listGeneration++;
+        }
       });
     } on ApiException catch (error) {
       if (!mounted || number != _requestNumber) return;
@@ -87,12 +109,12 @@ class TimelineScreenState extends State<TimelineScreen> {
   void _chooseSort(Sort sort) {
     if (sort == _sort) return;
     _sort = sort;
-    reload();
+    reload(toTop: true);
   }
 
   void _toggleOrder() {
     _order = _order == SortOrder.desc ? SortOrder.asc : SortOrder.desc;
-    reload();
+    reload(toTop: true);
   }
 
   /// Opens an entry. Public, so that the upload can show the entry right
@@ -185,7 +207,7 @@ class TimelineScreenState extends State<TimelineScreen> {
       return const TimelineSkeleton(key: ValueKey('loading'));
     }
     return RefreshIndicator(
-      key: ValueKey(entries.isEmpty ? 'empty' : 'list'),
+      key: ValueKey(entries.isEmpty ? 'empty' : 'list-$_listGeneration'),
       onRefresh: reload,
       child: entries.isEmpty
           ? _EmptyTimeline(moduleId: widget.moduleId, onUpload: widget.onUpload)
