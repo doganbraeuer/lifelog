@@ -15,7 +15,7 @@ Images for Tesseract: turned upright, scaled up to a long side of 2500 pixels if
 | 01_lab_report_2026-01-20 | photo | ocr | ✓ | ✓ | 2/5 | 5/5 | 57 % | 92 | 0.6 s |
 | 01_lab_report_2026-01-20 | phone, screen JPG | ocr | ✓ | ✓ | 5/5 | 5/5 | 100 % | 91 | 1.6 s |
 | 01_lab_report_2026-01-20 | phone, screen HEIC | ocr | ✓ | ✓ | 2/5 | 3/5 | 57 % | 81 | 4.1 s |
-| 01_lab_report_2026-01-20 | phone, paper JPG | ocr | ✓ | ✓ | 3/5 | 5/5 | 71 % | 92 | 1.8 s |
+| 01_lab_report_2026-01-20 | phone, paper JPG | ocr | ✓ | ✓ | 4/5 | 5/5 | 86 % | 87 | 1.5 s |
 | 02_doctor_letter_orthopedics_2026-03-05 | pdf | pdf_text | ✓ | ✓ | 3/3 | 3/3 | 100 % | – | 0.0 s |
 | 02_doctor_letter_orthopedics_2026-03-05 | pdf, forced OCR | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 96 | 0.9 s |
 | 02_doctor_letter_orthopedics_2026-03-05 | photo | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 96 | 0.7 s |
@@ -23,7 +23,7 @@ Images for Tesseract: turned upright, scaled up to a long side of 2500 pixels if
 | 03_referral_physiotherapy_2026-03-05 | pdf, forced OCR | ocr | ✓ | ✓ | 2/2 | 2/2 | 100 % | 96 | 0.7 s |
 | 03_referral_physiotherapy_2026-03-05 | photo | ocr | ✓ | ✓ | 2/2 | 2/2 | 100 % | 96 | 0.5 s |
 | 04_prescription_2026-05-18 | pdf | pdf_text | ✓ | ✓ | 3/3 | 3/3 | 100 % | – | 0.0 s |
-| 04_prescription_2026-05-18 | pdf, forced OCR | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 95 | 0.6 s |
+| 04_prescription_2026-05-18 | pdf, forced OCR | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 95 | 0.7 s |
 | 04_prescription_2026-05-18 | photo | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 96 | 0.5 s |
 | 04_prescription_2026-05-18 | photo (live) | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 96 | 0.5 s |
 | 04_prescription_2026-05-18 | app | ocr | ✓ | ✓ | 3/3 | 3/3 | 100 % | 96 | 0.5 s |
@@ -50,7 +50,7 @@ Images for Tesseract: turned upright, scaled up to a long side of 2500 pixels if
 | PDF, OCR (forced) | 8 | 98 % | 80 % | 26/27 (96 %) | 27/27 (100 %) | 0 |
 | Photo | 10 | 93 % | 57 % | 31/36 (86 %) | 36/36 (100 %) | 0 |
 | Phone photo of a screen (real) | 2 | 78 % | 57 % | 7/10 (70 %) | 8/10 (80 %) | 0 |
-| Phone photo of paper (real) | 1 | 71 % | 71 % | 3/5 (60 %) | 5/5 (100 %) | 0 |
+| Phone photo of paper (real) | 1 | 86 % | 86 % | 4/5 (80 %) | 5/5 (100 %) | 0 |
 | Text import | 2 | 100 % | 100 % | 4/4 (100 %) | 4/4 (100 %) | 0 |
 
 ## Not confirmed
@@ -64,8 +64,7 @@ Images for Tesseract: turned upright, scaled up to a long side of 2500 pixels if
   - f2 LDL-Cholesterin: 154 mg/dl — read: "LDL-Cholesterin"
   - f4 Triglyceride: 165 mg/dl — read: "Triglyceride 165 mog/dl <150"
 - **01_lab_report_2026-01-20, phone, paper JPG**
-  - f3 HDL-Cholesterin: 48 mg/dl — read: "HDL-Cholesterin 48 mgj/dl >40"
-  - f4 Triglyceride: 165 mg/dl — read: "Triglyceride 165 mgj/dl <150"
+  - f4 Triglyceride: 165 mg/dl — read: "Triglyceride 165 mgj/dl <150 |"
 - **06_lab_report_followup_2026-07-22, photo**
   - f1 Gesamtcholesterin: 205 mg/dl — read: "Gesamtcholesterin 205 mgj/dl"
   - f5 Glukose nüchtern: 94 mg/dl — read: "Glukose nüchtern 94 mgj/dl 70-99"

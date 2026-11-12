@@ -190,21 +190,29 @@ The two earlier phone photos (`demo/phone/*_phone.jpg`, `*_phone.heic`)
 **show the document on a screen, not on paper**; they are labelled
 "phone, screen" in the measurement and counted as "Phone photo of a screen
 (real)". The first photo of real paper: lab report 01, printed,
-photographed with an iPhone 14 Pro Max on a table (2268 × 4032 pixels,
-JPEG, taken upright): `demo/phone/01_lab_report_2026-01-20_paper.jpg`
-(variant `_paper`, "Phone photo of paper (real)"). The location had been
-removed before; checked again: no GPS directory in EXIF, nothing in XMP.
+photographed upright with an iPhone 14 Pro Max on a table:
+`demo/phone/01_lab_report_2026-01-20_paper.jpg` (variant `_paper`, "Phone
+photo of paper (real)"). The location had been removed before (checked: no
+GPS in EXIF or XMP). The photo was then **cropped to the sheet**
+(2268 × 4032 → 2188 × 3104 pixels), because the edges showed the room.
+The crop is lossless (`jpegtran -crop`, the remaining pixels are identical
+to the original) and drops all metadata (`-copy none`).
 
 | Variant | Match | Facts (value + unit) | Facts (value only) | Mean OCR confidence | Time |
 |---|---|---|---|---|---|
-| Phone photo of paper | 71 % | 3/5 | **5/5** | 92 | 1.8 s |
+| Phone photo of paper, cropped to the sheet | 86 % | 4/5 | **5/5** | 87 | 1.5 s |
+| the same photo before cropping | 71 % | 3/5 | **5/5** | 92 | 1.8 s |
 | Phone photo of a screen, JPEG | 100 % | 5/5 | 5/5 | 91 | 1.6 s |
 | Phone photo of a screen, HEIC | 57 % | 2/5 | 3/5 | 81 | 4.1 s |
 | Demo photo (synthetic) | 57 % | 2/5 | 5/5 | 92 | 0.6 s |
 
 **On paper every value is read correctly**, and so are date and issuer.
 The only thing that fails is the unit: **`mg/dl` is read as `mgj/dl`**
-(HDL-Cholesterin and Triglyceride). This is systematic, not chance: the
+(Triglyceride; before cropping also HDL-Cholesterin). Cropping does not
+change a single pixel of the sheet, yet one confusion fewer: Tesseract
+adapts its layout analysis and thresholds to the whole image, so which
+`mg/dl` turns into `mgj/dl` varies. That it happens is systematic, not
+chance: the
 same confusion causes all five unconfirmed facts of the two synthetic lab
 report photos (`demo/photos/01…`, `06…`). Presumably Tesseract reads the
 descender of the `g` together with the `/` as a `j`. Apart from it, the
@@ -213,7 +221,7 @@ screen HEIC and `mUy/l` on a rendered PDF page.
 
 Because the check is strict (value **and** unit, decision of 2026-11-11),
 such a fact is `unconfirmed` although its value is right, and the entry
-shows 71 % instead of 100 %.
+shows 86 % instead of 100 %.
 
 ### Open point: values with a misread unit
 
