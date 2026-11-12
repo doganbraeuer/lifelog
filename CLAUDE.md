@@ -24,19 +24,39 @@ Dokumenttyp funktionieren.
   Schnittstelle im Backend, damit der Anbieter austauschbar bleibt. Die App
   ruft nie direkt ein Modell auf.
 
-## Datenmodell: Eintrag
-- `modul` (Pflichtfeld, z. B. gesundheit; im Prototyp immer gesundheit)
-- `typ` (z. B. arztbrief, laborbefund, rezept; gilt innerhalb des Moduls)
-- `dokumentdatum` und `importdatum` (beide speichern)
-- `quelle` (ausstellende Stelle)
-- `volltext` (der Text des Dokuments)
-- `infos`: Liste aus `name`, `wert`, optional `einheit`
-- Referenz auf die Originaldatei
-- Korrekturen: ursprünglich erkannter und korrigierter Wert bleiben erhalten
+## Datenmodell: Eintrag (entry)
+Namen nach `docs/GLOSSARY.md`, verbindlich ist `docs/API.md`.
+- `module` (Pflichtfeld, z. B. `health`; im Prototyp immer `health`)
+- `type` (z. B. `doctor_letter`, `lab_report`, `prescription`; gilt
+  innerhalb des Moduls)
+- `documentDate` und `importedAt` (beide speichern)
+- `issuer` (ausstellende Stelle)
+- `fullText` (der Text des Dokuments)
+- `facts`: Liste aus `name`, `value`, optional `unit`
+- `file`: Referenz auf die Originaldatei
+- `corrections`: ursprünglich erkannter und korrigierter Wert bleiben erhalten
 
 ## Aktuelles Ziel
 Prototyp bis 09.11.2026: Foto oder PDF in der App hochladen → Backend →
 Vision-LLM → MongoDB → Zeitleiste in der App → eine Frage mit Quellenangabe.
+
+## Sprache
+Vorgabe von Prof. Pree (seit 09.11.2026):
+- **Englisch** ist der gesamte Code: Bezeichner, Kommentare, Datei-,
+  Ordner- und Paketnamen, Tests, Log-Meldungen, Fehlertexte im Code,
+  Ausgaben der Programme in `cmd/` und Commit-Nachrichten. Ebenso die API
+  (Pfade, JSON-Felder, Fehlercodes, Modul- und Typcodes), Collections und
+  Felder in MongoDB, Umgebungsvariablen, die Befehle in `cmd/` und die
+  Dokumentation (`docs/`, READMEs). Prompts an die Modelle sind englisch.
+- **Deutsch** bleibt nur, was der Nutzer sieht: Anzeigetexte der App, das
+  API-Feld `message`, der feste Satz „Dazu finde ich nichts in deinen
+  Dokumenten.“ und die Antworten des Sprachmodells. Ebenso
+  Dokumentinhalte (Testdokumente, Beispieldaten, Kalibrierfragen), weil sie
+  echte Nutzereingaben nachbilden. Sie werden nicht übersetzt, sonst
+  ändern sich die Vektoren und die Kalibrierung.
+- Neue Namen zuerst in `docs/GLOSSARY.md` nachschlagen bzw. eintragen,
+  damit Backend und App dieselben verwenden.
+- Diese Datei (`CLAUDE.md`) und Claudes Antworten bleiben deutsch.
 
 ## Regeln
 - Antworte auf Deutsch.

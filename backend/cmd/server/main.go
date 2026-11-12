@@ -1,4 +1,4 @@
-// Der Lifelog-Server. Start aus dem Ordner backend/:
+// The Lifelog server. Start from the backend/ directory:
 //
 //	go run ./cmd/server
 package main
@@ -13,105 +13,141 @@ import (
 	"time"
 
 	"lifelog/backend/internal/api"
-	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/konfig"
-	"lifelog/backend/internal/modell/gemini"
-	"lifelog/backend/internal/speicher"
+	"lifelog/backend/internal/config"
+	"lifelog/backend/internal/llm/gemini"
+	"lifelog/backend/internal/ocr"
+	"lifelog/backend/internal/ocr/poppler"
+	"lifelog/backend/internal/ocr/tesseract"
+	"lifelog/backend/internal/service"
+	"lifelog/backend/internal/store"
 )
 
 func main() {
-	if err := starten(); err != nil {
-		slog.Error("Server beendet mit Fehler", "fehler", err)
+	if err := run(); err != nil {
+		slog.Error("server stopped with an error", "error", err)
 		os.Exit(1)
 	}
 }
 
-func starten() error {
-	if err := konfig.DotenvLaden(); err != nil {
+func run() error {
+	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
-	k, err := konfig.Laden(os.Getenv)
+	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
 	}
 
-	// Strg+C (SIGINT) oder ein Stopp-Signal (SIGTERM) beenden den Server sauber.
-	ctx, stopp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stopp()
+	// Ctrl+C (SIGINT) or a stop signal (SIGTERM) shut the server down cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	db, err := speicher.Verbinden(ctx, k.MongoURI, k.MongoDB)
+	db, err := store.Connect(ctx, c.MongoURI, c.MongoDB)
 	if err != nil {
 		return err
 	}
-	defer db.Trennen(context.Background())
-	slog.Info("MongoDB verbunden", "datenbank", k.MongoDB)
+	defer db.Disconnect(context.Background())
+	slog.Info("MongoDB connected", "database", c.MongoDB)
 
-	if err := db.IndexeAnlegen(ctx); err != nil {
+	if err := db.CreateIndexes(ctx); err != nil {
 		return err
 	}
-	// Nach IndexeAnlegen, weil die Collection "abschnitte" existieren muss.
-	// Nicht fatal: Ohne Index funktionieren Upload und Zeitleiste, nur die
-	// Suche nicht. Dann den Index in der Atlas-Oberfläche anlegen.
-	if status, err := db.VektorindexAnlegen(ctx); err != nil {
-		slog.Warn("Vektorindex fehlt, POST /fragen funktioniert erst nach dem Anlegen in Atlas (backend/README.md, Abschnitt Vektorindex)",
-			"index", speicher.VektorindexName, "fehler", err)
+	// After CreateIndexes, because the chunk collection must exist. Not
+	// fatal: without the index, upload and timeline work, only search does
+	// not. Then create the index in the Atlas UI.
+	if status, err := db.CreateVectorIndex(ctx); err != nil {
+		slog.Warn("vector index missing, POST /questions only works after creating it in Atlas (backend/README.md, section vector index)",
+			"index", store.VectorIndexName, "error", err)
 	} else {
-		slog.Info("Vektorindex", "index", speicher.VektorindexName, "status", status)
+		slog.Info("vector index", "index", store.VectorIndexName, "status", status)
 	}
 
-	// Hier wird der Modell-Anbieter gewählt. Ein anderer Anbieter = ein
-	// anderes Paket unter internal/modell, das Leser, Einbetter und
-	// Antworter umsetzt.
-	g, err := gemini.Neu(ctx, gemini.Einstellungen{
-		Schluessel:      k.GeminiKey,
-		Modell:          k.GeminiModell,
-		ErsatzModell:    k.GeminiModellErsatz,
-		ErsatzReserve:   k.GeminiErsatzReserve,
-		EmbeddingModell: k.GeminiEmbeddingModell,
+	// The model provider is chosen here. Another provider = another package
+	// under internal/llm that implements Reader, Embedder and Answerer.
+	g, err := gemini.New(ctx, gemini.Settings{
+		APIKey:          c.GeminiKey,
+		Model:           c.GeminiModel,
+		FallbackModel:   c.GeminiFallbackModel,
+		FallbackReserve: c.GeminiFallbackReserve,
+		EmbeddingModel:  c.GeminiEmbeddingModel,
 	})
 	if err != nil {
 		return err
 	}
-	slog.Info("Modelle", "lesen", k.GeminiModell, "ersatz", k.GeminiModellErsatz,
-		"reserve", k.GeminiErsatzReserve, "embedding", k.GeminiEmbeddingModell)
+	slog.Info("models", "read", c.GeminiModel, "fallback", c.GeminiFallbackModel,
+		"reserve", c.GeminiFallbackReserve, "embedding", c.GeminiEmbeddingModel)
+
+	recognizer := newRecognizer(c)
 
 	server := &http.Server{
-		Addr: k.Lauschadresse(),
-		Handler: api.NeuerRouter(api.Abhaengigkeiten{
-			DB:          db,
-			Eintraege:   db,
-			Hochladen:   dienst.NeuHochladen(db, g, g, speicher.NeueID),
-			Fragen:      dienst.NeuFragen(db, g, g),
-			Korrigieren: dienst.NeuKorrigieren(db),
-			Loeschen:    dienst.NeuLoeschen(db),
+		Addr: c.ListenAddress(),
+		Handler: api.NewRouter(api.Dependencies{
+			DB:        db,
+			Entries:   db,
+			Uploader:  service.NewUploader(db, g, g, recognizer, store.NewID),
+			Asker:     service.NewAsker(db, g, g),
+			Corrector: service.NewCorrector(db),
+			Deleter:   service.NewDeleter(db),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,  // Upload bis 10 MB, auch über langsames Mobilfunknetz
-		WriteTimeout:      120 * time.Second, // Upload mit Vision-LLM dauert bis ~60 s
+		ReadTimeout:       60 * time.Second,  // upload up to 10 MB, also over a slow mobile network
+		WriteTimeout:      120 * time.Second, // upload with the vision LLM takes up to ~60 s
 		IdleTimeout:       120 * time.Second,
 	}
 
-	if !k.NurLokal() {
-		slog.Warn("Backend ist im ganzen Netz erreichbar (ADRESSE ist nicht lokal). Nur zum Testen verwenden.",
-			"adresse", k.Adresse)
+	if !c.LocalOnly() {
+		slog.Warn("backend is reachable from the whole network (ADDRESS is not local). Use for testing only.",
+			"address", c.Address)
 	}
 
-	serverFehler := make(chan error, 1)
+	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("Server läuft", "adresse", "http://"+k.Lauschadresse())
-		serverFehler <- server.ListenAndServe()
+		slog.Info("server running", "address", "http://"+c.ListenAddress())
+		serverErr <- server.ListenAndServe()
 	}()
 
 	select {
-	case err := <-serverFehler:
-		// z. B. Port schon belegt
+	case err := <-serverErr:
+		// e.g. port already in use
 		return err
 	case <-ctx.Done():
-		slog.Info("Server wird beendet …")
+		slog.Info("server shutting down …")
 	}
 
-	// Laufende Anfragen dürfen noch bis zu 10 s fertig werden.
-	shutdownCtx, abbrechen := context.WithTimeout(context.Background(), 10*time.Second)
-	defer abbrechen()
+	// Running requests may still finish within 10 s.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// newRecognizer builds the second reader for the verification (docs/API.md,
+// verification). A missing program is never fatal: the server starts, and
+// files it cannot read are stored unchecked (ocr_unavailable). Without
+// Poppler that concerns PDFs, without Tesseract photos and scanned pages.
+// nil if OCR_ENGINE=none.
+func newRecognizer(c config.Config) ocr.Recognizer {
+	if c.OCREngine == config.OCREngineNone {
+		slog.Info("verification switched off (OCR_ENGINE=none), files stay unchecked")
+		return nil
+	}
+	p := &ocr.Pipeline{Image: ocr.DefaultImageOptions()}
+	if pdf, err := poppler.New(); err != nil {
+		slog.Warn("Poppler missing, PDFs stay unchecked (backend/README.md, section verification)", "error", err)
+	} else {
+		p.PDF = pdf
+	}
+	if engine, err := tesseract.New(c.TesseractLang); err != nil {
+		slog.Warn("Tesseract missing, photos and scans stay unchecked (backend/README.md, section verification)", "error", err)
+	} else {
+		p.Engine = engine
+	}
+	var names []string
+	if p.PDF != nil {
+		names = append(names, p.PDF.Name())
+	}
+	if p.Engine != nil {
+		names = append(names, p.Engine.Name())
+	}
+	slog.Info("verification", "programs", names)
+	return p
 }

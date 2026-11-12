@@ -10,125 +10,125 @@ import (
 	"testing"
 )
 
-// pingerAttrappe ersetzt MongoDB im Test.
-type pingerAttrappe struct{ err error }
+// fakePinger replaces MongoDB in tests.
+type fakePinger struct{ err error }
 
-func (p pingerAttrappe) Ping(context.Context) error { return p.err }
+func (p fakePinger) Ping(context.Context) error { return p.err }
 
-func TestStatus_DatenbankErreichbar(t *testing.T) {
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}})
+func TestStatus_DatabaseReachable(t *testing.T) {
+	router := NewRouter(Dependencies{DB: fakePinger{}})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Status = %d, erwartet 200", rec.Code)
+		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	pruefeJSONHeader(t, rec)
-	var a statusAntwort
+	checkJSONHeader(t, rec)
+	var a statusResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
-		t.Fatalf("Antwort ist kein JSON: %v", err)
+		t.Fatalf("response is not JSON: %v", err)
 	}
-	if a.Status != "ok" || a.Datenbank != "ok" {
-		t.Errorf("Antwort = %+v", a)
+	if a.Status != "ok" || a.Database != "ok" {
+		t.Errorf("response = %+v", a)
 	}
 }
 
-func TestStatus_DatenbankNichtErreichbar(t *testing.T) {
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{err: errors.New("Zeitüberschreitung")}})
+func TestStatus_DatabaseUnreachable(t *testing.T) {
+	router := NewRouter(Dependencies{DB: fakePinger{err: errors.New("timeout")}})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("Status = %d, erwartet 503", rec.Code)
+		t.Fatalf("status = %d, want 503", rec.Code)
 	}
-	want := `{"status":"fehler","datenbank":"nicht erreichbar"}`
+	want := `{"status":"error","database":"unreachable"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("Body = %s, erwartet %s", got, want)
+		t.Errorf("body = %s, want %s", got, want)
 	}
-	if strings.Contains(rec.Body.String(), "Zeitüberschreitung") {
-		t.Error("interne Fehlerursache darf nicht in der Antwort stehen")
+	if strings.Contains(rec.Body.String(), "timeout") {
+		t.Error("the internal cause must not be in the response")
 	}
 }
 
-func TestSchreibeFehler_Format(t *testing.T) {
+func TestWriteError_Format(t *testing.T) {
 	rec := httptest.NewRecorder()
-	schreibeFehler(rec, http.StatusNotFound, "EINTRAG_NICHT_GEFUNDEN",
+	writeError(rec, http.StatusNotFound, "ENTRY_NOT_FOUND",
 		"Diesen Eintrag gibt es nicht.", map[string]any{"id": "abc"})
 
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("Status = %d", rec.Code)
+		t.Fatalf("status = %d", rec.Code)
 	}
-	pruefeJSONHeader(t, rec)
-	want := `{"fehler":{"code":"EINTRAG_NICHT_GEFUNDEN","nachricht":"Diesen Eintrag gibt es nicht.","details":{"id":"abc"}}}`
+	checkJSONHeader(t, rec)
+	want := `{"error":{"code":"ENTRY_NOT_FOUND","message":"Diesen Eintrag gibt es nicht.","details":{"id":"abc"}}}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("Body =\n%s\nerwartet\n%s", got, want)
+		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
 }
 
-func TestSchreibeFehler_OhneDetails(t *testing.T) {
+func TestWriteError_WithoutDetails(t *testing.T) {
 	rec := httptest.NewRecorder()
-	schreibeFehler(rec, http.StatusBadRequest, "FRAGE_FEHLT", "Bitte stelle eine Frage.", nil)
+	writeError(rec, http.StatusBadRequest, "QUESTION_MISSING", "Bitte stelle eine Frage.", nil)
 
 	if strings.Contains(rec.Body.String(), "details") {
-		t.Errorf("details ohne Inhalt soll fehlen: %s", rec.Body.String())
+		t.Errorf("empty details should be missing: %s", rec.Body.String())
 	}
 }
 
-func TestSchreibeJSON_KeinHTMLEscaping(t *testing.T) {
+func TestWriteJSON_NoHTMLEscaping(t *testing.T) {
 	rec := httptest.NewRecorder()
-	schreibeJSON(rec, http.StatusOK, map[string]string{"wert": "<0,5 & >1"})
+	writeJSON(rec, http.StatusOK, map[string]string{"value": "<0,5 & >1"})
 
-	want := `{"wert":"<0,5 & >1"}`
+	want := `{"value":"<0,5 & >1"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
-		t.Errorf("Body = %s, erwartet %s", got, want)
+		t.Errorf("body = %s, want %s", got, want)
 	}
 }
 
-func TestSchreibeJSON_NichtUmwandelbar(t *testing.T) {
+func TestWriteJSON_NotEncodable(t *testing.T) {
 	rec := httptest.NewRecorder()
-	schreibeJSON(rec, http.StatusOK, map[string]any{"kaputt": make(chan int)})
+	writeJSON(rec, http.StatusOK, map[string]any{"broken": make(chan int)})
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("Status = %d, erwartet 500", rec.Code)
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	if !json.Valid(rec.Body.Bytes()) || !strings.Contains(rec.Body.String(), CodeInternerFehler) {
-		t.Errorf("Body = %s", rec.Body.String())
+	if !json.Valid(rec.Body.Bytes()) || !strings.Contains(rec.Body.String(), CodeInternalError) {
+		t.Errorf("body = %s", rec.Body.String())
 	}
 }
 
-func TestAbfangen_PanicWird500(t *testing.T) {
-	h := mitAbfangen(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		panic("geheimer Zustand")
+func TestRecover_PanicBecomes500(t *testing.T) {
+	h := withRecover(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("secret state")
 	}))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("Status = %d, erwartet 500", rec.Code)
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"code":"INTERNER_FEHLER"`) {
-		t.Errorf("Body = %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"code":"INTERNAL_ERROR"`) {
+		t.Errorf("body = %s", rec.Body.String())
 	}
-	if strings.Contains(rec.Body.String(), "geheimer Zustand") {
-		t.Error("panic-Inhalt darf nicht in der Antwort stehen")
+	if strings.Contains(rec.Body.String(), "secret state") {
+		t.Error("the panic content must not be in the response")
 	}
 }
 
-func TestRouter_FalscheMethode(t *testing.T) {
-	router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}})
+func TestRouter_WrongMethod(t *testing.T) {
+	router := NewRouter(Dependencies{DB: fakePinger{}})
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/status", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("Status = %d, erwartet 405", rec.Code)
+		t.Errorf("status = %d, want 405", rec.Code)
 	}
 }
 
-func pruefeJSONHeader(t *testing.T, rec *httptest.ResponseRecorder) {
+func checkJSONHeader(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("Content-Type = %q", ct)

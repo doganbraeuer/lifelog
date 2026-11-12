@@ -1,159 +1,225 @@
-# Lifelog-Backend (Go)
+# Lifelog backend (Go)
 
-REST-API nach [docs/API.md](../docs/API.md).
+REST API as specified in [docs/API.md](../docs/API.md). Names follow
+[docs/GLOSSARY.md](../docs/GLOSSARY.md).
 
-## Starten
+## Run
 
-1. `.env` im Repo-Wurzelverzeichnis anlegen (Vorlage: `.env.example`).
-2. Im Ordner `backend/`:
+1. Create `.env` in the repository root (template: `.env.example`).
+2. In the folder `backend/`:
 
    ```sh
    go run ./cmd/server
    curl localhost:8080/api/v1/status
    ```
 
-Standardmäßig lauscht der Server nur auf `127.0.0.1:8080`. Der
-Android-Emulator erreicht ihn über `http://10.0.2.2:8080`. Für ein echtes Handy
-im WLAN: `ADRESSE=0.0.0.0 go run ./cmd/server` und die IP des Rechners
-verwenden. Dann ist das Backend im ganzen Netz erreichbar, also nur zum Testen.
+By default the server only listens on `127.0.0.1:8080`. The Android emulator
+reaches it via `http://10.0.2.2:8080`. For a real phone on the Wi-Fi:
+`ADDRESS=0.0.0.0 go run ./cmd/server` and use the computer's IP address. The
+backend is then reachable from the whole network, so only do this for
+testing.
 
-Hochladen von Hand (nur synthetische Dokumente):
-
-```sh
-curl -F datei=@testdaten/laborbefund.pdf localhost:8080/api/v1/eintraege   # Datei
-curl -F "text=<meintext.txt" localhost:8080/api/v1/eintraege               # Text-Import
-```
-
-Beim Text-Import liest `curl` mit `<` den Inhalt der Datei als Formularfeld
-`text` (nicht als Datei-Anhang). Gespeichert wird er als `text.txt`.
-
-## Testen
+Manual upload (synthetic documents only):
 
 ```sh
-go vet ./... && go test ./...
+curl -F file=@testdata/lab_report.pdf localhost:8080/api/v1/entries   # file
+curl -F "text=<mytext.txt" localhost:8080/api/v1/entries              # text import
 ```
 
-Live-Tests gegen Gemini (kosten Anfragen aus dem Kontingent, schicken nur
-die synthetischen Dateien aus `testdaten/`):
+For the text import, `curl` reads the file content with `<` into the form
+field `text` (not as a file attachment). It is stored as `text.txt`.
+
+## Test
 
 ```sh
-LIFELOG_LIVE=1 go test ./internal/modell/gemini/ -run Live -v
+gofmt -l . && go vet ./... && go test ./...
 ```
 
-Integrationstests gegen MongoDB (benutzen eine eigene Datenbank
-`<MONGODB_DB>_integrationstest` und löschen sie danach wieder):
+Live tests against Gemini (cost requests from the quota, send only the
+synthetic files from `testdata/`). They also check that the full text stays
+German and that answers are German with references:
 
 ```sh
-LIFELOG_MONGO_TEST=1 go test ./internal/speicher/ -run Integration -v
+LIFELOG_LIVE=1 go test ./internal/llm/gemini/ -run Live -v
 ```
 
-## Gemini-Modelle
+Integration tests against MongoDB (use a database of their own,
+`<MONGODB_DB>_integration_test`, and drop it afterwards):
 
 ```sh
-go run ./cmd/modelle   # listet die Modelle, die der eigene Schlüssel sieht
+LIFELOG_MONGO_TEST=1 go test ./internal/store/ -run Integration -v
 ```
 
-Der Schlüssel kommt aus `.env` und wird nie ausgegeben. Ob ein Modell in der
-kostenlosen Stufe nutzbar ist und welche Limits gelten, steht nur in AI Studio
-bzw. auf der Preisseite. Bei 429/503 versucht das Backend es bis zu zweimal
-erneut; mit `GEMINI_MODELL_ERSATZ` danach einmal ein anderes Modell zum Lesen.
-Dafür sind vom Lese-Limit (50 s) standardmäßig 20 s reserviert
-(`GEMINI_ERSATZ_RESERVE_SEKUNDEN`), das Hauptmodell bekommt 30 s.
-
-## Vektorindex
-
-Die Suche (`POST /api/v1/fragen`) braucht in Atlas den Vector-Search-Index
-`abschnitte_vektor` auf der Collection `abschnitte`. Die Definition steht in
-[`internal/speicher/abschnitte_vektor.json`](internal/speicher/abschnitte_vektor.json):
-`embedding` als Vektor (768 Dimensionen, cosine), `modul` als Filterfeld.
-
-**Weg A (automatisch):** Der Server legt den Index beim Start an, wenn er
-fehlt, und loggt den Status. Atlas baut ihn im Hintergrund (im Test ~30 s);
-bis er `READY` ist, findet die Suche nichts. Auf dem Free Tier (M0) getestet
-am 04.11.2026.
-
-**Weg B (Atlas-Oberfläche),** falls Weg A scheitert (Warnung beim Start):
-
-1. In Atlas den Cluster öffnen, Reiter „Atlas Search“ (je nach Oberfläche
-   „Search & Vector Search“), „Create Search Index“.
-2. „Atlas Vector Search“ und „JSON Editor“ wählen.
-3. Datenbank = Wert von `MONGODB_DB`, Collection `abschnitte`, Name
-   `abschnitte_vektor`.
-4. Inhalt von `internal/speicher/abschnitte_vektor.json` einfügen, speichern.
-5. Warten, bis der Status „Active“/`READY` ist.
-
-Wird `modell.EmbeddingDimensionen` geändert, muss der Index neu angelegt und
-jeder Abschnitt neu eingebettet werden.
-
-## Synthetische Testdaten
-
-Damit Zeitleiste und Suche ohne Upload und ohne Vision-LLM etwas zeigen:
+## Gemini models
 
 ```sh
-go run ./cmd/testdaten                   # 4 erfundene Einträge mit Abschnitten und Embeddings (mehrfach ausführbar)
-go run ./cmd/testdaten -ohne-abschnitte  # dasselbe ohne Gemini; die Suche findet sie dann nicht
-go run ./cmd/testdaten -entfernen        # wieder löschen, samt Abschnitten
+go run ./cmd/models   # lists the models your own key can see
 ```
 
-Die Testeinträge (`internal/beispieldaten`) haben feste IDs. Andere Einträge
-bleiben unberührt. Die Abschnitte entstehen wie beim Upload: gleiches
-Zerlegen, gleiches Embedding-Modell.
+The key comes from `.env` and is never printed. Whether a model can be used
+in the free tier and which limits apply is only shown in AI Studio or on the
+pricing page. On 429/503 the backend retries up to twice; with
+`GEMINI_FALLBACK_MODEL` it then tries another model once for reading. For
+that, 20 s of the read time limit (50 s) are reserved by default
+(`GEMINI_FALLBACK_RESERVE_SECONDS`); the main model gets 30 s.
 
-Zum Ausprobieren von `DELETE /eintraege/{id}` (z. B. aus der App):
+## Verification (text layer and OCR)
+
+A second reader checks the values the vision LLM extracted
+(docs/API.md, section 2, verification). It runs locally, with open source
+programs, and costs no model call:
 
 ```sh
-go run ./cmd/testdaten -wegwerf          # legt einen Wegwerf-Eintrag mit neuer ID an und gibt die ID aus
-curl -i -X DELETE localhost:8080/api/v1/eintraege/<ID>   # 204, ein zweites Mal 404
+brew install poppler tesseract tesseract-lang          # macOS
+sudo apt install poppler-utils tesseract-ocr tesseract-ocr-deu   # Debian/Ubuntu
 ```
 
-Der Wegwerf-Eintrag braucht kein Gemini: Sein Abschnitt hat einen festen
-Vektor statt eines echten Embeddings, die Suche zeigt ihn nicht an. Nur die
-ausgegebene ID löschen, nicht die festen Testeinträge oder echte Uploads.
+- PDF pages with a text layer: `pdftotext -bbox-layout` (Poppler).
+- PDF pages without a text layer: `pdftoppm` renders the page, Tesseract
+  (`TESSERACT_LANG`, default `deu`) reads it.
+- Photos (JPEG, PNG, HEIC, WebP) are prepared in Go first
+  (`ocr.PrepareImage`): turned upright (EXIF orientation, HEIC rotation),
+  scaled to a long side between 2500 (at most twice the size) and 4096
+  pixels, and handed to Tesseract as an RGB PNG with `--dpi 300`. Images
+  over 50 megapixels are not decoded. HEIC is decoded by
+  `github.com/gen2brain/heic` (a decoder compiled to WebAssembly, no cgo,
+  nothing to install). The settings were chosen by measurement
+  (`docs/ocr/README.md`).
 
-## Schwelle kalibrieren
+It runs at the same time as the vision LLM (limit 30 s), so an upload does
+not take longer. The words with their positions are stored in the
+collection `ocr`; PATCH checks corrected values against them. If a program
+is missing, the server still starts and logs a warning; the affected
+entries are stored `unchecked` with `reason: ocr_unavailable`. `OCR_ENGINE=none`
+switches the check off. The tests that need the programs skip themselves if
+they are missing.
 
 ```sh
-go run ./cmd/testdaten       # einmal, mit Abschnitten
-go run ./cmd/kalibrieren     # wertet mit kern.MinScore aus
-go run ./cmd/kalibrieren -schwelle 0.82
+go run ./cmd/ocrcheck            # show what it would fill in for old entries, and measure demo/
+go run ./cmd/ocrcheck -write     # store the verification of entries that were never checked
+go run ./cmd/ocrcheck -recheck   # show what checking every entry again would change (+ -write: store it)
+go run ./cmd/ocrcheck -values -out ../docs/ocr/<date>-tesseract.md   # measurement report
+go run ./cmd/ocrcheck -upscale 3000                    # measure another scaling (0 = off)
+go run ./cmd/ocrcheck -downscale 3000                  # measure scaling large photos down (0 = off)
+go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a real photo
 ```
 
-Stellt 45 feste Fragen (`cmd/kalibrieren/fragen.go`): 29 passende (davon 6,
-deren Antwort in zwei Einträgen steht), 8 zu Gesundheit, die nicht
-drinstehen, und 8 fachfremde. Gebraucht werden die Testdaten und die
-synthetischen Demo-Daten (Lipidprofile 20.01./22.07., Orthopädie und
-Überweisung 05.03., FSME 10.06., Notizen 12.08./23.09.2026). Demo-Einträge
-findet das Programm über Dokumentdatum und Typ, die Überweisung über
-Dokumentdatum und Quelle (ihr Typ wird evtl. korrigiert). Fehlt einer oder
-gibt es ihn doppelt, bricht es vor dem ersten Embedding ab. In der Datenbank liest es nur.
+`cmd/ocrcheck` calls no model. Results and their assessment: `docs/ocr/`.
 
-Pro Frage zeigt es den besten Score und ob ein erwarteter Eintrag oben
-steht. Bei zwei Einträgen zählt der schwächere, denn beide müssen beim
-Sprachmodell ankommen. Danach folgt, welche Schwellen passend von fachfremd
-trennen. Kosten: ein Embedding pro Frage. Das Sprachmodell wird nicht
-aufgerufen.
+## Vector index
 
-`testdaten/laborbefund.{txt,pdf,png}` ist ein erfundener Befund für Uploads
-und Live-Tests. PDF und PNG sind aus der `.txt` erzeugt:
+Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
+`chunks_vector` on the collection `chunks`. The definition is in
+[`internal/store/chunks_vector.json`](internal/store/chunks_vector.json):
+`embedding` as vector (768 dimensions, cosine), `module` as filter field.
+
+**Option A (automatic):** the server creates the index on start if it is
+missing and logs its status. Atlas builds it in the background (about 30 s in
+our tests); until it is `READY`, search finds nothing. Tested on the free
+tier (M0) on 2026-11-04.
+
+**Option B (Atlas UI),** if option A fails (warning on start):
+
+1. Open the cluster in Atlas, tab "Atlas Search" (depending on the UI
+   "Search & Vector Search"), "Create Search Index".
+2. Choose "Atlas Vector Search" and "JSON Editor".
+3. Database = value of `MONGODB_DB`, collection `chunks`, name
+   `chunks_vector`.
+4. Paste the content of `internal/store/chunks_vector.json`, save.
+5. Wait until the status is "Active"/`READY`.
+
+The free tier allows only a few search indexes per cluster. Indexes of
+dropped collections disappear with them.
+
+If `llm.EmbeddingDimensions` changes, the index must be recreated and every
+chunk embedded again.
+
+## Synthetic data
+
+The demo data is in [`demo/`](../demo/README.md). To fill a database in one
+step (seed entries plus the uploads used for the calibration), with the
+server running:
 
 ```sh
-cupsfilter -m application/pdf laborbefund.txt > laborbefund.pdf
-sips -s format png laborbefund.pdf --out laborbefund.png
+../demo/upload.sh
 ```
 
-## Aufbau
+Only the seed entries, so that timeline and search show something without
+upload and without the vision LLM:
 
-| Paket | Aufgabe |
+```sh
+go run ./cmd/seed              # 4 invented entries with chunks and embeddings (can be run again)
+go run ./cmd/seed -no-chunks   # the same without Gemini; search does not find them then
+go run ./cmd/seed -remove      # delete them again, with their chunks
+```
+
+The seed entries (`internal/sampledata`) have fixed IDs. Other entries stay
+untouched. The chunks are created as on upload: same splitting, same
+embedding model.
+
+To try out `DELETE /entries/{id}` (e.g. from the app):
+
+```sh
+go run ./cmd/seed -throwaway                            # creates a throwaway entry with a new ID and prints the ID
+curl -i -X DELETE localhost:8080/api/v1/entries/<ID>   # 204, a second time 404
+```
+
+The throwaway entry needs no Gemini: its chunk has a fixed vector instead of
+a real embedding, and search does not show it. Only delete the printed ID,
+not the fixed seed entries or real uploads.
+
+## Calibrate the threshold
+
+```sh
+../demo/upload.sh                       # once: seed entries and demo uploads
+go run ./cmd/calibrate                  # evaluates with core.MinScore
+go run ./cmd/calibrate -threshold 0.82
+```
+
+Asks 45 fixed questions (`cmd/calibrate/questions.go`): 30 relevant ones (6
+of them with the answer in two entries), 7 health questions whose answer is
+in no document ("near"), and 8 unrelated ones. The questions are German,
+because users ask in German. The program finds the seed entries by their
+fixed IDs and the demo uploads by the file name of the original; the two
+text notes are all called `text.txt` and are found by their document date.
+If an entry is missing or there twice, it stops before the first embedding.
+It only reads from the database.
+
+For each question it shows the best score and whether an expected entry is
+on top. With two expected entries the weaker one counts, because both must
+reach the language model. Then it shows which thresholds separate relevant
+from unrelated questions. Cost: one embedding per question. The language
+model is not called, so check the answers (German, with `[n]`, fixed
+sentence for "near" questions) by hand via `POST /api/v1/questions`.
+
+Measurements so far are in [`docs/calibration/`](../docs/calibration/).
+
+`testdata/lab_report.{txt,pdf,png}` is an invented report for uploads and
+live tests. PDF and PNG were generated from the `.txt`:
+
+```sh
+cupsfilter -m application/pdf lab_report.txt > lab_report.pdf
+sips -s format png lab_report.pdf --out lab_report.png
+```
+
+## Structure
+
+| Package | Purpose |
 |---|---|
-| `cmd/server` | Start: Konfiguration, MongoDB, HTTP-Server, sauberes Beenden |
-| `cmd/testdaten` | Synthetische Einträge einfügen oder entfernen |
-| `cmd/kalibrieren` | Scores der Vektorsuche für feste Fragen messen (Schwelle) |
-| `internal/beispieldaten` | Die erfundenen Testeinträge, gemeinsam für beide Programme |
-| `cmd/modelle` | Verfügbare Gemini-Modelle auflisten |
-| `internal/konfig` | Umgebungsvariablen lesen und prüfen, Geheimnisse maskieren |
-| `internal/kern` | Fachlogik ohne I/O: Typen, Module, Sortierung, Dateityp, Abschnitte, Prüfung der Erkennung, Fragen, Korrekturen |
-| `internal/modell` | Austauschbare Schnittstelle zu den Modellen (`Leser`, `Einbetter`) |
-| `internal/modell/gemini` | Umsetzung mit Gemini, inkl. Wiederholung und Ersatzmodell |
-| `internal/modell/attrappe` | Modell-Ersatz für Tests |
-| `internal/speicher` | MongoDB: Einträge, Abschnitte mit Embeddings, Originaldateien (GridFS), Indexe |
-| `internal/api` | Router, Handler, Fehlerformat, JSON-Typen |
+| `cmd/server` | Start: configuration, MongoDB, HTTP server, clean shutdown |
+| `cmd/seed` | Insert or remove the synthetic seed entries |
+| `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
+| `cmd/models` | List available Gemini models |
+| `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
+| `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
+| `internal/config` | Read and check environment variables, mask secrets |
+| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original |
+| `internal/llm` | Replaceable interface to the models (`Reader`, `Embedder`, `Answerer`) |
+| `internal/llm/gemini` | Implementation with Gemini, including retry and fallback model |
+| `internal/llm/fake` | Fake models for tests |
+| `internal/ocr` | Replaceable second reader: `Recognizer` (file), `Engine` (image), `PDF`; `Pipeline` uses the text layer where possible and OCR where needed |
+| `internal/ocr/poppler`, `internal/ocr/tesseract` | Implementations with the command line programs (stdin/stdout, no temporary files) |
+| `internal/ocr/fake` | Fake second reader for tests |
+| `internal/service` | Use cases: upload, text import, question, correction, delete |
+| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), indexes |
+| `internal/api` | Router, handlers, error format, JSON types |

@@ -4,135 +4,127 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
-import 'package:lifelog/api/api_fehler.dart';
-import 'package:lifelog/api/mime_typ.dart';
+import 'package:lifelog/api/api_exception.dart';
+import 'package:lifelog/api/mime_type.dart';
 
-import '../hilfen.dart';
+import '../helpers.dart';
 
-Uint8List pdf(String inhalt) =>
-    Uint8List.fromList(utf8.encode('%PDF-1.4 $inhalt'));
+Uint8List pdf(String content) =>
+    Uint8List.fromList(utf8.encode('%PDF-1.4 $content'));
 
 void main() {
-  test('Upload legt einen neuen Eintrag an', () async {
-    final mock = schnellerMock();
+  test('upload creates a new entry', () async {
+    final mock = fastMock();
     final bytes = pdf('neu');
-    final eintrag = await mock.hochladen(
-      bytes,
-      'befund.pdf',
-      modul: 'gesundheit',
-    );
+    final entry = await mock.upload(bytes, 'befund.pdf', module: 'health');
 
-    expect(eintrag.id, matches(RegExp(r'^[0-9a-f]{24}$')));
-    expect(eintrag.modul, 'gesundheit');
-    expect(eintrag.korrekturen, isEmpty);
-    expect(eintrag.importdatum, DateTime.utc(2026, 11, 4, 9, 30));
-    expect(eintrag.datei.dateiname, 'befund.pdf');
-    expect(eintrag.datei.mimeTyp, 'application/pdf');
-    expect(eintrag.datei.groesse, bytes.length);
-    expect(eintrag.datei.sha256, sha256.convert(bytes).toString());
+    expect(entry.id, matches(RegExp(r'^[0-9a-f]{24}$')));
+    expect(entry.module, 'health');
+    expect(entry.corrections, isEmpty);
+    expect(entry.importedAt, DateTime.utc(2026, 11, 4, 9, 30));
+    expect(entry.file.fileName, 'befund.pdf');
+    expect(entry.file.mimeType, 'application/pdf');
+    expect(entry.file.size, bytes.length);
+    expect(entry.file.sha256, sha256.convert(bytes).toString());
 
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
-    expect((await mock.datei(eintrag.id)).bytes, bytes);
+    expect(await mock.listEntries(module: 'health'), hasLength(4));
+    expect((await mock.getFile(entry.id)).bytes, bytes);
   });
 
-  test('dieselbe Datei zweimal: 409 DUPLIKAT mit eintragId', () async {
-    final mock = schnellerMock();
-    final erster = await mock.hochladen(
+  test('the same file twice: 409 DUPLICATE with entryId', () async {
+    final mock = fastMock();
+    final firstEntry = await mock.upload(
       pdf('doppelt'),
       'a.pdf',
-      modul: 'gesundheit',
+      module: 'health',
     );
     try {
-      await mock.hochladen(
-        pdf('doppelt'),
-        'anderer_name.pdf',
-        modul: 'gesundheit',
-      );
+      await mock.upload(pdf('doppelt'), 'anderer_name.pdf', module: 'health');
       fail('Fehler erwartet');
-    } on ApiFehler catch (f) {
+    } on ApiException catch (f) {
       expect(f.httpStatus, 409);
-      expect(f.code, FehlerCode.duplikat);
-      expect(f.details['eintragId'], erster.id);
+      expect(f.code, ErrorCode.duplicate);
+      expect(f.details['entryId'], firstEntry.id);
     }
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.listEntries(module: 'health'), hasLength(4));
   });
 
-  test('leere Datei: 400 DATEI_FEHLT', () async {
+  test('empty file: 400 FILE_MISSING', () async {
     await expectLater(
-      schnellerMock().hochladen(Uint8List(0), 'leer.pdf', modul: 'gesundheit'),
-      wirftApiFehler(FehlerCode.dateiFehlt, status: 400),
+      fastMock().upload(Uint8List(0), 'leer.pdf', module: 'health'),
+      throwsApiException(ErrorCode.fileMissing, status: 400),
     );
   });
 
-  test('über 10 MB: 413 DATEI_ZU_GROSS', () async {
-    final gross = Uint8List(maxDateiGroesse + 1)..setAll(0, '%PDF-'.codeUnits);
+  test('over 10 MB: 413 FILE_TOO_LARGE', () async {
+    final large = Uint8List(maxFileSize + 1)..setAll(0, '%PDF-'.codeUnits);
     await expectLater(
-      schnellerMock().hochladen(gross, 'gross.pdf', modul: 'gesundheit'),
-      wirftApiFehler(FehlerCode.dateiZuGross, status: 413),
+      fastMock().upload(large, 'gross.pdf', module: 'health'),
+      throwsApiException(ErrorCode.fileTooLarge, status: 413),
     );
   });
 
-  test('genau 10 MB sind erlaubt', () async {
-    final grenze = Uint8List(maxDateiGroesse)..setAll(0, '%PDF-'.codeUnits);
-    final eintrag = await schnellerMock().hochladen(
-      grenze,
+  test('exactly 10 MB is allowed', () async {
+    final limit = Uint8List(maxFileSize)..setAll(0, '%PDF-'.codeUnits);
+    final entry = await fastMock().upload(
+      limit,
       'grenze.pdf',
-      modul: 'gesundheit',
+      module: 'health',
     );
-    expect(eintrag.datei.groesse, maxDateiGroesse);
+    expect(entry.file.size, maxFileSize);
   });
 
-  test('anderer Dateityp: 415, egal welche Endung', () async {
+  test('other file type: 415, whatever the extension', () async {
     await expectLater(
-      schnellerMock().hochladen(
+      fastMock().upload(
         Uint8List.fromList(utf8.encode('hallo')),
         'text.pdf',
-        modul: 'gesundheit',
+        module: 'health',
       ),
-      wirftApiFehler(FehlerCode.dateitypNichtUnterstuetzt, status: 415),
+      throwsApiException(ErrorCode.unsupportedFileType, status: 415),
     );
   });
 
-  group('Fehler des Vision-LLM über den Dateinamen', () {
+  group('vision LLM errors via the file name', () {
     for (final (name, code, status) in [
-      ('foto_unlesbar.jpg', FehlerCode.nichtLesbar, 422),
-      ('auslesefehler.pdf', FehlerCode.auslesenFehlgeschlagen, 502),
-      ('modellfehler.pdf', FehlerCode.modellNichtErreichbar, 503),
+      ('photo_unreadable.jpg', ErrorCode.unreadable, 422),
+      ('extractionerror.pdf', ErrorCode.extractionFailed, 502),
+      ('modelerror.pdf', ErrorCode.modelUnavailable, 503),
     ]) {
-      test('$name: $status $code, nichts gespeichert', () async {
-        final mock = schnellerMock();
+      test('$name: $status $code, nothing stored', () async {
+        final mock = fastMock();
         await expectLater(
-          mock.hochladen(pdf(name), name, modul: 'gesundheit'),
-          wirftApiFehler(code, status: status),
+          mock.upload(pdf(name), name, module: 'health'),
+          throwsApiException(code, status: status),
         );
-        expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+        expect(await mock.listEntries(module: 'health'), hasLength(3));
       });
     }
   });
 
-  group('erkenneMimeTyp', () {
+  group('detectMimeType', () {
     Uint8List bytes(List<int> b) => Uint8List.fromList(b);
 
     test('JPEG, PNG, PDF, HEIC', () {
-      expect(erkenneMimeTyp(bytes([0xFF, 0xD8, 0xFF, 0xE0])), 'image/jpeg');
+      expect(detectMimeType(bytes([0xFF, 0xD8, 0xFF, 0xE0])), 'image/jpeg');
       expect(
-        erkenneMimeTyp(
+        detectMimeType(
           bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0]),
         ),
         'image/png',
       );
-      expect(erkenneMimeTyp(pdf('')), 'application/pdf');
+      expect(detectMimeType(pdf('')), 'application/pdf');
       expect(
-        erkenneMimeTyp(bytes([0, 0, 0, 24, ...'ftypheic'.codeUnits])),
+        detectMimeType(bytes([0, 0, 0, 24, ...'ftypheic'.codeUnits])),
         'image/heic',
       );
     });
 
-    test('unbekannt oder zu kurz', () {
-      expect(erkenneMimeTyp(bytes([0xFF, 0xD8])), isNull);
-      expect(erkenneMimeTyp(bytes(utf8.encode('GIF89a'))), isNull);
+    test('unknown or too short', () {
+      expect(detectMimeType(bytes([0xFF, 0xD8])), isNull);
+      expect(detectMimeType(bytes(utf8.encode('GIF89a'))), isNull);
       expect(
-        erkenneMimeTyp(bytes([0, 0, 0, 24, ...'ftypmp42'.codeUnits])),
+        detectMimeType(bytes([0, 0, 0, 24, ...'ftypmp42'.codeUnits])),
         isNull,
       );
     });

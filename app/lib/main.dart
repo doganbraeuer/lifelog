@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
-import 'api/api_client_auswahl.dart';
-import 'module/modul_katalog.dart';
-import 'plattform/datei_auswahl.dart';
-import 'screens/bereiche_screen.dart';
+import 'api/api_client_factory.dart';
+import 'module/module_catalog.dart';
+import 'platform/file_chooser.dart';
+import 'screens/modules_screen.dart';
 
 void main() {
   runApp(
     LifelogApp(
-      api: erstelleApiClient(),
-      dateiAuswahl: PluginDateiAuswahl(),
-      katalog: ModulKatalog.standard(),
+      api: createApiClient(),
+      fileChooser: PluginFileChooser(),
+      catalog: ModuleCatalog.defaults(),
     ),
   );
 }
@@ -21,36 +21,36 @@ class LifelogApp extends StatelessWidget {
   const LifelogApp({
     super.key,
     required this.api,
-    required this.dateiAuswahl,
-    required this.katalog,
+    required this.fileChooser,
+    required this.catalog,
   });
 
-  /// Alle Backend-Aufrufe laufen über diesen Client (Mock oder HTTP).
+  /// Every backend call goes through this client (mock or HTTP).
   final ApiClient api;
 
-  /// Kamera, Galerie und PDF-Auswahl. In Tests ein Fake.
-  final DateiAuswahl dateiAuswahl;
+  /// Camera, gallery and PDF picker. A fake in tests.
+  final FileChooser fileChooser;
 
-  /// Die Module mit ihren Typen. In Tests evtl. ein eigener Katalog.
-  final ModulKatalog katalog;
+  /// The modules with their types. Tests may pass their own catalog.
+  final ModuleCatalog catalog;
 
   @override
   Widget build(BuildContext context) {
-    // Der Katalog liegt über der MaterialApp, damit jede Seite und jeder
-    // Dialog ihn mit ModulKatalog.von(context) findet.
-    return ModulKatalogScope(
-      katalog: katalog,
+    // The catalog sits above the MaterialApp, so that every page and every
+    // dialog finds it with ModuleCatalog.of(context).
+    return ModuleCatalogScope(
+      catalog: catalog,
       child: MaterialApp(
         title: 'Lifelog',
-        // Neutrales Grundschema für den Screen „Bereiche“. Jedes Modul
-        // bekommt beim Öffnen sein eigenes Schema aus seiner Farbe.
+        // Neutral base scheme for the „Bereiche“ screen. Every module gets its
+        // own scheme from its color when it is opened.
         theme: ThemeData(colorSchemeSeed: Colors.blueGrey),
-        // Die App ist deutsch. Damit sind auch eingebaute Texte wie in der
-        // Datumsauswahl („Abbrechen“, Monatsnamen) deutsch.
+        // The app is German. This makes built-in texts such as in the date
+        // picker („Abbrechen“, month names) German too.
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         supportedLocales: const [Locale('de')],
         locale: const Locale('de'),
-        home: BereicheScreen(api: api, dateiAuswahl: dateiAuswahl),
+        home: ModulesScreen(api: api, fileChooser: fileChooser),
       ),
     );
   }

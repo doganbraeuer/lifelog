@@ -7,32 +7,32 @@ import (
 	"time"
 )
 
-// Pinger prüft, ob die Datenbank erreichbar ist. Im Programm steckt dahinter
-// der MongoDB-Client, in Tests eine Attrappe.
+// Pinger checks whether the database is reachable. In the program the
+// MongoDB client is behind it, in tests a fake.
 type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// statusTimeout begrenzt, wie lange der Health-Check auf MongoDB wartet.
+// statusTimeout limits how long the health check waits for MongoDB.
 const statusTimeout = 3 * time.Second
 
-type statusAntwort struct {
-	Status    string `json:"status"`
-	Datenbank string `json:"datenbank"`
+type statusResponse struct {
+	Status   string `json:"status"`
+	Database string `json:"database"`
 }
 
-// statusHandler beantwortet GET /api/v1/status (docs/API.md, 3.8).
+// statusHandler answers GET /api/v1/status (docs/API.md, 3.8).
 func statusHandler(db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, abbrechen := context.WithTimeout(r.Context(), statusTimeout)
-		defer abbrechen()
+		ctx, cancel := context.WithTimeout(r.Context(), statusTimeout)
+		defer cancel()
 
 		if err := db.Ping(ctx); err != nil {
-			slog.Warn("Datenbank nicht erreichbar", "fehler", err)
-			schreibeJSON(w, http.StatusServiceUnavailable,
-				statusAntwort{Status: "fehler", Datenbank: "nicht erreichbar"})
+			slog.Warn("database unreachable", "error", err)
+			writeJSON(w, http.StatusServiceUnavailable,
+				statusResponse{Status: "error", Database: "unreachable"})
 			return
 		}
-		schreibeJSON(w, http.StatusOK, statusAntwort{Status: "ok", Datenbank: "ok"})
+		writeJSON(w, http.StatusOK, statusResponse{Status: "ok", Database: "ok"})
 	}
 }

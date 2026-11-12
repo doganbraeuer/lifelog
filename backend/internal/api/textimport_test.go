@@ -9,20 +9,20 @@ import (
 	"strings"
 	"testing"
 
-	"lifelog/backend/internal/dienst"
-	"lifelog/backend/internal/kern"
-	"lifelog/backend/internal/modell"
+	"lifelog/backend/internal/core"
+	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/service"
 )
 
-// textFormular baut ein Formular aus Feldern in fester Reihenfolge; ein
-// Name darf mehrfach vorkommen. Ein Feld "datei" wird als Datei angehängt.
-func textFormular(t *testing.T, felder ...[2]string) *http.Request {
+// textForm builds a form from fields in a fixed order; a name may appear
+// several times. A field "file" is attached as a file.
+func textForm(t *testing.T, fields ...[2]string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	for _, f := range felder {
-		if f[0] == "datei" {
-			fw, err := mw.CreateFormFile("datei", "a.pdf")
+	for _, f := range fields {
+		if f[0] == "file" {
+			fw, err := mw.CreateFormFile("file", "a.pdf")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -32,144 +32,144 @@ func textFormular(t *testing.T, felder ...[2]string) *http.Request {
 		mw.WriteField(f[0], f[1])
 	}
 	mw.Close()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/eintraege", &body)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/entries", &body)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	return r
 }
 
-func textEintrag() kern.Eintrag {
-	e := vollerEintrag()
-	e.Volltext = "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
-	e.Datei = kern.Datei{ID: "6727a1f3c2b4e5d6f7a8b9c1", Dateiname: "text.txt",
-		MimeTyp: "text/plain; charset=utf-8", Groesse: 42, Sha256: strings.Repeat("cd", 32)}
+func textEntry() core.Entry {
+	e := fullEntry()
+	e.FullText = "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
+	e.File = core.File{ID: "6727a1f3c2b4e5d6f7a8b9c1", FileName: "text.txt",
+		MimeType: "text/plain; charset=utf-8", Size: 42, Sha256: strings.Repeat("cd", 32)}
 	return e
 }
 
-func TestTextImport_Erfolg(t *testing.T) {
+func TestTextImport_Success(t *testing.T) {
 	text := "  Hausarztpraxis Beispiel\r\nÜberweisung\n"
-	h := &hochladerAttrappe{eintrag: textEintrag()}
-	rec := hochladen(t, h, textFormular(t, [2]string{"text", text}, [2]string{"modul", "gesundheit"}))
+	u := &fakeUploader{entry: textEntry()}
+	rec := upload(t, u, textForm(t, [2]string{"text", text}, [2]string{"module", "health"}))
 
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("Status %d: %s", rec.Code, rec.Body)
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	if rec.Header().Get("Location") != "/api/v1/eintraege/6727a1f3c2b4e5d6f7a8b9c0" {
+	if rec.Header().Get("Location") != "/api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0" {
 		t.Errorf("Location = %q", rec.Header().Get("Location"))
 	}
-	// Unverändert an den Dienst, auch Leerraum und \r\n.
-	if h.textUpload == nil || h.textUpload.Text != text || h.textUpload.Modul != "gesundheit" || h.upload != nil {
-		t.Errorf("an den Dienst: text %+v, datei %+v", h.textUpload, h.upload)
+	// Unchanged to the service, including whitespace and \r\n.
+	if u.textUpload == nil || u.textUpload.Text != text || u.textUpload.Module != "health" || u.upload != nil {
+		t.Errorf("to the service: text %+v, file %+v", u.textUpload, u.upload)
 	}
-	for _, muss := range []string{`"mimeTyp":"text/plain; charset=utf-8"`, `"dateiname":"text.txt"`, `"korrekturen":[]`} {
-		if !strings.Contains(rec.Body.String(), muss) {
-			t.Errorf("Antwort ohne %s: %s", muss, rec.Body)
+	for _, must := range []string{`"mimeType":"text/plain; charset=utf-8"`, `"fileName":"text.txt"`, `"corrections":[]`} {
+		if !strings.Contains(rec.Body.String(), must) {
+			t.Errorf("response without %s: %s", must, rec.Body)
 		}
 	}
 }
 
-// Fehler, die schon das Formular zeigt; der Dienst wird nicht aufgerufen.
-func TestTextImport_Formularfehler(t *testing.T) {
-	for _, f := range []struct {
-		name      string
-		felder    [][2]string
-		status    int
-		code      string
-		nachricht string
+// Errors the form already shows; the service is not called.
+func TestTextImport_FormErrors(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		fields  [][2]string
+		status  int
+		code    string
+		message string
 	}{
-		{"weder datei noch text", [][2]string{{"modul", "gesundheit"}}, 400, CodeDateiFehlt, "Datei"},
-		{"text leer", [][2]string{{"text", ""}}, 400, CodeDateiFehlt, "Text"},
-		{"text nur Leerraum", [][2]string{{"text", " \r\n\t "}}, 400, CodeDateiFehlt, "Text"},
-		{"datei und text", [][2]string{{"datei", "%PDF-"}, {"text", "Befund"}}, 400, CodeUngueltigeAnfrage, "nicht beides"},
-		{"zwei Texte", [][2]string{{"text", "a"}, {"text", "b"}}, 400, CodeUngueltigeAnfrage, "genau einen Text"},
-		{"zwei Texte, einer leer", [][2]string{{"text", ""}, {"text", "b"}}, 400, CodeUngueltigeAnfrage, "genau einen Text"},
+		{"neither file nor text", [][2]string{{"module", "health"}}, 400, CodeFileMissing, "Datei"},
+		{"text empty", [][2]string{{"text", ""}}, 400, CodeFileMissing, "Text"},
+		{"text only whitespace", [][2]string{{"text", " \r\n\t "}}, 400, CodeFileMissing, "Text"},
+		{"file and text", [][2]string{{"file", "%PDF-"}, {"text", "Befund"}}, 400, CodeInvalidRequest, "nicht beides"},
+		{"two texts", [][2]string{{"text", "a"}, {"text", "b"}}, 400, CodeInvalidRequest, "genau einen Text"},
+		{"two texts, one empty", [][2]string{{"text", ""}, {"text", "b"}}, 400, CodeInvalidRequest, "genau einen Text"},
 	} {
-		t.Run(f.name, func(t *testing.T) {
-			h := &hochladerAttrappe{}
-			rec := hochladen(t, h, textFormular(t, f.felder...))
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if !strings.Contains(a.Fehler.Nachricht, f.nachricht) {
-				t.Errorf("Nachricht %q enthält %q nicht", a.Fehler.Nachricht, f.nachricht)
+		t.Run(c.name, func(t *testing.T) {
+			u := &fakeUploader{}
+			rec := upload(t, u, textForm(t, c.fields...))
+			a := checkError(t, rec, c.status, c.code)
+			if !strings.Contains(a.Error.Message, c.message) {
+				t.Errorf("message %q does not contain %q", a.Error.Message, c.message)
 			}
-			if h.upload != nil || h.textUpload != nil {
-				t.Error("Dienst aufgerufen")
+			if u.upload != nil || u.textUpload != nil {
+				t.Error("service called")
 			}
 		})
 	}
 }
 
-// Die Prüfungen aus kern.PruefeText, über den echten Dienst: So ist auch
-// belegt, dass Zeichen und nicht Bytes zählen.
-func TestTextImport_PruefungUeberDenDienst(t *testing.T) {
-	for _, f := range []struct {
+// The checks from core.CheckText, through the real service: this also shows
+// that characters count, not bytes.
+func TestTextImport_CheckThroughTheService(t *testing.T) {
+	for _, c := range []struct {
 		name    string
-		felder  [][2]string
+		fields  [][2]string
 		status  int
 		code    string
 		details string
 	}{
-		{"100 001 Zeichen", [][2]string{{"text", strings.Repeat("a", kern.MaxTextZeichen+1)}},
-			413, CodeDateiZuGross, "map[maxZeichen:100000]"},
-		{"100 001 Umlaute", [][2]string{{"text", strings.Repeat("ü", kern.MaxTextZeichen+1)}},
-			413, CodeDateiZuGross, "map[maxZeichen:100000]"},
-		{"ungültiges UTF-8", [][2]string{{"text", "Befund \xff\xfe"}},
-			400, CodeUngueltigeAnfrage, "map[feld:text]"},
-		{"unbekanntes Modul", [][2]string{{"text", "Befund"}, {"modul", "sport"}},
-			400, CodeUngueltigeAnfrage, "map[feld:modul wert:sport]"},
+		{"100,001 characters", [][2]string{{"text", strings.Repeat("a", core.MaxTextChars+1)}},
+			413, CodeFileTooLarge, "map[maxChars:100000]"},
+		{"100,001 umlauts", [][2]string{{"text", strings.Repeat("ü", core.MaxTextChars+1)}},
+			413, CodeFileTooLarge, "map[maxChars:100000]"},
+		{"invalid UTF-8", [][2]string{{"text", "Befund \xff\xfe"}},
+			400, CodeInvalidRequest, "map[field:text]"},
+		{"unknown module", [][2]string{{"text", "Befund"}, {"module", "sport"}},
+			400, CodeInvalidRequest, "map[field:module value:sport]"},
 	} {
-		t.Run(f.name, func(t *testing.T) {
-			// Dienst ohne Speicher und Modelle: Die Prüfung kommt vor allem anderen.
-			d := dienst.NeuHochladen(nil, nil, nil, nil)
-			router := NeuerRouter(Abhaengigkeiten{DB: pingerAttrappe{}, Hochladen: d})
+		t.Run(c.name, func(t *testing.T) {
+			// Service without store and models: the check comes before anything else.
+			u := service.NewUploader(nil, nil, nil, nil, nil)
+			router := NewRouter(Dependencies{DB: fakePinger{}, Uploader: u})
 			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, textFormular(t, f.felder...))
+			router.ServeHTTP(rec, textForm(t, c.fields...))
 
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if fmt.Sprint(a.Fehler.Details) != f.details {
-				t.Errorf("details = %v, erwartet %s", a.Fehler.Details, f.details)
+			a := checkError(t, rec, c.status, c.code)
+			if fmt.Sprint(a.Error.Details) != c.details {
+				t.Errorf("details = %v, want %s", a.Error.Details, c.details)
 			}
 		})
 	}
 }
 
-// 100 000 Umlaute sind 200 000 Bytes, aber erlaubt: Der Handler lässt sie
-// durch.
-func TestTextImport_GrenzeErlaubt(t *testing.T) {
-	h := &hochladerAttrappe{eintrag: textEintrag()}
-	rec := hochladen(t, h, textFormular(t, [2]string{"text", strings.Repeat("ü", kern.MaxTextZeichen)}))
-	if rec.Code != http.StatusCreated || h.textUpload == nil {
-		t.Errorf("Status %d", rec.Code)
+// 100,000 umlauts are 200,000 bytes, but allowed: the handler lets them
+// through.
+func TestTextImport_LimitAllowed(t *testing.T) {
+	u := &fakeUploader{entry: textEntry()}
+	rec := upload(t, u, textForm(t, [2]string{"text", strings.Repeat("ü", core.MaxTextChars)}))
+	if rec.Code != http.StatusCreated || u.textUpload == nil {
+		t.Errorf("status %d", rec.Code)
 	}
 }
 
-func TestTextImport_FehlerDesDienstes(t *testing.T) {
-	for _, f := range []struct {
-		err       error
-		status    int
-		code      string
-		nachricht string
-		details   string
+func TestTextImport_ServiceErrors(t *testing.T) {
+	for _, c := range []struct {
+		err     error
+		status  int
+		code    string
+		message string
+		details string
 	}{
-		{kern.ErrDateiLeer, 400, CodeDateiFehlt, "Bitte einen Text eingeben.", "map[]"},
-		{&dienst.DuplikatFehler{EintragID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplikat,
-			"Diesen Text hast du schon importiert.", "map[eintragId:6727a1f3c2b4e5d6f7a8b9c0]"},
-		{&kern.ErkennungFehler{Feld: "typ", Grund: "x"}, 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
-		{fmt.Errorf("JSON kaputt: %w", modell.ErrAntwortUngueltig), 502, CodeAuslesenFehlgeschlagen, "", "map[]"},
-		{fmt.Errorf("Gemini 503: %w", modell.ErrNichtErreichbar), 503, CodeModellNichtErreichbar, "", "map[]"},
-		{fmt.Errorf("Datenbank weg"), 500, CodeInternerFehler, "", "map[]"},
+		{core.ErrFileEmpty, 400, CodeFileMissing, "Bitte einen Text eingeben.", "map[]"},
+		{&service.DuplicateError{EntryID: "6727a1f3c2b4e5d6f7a8b9c0"}, 409, CodeDuplicate,
+			"Diesen Text hast du schon importiert.", "map[entryId:6727a1f3c2b4e5d6f7a8b9c0]"},
+		{&core.ExtractionError{Field: "type", Reason: "x"}, 502, CodeExtractionFailed, "", "map[]"},
+		{fmt.Errorf("broken JSON: %w", llm.ErrInvalidResponse), 502, CodeExtractionFailed, "", "map[]"},
+		{fmt.Errorf("Gemini 503: %w", llm.ErrUnavailable), 503, CodeModelUnavailable, "", "map[]"},
+		{fmt.Errorf("database gone"), 500, CodeInternalError, "", "map[]"},
 	} {
-		t.Run(f.code, func(t *testing.T) {
-			h := &hochladerAttrappe{err: f.err}
-			rec := hochladen(t, h, textFormular(t, [2]string{"text", "Befund"}))
-			a := pruefeFehler(t, rec, f.status, f.code)
-			if f.nachricht != "" && a.Fehler.Nachricht != f.nachricht {
-				t.Errorf("Nachricht %q", a.Fehler.Nachricht)
+		t.Run(c.code, func(t *testing.T) {
+			u := &fakeUploader{err: c.err}
+			rec := upload(t, u, textForm(t, [2]string{"text", "Befund"}))
+			a := checkError(t, rec, c.status, c.code)
+			if c.message != "" && a.Error.Message != c.message {
+				t.Errorf("message %q", a.Error.Message)
 			}
-			if fmt.Sprint(a.Fehler.Details) != f.details && !(f.details == "map[]" && a.Fehler.Details == nil) {
-				t.Errorf("details = %v, erwartet %s", a.Fehler.Details, f.details)
+			if fmt.Sprint(a.Error.Details) != c.details && !(c.details == "map[]" && a.Error.Details == nil) {
+				t.Errorf("details = %v, want %s", a.Error.Details, c.details)
 			}
-			for _, intern := range []string{"Datenbank weg", "Gemini", "JSON kaputt", "Befund"} {
-				if strings.Contains(rec.Body.String(), intern) {
-					t.Errorf("%q in der Antwort: %s", intern, rec.Body)
+			for _, internal := range []string{"database gone", "Gemini", "broken JSON", "Befund"} {
+				if strings.Contains(rec.Body.String(), internal) {
+					t.Errorf("%q in the response: %s", internal, rec.Body)
 				}
 			}
 		})
