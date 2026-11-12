@@ -560,15 +560,57 @@ confirmed and can jump to their place in the original.
 
 ### Where
 
-> **TODO (Dylan):** where the check is shown (entry, timeline?), what a
-> confirmed, an unconfirmed and a corrected value look like, and how an
-> unchecked entry is shown.
+Only in the [entry](#11-entry): a card right under the original sums up
+the check, and „Dokumentdatum“, „Quelle“ and every fact in „Erkannte
+Angaben“ carry a mark. The timeline shows nothing, because the short form
+has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
+„Typ“ and „Importiert“ are never checked and have no mark.
+
+- **Confirmed** (`confirmed`): a small check mark right after the value.
+  Screen readers read it as „Im Original gefunden“.
+- **Unconfirmed** (`unconfirmed`): a grey line „Nicht im Original
+  gefunden“ under the value. On purpose without a warning color: the value
+  could not be found in the original, which does not mean it is wrong.
+- **Corrected** (`corrected_confirmed`, `corrected_unconfirmed`): no
+  second mark; the result is added to the existing correction hint, e.g.
+  „Wert korrigiert, erkannt: 6,3 · im Original gefunden“ or „Wert
+  korrigiert, erkannt: 2 · nicht im Original gefunden“.
+- **Unchecked entry** (`unchecked`): the card says „Nicht geprüft“ with one
+  neutral sentence for the `reason`, and no value has a mark. An entry
+  without `verification` (older backend) counts as `not_run`.
+
+| `reason` | Sentence in the card |
+|---|---|
+| `ocr_unavailable` | „Die Prüfung ist auf diesem Server nicht eingerichtet.“ |
+| `ocr_failed` | „Das Original konnte beim Prüfen nicht gelesen werden.“ |
+| `unsupported_file_type` | „Dieser Dateityp kann nicht geprüft werden.“ |
+| `too_many_pages` | „Das PDF hat mehr als 10 Seiten und wird deshalb nicht geprüft.“ |
+| `image_too_large` | „Das Bild ist zu groß, um es zu prüfen.“ |
+| `no_text` | „Im Original wurde kein lesbarer Text gefunden.“ |
+| `not_run` or unknown | „Dieser Eintrag wurde noch nicht geprüft.“ |
+
+<img src="features/verification-summary.png" width="260" alt="Entry „Laborbefund“: card „5 von 6 Werten im Original gefunden (83 %)“, „Abgleich mit der Textebene des PDF · 1 Wert korrigiert“, info button; check marks at date and issuer"> <img src="features/verification-marks.png" width="260" alt="Facts of the lab report: check marks, a correction hint „· im Original gefunden“ and the grey line „Nicht im Original gefunden“ at CRP"> <img src="features/verification-unchecked.png" width="260" alt="Entry of a photo with the card „Nicht geprüft“ and „Die Prüfung ist auf diesem Server nicht eingerichtet.“">
 
 ### How to use
 
-> **TODO (Dylan):** what the user sees and taps, e.g. the summary
-> („5 von 6 bestätigt“), the marks per value, and the jump into the
-> original ([Original](#12-original)).
+1. Open an entry. The card under the original shows how many values were
+   found, e.g. „5 von 6 Werten im Original gefunden (83 %)“, and what they
+   were compared against: „Abgleich mit der Textebene des PDF“, „Abgleich per
+   Texterkennung im Foto“ (or „… im gescannten PDF“), „Abgleich mit dem
+   eingegebenen Text“ or, for a PDF with digital and scanned pages,
+   „Abgleich mit Textebene und Texterkennung im PDF“. If the user corrected
+   values, „· 1 Wert korrigiert“ follows.
+2. The info button („Was bedeutet die Prüfung?“) opens a short
+   explanation, „So prüft Lifelog die Werte“: what found and not found
+   mean, that type and import date are not checked, that the check is no
+   medical assessment, and which program checked when.
+3. Look at the values without a check mark in the original („Originaldatei
+   öffnen“). If one is wrong, correct it with the pencil
+   ([Correction](#9-correction)). The app shows the check from the
+   backend's response right away: the card and the mark of the value
+   change, e.g. to „4 von 6 Werten im Original gefunden (67 %)“.
+4. The jump from a value to its place in the original is not built yet
+   ([Original](#12-original)); the app already reads the `locations`.
 
 ### Behind the scenes
 
@@ -765,8 +807,14 @@ From top to bottom:
   bar to [delete](#13-delete).
 - „Zurück“ leads to where the entry was opened from (timeline or answer).
 
-> **TODO (Dylan):** the verification marks in the entry, see
-> [section 8](#8-checking-values-with-ocr-verification).
+**Verification marks** ([section 8](#8-checking-values-with-ocr-verification)):
+between the original and „Angaben“ a card sums up the check („5 von 6
+Werten im Original gefunden (83 %)“, or „Nicht geprüft“ with the reason) and has
+an info button for the explanation. „Dokumentdatum“, „Quelle“ and every
+fact carry a small check mark if the value was found in the original, or
+the grey line „Nicht im Original gefunden“ if not. A corrected value shows
+the result in its correction hint („… · im Original gefunden“). After a
+correction both come from the backend's response.
 
 ### Behind the scenes
 

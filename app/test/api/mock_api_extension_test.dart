@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mock_api_client.dart';
@@ -29,17 +30,17 @@ void main() {
       expect(sport.module, 'sport');
       expect(sport.type, 'training');
 
-      expect(await mock.listEntries(module: g), hasLength(3));
+      expect(await mock.listEntries(module: g), hasLength(sampleCount));
       final list = await mock.listEntries(module: 'sport');
       expect(list.map((e) => e.id), [sport.id]);
     });
 
     test('without or with an empty module, health applies', () async {
       final mock = fastMock();
-      expect(await mock.listEntriesWithParameters({}), hasLength(3));
+      expect(await mock.listEntriesWithParameters({}), hasLength(sampleCount));
       expect(
         await mock.listEntriesWithParameters({'module': ''}),
-        hasLength(3),
+        hasLength(sampleCount),
       );
     });
 
@@ -129,7 +130,7 @@ void main() {
       final file = await mock.getFile(entry.id);
       expect(file.isText, isTrue);
       expect(utf8.decode(file.bytes), text);
-      expect(await mock.listEntries(module: g), hasLength(4));
+      expect(await mock.listEntries(module: g), hasLength(sampleCount + 1));
     });
 
     test('without a date in the text: documentDate null', () async {
@@ -183,7 +184,11 @@ void main() {
           mock.importText('Test $word', module: g),
           throwsApiException(code),
         );
-        expect(await mock.listEntries(module: g), hasLength(3), reason: word);
+        expect(
+          await mock.listEntries(module: g),
+          hasLength(sampleCount),
+          reason: word,
+        );
       }
     });
 
@@ -209,7 +214,7 @@ void main() {
         mock.getFile(labReportId),
         throwsApiException(ErrorCode.entryNotFound, status: 404),
       );
-      expect(await mock.listEntries(module: g), hasLength(2));
+      expect(await mock.listEntries(module: g), hasLength(sampleCount - 1));
       final answer = await mock.ask('Hämoglobin', module: g);
       expect(answer.found, isFalse);
     });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/platform/file_chooser.dart';
@@ -84,7 +85,10 @@ void main() {
     // ... and after „Zurück“ it is in the timeline.
     await tapBack(tester);
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
-    expect(await mock.listEntries(module: 'health'), hasLength(4));
+    expect(
+      await mock.listEntries(module: 'health'),
+      hasLength(sampleCount + 1),
+    );
   });
 
   testWidgets('X on the preview discards the file', (tester) async {
@@ -101,7 +105,7 @@ void main() {
 
     expect(find.text('falsch.pdf'), findsNothing);
     expect(find.text('PDF auswählen'), findsOneWidget);
-    expect(await mock.listEntries(module: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
   });
 
   testWidgets('duplicate: notice and jump to the existing entry', (
@@ -143,7 +147,7 @@ void main() {
 
     expect(find.textContaining('größer als 10 MB'), findsOneWidget);
     expect(uploadButton(), findsNothing);
-    expect(await mock.listEntries(module: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
   });
 
   testWidgets('size already known when choosing (FileTooLargeException)', (

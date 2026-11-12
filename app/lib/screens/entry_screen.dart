@@ -6,6 +6,7 @@ import '../api/api_exception.dart';
 import '../model/plain_date.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
+import '../model/verification.dart';
 import '../module/module_catalog.dart';
 import '../widgets/error_view.dart';
 import '../widgets/format.dart';
@@ -13,6 +14,7 @@ import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'correction_dialogs.dart';
 import 'original_file_screen.dart';
+import 'verification_view.dart';
 
 /// Shows an entry and allows correcting wrongly recognized values.
 ///
@@ -249,6 +251,7 @@ class _EntryScreenState extends State<EntryScreen> {
           image: _image,
           onOpen: (preloaded) => _openOriginal(entry, preloaded),
         ),
+        VerificationSummary(verification: entry.verification, file: entry.file),
         const _Section('Angaben'),
         _FieldRow(
           label: 'Typ',
@@ -263,12 +266,14 @@ class _EntryScreenState extends State<EntryScreen> {
             entry.correctionFor('documentDate'),
             (iso) => PlainDate.tryParse(iso)?.display ?? iso,
           ),
+          check: entry.verification.checkFor('documentDate'),
           edit: edit(() => _correctDate(entry)),
         ),
         _FieldRow(
           label: 'Quelle',
           value: entry.issuer ?? 'nicht erkannt',
           correction: _correctionHint(entry.correctionFor('issuer')),
+          check: entry.verification.checkFor('issuer'),
           edit: edit(() => _correctIssuer(entry)),
         ),
         _FieldRow(
@@ -295,6 +300,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 'Einheit',
               ),
             ].join('\n').nullIfEmpty,
+            check: entry.verification.checkFor('facts.${fact.id}'),
             edit: edit(() => _correctFact(entry, fact)),
           ),
         const _Section('Volltext'),
@@ -353,12 +359,19 @@ class _Section extends StatelessWidget {
   }
 }
 
-/// A row with label, value, correction hint if any, and pencil button.
+/// A row with label, value, correction hint if any, verification mark if
+/// any, and pencil button.
+///
+/// Marks of the verification, calm on purpose (not found ≠ wrong):
+/// - found: a small check mark after the value;
+/// - not found: a grey line „Nicht im Original gefunden“;
+/// - corrected: the result is added to the correction hint instead.
 class _FieldRow extends StatelessWidget {
   const _FieldRow({
     required this.label,
     required this.value,
     this.correction,
+    this.check,
     this.edit,
     this.correctable = true,
   });
@@ -369,6 +382,9 @@ class _FieldRow extends StatelessWidget {
   /// Hint like „korrigiert, erkannt: 6,3“, otherwise `null`.
   final String? correction;
 
+  /// Check of this field; `null` if it was not checked.
+  final FieldCheck? check;
+
   /// `null` disables the pencil button (e.g. while saving).
   final VoidCallback? edit;
 
@@ -378,40 +394,63 @@ class _FieldRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final correction = this.correction;
+    final colors = theme.colorScheme;
+    final found = check?.status.isFound ?? false;
+    final notFound = check?.status.isNotFound ?? false;
+    // A corrected field shows its result in the correction hint, not twice.
+    final correction = this.correction == null
+        ? null
+        : [
+            this.correction!,
+            if (found) 'im Original gefunden',
+            if (notFound) 'nicht im Original gefunden',
+          ].join(' · ');
     return ListTile(
       title: Text(
         label,
         style: theme.textTheme.labelMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+          color: colors.onSurfaceVariant,
         ),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: theme.textTheme.bodyLarge),
-          if (correction != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.edit_note,
-                    size: 16,
-                    color: theme.colorScheme.tertiary,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      correction,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.tertiary,
-                      ),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  value,
+                  style: theme.textTheme.bodyLarge,
+                  // As wide as the longest line, so the mark stays next to a
+                  // wrapped value instead of moving to the far right.
+                  textWidthBasis: TextWidthBasis.longestLine,
+                ),
+              ),
+              if (found && correction == null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Tooltip(
+                    message: foundLabel,
+                    child: Icon(
+                      Icons.check_circle_outline,
+                      size: 16,
+                      color: colors.primary,
                     ),
                   ),
-                ],
-              ),
+                ),
+            ],
+          ),
+          if (correction != null)
+            _Hint(
+              icon: Icons.edit_note,
+              text: correction,
+              color: colors.tertiary,
+            )
+          else if (notFound)
+            _Hint(
+              icon: Icons.search_off,
+              text: notFoundLabel,
+              color: colors.onSurfaceVariant,
             ),
         ],
       ),
@@ -422,6 +461,36 @@ class _FieldRow extends StatelessWidget {
               onPressed: edit,
             )
           : null,
+    );
+  }
+}
+
+/// A small line with an icon under a value.
+class _Hint extends StatelessWidget {
+  const _Hint({required this.icon, required this.text, required this.color});
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

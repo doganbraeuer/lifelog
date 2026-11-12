@@ -152,6 +152,7 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | `details.infoId` | `details.factId` |
 | `details.eintragId` | `details.entryId` |
 | `details.maxZeichen` | `details.maxChars` |
+| – | `details.maxSeconds` (since 2026-11-12, for `AUDIO_TOO_LONG`) |
 
 ### Error codes
 
@@ -195,6 +196,7 @@ The backend never sends these; the app sets them itself in an
 | `"status": "ok"` / `"fehler"` | `"status": "ok"` / `"error"` |
 | `"datenbank": "ok"` / `"nicht erreichbar"` | `"database": "ok"` / `"unreachable"` |
 | – | `"speech": "ok"` / `"unavailable"` / `"off"` (since 2026-11-12) |
+| – | Dart: `ServerStatus` (response of `GET /status`), `SpeechStatus` (`ok`, `unavailable`, `off`); `app/lib/model/server_status.dart` |
 
 ## Module and type codes
 
@@ -356,6 +358,11 @@ the text layer of a PDF, or OCR for photos and scans.
 | Fundstelle im Original | location | `Location` |
 | Prüfung (Abgleich LLM ↔ OCR) | verification | `Verification` |
 | Prüfung eines Felds | field check | `FieldCheck` |
+| Status der Prüfung (App) | verification status | Dart `VerificationStatus` (`checked`, `unchecked`); `app/lib/model/verification.dart` |
+| Prüfquelle (App) | verification source | Dart `VerificationSource` (`pdfText`, `ocr`, `text`, `mixed`, `unknown`) |
+| Grund, warum nicht geprüft (App) | verification reason | Dart `VerificationReason` (one value per `reason`, plus `unknown`) |
+| Status eines Felds (App) | field check status | Dart `FieldCheckStatus` (`confirmed`, `unconfirmed`, `correctedConfirmed`, `correctedUnconfirmed`, `unknown`) |
+| Fundstelle in einer Datei / in einem Text-Import (App) | page location / text location | Dart `PageLocation`, `TextLocation` (both a `Location`) |
 | geprüft / nicht geprüft | `checked` / `unchecked` | |
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |
 | korrigiert und bestätigt / korrigiert und unbestätigt | `corrected_confirmed` / `corrected_unconfirmed` | |
@@ -428,6 +435,13 @@ text import (docs/API.md, 3.9).
 | Schlüsselbegriff (Messung) | key term | `cmd/speechcheck`, compared with `core.TextContains` |
 | Wortfehlerrate (Messung) | word error rate (WER) | `core.WordErrorRate` |
 | Audioformat erkennen | detect audio type | `core.DetectAudioType`, `core.CheckAudio` |
+| Aufnahmegerät (Schnittstelle der App) | voice recorder | Dart `VoiceRecorder`; `app/lib/platform/voice_recorder.dart` |
+| Aufnahme mit dem Paket `record` | plugin voice recorder | Dart `PluginVoiceRecorder` |
+| fertige Aufnahme einer Sprachnotiz (App) | recording | Dart `Recording` |
+| Ordner der Aufnahmen, Aufräumen (App) | recording files | Dart `RecordingFiles` |
+| Aufnahme nicht möglich (App) | recorder exception | Dart `RecorderException`, shown as `RECORDING_FAILED` |
+| Ergebnis der Transkription (App) | transcript | Dart `Transcript`; `app/lib/model/transcript.dart` |
+| Zahlen und Einheiten im erkannten Text markieren | quantity highlight | Dart `QuantityHighlightController`; `app/lib/widgets/quantity_highlight.dart` |
 
 | Item | Value |
 |---|---|

@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/model/plain_date.dart';
+import 'package:lifelog/model/entry.dart';
 import 'package:lifelog/model/entry_patch.dart';
+import 'package:lifelog/model/verification.dart';
 
 import '../helpers.dart';
 
@@ -228,6 +230,143 @@ void main() {
         mock.correct('ffffffffffffffffffffffff', patch),
         throwsApiException(ErrorCode.entryNotFound, status: 404),
       );
+    });
+  });
+
+  group('verification after a correction (docs/API.md, 3.5)', () {
+    FieldCheckStatus statusOf(Entry entry, String field) =>
+        entry.verification.checkFor(field)!.status;
+
+    test(
+      'a corrected value not in the original: corrected_unconfirmed',
+      () async {
+        final entry = await mock.correct(
+          labReportId,
+          const EntryPatch(facts: [FactPatch('f1', value: '15,0')]),
+        );
+        expect(
+          statusOf(entry, 'facts.f1'),
+          FieldCheckStatus.correctedUnconfirmed,
+        );
+        expect(entry.verification.confirmed, 4);
+        expect(entry.verification.corrected, 2);
+        expect(entry.verification.matchPercent, 67);
+        expect(entry.verification.checkedAt, now);
+        // Also on the next GET.
+        final loaded = await mock.getEntry(labReportId);
+        expect(
+          statusOf(loaded, 'facts.f1'),
+          FieldCheckStatus.correctedUnconfirmed,
+        );
+      },
+    );
+
+    test(
+      'a corrected value that is in the original: corrected_confirmed',
+      () async {
+        // The text layer says „CRP unter 0,5 mg/dl (Ref. <0,5)“.
+        final entry = await mock.correct(
+          labReportId,
+          const EntryPatch(facts: [FactPatch('f3', value: '0,5')]),
+        );
+        expect(
+          statusOf(entry, 'facts.f3'),
+          FieldCheckStatus.correctedConfirmed,
+        );
+        expect(entry.verification.confirmed, 6);
+        expect(entry.verification.matchPercent, 100);
+      },
+    );
+
+    test(
+      'back to the recognized value: confirmed or unconfirmed again',
+      () async {
+        // f2 was corrected from 6,3 to 6,8; the PDF says 6,8.
+        final entry = await mock.correct(
+          labReportId,
+          const EntryPatch(facts: [FactPatch('f2', value: '6,3')]),
+        );
+        expect(entry.isFactCorrected('f2'), isFalse);
+        expect(statusOf(entry, 'facts.f2'), FieldCheckStatus.unconfirmed);
+        expect(entry.verification.corrected, 0);
+      },
+    );
+
+    test('a field set to null is no longer checked', () async {
+      final entry = await mock.correct(
+        labReportId,
+        const EntryPatch(documentDate: Value(null)),
+      );
+      expect(entry.verification.checkFor('documentDate'), isNull);
+      expect(entry.verification.total, 5);
+      expect(entry.verification.confirmed, 4);
+    });
+
+    test('a corrected issuer or date is searched in the original', () async {
+      final entry = await mock.correct(
+        labReportId,
+        EntryPatch(
+          issuer: const Value('Labor Muster GmbH'),
+          documentDate: Value(PlainDate(2026, 10, 15)),
+        ),
+      );
+      expect(statusOf(entry, 'issuer'), FieldCheckStatus.correctedConfirmed);
+      expect(
+        statusOf(entry, 'documentDate'),
+        FieldCheckStatus.correctedUnconfirmed,
+      );
+    });
+
+    test('correcting the unit counts as a correction of the fact', () async {
+      final entry = await mock.correct(
+        doctorLetterId,
+        const EntryPatch(facts: [FactPatch('f3', unit: Value('/mln'))]),
+      );
+      // OCR read „72/mln“, so the corrected unit is found.
+      expect(statusOf(entry, 'facts.f3'), FieldCheckStatus.correctedConfirmed);
+      final check = entry.verification.checkFor('facts.f3')!;
+      expect(check.source, VerificationSource.ocr);
+      expect(check.confidence, isNotNull);
+    });
+
+    test('a text import is checked against fullText again', () async {
+      final entry = await mock.correct(
+        noteId,
+        const EntryPatch(facts: [FactPatch('f3', value: '81')]),
+      );
+      expect(statusOf(entry, 'facts.f3'), FieldCheckStatus.correctedConfirmed);
+      final location =
+          entry.verification.checkFor('facts.f3')!.locations.single
+              as TextLocation;
+      expect(location.textIn(entry.fullText), '81 kg');
+    });
+
+    test('a type correction checks again, but changes no field', () async {
+      final entry = await mock.correct(
+        labReportId,
+        const EntryPatch(type: 'other'),
+      );
+      expect(entry.verification.checkedAt, now);
+      expect(entry.verification.confirmed, 5);
+    });
+
+    test('values that already apply: no new check', () async {
+      final before = await mock.getEntry(labReportId);
+      final entry = await mock.correct(
+        labReportId,
+        const EntryPatch(facts: [FactPatch('f1', value: '14,2')]),
+      );
+      expect(entry.verification.checkedAt, before.verification.checkedAt);
+    });
+
+    test('an unchecked entry stays unchecked', () async {
+      final entry = await mock.correct(
+        xRayId,
+        const EntryPatch(issuer: Value('Radiologie Beispiel')),
+      );
+      expect(entry.verification.isChecked, isFalse);
+      expect(entry.verification.reason, VerificationReason.ocrUnavailable);
+      expect(entry.verification.fields, isEmpty);
     });
   });
 }

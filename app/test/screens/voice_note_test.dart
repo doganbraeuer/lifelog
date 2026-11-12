@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_exception.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount, sampleData;
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/model/server_status.dart';
 import 'package:lifelog/screens/entry_screen.dart';
@@ -233,7 +234,7 @@ void main() {
       MockApiClient.sampleTranscript,
     );
     // Nothing is saved before the confirmation.
-    expect(await mock.listEntries(module: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
 
     const edited =
         '${MockApiClient.sampleTranscript} Kontrolle in zwei Wochen.';
@@ -245,9 +246,9 @@ void main() {
     expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.text('Text gespeichert.'), findsOneWidget);
     final entries = await mock.listEntries(module: 'health');
-    expect(entries, hasLength(4));
+    expect(entries, hasLength(sampleCount + 1));
     final created = entries.firstWhere(
-      (e) => ![labReportId, doctorLetterId, otherId].contains(e.id),
+      (e) => !{for (final s in sampleData()) s.json['id']}.contains(e.id),
     );
     expect((await mock.getEntry(created.id)).fullText, edited);
   });
@@ -270,7 +271,7 @@ void main() {
     expect(recorder.discards, greaterThan(0));
     expect(stopButton(), findsNothing);
     expect(voiceButton(), findsOneWidget);
-    expect(await mock.listEntries(module: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
   });
 
   testWidgets('stops on its own at 4:58 and transcribes', (tester) async {
@@ -398,7 +399,7 @@ void main() {
 
     expect(textField(), findsNothing);
     expect(voiceButton(), findsOneWidget);
-    expect(await mock.listEntries(module: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
 
     // „Text eingeben“ afterwards is the normal text import again: no
     // notice, no marks.

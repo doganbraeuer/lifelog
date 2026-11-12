@@ -83,3 +83,21 @@ String formatTimestamp(DateTime time) {
       '${two(utc.day)}T${two(utc.hour)}:${two(utc.minute)}:'
       '${two(utc.second)}Z';
 }
+
+int? readIntOrNull(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value == null || value is int) return value as int?;
+  throw FormatException('Field "$field" is neither an integer nor null');
+}
+
+/// Like [readDouble], but `null` is allowed.
+double? readDoubleOrNull(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  throw FormatException('Field "$field" is neither a number nor null');
+}
+
+/// Like [readTimestamp], but `null` is allowed.
+DateTime? readTimestampOrNull(Map<String, dynamic> json, String field) =>
+    json[field] == null ? null : readTimestamp(json, field);

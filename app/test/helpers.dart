@@ -163,3 +163,9 @@ MockApiClient fastMock({
 const labReportId = '6727a1f3c2b4e5d6f7a8b9c0';
 const doctorLetterId = '6727a20bc2b4e5d6f7a8b9d4';
 const otherId = '6727a2a9c2b4e5d6f7a8b9e7';
+
+// Further sample entries for the cases of the verification.
+const noteId = '6727a301c2b4e5d6f7a8b9f1';
+const prescriptionId = '6727a2f0c2b4e5d6f7a8b9f4';
+const xRayId = '6727a2c4c2b4e5d6f7a8b9f6';
+const oldLabId = '6727a18ec2b4e5d6f7a8b9f8';

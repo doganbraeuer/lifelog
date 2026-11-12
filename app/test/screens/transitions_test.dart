@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/screens/entry_screen.dart';
 import 'package:lifelog/screens/timeline_screen.dart';
@@ -71,7 +72,7 @@ void main() {
           of: find.byType(TimelineScreen),
           matching: find.byType(OpenContainer<void>),
         ),
-        findsNWidgets(3),
+        findsNWidgets(sampleCount),
       );
     });
 
