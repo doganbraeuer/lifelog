@@ -12,9 +12,9 @@ void main() {
       final mock = fastMock(catalog: testCatalog());
       final entry = await mock.correct(
         labReportId,
-        const EntryPatch(type: 'impfpass'),
+        const EntryPatch(type: 'vaccination_card'),
       );
-      expect(entry.type, 'impfpass');
+      expect(entry.type, 'vaccination_card');
     });
 
     test('type of another module: 400 INVALID_REQUEST', () async {
@@ -25,9 +25,9 @@ void main() {
       );
     });
 
-    test('with the default catalog „impfpass“ is unknown', () async {
+    test('with the default catalog „vaccination_card“ is unknown', () async {
       await expectLater(
-        fastMock().correctWithJson(labReportId, {'type': 'impfpass'}),
+        fastMock().correctWithJson(labReportId, {'type': 'vaccination_card'}),
         throwsApiException(ErrorCode.invalidRequest, status: 400),
       );
     });

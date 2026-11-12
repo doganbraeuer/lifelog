@@ -54,7 +54,7 @@ void main() {
     test('module by ID', () {
       expect(catalog.byId('health')?.name, 'Gesundheit');
       expect(catalog.byId('nutrition')?.name, 'Ernährung');
-      expect(catalog.byId('garten'), isNull);
+      expect(catalog.byId('garden'), isNull);
     });
 
     test('type name and icon', () {
@@ -64,12 +64,12 @@ void main() {
 
     test('unknown type or unknown module: ID and fallback icon', () {
       expect(catalog.typeName('health', 'roentgenbild'), 'roentgenbild');
-      expect(catalog.typeName('garten', 'lab_report'), 'lab_report');
+      expect(catalog.typeName('garden', 'lab_report'), 'lab_report');
       expect(
-        catalog.typeIcon('garten', 'lab_report'),
+        catalog.typeIcon('garden', 'lab_report'),
         ModuleCatalog.unknownIcon,
       );
-      expect(catalog.types('garten'), isEmpty);
+      expect(catalog.types('garden'), isEmpty);
     });
 
     test('a type only applies in its module', () {
@@ -97,18 +97,18 @@ void main() {
     final withGarden = ModuleCatalog([
       ...defaultModules,
       const ModuleDefinition(
-        id: 'garten',
+        id: 'garden',
         name: 'Garten',
         description: 'Pflanzen und Ernten',
         icon: Icons.yard_outlined,
         color: Colors.lime,
         types: [
-          TypeDefinition(id: 'saatgut', name: 'Saatgut', icon: Icons.grass),
+          TypeDefinition(id: 'seeds', name: 'Saatgut', icon: Icons.grass),
         ],
         active: true,
       ),
     ]);
-    expect(withGarden.typeName('garten', 'saatgut'), 'Saatgut');
+    expect(withGarden.typeName('garden', 'seeds'), 'Saatgut');
     expect(withGarden.modules, hasLength(5));
   });
 }

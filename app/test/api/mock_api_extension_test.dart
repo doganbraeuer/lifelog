@@ -45,12 +45,12 @@ void main() {
 
     test('unknown module in the list: 400 INVALID_PARAMETER', () async {
       try {
-        await fastMock().listEntries(module: 'garten');
+        await fastMock().listEntries(module: 'garden');
         fail('Fehler erwartet');
       } on ApiException catch (f) {
         expect(f.httpStatus, 400);
         expect(f.code, ErrorCode.invalidParameter);
-        expect(f.details, {'parameter': 'module', 'value': 'garten'});
+        expect(f.details, {'parameter': 'module', 'value': 'garden'});
       }
     });
 
@@ -58,16 +58,16 @@ void main() {
         'INVALID_REQUEST', () async {
       final mock = fastMock();
       for (final methodCall in [
-        () => mock.upload(testPdf('a.pdf').bytes, 'a.pdf', module: 'garten'),
-        () => mock.importText('Text', module: 'garten'),
-        () => mock.ask('Hämoglobin', module: 'garten'),
+        () => mock.upload(testPdf('a.pdf').bytes, 'a.pdf', module: 'garden'),
+        () => mock.importText('Text', module: 'garden'),
+        () => mock.ask('Hämoglobin', module: 'garden'),
       ]) {
         try {
           await methodCall();
           fail('Fehler erwartet');
         } on ApiException catch (f) {
           expect(f.code, ErrorCode.invalidRequest);
-          expect(f.details, {'field': 'module', 'value': 'garten'});
+          expect(f.details, {'field': 'module', 'value': 'garden'});
         }
       }
     });
@@ -76,7 +76,7 @@ void main() {
       'question: check the question first, then the module (as the backend)',
       () async {
         await expectLater(
-          fastMock().ask('  ', module: 'garten'),
+          fastMock().ask('  ', module: 'garden'),
           throwsApiException(ErrorCode.questionMissing),
         );
       },

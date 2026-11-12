@@ -185,7 +185,7 @@ class TimelineScreenState extends State<TimelineScreen> {
       return const TimelineSkeleton(key: ValueKey('loading'));
     }
     return RefreshIndicator(
-      key: ValueKey(entries.isEmpty ? 'leer' : 'liste'),
+      key: ValueKey(entries.isEmpty ? 'empty' : 'list'),
       onRefresh: reload,
       child: entries.isEmpty
           ? _EmptyTimeline(moduleId: widget.moduleId, onUpload: widget.onUpload)
