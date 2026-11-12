@@ -13,6 +13,7 @@ import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'correction_dialogs.dart';
 import 'original_file_screen.dart';
+import 'verification_view.dart';
 
 /// Shows an entry and allows correcting wrongly recognized values.
 ///
@@ -249,6 +250,7 @@ class _EntryScreenState extends State<EntryScreen> {
           image: _image,
           onOpen: (preloaded) => _openOriginal(entry, preloaded),
         ),
+        VerificationSummary(verification: entry.verification, file: entry.file),
         const _Section('Angaben'),
         _FieldRow(
           label: 'Typ',
