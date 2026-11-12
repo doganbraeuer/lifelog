@@ -1,5 +1,5 @@
-// Tests für die Erweiterungen aus docs/API.md, Abschnitt 5: modul,
-// Text-Import, Löschen und die Regeln zum Korrigieren (Leerraum).
+// Tests for the extensions from docs/API.md, section 5: module,
+// text import, delete and the rules for correcting (whitespace).
 
 import 'dart:convert';
 
@@ -18,9 +18,9 @@ const g = 'health';
 
 void main() {
   group('module', () {
-    test('Liste nur mit Einträgen des Moduls', () async {
-      // Im Test-Katalog hat Sport den Typ „training“, Import ist möglich.
-      final mock = schnellerMock(catalog: testKatalog());
+    test('list only with entries of the module', () async {
+      // In the test catalog sport has the type „training“, import is possible.
+      final mock = fastMock(catalog: testCatalog());
       final sport = await mock.upload(
         testPdf('lauf.pdf').bytes,
         'lauf.pdf',
@@ -30,12 +30,12 @@ void main() {
       expect(sport.type, 'training');
 
       expect(await mock.listEntries(module: g), hasLength(3));
-      final liste = await mock.listEntries(module: 'sport');
-      expect(liste.map((e) => e.id), [sport.id]);
+      final list = await mock.listEntries(module: 'sport');
+      expect(list.map((e) => e.id), [sport.id]);
     });
 
-    test('ohne oder mit leerem modul gilt gesundheit', () async {
-      final mock = schnellerMock();
+    test('without or with an empty module, health applies', () async {
+      final mock = fastMock();
       expect(await mock.listEntriesWithParameters({}), hasLength(3));
       expect(
         await mock.listEntriesWithParameters({'module': ''}),
@@ -43,9 +43,9 @@ void main() {
       );
     });
 
-    test('unbekanntes Modul in der Liste: 400 INVALID_PARAMETER', () async {
+    test('unknown module in the list: 400 INVALID_PARAMETER', () async {
       try {
-        await schnellerMock().listEntries(module: 'garten');
+        await fastMock().listEntries(module: 'garten');
         fail('Fehler erwartet');
       } on ApiException catch (f) {
         expect(f.httpStatus, 400);
@@ -54,16 +54,16 @@ void main() {
       }
     });
 
-    test('unbekanntes Modul bei Upload, Text und Frage: 400 '
+    test('unknown module for upload, text and question: 400 '
         'INVALID_REQUEST', () async {
-      final mock = schnellerMock();
-      for (final aufruf in [
+      final mock = fastMock();
+      for (final methodCall in [
         () => mock.upload(testPdf('a.pdf').bytes, 'a.pdf', module: 'garten'),
         () => mock.importText('Text', module: 'garten'),
         () => mock.ask('Hämoglobin', module: 'garten'),
       ]) {
         try {
-          await aufruf();
+          await methodCall();
           fail('Fehler erwartet');
         } on ApiException catch (f) {
           expect(f.code, ErrorCode.invalidRequest);
@@ -73,50 +73,50 @@ void main() {
     });
 
     test(
-      'Frage: erst die Frage prüfen, dann das Modul (wie Backend)',
+      'question: check the question first, then the module (as the backend)',
       () async {
         await expectLater(
-          schnellerMock().ask('  ', module: 'garten'),
-          wirftApiFehler(ErrorCode.questionMissing),
+          fastMock().ask('  ', module: 'garten'),
+          throwsApiException(ErrorCode.questionMissing),
         );
       },
     );
 
-    test('Modul ohne Typen: kein Import möglich', () async {
-      // Im Standard-Katalog hat Ernährung noch keine Typen.
+    test('module without types: no import possible', () async {
+      // In the default catalog nutrition has no types yet.
       await expectLater(
-        schnellerMock().importText('Müsli', module: 'nutrition'),
-        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
+        fastMock().importText('Müsli', module: 'nutrition'),
+        throwsApiException(ErrorCode.invalidRequest, status: 400),
       );
     });
 
-    test('Frage sucht nur im Modul, Quellen tragen modul', () async {
-      final mock = schnellerMock(catalog: testKatalog());
-      final treffer = await mock.ask('Hämoglobin', module: g);
-      expect(treffer.sources.single.module, g);
+    test('question only searches the module, sources carry module', () async {
+      final mock = fastMock(catalog: testCatalog());
+      final hit = await mock.ask('Hämoglobin', module: g);
+      expect(hit.sources.single.module, g);
 
-      final anderes = await mock.ask('Hämoglobin', module: 'sport');
-      expect(anderes.found, isFalse);
-      expect(anderes.answer, notFoundAnswer);
+      final otherModule = await mock.ask('Hämoglobin', module: 'sport');
+      expect(otherModule.found, isFalse);
+      expect(otherModule.answer, notFoundAnswer);
     });
   });
 
-  group('Text-Import', () {
+  group('text import', () {
     const text =
         '  Hausarztpraxis Beispiel  \n'
         'Überweisung vom 31.02.2026, korrigiert am 21.10.2026\n'
         'zur Physiotherapie';
 
-    test('legt einen Eintrag mit text.txt an', () async {
-      final mock = schnellerMock();
+    test('creates an entry with text.txt', () async {
+      final mock = fastMock();
       final entry = await mock.importText(text, module: g);
       final bytes = utf8.encode(text);
 
       expect(entry.module, g);
       expect(entry.type, 'other');
-      expect(entry.fullText, text); // unverändert
+      expect(entry.fullText, text); // unchanged
       expect(entry.issuer, 'Hausarztpraxis Beispiel');
-      // 31.02. gibt es nicht; das erste gültige Datum zählt.
+      // 31 February does not exist; the first valid date counts.
       expect(entry.documentDate, PlainDate(2026, 10, 21));
       expect(entry.facts, isEmpty);
       expect(entry.corrections, isEmpty);
@@ -132,69 +132,63 @@ void main() {
       expect(await mock.listEntries(module: g), hasLength(4));
     });
 
-    test('ohne Datum im Text: dokumentdatum null', () async {
-      final entry = await schnellerMock().importText(
-        'Notiz ohne Datum',
-        module: g,
-      );
+    test('without a date in the text: documentDate null', () async {
+      final entry = await fastMock().importText('Notiz ohne Datum', module: g);
       expect(entry.documentDate, isNull);
     });
 
-    test('leer oder nur Leerzeichen: 400 FILE_MISSING', () async {
-      for (final leer in ['', '   ', '\n\t ']) {
+    test('empty or only spaces: 400 FILE_MISSING', () async {
+      for (final empty in ['', '   ', '\n\t ']) {
         await expectLater(
-          schnellerMock().importText(leer, module: g),
-          wirftApiFehler(ErrorCode.fileMissing, status: 400),
+          fastMock().importText(empty, module: g),
+          throwsApiException(ErrorCode.fileMissing, status: 400),
         );
       }
     });
 
-    test('über 100 000 Zeichen: 413, genau 100 000 ist erlaubt', () async {
+    test('over 100 000 characters: 413, exactly 100 000 is allowed', () async {
       await expectLater(
-        schnellerMock().importText('a' * (maxTextLength + 1), module: g),
-        wirftApiFehler(ErrorCode.fileTooLarge, status: 413),
+        fastMock().importText('a' * (maxTextLength + 1), module: g),
+        throwsApiException(ErrorCode.fileTooLarge, status: 413),
       );
-      final entry = await schnellerMock().importText(
-        'a' * maxTextLength,
-        module: g,
-      );
+      final entry = await fastMock().importText('a' * maxTextLength, module: g);
       expect(entry.fullText.length, maxTextLength);
     });
 
     test(
-      'derselbe Text zweimal: 409 DUPLICATE; ein Leerzeichen mehr nicht',
+      'the same text twice: 409 DUPLICATE; one more space does not',
       () async {
-        final mock = schnellerMock();
-        final erster = await mock.importText(text, module: g);
+        final mock = fastMock();
+        final firstEntry = await mock.importText(text, module: g);
         try {
           await mock.importText(text, module: g);
           fail('Fehler erwartet');
         } on ApiException catch (f) {
           expect(f.code, ErrorCode.duplicate);
-          expect(f.details['entryId'], erster.id);
+          expect(f.details['entryId'], firstEntry.id);
         }
-        final zweiter = await mock.importText('$text ', module: g);
-        expect(zweiter.id, isNot(erster.id));
+        final secondEntry = await mock.importText('$text ', module: g);
+        expect(secondEntry.id, isNot(firstEntry.id));
       },
     );
 
-    test('Fehler-Auslöser im Text, nichts gespeichert', () async {
-      for (final (wort, code) in [
+    test('error triggers in the text, nothing stored', () async {
+      for (final (word, code) in [
         ('unreadable', ErrorCode.unreadable),
         ('extractionerror', ErrorCode.extractionFailed),
         ('modelerror', ErrorCode.modelUnavailable),
       ]) {
-        final mock = schnellerMock();
+        final mock = fastMock();
         await expectLater(
-          mock.importText('Test $wort', module: g),
-          wirftApiFehler(code),
+          mock.importText('Test $word', module: g),
+          throwsApiException(code),
         );
-        expect(await mock.listEntries(module: g), hasLength(3), reason: wort);
+        expect(await mock.listEntries(module: g), hasLength(3), reason: word);
       }
     });
 
-    test('importierter Text ist durchsuchbar', () async {
-      final mock = schnellerMock();
+    test('imported text is searchable', () async {
+      final mock = fastMock();
       final entry = await mock.importText(text, module: g);
       final answer = await mock.ask('Physiotherapie', module: g);
       expect(answer.sources.single.entryId, entry.id);
@@ -202,64 +196,64 @@ void main() {
     });
   });
 
-  group('Löschen', () {
-    test('Eintrag und Datei sind weg, auch für Liste und Frage', () async {
-      final mock = schnellerMock();
-      await mock.deleteEntry(laborId);
+  group('delete', () {
+    test('entry and file are gone, also for list and question', () async {
+      final mock = fastMock();
+      await mock.deleteEntry(labReportId);
 
       await expectLater(
-        mock.getEntry(laborId),
-        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
+        mock.getEntry(labReportId),
+        throwsApiException(ErrorCode.entryNotFound, status: 404),
       );
       await expectLater(
-        mock.getFile(laborId),
-        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
+        mock.getFile(labReportId),
+        throwsApiException(ErrorCode.entryNotFound, status: 404),
       );
       expect(await mock.listEntries(module: g), hasLength(2));
       final answer = await mock.ask('Hämoglobin', module: g);
       expect(answer.found, isFalse);
     });
 
-    test('zweites Löschen: 404; ungültige ID: 400', () async {
-      final mock = schnellerMock();
-      await mock.deleteEntry(laborId);
+    test('second delete: 404; invalid ID: 400', () async {
+      final mock = fastMock();
+      await mock.deleteEntry(labReportId);
       await expectLater(
-        mock.deleteEntry(laborId),
-        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
+        mock.deleteEntry(labReportId),
+        throwsApiException(ErrorCode.entryNotFound, status: 404),
       );
       await expectLater(
         mock.deleteEntry('123'),
-        wirftApiFehler(ErrorCode.invalidId, status: 400),
+        throwsApiException(ErrorCode.invalidId, status: 400),
       );
     });
 
-    test('danach lässt sich dieselbe Datei wieder hochladen', () async {
-      final mock = schnellerMock();
+    test('afterwards the same file can be uploaded again', () async {
+      final mock = fastMock();
       final file = testPdf('demo.pdf');
-      final erster = await mock.upload(file.bytes, 'demo.pdf', module: g);
-      await mock.deleteEntry(erster.id);
+      final firstEntry = await mock.upload(file.bytes, 'demo.pdf', module: g);
+      await mock.deleteEntry(firstEntry.id);
 
-      final zweiter = await mock.upload(file.bytes, 'demo.pdf', module: g);
-      expect(zweiter.id, isNot(erster.id));
+      final secondEntry = await mock.upload(file.bytes, 'demo.pdf', module: g);
+      expect(secondEntry.id, isNot(firstEntry.id));
     });
 
-    test('Fehler im Backend: nichts gelöscht', () async {
-      final mock = schnellerMock()..simulateError = true;
+    test('error in the backend: nothing deleted', () async {
+      final mock = fastMock()..simulateError = true;
       await expectLater(
-        mock.deleteEntry(laborId),
-        wirftApiFehler(ErrorCode.internalError, status: 500),
+        mock.deleteEntry(labReportId),
+        throwsApiException(ErrorCode.internalError, status: 500),
       );
       mock.simulateError = false;
-      expect((await mock.getEntry(laborId)).id, laborId);
+      expect((await mock.getEntry(labReportId)).id, labReportId);
     });
   });
 
-  group('Korrigieren: Leerraum (docs/API.md 3.5)', () {
+  group('correcting: whitespace (docs/API.md 3.5)', () {
     late MockApiClient mock;
-    setUp(() => mock = schnellerMock());
+    setUp(() => mock = fastMock());
 
-    test('Leerraum wird entfernt', () async {
-      final entry = await mock.correctWithJson(laborId, {
+    test('whitespace is removed', () async {
+      final entry = await mock.correctWithJson(labReportId, {
         'issuer': '  Labor X  ',
         'facts': [
           {'id': 'f1', 'value': ' 15,0 ', 'unit': ' g/l '},
@@ -270,8 +264,8 @@ void main() {
       expect(entry.facts.first.unit, 'g/l');
     });
 
-    test('leere quelle und einheit gelten als null', () async {
-      final entry = await mock.correctWithJson(laborId, {
+    test('empty issuer and unit count as null', () async {
+      final entry = await mock.correctWithJson(labReportId, {
         'issuer': '   ',
         'facts': [
           {'id': 'f1', 'unit': ' '},
@@ -283,9 +277,9 @@ void main() {
       expect(entry.correctionFor('facts.f1.unit')?.recognized, 'g/dl');
     });
 
-    test('leerer wert ist ein Fehler, nichts geändert', () async {
+    test('empty value is an error, nothing changed', () async {
       try {
-        await mock.correctWithJson(laborId, {
+        await mock.correctWithJson(labReportId, {
           'issuer': 'Neu',
           'facts': [
             {'id': 'f1', 'value': '  '},
@@ -297,14 +291,14 @@ void main() {
         expect(f.details['field'], 'facts.f1.value');
       }
       expect(
-        (await mock.getEntry(laborId)).issuer,
+        (await mock.getEntry(labReportId)).issuer,
         'Labor Muster GmbH, Salzburg',
       );
     });
 
-    test('nach dem Abschneiden unverändert: keine Korrektur', () async {
+    test('unchanged after trimming: no correction', () async {
       final entry = await mock.correct(
-        laborId,
+        labReportId,
         const EntryPatch(facts: [FactPatch('f1', value: ' 14,2 ')]),
       );
       expect(entry.correctionFor('facts.f1.value'), isNull);

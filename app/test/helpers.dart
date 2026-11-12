@@ -9,75 +9,75 @@ import 'package:lifelog/main.dart';
 import 'package:lifelog/module/module_catalog.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 
-/// Hoher Test-Bildschirm, damit lange Listen ganz gebaut werden
-/// (eine ListView baut nur, was sichtbar ist).
-void grosserBildschirm(WidgetTester tester) {
+/// Tall test screen, so that long lists are built completely
+/// (a ListView only builds what is visible).
+void useLargeScreen(WidgetTester tester) {
   tester.view.physicalSize = const Size(800, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 }
 
-/// Tippt auf den Zurück-Pfeil. `tester.pageBack()` sucht den englischen
-/// Tooltip „Back“, die App ist aber deutsch („Zurück“).
-Future<void> zurueck(WidgetTester tester) async {
+/// Taps the back arrow. `tester.pageBack()` looks for the English tooltip
+/// „Back“, but the app is German („Zurück“).
+Future<void> tapBack(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Zurück'));
   await tester.pumpAndSettle();
 }
 
-/// Die App startet im Screen „Bereiche“; das öffnet Gesundheit.
-Future<void> zuGesundheit(WidgetTester tester) async {
+/// The app starts on the „Bereiche“ screen; this opens health.
+Future<void> openHealth(WidgetTester tester) async {
   await tester.tap(find.text('Gesundheit'));
   await tester.pumpAndSettle();
 }
 
-/// Die App mit Mock-Backend und Fake-Dateiauswahl. Ohne [katalog] gelten
-/// die Standard-Module.
+/// The app with a mock backend and a fake file chooser. Without [catalog]
+/// the default modules apply.
 LifelogApp testApp(
   ApiClient api, {
-  FileChooser? auswahl,
+  FileChooser? chooser,
   ModuleCatalog? catalog,
 }) => LifelogApp(
   api: api,
-  fileChooser: auswahl ?? FakeDateiAuswahl(),
+  fileChooser: chooser ?? FakeFileChooser(),
   catalog: catalog ?? ModuleCatalog.defaults(),
 );
 
-/// Liefert vorgegebene Dateien statt Kamera und Dateiauswahl zu öffnen.
-/// `null` steht für „Nutzer bricht ab“.
-class FakeDateiAuswahl implements FileChooser {
-  ChosenFile? foto;
-  ChosenFile? bild;
+/// Returns given files instead of opening the camera and file picker.
+/// `null` stands for "the user cancels".
+class FakeFileChooser implements FileChooser {
+  ChosenFile? photo;
+  ChosenFile? image;
   ChosenFile? pdf;
-  ChosenFile? verloren;
+  ChosenFile? lost;
 
   @override
-  Future<ChosenFile?> takePhoto() async => foto;
+  Future<ChosenFile?> takePhoto() async => photo;
 
   @override
-  Future<ChosenFile?> pickImage() async => bild;
+  Future<ChosenFile?> pickImage() async => image;
 
   @override
   Future<ChosenFile?> pickPdf() async => pdf;
 
   @override
-  Future<ChosenFile?> retrieveLostFile() async => verloren;
+  Future<ChosenFile?> retrieveLostFile() async => lost;
 }
 
-/// Ein kleines „PDF“: Die Magic Bytes stimmen, der Rest ist beliebig.
-ChosenFile testPdf(String name, [String inhalt = '']) => ChosenFile(
-  bytes: Uint8List.fromList('%PDF-1.4 $name $inhalt'.codeUnits),
+/// A small "PDF": the magic bytes are right, the rest is arbitrary.
+ChosenFile testPdf(String name, [String content = '']) => ChosenFile(
+  bytes: Uint8List.fromList('%PDF-1.4 $name $content'.codeUnits),
   name: name,
 );
 
-/// Erwartet, dass ein Future mit einem [ApiFehler] mit diesem Code scheitert.
-Matcher wirftApiFehler(String code, {int? status}) => throwsA(
+/// Expects a future to fail with an [ApiException] with this code.
+Matcher throwsApiException(String code, {int? status}) => throwsA(
   isA<ApiException>()
       .having((f) => f.code, 'code', code)
       .having((f) => f.httpStatus, 'httpStatus', status ?? anything),
 );
 
-/// Mock ohne künstliche Wartezeit und mit fester Uhr.
-MockApiClient schnellerMock({
+/// Mock without artificial delay and with a fixed clock.
+MockApiClient fastMock({
   bool withSampleData = true,
   DateTime Function()? clock,
   ModuleCatalog? catalog,
@@ -89,6 +89,6 @@ MockApiClient schnellerMock({
   catalog: catalog,
 );
 
-const laborId = '6727a1f3c2b4e5d6f7a8b9c0';
-const arztbriefId = '6727a20bc2b4e5d6f7a8b9d4';
-const sonstigesId = '6727a2a9c2b4e5d6f7a8b9e7';
+const labReportId = '6727a1f3c2b4e5d6f7a8b9c0';
+const doctorLetterId = '6727a20bc2b4e5d6f7a8b9d4';
+const otherId = '6727a2a9c2b4e5d6f7a8b9e7';

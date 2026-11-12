@@ -1,5 +1,5 @@
-// Etappe V2: Platzhalter, Scan-Animation, gestaffeltes Einblenden und
-// „Animationen entfernen“.
+// Stage V2: skeletons, scan animation, staggered fade-in and
+// „Animationen entfernen“ (remove animations).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,43 +10,43 @@ import 'package:lifelog/screens/timeline_screen.dart';
 
 import '../helpers.dart';
 
-/// Mock mit spürbarer Wartezeit, damit Ladezustände sichtbar sind.
-MockApiClient langsamerMock() => MockApiClient(
+/// Mock with a noticeable delay, so that loading states are visible.
+MockApiClient slowMock() => MockApiClient(
   delay: Durations.extralong4,
   uploadDelay: Durations.extralong4 * 2,
 );
 
-void animationenAus(WidgetTester tester) {
+void turnOffAnimations(WidgetTester tester) {
   tester.platformDispatcher.accessibilityFeaturesTestValue =
       const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 }
 
-Finder navigation(String label) =>
+Finder navItem(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
-/// Öffnet Gesundheit, ohne auf das Laden der Zeitleiste zu warten.
-Future<void> gesundheitOeffnen(WidgetTester tester, MockApiClient mock) async {
-  grosserBildschirm(tester);
+/// Opens health without waiting for the timeline to load.
+Future<void> openHealthModule(WidgetTester tester, MockApiClient mock) async {
+  useLargeScreen(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Gesundheit'));
-  // Seitenübergang abwarten, aber nicht das Laden (dauert 1 s).
+  // Wait for the page transition, but not for loading (takes 1 s).
   for (var i = 0; i < 10; i++) {
     await tester.pump(Durations.short1);
   }
 }
 
 void main() {
-  group('Zeitleiste lädt', () {
-    testWidgets('Platzhalter statt Spinner, dann die Liste', (tester) async {
-      final semantik = tester.ensureSemantics();
-      await gesundheitOeffnen(tester, langsamerMock());
+  group('timeline loading', () {
+    testWidgets('skeleton instead of a spinner, then the list', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openHealthModule(tester, slowMock());
 
-      final zeitleiste = find.byType(TimelineScreen);
+      final timeline = find.byType(TimelineScreen);
       expect(
         find.descendant(
-          of: zeitleiste,
+          of: timeline,
           matching: find.byType(CircularProgressIndicator),
         ),
         findsNothing,
@@ -57,14 +57,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('Wird geladen'), findsNothing);
       expect(find.text('Oktober 2026'), findsOneWidget);
-      semantik.dispose();
+      semantics.dispose();
     });
 
-    testWidgets('„Animationen entfernen“: Platzhalter steht still', (
+    testWidgets('„Animationen entfernen“: skeleton stays still', (
       tester,
     ) async {
-      animationenAus(tester);
-      await gesundheitOeffnen(tester, langsamerMock());
+      turnOffAnimations(tester);
+      await openHealthModule(tester, slowMock());
 
       expect(find.bySemanticsLabel('Wird geladen'), findsOneWidget);
       expect(tester.binding.hasScheduledFrame, isFalse);
@@ -74,13 +74,13 @@ void main() {
     });
   });
 
-  group('Frage', () {
+  group('question', () {
     Future<void> ask(WidgetTester tester, MockApiClient mock) async {
-      grosserBildschirm(tester);
+      useLargeScreen(tester);
       await tester.pumpWidget(testApp(mock));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
-      await tester.tap(navigation('Fragen'));
+      await openHealth(tester);
+      await tester.tap(navItem('Fragen'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Hämoglobin');
       await tester.pump();
@@ -88,14 +88,14 @@ void main() {
       await tester.pump();
     }
 
-    double deckkraft(WidgetTester tester, int i) => tester
+    double opacityOf(WidgetTester tester, int i) => tester
         .widget<FadeTransition>(find.byKey(ValueKey('staggered-$i')))
         .opacity
         .value;
 
-    testWidgets('Suche zeigt Platzhalter, kein Spinner', (tester) async {
-      final semantik = tester.ensureSemantics();
-      await ask(tester, langsamerMock());
+    testWidgets('search shows a skeleton, no spinner', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await ask(tester, slowMock());
       await tester.pump(Durations.short4);
 
       expect(find.text('Suche in deinen Dokumenten …'), findsOneWidget);
@@ -111,49 +111,46 @@ void main() {
       await tester.pump(Durations.extralong4);
       await tester.pumpAndSettle();
       expect(find.text('Quellen'), findsOneWidget);
-      semantik.dispose();
+      semantics.dispose();
     });
 
-    testWidgets('Antwort und Quellen blenden nacheinander ein', (tester) async {
-      await ask(tester, schnellerMock());
+    testWidgets('answer and sources fade in one after another', (tester) async {
+      await ask(tester, fastMock());
       await tester.pump();
 
-      // Kurz nach dem Start: Die Antwort ist weiter als die Quellen.
+      // Shortly after the start: the answer is further along than the sources.
       await tester.pump(Durations.short3);
-      final answer = deckkraft(tester, 0);
-      final ersteQuelle = deckkraft(tester, 2);
-      expect(answer, greaterThan(ersteQuelle));
-      // Der Text ist trotzdem schon vollständig da (kein Tipp-Effekt).
+      final answer = opacityOf(tester, 0);
+      final firstSource = opacityOf(tester, 2);
+      expect(answer, greaterThan(firstSource));
+      // The text is still complete already (no typewriter effect).
       expect(find.textContaining('[1]'), findsOneWidget);
 
       await tester.pumpAndSettle();
-      expect(deckkraft(tester, 0), 1);
-      expect(deckkraft(tester, 2), 1);
+      expect(opacityOf(tester, 0), 1);
+      expect(opacityOf(tester, 2), 1);
     });
 
-    testWidgets('„Animationen entfernen“: sofort vollständig sichtbar', (
+    testWidgets('„Animationen entfernen“: fully visible at once', (
       tester,
     ) async {
-      animationenAus(tester);
-      await ask(tester, schnellerMock());
+      turnOffAnimations(tester);
+      await ask(tester, fastMock());
       await tester.pump();
 
-      expect(deckkraft(tester, 0), 1);
-      expect(deckkraft(tester, 2), 1);
+      expect(opacityOf(tester, 0), 1);
+      expect(opacityOf(tester, 2), 1);
     });
   });
 
-  group('Upload', () {
-    Future<void> hochladenStarten(
-      WidgetTester tester,
-      MockApiClient mock,
-    ) async {
-      grosserBildschirm(tester);
-      final auswahl = FakeDateiAuswahl()..pdf = testPdf('scan.pdf');
-      await tester.pumpWidget(testApp(mock, auswahl: auswahl));
+  group('upload', () {
+    Future<void> startUpload(WidgetTester tester, MockApiClient mock) async {
+      useLargeScreen(tester);
+      final chooser = FakeFileChooser()..pdf = testPdf('scan.pdf');
+      await tester.pumpWidget(testApp(mock, chooser: chooser));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
-      await tester.tap(navigation('Hochladen'));
+      await openHealth(tester);
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
@@ -161,36 +158,37 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('Scan-Animation statt Spinner, mit Text und Semantik', (
-      tester,
-    ) async {
-      final semantik = tester.ensureSemantics();
-      await hochladenStarten(tester, langsamerMock());
-      await tester.pump(Durations.medium2);
+    testWidgets(
+      'scan animation instead of a spinner, with text and semantics',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await startUpload(tester, slowMock());
+        await tester.pump(Durations.medium2);
 
-      expect(
-        find.bySemanticsLabel('Dokument wird ausgewertet'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(UploadScreen),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-        findsNothing,
-      );
-      // Läuft, solange ausgewertet wird.
-      expect(tester.binding.hasScheduledFrame, isTrue);
+        expect(
+          find.bySemanticsLabel('Dokument wird ausgewertet'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(UploadScreen),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        // Runs while processing.
+        expect(tester.binding.hasScheduledFrame, isTrue);
 
-      await tester.pump(Durations.extralong4 * 2);
-      await tester.pumpAndSettle();
-      semantik.dispose();
-    });
+        await tester.pump(Durations.extralong4 * 2);
+        await tester.pumpAndSettle();
+        semantics.dispose();
+      },
+    );
 
-    testWidgets('„Animationen entfernen“: Scan steht still', (tester) async {
-      animationenAus(tester);
-      await hochladenStarten(tester, langsamerMock());
+    testWidgets('„Animationen entfernen“: scan stays still', (tester) async {
+      turnOffAnimations(tester);
+      await startUpload(tester, slowMock());
       await tester.pump();
 
       expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
@@ -200,15 +198,15 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('Fehlerkarte erscheint weich und verschwindet wieder', (
+    testWidgets('error card appears softly and disappears again', (
       tester,
     ) async {
-      grosserBildschirm(tester);
-      final auswahl = FakeDateiAuswahl()..pdf = testPdf('modelerror.pdf');
-      await tester.pumpWidget(testApp(schnellerMock(), auswahl: auswahl));
+      useLargeScreen(tester);
+      final chooser = FakeFileChooser()..pdf = testPdf('modelerror.pdf');
+      await tester.pumpWidget(testApp(fastMock(), chooser: chooser));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
-      await tester.tap(navigation('Hochladen'));
+      await openHealth(tester);
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
@@ -223,33 +221,31 @@ void main() {
     });
   });
 
-  group('Handygröße (1080 × 2400, Faktor 3)', () {
-    testWidgets('Platzhalter, Scan und Antwort laufen nicht über', (
-      tester,
-    ) async {
+  group('phone size (1080 × 2400, factor 3)', () {
+    testWidgets('skeleton, scan and answer do not overflow', (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
-      final auswahl = FakeDateiAuswahl()..pdf = testPdf('handy.pdf');
-      final mock = langsamerMock();
+      final chooser = FakeFileChooser()..pdf = testPdf('handy.pdf');
+      final mock = slowMock();
 
-      await tester.pumpWidget(testApp(mock, auswahl: auswahl));
+      await tester.pumpWidget(testApp(mock, chooser: chooser));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Gesundheit'));
       for (var i = 0; i < 10; i++) {
         await tester.pump(Durations.short1);
       }
-      expect(tester.takeException(), isNull); // Platzhalter
+      expect(tester.takeException(), isNull); // skeleton
       await tester.pump(Durations.extralong4);
       await tester.pumpAndSettle();
 
-      await tester.tap(navigation('Hochladen'));
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Hochladen'));
       await tester.pump(Durations.medium2);
-      expect(tester.takeException(), isNull); // Scan
+      expect(tester.takeException(), isNull); // scan
       await tester.pump(Durations.extralong4 * 2);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

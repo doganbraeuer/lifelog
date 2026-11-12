@@ -13,14 +13,14 @@ import 'package:lifelog/screens/original_file_screen.dart';
 
 import '../helpers.dart';
 
-/// Zeigt eine schon geladene Datei. Der Mock ist auf Fehler gestellt: Würde
-/// der Screen trotzdem laden, erschiene eine Fehlermeldung.
-Future<void> zeigeText(WidgetTester tester, List<int> bytes) async {
+/// Shows a file that is already loaded. The mock is set to fail: if the
+/// screen loaded anyway, an error message would appear.
+Future<void> showText(WidgetTester tester, List<int> bytes) async {
   await tester.pumpWidget(
     MaterialApp(
       home: OriginalFileScreen(
-        api: schnellerMock()..simulateError = true,
-        entryId: laborId,
+        api: fastMock()..simulateError = true,
+        entryId: labReportId,
         fileName: 'text.txt',
         preloaded: FileContent(
           bytes: Uint8List.fromList(bytes),
@@ -33,9 +33,9 @@ Future<void> zeigeText(WidgetTester tester, List<int> bytes) async {
 }
 
 void main() {
-  group('Originaldatei als Text', () {
-    testWidgets('UTF-8 mit Umlauten, markierbar', (tester) async {
-      await zeigeText(
+  group('original file as text', () {
+    testWidgets('UTF-8 with umlauts, selectable', (tester) async {
+      await showText(
         tester,
         utf8.encode('Hausarztpraxis Beispiel\nÜberweisung: Röntgen'),
       );
@@ -45,29 +45,31 @@ void main() {
       expect(find.textContaining('Fehler'), findsNothing);
     });
 
-    testWidgets('ungültige Bytes: kein Absturz, Ersatzzeichen', (tester) async {
-      // 0xFF kommt in UTF-8 nie vor; 0xC3 allein ist ein abgebrochenes „ä“.
-      await zeigeText(tester, [0x48, 0xFF, 0x69, 0x20, 0xC3]);
+    testWidgets('invalid bytes: no crash, replacement character', (
+      tester,
+    ) async {
+      // 0xFF never occurs in UTF-8; 0xC3 alone is a truncated „ä“.
+      await showText(tester, [0x48, 0xFF, 0x69, 0x20, 0xC3]);
 
       expect(tester.takeException(), isNull);
       expect(find.textContaining('H�i'), findsOneWidget);
     });
 
-    testWidgets('BOM am Anfang wird entfernt', (tester) async {
-      await zeigeText(tester, [0xEF, 0xBB, 0xBF, ...utf8.encode('Text')]);
+    testWidgets('BOM at the start is removed', (tester) async {
+      await showText(tester, [0xEF, 0xBB, 0xBF, ...utf8.encode('Text')]);
 
       final text = tester.widget<SelectableText>(find.byType(SelectableText));
       expect(text.data, 'Text');
     });
 
-    testWidgets('leere Datei', (tester) async {
-      await zeigeText(tester, utf8.encode('  \n '));
+    testWidgets('empty file', (tester) async {
+      await showText(tester, utf8.encode('  \n '));
 
       expect(find.text('Die Textdatei ist leer.'), findsOneWidget);
     });
 
-    testWidgets('langer Text lässt sich scrollen', (tester) async {
-      await zeigeText(
+    testWidgets('long text can be scrolled', (tester) async {
+      await showText(
         tester,
         utf8.encode([for (var i = 1; i <= 200; i++) 'Zeile $i'].join('\n')),
       );
@@ -86,7 +88,7 @@ void main() {
     });
   });
 
-  testWidgets('Eintrag mit text.txt über den HttpApiClient', (tester) async {
+  testWidgets('entry with text.txt via the HttpApiClient', (tester) async {
     const id = '6727b000c2b4e5d6f7a8b9f0';
     const text = 'Testeintrag\nÜberweisung vom 21.10.2026';
     final entry = {
@@ -109,8 +111,8 @@ void main() {
     };
     final api = HttpApiClient(
       baseUrl: 'http://test.local',
-      client: MockClient((anfrage) async {
-        if (anfrage.url.path.endsWith('/file')) {
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/file')) {
           return http.Response.bytes(
             utf8.encode(text),
             200,
@@ -125,7 +127,7 @@ void main() {
       }),
     );
 
-    grosserBildschirm(tester);
+    useLargeScreen(tester);
     await tester.pumpWidget(
       ModuleCatalogScope(
         catalog: ModuleCatalog.defaults(),
@@ -136,7 +138,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Datei-Karte: „Text“ statt „Bild“.
+    // File card: „Text“ instead of „Bild“.
     expect(find.text('text.txt'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);
     expect(find.byIcon(Icons.article_outlined), findsOneWidget);

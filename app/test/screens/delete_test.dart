@@ -8,30 +8,30 @@ import 'package:lifelog/screens/timeline_screen.dart';
 
 import '../helpers.dart';
 
-const labor = 'Labor Muster GmbH, Salzburg';
+const labIssuer = 'Labor Muster GmbH, Salzburg';
 
-Future<void> zumLaborbefund(WidgetTester tester, MockApiClient mock) async {
-  grosserBildschirm(tester);
+Future<void> openLabReport(WidgetTester tester, MockApiClient mock) async {
+  useLargeScreen(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
-  await tester.tap(find.text(labor));
+  await openHealth(tester);
+  await tester.tap(find.text(labIssuer));
   await tester.pumpAndSettle();
 }
 
-Future<void> loeschenTippen(WidgetTester tester) async {
+Future<void> tapDelete(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Eintrag löschen'));
   await tester.pumpAndSettle();
 }
 
-Finder loeschenBestaetigen() => find.widgetWithText(FilledButton, 'Löschen');
+Finder confirmDelete() => find.widgetWithText(FilledButton, 'Löschen');
 
 void main() {
-  testWidgets('Abbrechen löscht nichts', (tester) async {
-    final mock = schnellerMock();
-    await zumLaborbefund(tester, mock);
+  testWidgets('cancel deletes nothing', (tester) async {
+    final mock = fastMock();
+    await openLabReport(tester, mock);
 
-    await loeschenTippen(tester);
+    await tapDelete(tester);
     expect(find.text('Eintrag löschen?'), findsOneWidget);
     expect(find.textContaining('endgültig'), findsOneWidget);
 
@@ -39,87 +39,88 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsOneWidget);
-    expect((await mock.getEntry(laborId)).id, laborId);
+    expect((await mock.getEntry(labReportId)).id, labReportId);
   });
 
-  testWidgets('Bestätigen löscht, zurück in der Zeitleiste ohne Eintrag', (
+  testWidgets('confirm deletes, back in the timeline without the entry', (
     tester,
   ) async {
-    final mock = schnellerMock();
-    await zumLaborbefund(tester, mock);
+    final mock = fastMock();
+    await openLabReport(tester, mock);
 
-    await loeschenTippen(tester);
-    await tester.tap(loeschenBestaetigen());
+    await tapDelete(tester);
+    await tester.tap(confirmDelete());
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsNothing);
     expect(find.byType(TimelineScreen), findsOneWidget);
     expect(find.text('Eintrag gelöscht.'), findsOneWidget);
-    expect(find.text(labor), findsNothing);
+    expect(find.text(labIssuer), findsNothing);
     await expectLater(
-      mock.getEntry(laborId),
-      wirftApiFehler(ErrorCode.entryNotFound),
+      mock.getEntry(labReportId),
+      throwsApiException(ErrorCode.entryNotFound),
     );
   });
 
-  testWidgets('Fehler: Meldung, Ansicht bleibt offen', (tester) async {
-    final mock = schnellerMock();
-    await zumLaborbefund(tester, mock);
+  testWidgets('error: message, view stays open', (tester) async {
+    final mock = fastMock();
+    await openLabReport(tester, mock);
 
-    await loeschenTippen(tester);
+    await tapDelete(tester);
     mock.simulateError = true;
-    await tester.tap(loeschenBestaetigen());
+    await tester.tap(confirmDelete());
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
-    // Der Knopf ist wieder bedienbar.
-    final knopf = tester.widget<IconButton>(
+    // The button can be used again.
+    final button = tester.widget<IconButton>(
       find.ancestor(
         of: find.byIcon(Icons.delete_outline),
         matching: find.byType(IconButton),
       ),
     );
-    expect(knopf.onPressed, isNotNull);
+    expect(button.onPressed, isNotNull);
 
     mock.simulateError = false;
-    expect((await mock.getEntry(laborId)).id, laborId);
+    expect((await mock.getEntry(labReportId)).id, labReportId);
   });
 
-  testWidgets('aus einer Quelle gelöscht: zurück zur Frage, Zeitleiste neu', (
-    tester,
-  ) async {
-    final mock = schnellerMock();
-    grosserBildschirm(tester);
-    await tester.pumpWidget(testApp(mock));
-    await tester.pumpAndSettle();
-    await zuGesundheit(tester);
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('Fragen'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Hämoglobin');
-    await tester.pump();
-    await tester.tap(find.byTooltip('Frage senden'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Laborbefund · 14.10.2026'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'deleted from a source: back to the question, timeline reloaded',
+    (tester) async {
+      final mock = fastMock();
+      useLargeScreen(tester);
+      await tester.pumpWidget(testApp(mock));
+      await tester.pumpAndSettle();
+      await openHealth(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Fragen'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Hämoglobin');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Frage senden'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Laborbefund · 14.10.2026'));
+      await tester.pumpAndSettle();
 
-    await loeschenTippen(tester);
-    await tester.tap(loeschenBestaetigen());
-    await tester.pumpAndSettle();
+      await tapDelete(tester);
+      await tester.tap(confirmDelete());
+      await tester.pumpAndSettle();
 
-    expect(find.byType(QuestionScreen), findsOneWidget);
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('Zeitleiste'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text(labor), findsNothing);
-  });
+      expect(find.byType(QuestionScreen), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Zeitleiste'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(labIssuer), findsNothing);
+    },
+  );
 }

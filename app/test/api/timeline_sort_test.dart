@@ -4,33 +4,33 @@ import 'package:lifelog/api/timeline_sort.dart';
 import 'package:lifelog/model/plain_date.dart';
 import 'package:lifelog/model/entry.dart';
 
-EntrySummary getEntry(String id, PlainDate? datum, int stunde, int minute) =>
+EntrySummary summary(String id, PlainDate? date, int hour, int minute) =>
     EntrySummary(
       id: id,
       module: 'health',
       type: 'other',
-      documentDate: datum,
-      importedAt: DateTime.utc(2026, 11, 3, stunde, minute),
+      documentDate: date,
+      importedAt: DateTime.utc(2026, 11, 3, hour, minute),
       issuer: null,
     );
 
 void main() {
-  // a und e/f haben dasselbe Dokumentdatum, e und f zusätzlich dasselbe
-  // Importdatum. c und d haben kein Dokumentdatum.
-  final a = getEntry('a', PlainDate(2026, 10, 14), 18, 42);
-  final b = getEntry('b', PlainDate(2026, 9, 2), 18, 50);
-  final c = getEntry('c', null, 19, 1);
-  final d = getEntry('d', null, 17, 0);
-  final e = getEntry('e', PlainDate(2026, 10, 14), 19, 30);
-  final f = getEntry('f', PlainDate(2026, 10, 14), 19, 30);
-  final alle = [c, a, f, d, b, e];
+  // a and e/f have the same document date, e and f also the same import
+  // date. c and d have no document date.
+  final a = summary('a', PlainDate(2026, 10, 14), 18, 42);
+  final b = summary('b', PlainDate(2026, 9, 2), 18, 50);
+  final c = summary('c', null, 19, 1);
+  final d = summary('d', null, 17, 0);
+  final e = summary('e', PlainDate(2026, 10, 14), 19, 30);
+  final f = summary('f', PlainDate(2026, 10, 14), 19, 30);
+  final unsorted = [c, a, f, d, b, e];
 
   List<String> ids(Sort s, SortOrder r) =>
-      sortTimeline(alle, s, r).map((x) => x.id).toList();
+      sortTimeline(unsorted, s, r).map((x) => x.id).toList();
 
-  test('dokumentdatum absteigend (Standard)', () {
-    // Gleiches Datum: importdatum absteigend, dann id absteigend.
-    // Ohne Datum am Ende, untereinander importdatum absteigend.
+  test('documentDate descending (default)', () {
+    // Same date: importedAt descending, then id descending.
+    // Without date at the end, among themselves importedAt descending.
     expect(ids(Sort.documentDate, SortOrder.desc), [
       'f',
       'e',
@@ -41,7 +41,7 @@ void main() {
     ]);
   });
 
-  test('dokumentdatum aufsteigend: ohne Datum trotzdem am Ende', () {
+  test('documentDate ascending: without date still at the end', () {
     expect(ids(Sort.documentDate, SortOrder.asc), [
       'b',
       'a',
@@ -52,7 +52,7 @@ void main() {
     ]);
   });
 
-  test('importdatum absteigend', () {
+  test('importedAt descending', () {
     expect(ids(Sort.importedAt, SortOrder.desc), [
       'f',
       'e',
@@ -63,16 +63,16 @@ void main() {
     ]);
   });
 
-  test('importdatum aufsteigend', () {
+  test('importedAt ascending', () {
     expect(ids(Sort.importedAt, SortOrder.asc), ['d', 'a', 'b', 'c', 'e', 'f']);
   });
 
-  test('Reihenfolge hängt nicht von der Eingabe-Reihenfolge ab', () {
-    final umgedreht = sortTimeline(
-      alle.reversed,
+  test('order does not depend on the input order', () {
+    final reversedOrder = sortTimeline(
+      unsorted.reversed,
       Sort.documentDate,
       SortOrder.desc,
     );
-    expect(umgedreht.map((x) => x.id), ['f', 'e', 'a', 'b', 'c', 'd']);
+    expect(reversedOrder.map((x) => x.id), ['f', 'e', 'a', 'b', 'c', 'd']);
   });
 }

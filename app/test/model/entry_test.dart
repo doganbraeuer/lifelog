@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/model/plain_date.dart';
 import 'package:lifelog/model/entry.dart';
 
-/// Vollständiger Eintrag aus docs/API.md, Abschnitt 2.
-const beispielJson = '''
+/// Full entry from docs/API.md, section 2.
+const sampleJson = '''
 {
   "id": "6727a1f3c2b4e5d6f7a8b9c0",
   "module": "health",
@@ -38,12 +38,11 @@ const beispielJson = '''
 }
 ''';
 
-Map<String, dynamic> beispiel() =>
-    jsonDecode(beispielJson) as Map<String, dynamic>;
+Map<String, dynamic> sample() => jsonDecode(sampleJson) as Map<String, dynamic>;
 
 void main() {
-  test('liest den vollständigen Eintrag', () {
-    final entry = Entry.fromJson(beispiel());
+  test('reads the full entry', () {
+    final entry = Entry.fromJson(sample());
     expect(entry.id, '6727a1f3c2b4e5d6f7a8b9c0');
     expect(entry.module, 'health');
     expect(entry.documentDate, PlainDate(2026, 10, 14));
@@ -56,38 +55,35 @@ void main() {
     expect(entry.file.size, 184320);
   });
 
-  test('Korrekturen lassen sich pro Feld abfragen', () {
-    final entry = Entry.fromJson(beispiel());
+  test('corrections can be looked up per field', () {
+    final entry = Entry.fromJson(sample());
     expect(entry.correctionFor('facts.f2.value')?.recognized, '6,3');
     expect(entry.correctionFor('documentDate'), isNull);
     expect(entry.isFactCorrected('f2'), isTrue);
     expect(entry.isFactCorrected('f1'), isFalse);
   });
 
-  test('null für dokumentdatum und quelle', () {
-    final json = beispiel()
+  test('null for documentDate and issuer', () {
+    final json = sample()
       ..['documentDate'] = null
       ..['issuer'] = null;
-    final kurz = EntrySummary.fromJson(json);
-    expect(kurz.documentDate, isNull);
-    expect(kurz.issuer, isNull);
+    final summary = EntrySummary.fromJson(json);
+    expect(summary.documentDate, isNull);
+    expect(summary.issuer, isNull);
   });
 
-  test('falsche Daten werfen FormatException', () {
+  test('wrong data throws FormatException', () {
+    expect(() => Entry.fromJson(sample()..remove('id')), throwsFormatException);
     expect(
-      () => Entry.fromJson(beispiel()..remove('id')),
+      () => Entry.fromJson(sample()..['documentDate'] = '14.10.2026'),
       throwsFormatException,
     );
     expect(
-      () => Entry.fromJson(beispiel()..['documentDate'] = '14.10.2026'),
+      () => Entry.fromJson(sample()..['facts'] = 'keine Liste'),
       throwsFormatException,
     );
     expect(
-      () => Entry.fromJson(beispiel()..['facts'] = 'keine Liste'),
-      throwsFormatException,
-    );
-    expect(
-      () => Entry.fromJson(beispiel()..['importedAt'] = 'gestern'),
+      () => Entry.fromJson(sample()..['importedAt'] = 'gestern'),
       throwsFormatException,
     );
   });

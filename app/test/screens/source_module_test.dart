@@ -12,11 +12,11 @@ import '../helpers.dart';
 import '../module/test_catalog.dart';
 
 void main() {
-  testWidgets('Quellen-Karte nimmt den Typnamen aus quelle.modul', (
+  testWidgets('source card takes the type name from source.module', (
     tester,
   ) async {
-    // Gefragt wird in Gesundheit, die Quelle gehört aber zu Sport. Der
-    // Typ „training“ ist nur in Sport bekannt (Test-Katalog).
+    // The question is asked in health, but the source belongs to sport. The
+    // type „training“ is only known in sport (test catalog).
     final api = HttpApiClient(
       baseUrl: 'http://test.local',
       client: MockClient(
@@ -28,7 +28,7 @@ void main() {
               'sources': [
                 {
                   'number': 1,
-                  'entryId': laborId,
+                  'entryId': labReportId,
                   'module': 'sport',
                   'type': 'training',
                   'issuer': 'Laufverein Beispiel',
@@ -46,7 +46,7 @@ void main() {
 
     await tester.pumpWidget(
       ModuleCatalogScope(
-        catalog: testKatalog(),
+        catalog: testCatalog(),
         child: MaterialApp(
           home: QuestionScreen(
             api: api,

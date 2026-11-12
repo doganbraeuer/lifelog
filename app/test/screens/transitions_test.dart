@@ -1,4 +1,4 @@
-// Etappe V3: Container Transform, iOS-Zurück-Geste und Haptik.
+// Stage V3: container transform, iOS back gesture and haptics.
 
 import 'package:animations/animations.dart';
 import 'package:flutter/foundation.dart';
@@ -11,49 +11,51 @@ import 'package:lifelog/screens/timeline_screen.dart';
 
 import '../helpers.dart';
 
-const labor = 'Labor Muster GmbH, Salzburg';
-const arzt = 'Dr. Erika Beispiel, Allgemeinmedizin';
+const labIssuer = 'Labor Muster GmbH, Salzburg';
+const doctorIssuer = 'Dr. Erika Beispiel, Allgemeinmedizin';
 
-double oben(WidgetTester tester, String text) =>
+double topOf(WidgetTester tester, String text) =>
     tester.getTopLeft(find.textContaining(text).first).dy;
 
-Finder navigation(String label) =>
+Finder navItem(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
-Future<void> zurZeitleiste(WidgetTester tester, MockApiClient mock) async {
-  grosserBildschirm(tester);
+Future<void> goToTimeline(WidgetTester tester, MockApiClient mock) async {
+  useLargeScreen(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
+  await openHealth(tester);
 }
 
-/// Schreibt mit, welche Haptik die App auslöst.
-List<String> haptikMitschreiben(WidgetTester tester) {
-  final aufrufe = <String>[];
-  final bote = tester.binding.defaultBinaryMessenger;
-  bote.setMockMethodCallHandler(SystemChannels.platform, (aufruf) async {
-    if (aufruf.method == 'HapticFeedback.vibrate') {
-      aufrufe.add(aufruf.arguments as String);
+/// Records which haptic feedback the app triggers.
+List<String> recordHaptics(WidgetTester tester) {
+  final calls = <String>[];
+  final messenger = tester.binding.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(SystemChannels.platform, (
+    methodCall,
+  ) async {
+    if (methodCall.method == 'HapticFeedback.vibrate') {
+      calls.add(methodCall.arguments as String);
     }
     return null;
   });
   addTearDown(
-    () => bote.setMockMethodCallHandler(SystemChannels.platform, null),
+    () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
   );
-  return aufrufe;
+  return calls;
 }
 
-const leicht = 'HapticFeedbackType.lightImpact';
-const auswahl = 'HapticFeedbackType.selectionClick';
+const light = 'HapticFeedbackType.lightImpact';
+const chooser = 'HapticFeedbackType.selectionClick';
 
 void main() {
-  group('Container Transform', () {
-    testWidgets('an der aktiven Kachel und an jedem Eintrag', (tester) async {
-      grosserBildschirm(tester);
-      await tester.pumpWidget(testApp(schnellerMock()));
+  group('container transform', () {
+    testWidgets('on the active tile and on every entry', (tester) async {
+      useLargeScreen(tester);
+      await tester.pumpWidget(testApp(fastMock()));
       await tester.pumpAndSettle();
 
-      // Nur Gesundheit ist aktiv; inaktive Kacheln öffnen nichts.
+      // Only health is active; inactive tiles open nothing.
       expect(find.byType(OpenContainer<void>), findsOneWidget);
       expect(
         find.ancestor(
@@ -63,7 +65,7 @@ void main() {
         findsOneWidget,
       );
 
-      await zuGesundheit(tester);
+      await openHealth(tester);
       expect(
         find.descendant(
           of: find.byType(TimelineScreen),
@@ -73,33 +75,31 @@ void main() {
       );
     });
 
-    testWidgets('Eintrag öffnen und schließen, Zeitleiste bleibt', (
-      tester,
-    ) async {
-      await zurZeitleiste(tester, schnellerMock());
-      await tester.tap(find.text(labor));
+    testWidgets('open and close an entry, the timeline stays', (tester) async {
+      await goToTimeline(tester, fastMock());
+      await tester.tap(find.text(labIssuer));
       await tester.pumpAndSettle();
       expect(find.byType(EntryScreen), findsOneWidget);
 
-      await zurueck(tester);
+      await tapBack(tester);
       expect(find.byType(EntryScreen), findsNothing);
-      expect(find.text(labor), findsOneWidget);
+      expect(find.text(labIssuer), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
     for (final (name, mock) in [
-      ('ohne Verzögerung', schnellerMock),
-      // Neuladen fällt mitten in die Rücklauf-Animation.
+      ('ohne Verzögerung', fastMock),
+      // The reload falls in the middle of the reverse animation.
       (
         'Neuladen während des Schließens',
         () =>
             MockApiClient(delay: Durations.short2, uploadDelay: Duration.zero),
       ),
     ]) {
-      testWidgets('Löschen aus dem geöffneten Eintrag ($name): schließt ohne '
-          'Exception, Eintrag fehlt danach', (tester) async {
-        await zurZeitleiste(tester, mock());
-        await tester.tap(find.text(labor));
+      testWidgets('delete from the opened entry ($name): closes without an '
+          'exception, the entry is gone afterwards', (tester) async {
+        await goToTimeline(tester, mock());
+        await tester.tap(find.text(labIssuer));
         await tester.pumpAndSettle();
 
         await tester.tap(find.byTooltip('Eintrag löschen'));
@@ -110,25 +110,25 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.byType(EntryScreen), findsNothing);
         expect(find.byType(TimelineScreen), findsOneWidget);
-        expect(find.text(labor), findsNothing);
-        expect(find.text('Oktober 2026'), findsNothing); // Gruppe leer
-        expect(find.text(arzt), findsOneWidget);
+        expect(find.text(labIssuer), findsNothing);
+        expect(find.text('Oktober 2026'), findsNothing); // group empty
+        expect(find.text(doctorIssuer), findsOneWidget);
       });
     }
 
-    testWidgets('Datumskorrektur: nach dem Schließen in der richtigen '
-        'Monatsgruppe', (tester) async {
-      await zurZeitleiste(tester, schnellerMock());
-      // Ausgangslage: Laborbefund 14.10.2026 unter „Oktober 2026“.
-      expect(oben(tester, 'Oktober 2026'), lessThan(oben(tester, labor)));
+    testWidgets('date correction: after closing in the right '
+        'month group', (tester) async {
+      await goToTimeline(tester, fastMock());
+      // Starting point: lab report 14.10.2026 under „Oktober 2026“.
+      expect(topOf(tester, 'Oktober 2026'), lessThan(topOf(tester, labIssuer)));
 
-      await tester.tap(find.text(labor));
+      await tester.tap(find.text(labIssuer));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Dokumentdatum korrigieren'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Datum wählen'));
       await tester.pumpAndSettle();
-      // Einen Monat zurück, den 15. wählen: 15.09.2026.
+      // One month back, pick the 15th: 15.09.2026.
       await tester.tap(find.byIcon(Icons.chevron_left));
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
@@ -136,17 +136,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('15.09.2026'), findsOneWidget);
 
-      await zurueck(tester);
+      await tapBack(tester);
       expect(tester.takeException(), isNull);
-      // „Oktober 2026“ ist leer und verschwunden; der Laborbefund steht
-      // unter „September 2026“, vor dem Arztbrief vom 02.09.
+      // „Oktober 2026“ is empty and gone; the lab report is under
+      // „September 2026“, before the doctor letter from 02.09.
       expect(find.text('Oktober 2026'), findsNothing);
-      expect(oben(tester, 'September 2026'), lessThan(oben(tester, labor)));
-      expect(oben(tester, labor), lessThan(oben(tester, arzt)));
-      expect(oben(tester, arzt), lessThan(oben(tester, 'Ohne Datum')));
+      expect(
+        topOf(tester, 'September 2026'),
+        lessThan(topOf(tester, labIssuer)),
+      );
+      expect(topOf(tester, labIssuer), lessThan(topOf(tester, doctorIssuer)));
+      expect(
+        topOf(tester, doctorIssuer),
+        lessThan(topOf(tester, 'Ohne Datum')),
+      );
     });
 
-    testWidgets('„Animationen entfernen“: öffnet ohne Übergang', (
+    testWidgets('„Animationen entfernen“: opens without a transition', (
       tester,
     ) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =
@@ -154,9 +160,9 @@ void main() {
       addTearDown(
         tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
-      await zurZeitleiste(tester, schnellerMock());
+      await goToTimeline(tester, fastMock());
 
-      await tester.tap(find.text(labor));
+      await tester.tap(find.text(labIssuer));
       await tester.pump();
       await tester.pump();
       expect(find.byType(EntryScreen), findsOneWidget);
@@ -164,24 +170,24 @@ void main() {
     });
   });
 
-  testWidgets('iOS: kein Container Transform, Wisch-zurück-Geste bleibt', (
+  testWidgets('iOS: no container transform, the swipe-back gesture stays', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     try {
-      await zurZeitleiste(tester, schnellerMock());
+      await goToTimeline(tester, fastMock());
       expect(find.byType(OpenContainer<void>), findsNothing);
       expect(find.byType(TimelineScreen), findsOneWidget);
 
-      // Eintrag öffnen und per Wischen vom linken Rand zurück.
-      await tester.tap(find.text(labor));
+      // Open an entry and go back by swiping from the left edge.
+      await tester.tap(find.text(labIssuer));
       await tester.pumpAndSettle();
       expect(find.byType(EntryScreen), findsOneWidget);
       await tester.dragFrom(const Offset(2, 400), const Offset(500, 0));
       await tester.pumpAndSettle();
       expect(find.byType(EntryScreen), findsNothing);
 
-      // Auch zurück zu den Bereichen per Wischen.
+      // Back to the modules screen by swiping too.
       await tester.dragFrom(const Offset(2, 400), const Offset(500, 0));
       await tester.pumpAndSettle();
       expect(find.byType(TimelineScreen), findsNothing);
@@ -191,43 +197,43 @@ void main() {
     }
   });
 
-  group('Haptik', () {
-    testWidgets('Tab-Wechsel per Tipp und Wischen: je einmal', (tester) async {
-      final haptik = haptikMitschreiben(tester);
-      await zurZeitleiste(tester, schnellerMock());
+  group('haptics', () {
+    testWidgets('tab change by tap and swipe: once each', (tester) async {
+      final haptics = recordHaptics(tester);
+      await goToTimeline(tester, fastMock());
 
-      await tester.tap(navigation('Hochladen'));
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
-      expect(haptik, [auswahl]);
+      expect(haptics, [chooser]);
 
-      // Derselbe Tab noch einmal: kein Wechsel, keine Haptik.
-      await tester.tap(navigation('Hochladen'));
+      // The same tab again: no change, no haptics.
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
-      expect(haptik, [auswahl]);
+      expect(haptics, [chooser]);
 
-      // Sprung über eine Seite: trotzdem nur einmal.
-      await tester.tap(navigation('Zeitleiste'));
+      // Jump over a page: still only once.
+      await tester.tap(navItem('Zeitleiste'));
       await tester.pumpAndSettle();
-      await tester.tap(navigation('Fragen'));
+      await tester.tap(navItem('Fragen'));
       await tester.pumpAndSettle();
-      expect(haptik, [auswahl, auswahl, auswahl]);
+      expect(haptics, [chooser, chooser, chooser]);
 
       await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
       await tester.pumpAndSettle();
-      expect(haptik, [auswahl, auswahl, auswahl, auswahl]);
+      expect(haptics, [chooser, chooser, chooser, chooser]);
     });
 
-    testWidgets('Upload-Erfolg: leichter Impuls, kein Tab-Klick beim '
-        'automatischen Wechsel', (tester) async {
-      final haptik = haptikMitschreiben(tester);
-      grosserBildschirm(tester);
-      final dateien = FakeDateiAuswahl()..pdf = testPdf('haptik.pdf');
-      await tester.pumpWidget(testApp(schnellerMock(), auswahl: dateien));
+    testWidgets('upload success: light impact, no tab click on the '
+        'automatic switch', (tester) async {
+      final haptics = recordHaptics(tester);
+      useLargeScreen(tester);
+      final chooser = FakeFileChooser()..pdf = testPdf('haptik.pdf');
+      await tester.pumpWidget(testApp(fastMock(), chooser: chooser));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
-      await tester.tap(navigation('Hochladen'));
+      await openHealth(tester);
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
-      haptik.clear();
+      haptics.clear();
 
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
@@ -235,15 +241,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(EntryScreen), findsOneWidget);
-      expect(haptik, [leicht]);
+      expect(haptics, [light]);
     });
 
-    testWidgets('Korrektur gespeichert und Eintrag gelöscht: je ein Impuls', (
+    testWidgets('correction saved and entry deleted: one impact each', (
       tester,
     ) async {
-      final haptik = haptikMitschreiben(tester);
-      await zurZeitleiste(tester, schnellerMock());
-      await tester.tap(find.text(labor));
+      final haptics = recordHaptics(tester);
+      await goToTimeline(tester, fastMock());
+      await tester.tap(find.text(labIssuer));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Quelle korrigieren'));
@@ -254,20 +260,20 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
       await tester.pumpAndSettle();
-      expect(haptik, [leicht]);
+      expect(haptics, [light]);
 
       await tester.tap(find.byTooltip('Eintrag löschen'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Löschen'));
       await tester.pumpAndSettle();
-      expect(haptik, [leicht, leicht]);
+      expect(haptics, [light, light]);
     });
 
-    testWidgets('Fehler beim Speichern: keine Erfolgs-Haptik', (tester) async {
-      final haptik = haptikMitschreiben(tester);
-      final mock = schnellerMock();
-      await zurZeitleiste(tester, mock);
-      await tester.tap(find.text(labor));
+    testWidgets('error while saving: no success haptics', (tester) async {
+      final haptics = recordHaptics(tester);
+      final mock = fastMock();
+      await goToTimeline(tester, mock);
+      await tester.tap(find.text(labIssuer));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Quelle korrigieren'));
@@ -277,7 +283,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
       await tester.pumpAndSettle();
 
-      expect(haptik, isEmpty);
+      expect(haptics, isEmpty);
     });
   });
 }

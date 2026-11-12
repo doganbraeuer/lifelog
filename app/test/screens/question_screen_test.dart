@@ -4,14 +4,14 @@ import 'package:lifelog/api/mock_api_client.dart';
 
 import '../helpers.dart';
 
-const treffer = 'Welchen Hämoglobinwert hatte ich im Oktober?';
+const hit = 'Welchen Hämoglobinwert hatte ich im Oktober?';
 
-/// Startet die App und wechselt zum Bereich „Fragen“.
-Future<void> zuFragen(WidgetTester tester, MockApiClient mock) async {
-  grosserBildschirm(tester);
+/// Starts the app and switches to the „Fragen“ page.
+Future<void> goToQuestions(WidgetTester tester, MockApiClient mock) async {
+  useLargeScreen(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
+  await openHealth(tester);
   await tester.tap(
     find.descendant(
       of: find.byType(NavigationBar),
@@ -21,37 +21,35 @@ Future<void> zuFragen(WidgetTester tester, MockApiClient mock) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> ask(WidgetTester tester, String question) async {
+Future<void> askQuestion(WidgetTester tester, String question) async {
   await tester.enterText(find.byType(TextField), question);
   await tester.pump();
   await tester.tap(find.byTooltip('Frage senden'));
   await tester.pumpAndSettle();
 }
 
-IconButton sendenKnopf(WidgetTester tester) => tester.widget<IconButton>(
+IconButton sendButton(WidgetTester tester) => tester.widget<IconButton>(
   find.ancestor(of: find.byIcon(Icons.send), matching: find.byType(IconButton)),
 );
 
 void main() {
-  testWidgets('Senden ist erst mit Text möglich', (tester) async {
-    await zuFragen(tester, schnellerMock());
+  testWidgets('sending is only possible with text', (tester) async {
+    await goToQuestions(tester, fastMock());
 
     expect(find.text('0/500'), findsOneWidget);
-    expect(sendenKnopf(tester).onPressed, isNull);
+    expect(sendButton(tester).onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), '   ');
     await tester.pump();
-    expect(sendenKnopf(tester).onPressed, isNull);
+    expect(sendButton(tester).onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), 'Hämoglobin');
     await tester.pump();
-    expect(sendenKnopf(tester).onPressed, isNotNull);
+    expect(sendButton(tester).onPressed, isNotNull);
   });
 
-  testWidgets('mehr als 500 Zeichen lassen sich nicht eingeben', (
-    tester,
-  ) async {
-    await zuFragen(tester, schnellerMock());
+  testWidgets('more than 500 characters cannot be entered', (tester) async {
+    await goToQuestions(tester, fastMock());
 
     await tester.enterText(find.byType(TextField), 'a' * 600);
     await tester.pump();
@@ -59,11 +57,11 @@ void main() {
     expect(find.text('500/500'), findsOneWidget);
   });
 
-  testWidgets('Antwort mit Quelle, Tippen öffnet den Eintrag', (tester) async {
-    await zuFragen(tester, schnellerMock());
-    await ask(tester, treffer);
+  testWidgets('answer with source, tapping opens the entry', (tester) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, hit);
 
-    expect(find.text('„$treffer“'), findsOneWidget);
+    expect(find.text('„$hit“'), findsOneWidget);
     expect(find.textContaining('[1]'), findsOneWidget);
     expect(find.text('Quellen'), findsOneWidget);
     expect(find.text('Laborbefund · 14.10.2026'), findsOneWidget);
@@ -77,17 +75,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Erkannte Angaben'), findsOneWidget);
 
-    // „Zurück“ führt wieder zur Antwort, nicht in die Zeitleiste.
-    await zurueck(tester);
+    // „Zurück“ leads back to the answer, not into the timeline.
+    await tapBack(tester);
     expect(find.text('Quellen'), findsOneWidget);
-    expect(find.text('„$treffer“'), findsOneWidget);
+    expect(find.text('„$hit“'), findsOneWidget);
   });
 
-  testWidgets('ohne Treffer: nur der feste Satz, keine Quellen', (
+  testWidgets('without a hit: only the fixed sentence, no sources', (
     tester,
   ) async {
-    await zuFragen(tester, schnellerMock());
-    await ask(tester, 'Wie war das Wetter in Paris?');
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, 'Wie war das Wetter in Paris?');
 
     expect(
       find.text('Dazu finde ich nichts in deinen Dokumenten.'),
@@ -96,31 +94,31 @@ void main() {
     expect(find.text('Quellen'), findsNothing);
   });
 
-  testWidgets('Ladeanzeige während der Suche', (tester) async {
+  testWidgets('loading indicator during the search', (tester) async {
     final mock = MockApiClient(
       delay: const Duration(seconds: 1),
       uploadDelay: Duration.zero,
     );
-    await zuFragen(tester, mock);
-    await tester.enterText(find.byType(TextField), treffer);
+    await goToQuestions(tester, mock);
+    await tester.enterText(find.byType(TextField), hit);
     await tester.pump();
     await tester.tap(find.byTooltip('Frage senden'));
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Suche in deinen Dokumenten …'), findsOneWidget);
-    // Während der Suche lässt sich nicht noch einmal senden.
-    expect(sendenKnopf(tester).onPressed, isNull);
+    // During the search the question cannot be sent again.
+    expect(sendButton(tester).onPressed, isNull);
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     expect(find.text('Quellen'), findsOneWidget);
   });
 
-  testWidgets('Fehler: Meldung und erneuter Versuch', (tester) async {
-    final mock = schnellerMock();
-    await zuFragen(tester, mock);
+  testWidgets('error: message and retry', (tester) async {
+    final mock = fastMock();
+    await goToQuestions(tester, mock);
     mock.simulateError = true;
-    await ask(tester, treffer);
+    await askQuestion(tester, hit);
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
 
@@ -132,19 +130,19 @@ void main() {
     expect(find.text('Quellen'), findsOneWidget);
   });
 
-  testWidgets('Modell nicht erreichbar: Meldung des Backends', (tester) async {
-    await zuFragen(tester, schnellerMock());
-    await ask(tester, 'Test modelerror');
+  testWidgets('model unavailable: message of the backend', (tester) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, 'Test modelerror');
 
     expect(find.textContaining('nicht erreichbar'), findsOneWidget);
   });
 
-  testWidgets('neue Frage ersetzt die alte Antwort', (tester) async {
-    await zuFragen(tester, schnellerMock());
-    await ask(tester, treffer);
-    await ask(tester, 'Wie war das Wetter in Paris?');
+  testWidgets('a new question replaces the old answer', (tester) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, hit);
+    await askQuestion(tester, 'Wie war das Wetter in Paris?');
 
     expect(find.text('Quellen'), findsNothing);
-    expect(find.text('„$treffer“'), findsNothing);
+    expect(find.text('„$hit“'), findsNothing);
   });
 }

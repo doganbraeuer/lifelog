@@ -3,70 +3,68 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
 
-double deckkraft(WidgetTester tester, String moduleId) => tester
+double opacityOf(WidgetTester tester, String moduleId) => tester
     .widget<FadeTransition>(find.byKey(ValueKey('fade-in-$moduleId')))
     .opacity
     .value;
 
-double skalierung(WidgetTester tester, String moduleId) =>
+double scaleOf(WidgetTester tester, String moduleId) =>
     tester.widget<AnimatedScale>(find.byKey(ValueKey('press-$moduleId'))).scale;
 
 void main() {
-  testWidgets('Kacheln blenden beim Start ein', (tester) async {
-    await tester.pumpWidget(testApp(schnellerMock()));
+  testWidgets('tiles fade in on start', (tester) async {
+    await tester.pumpWidget(testApp(fastMock()));
 
-    // Im ersten Bild noch nicht voll sichtbar ...
-    expect(deckkraft(tester, 'health'), lessThan(1));
-    // ... nach dem Einblenden schon.
+    // Not fully visible in the first frame yet ...
+    expect(opacityOf(tester, 'health'), lessThan(1));
+    // ... but after fading in.
     await tester.pumpAndSettle();
     for (final id in ['health', 'nutrition', 'recipes', 'sport']) {
-      expect(deckkraft(tester, id), 1, reason: id);
+      expect(opacityOf(tester, id), 1, reason: id);
     }
   });
 
-  testWidgets('„Animationen entfernen“: sofort vollständig sichtbar', (
-    tester,
-  ) async {
+  testWidgets('„Animationen entfernen“: fully visible at once', (tester) async {
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(disableAnimations: true);
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 
-    await tester.pumpWidget(testApp(schnellerMock()));
+    await tester.pumpWidget(testApp(fastMock()));
     await tester.pump();
 
     for (final id in ['health', 'nutrition', 'recipes', 'sport']) {
-      expect(deckkraft(tester, id), 1, reason: id);
+      expect(opacityOf(tester, id), 1, reason: id);
     }
-    // Es läuft keine Animation mehr (Bild steht).
+    // No animation is running any more (the frame is still).
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  testWidgets('Druck-Effekt: aktive Kachel wird beim Drücken kleiner', (
+  testWidgets('press effect: active tile gets smaller while pressed', (
     tester,
   ) async {
-    await tester.pumpWidget(testApp(schnellerMock()));
+    await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
 
-    final finger = await tester.startGesture(
+    final gesture = await tester.startGesture(
       tester.getCenter(find.text('Gesundheit')),
     );
     await tester.pump(Durations.medium2);
-    expect(skalierung(tester, 'health'), 0.97);
+    expect(scaleOf(tester, 'health'), 0.97);
 
-    await finger.cancel();
+    await gesture.cancel();
     await tester.pumpAndSettle();
-    expect(skalierung(tester, 'health'), 1);
+    expect(scaleOf(tester, 'health'), 1);
   });
 
-  testWidgets('inaktive Kachel: kein Druck-Effekt', (tester) async {
-    await tester.pumpWidget(testApp(schnellerMock()));
+  testWidgets('inactive tile: no press effect', (tester) async {
+    await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
 
-    final finger = await tester.startGesture(
+    final gesture = await tester.startGesture(
       tester.getCenter(find.text('Sport')),
     );
     await tester.pump(Durations.medium2);
-    expect(skalierung(tester, 'sport'), 1);
-    await finger.cancel();
+    expect(scaleOf(tester, 'sport'), 1);
+    await gesture.cancel();
   });
 }

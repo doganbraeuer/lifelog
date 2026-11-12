@@ -12,15 +12,15 @@ const text =
     'Überweisung vom 21.10.2026\n'
     'zur Physiotherapie';
 
-Finder textFeld() => find.widgetWithText(TextField, 'Dokumentinhalt');
-Finder importieren() => find.widgetWithText(FilledButton, 'Importieren');
+Finder textField() => find.widgetWithText(TextField, 'Dokumentinhalt');
+Finder importButton() => find.widgetWithText(FilledButton, 'Importieren');
 
-/// Startet die App, öffnet Hochladen und das Textfeld.
-Future<void> zumTextfeld(WidgetTester tester, MockApiClient mock) async {
-  grosserBildschirm(tester);
+/// Starts the app, opens the upload page and the text field.
+Future<void> openTextField(WidgetTester tester, MockApiClient mock) async {
+  useLargeScreen(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
+  await openHealth(tester);
   await tester.tap(
     find.descendant(
       of: find.byType(NavigationBar),
@@ -32,38 +32,38 @@ Future<void> zumTextfeld(WidgetTester tester, MockApiClient mock) async {
   await tester.pumpAndSettle();
 }
 
-FilledButton knopf(WidgetTester tester, Finder finder) =>
+FilledButton button(WidgetTester tester, Finder finder) =>
     tester.widget<FilledButton>(finder);
 
 void main() {
-  testWidgets('Importieren erst mit Text möglich', (tester) async {
-    await zumTextfeld(tester, schnellerMock());
+  testWidgets('import is only possible with text', (tester) async {
+    await openTextField(tester, fastMock());
 
-    expect(textFeld(), findsOneWidget);
+    expect(textField(), findsOneWidget);
     expect(find.text('0/100000'), findsOneWidget);
-    expect(knopf(tester, importieren()).onPressed, isNull);
+    expect(button(tester, importButton()).onPressed, isNull);
 
-    await tester.enterText(textFeld(), '   \n ');
+    await tester.enterText(textField(), '   \n ');
     await tester.pump();
-    expect(knopf(tester, importieren()).onPressed, isNull);
+    expect(button(tester, importButton()).onPressed, isNull);
 
-    await tester.enterText(textFeld(), text);
+    await tester.enterText(textField(), text);
     await tester.pump();
-    expect(knopf(tester, importieren()).onPressed, isNotNull);
+    expect(button(tester, importButton()).onPressed, isNotNull);
   });
 
-  testWidgets('Text importieren: Eintrag öffnet sich, Originaldatei ist der '
-      'Text', (tester) async {
-    final mock = schnellerMock();
-    await zumTextfeld(tester, mock);
-    await tester.enterText(textFeld(), text);
+  testWidgets('importing text: the entry opens, the original file is the '
+      'text', (tester) async {
+    final mock = fastMock();
+    await openTextField(tester, mock);
+    await tester.enterText(textField(), text);
     await tester.pump();
-    await tester.tap(importieren());
+    await tester.tap(importButton());
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.text('Text gespeichert.'), findsOneWidget);
-    expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // Quelle
+    expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // issuer
     expect(find.text('21.10.2026'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);
     expect(await mock.listEntries(module: 'health'), hasLength(4));
@@ -73,63 +73,59 @@ void main() {
     expect(find.byType(OriginalFileScreen), findsOneWidget);
     expect(find.textContaining('zur Physiotherapie'), findsWidgets);
 
-    // Zurück bis in die Zeitleiste; dort steht der neue Eintrag.
-    await zurueck(tester);
-    await zurueck(tester);
+    // Back to the timeline; the new entry is there.
+    await tapBack(tester);
+    await tapBack(tester);
     expect(find.byType(TimelineScreen), findsOneWidget);
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget);
   });
 
-  testWidgets('Ladeanzeige, Textfeld gesperrt', (tester) async {
+  testWidgets('loading indicator, text field locked', (tester) async {
     final mock = MockApiClient(
       delay: Duration.zero,
       uploadDelay: const Duration(seconds: 2),
     );
-    await zumTextfeld(tester, mock);
-    await tester.enterText(textFeld(), text);
+    await openTextField(tester, mock);
+    await tester.enterText(textField(), text);
     await tester.pump();
-    await tester.tap(importieren());
+    await tester.tap(importButton());
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
-    expect(tester.widget<TextField>(textFeld()).enabled, isFalse);
+    expect(tester.widget<TextField>(textField()).enabled, isFalse);
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.byType(EntryScreen), findsOneWidget);
   });
 
-  testWidgets('Abbrechen schließt das Feld und verwirft den Text', (
-    tester,
-  ) async {
-    await zumTextfeld(tester, schnellerMock());
-    await tester.enterText(textFeld(), text);
+  testWidgets('cancel closes the field and discards the text', (tester) async {
+    await openTextField(tester, fastMock());
+    await tester.enterText(textField(), text);
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
 
-    expect(textFeld(), findsNothing);
+    expect(textField(), findsNothing);
     expect(find.text('Foto aufnehmen'), findsOneWidget);
 
     await tester.tap(find.text('Text eingeben'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(textFeld()).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(textField()).controller!.text, isEmpty);
   });
 
-  testWidgets('Duplikat: Meldung, Sprung möglich, Text bleibt stehen', (
-    tester,
-  ) async {
-    final mock = schnellerMock();
+  testWidgets('duplicate: message, jump possible, text stays', (tester) async {
+    final mock = fastMock();
     final preloaded = await mock.importText(text, module: 'health');
-    await zumTextfeld(tester, mock);
-    await tester.enterText(textFeld(), text);
+    await openTextField(tester, mock);
+    await tester.enterText(textField(), text);
     await tester.pump();
-    await tester.tap(importieren());
+    await tester.tap(importButton());
     await tester.pumpAndSettle();
 
     expect(find.text('Diesen Text hast du schon importiert.'), findsOneWidget);
-    expect(tester.widget<TextField>(textFeld()).controller!.text, text);
-    // Kein neuer Versuch sinnvoll: Knopf heißt weiter „Importieren“.
-    expect(importieren(), findsOneWidget);
+    expect(tester.widget<TextField>(textField()).controller!.text, text);
+    // No point in retrying: the button is still called „Importieren“.
+    expect(importButton(), findsOneWidget);
 
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
@@ -137,18 +133,18 @@ void main() {
     expect(find.textContaining(preloaded.file.fileName), findsWidgets);
   });
 
-  testWidgets('Handygröße, Tastatur offen, langer Text: Knöpfe erreichbar', (
+  testWidgets('phone size, keyboard open, long text: buttons reachable', (
     tester,
   ) async {
-    final mock = schnellerMock();
+    final mock = fastMock();
     await tester.pumpWidget(testApp(mock));
     await tester.pumpAndSettle();
-    await zuGesundheit(tester);
+    await openHealth(tester);
 
-    // Wie das OnePlus 8T: 1080 × 2400 px bei Faktor 3, also 360 × 800.
-    // Gboard ist dort 897 px hoch (gemessen per Screenshot), also 299.
-    // Erst nach „Bereiche“ umstellen: Die Kacheln dort laufen in der
-    // Testschrift bei 360 px Breite über (eigenes Thema).
+    // Like the OnePlus 8T: 1080 × 2400 px at factor 3, i.e. 360 × 800.
+    // Gboard is 897 px high there (measured by screenshot), i.e. 299.
+    // Only switch after „Bereiche“: the tiles there overflow in the test
+    // font at 360 px width (a separate topic).
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
@@ -164,39 +160,37 @@ void main() {
     await tester.tap(find.text('Text eingeben'));
     await tester.pumpAndSettle();
 
-    // Feld antippen, Tastatur geht auf, langer Text wird eingegeben.
-    await tester.tap(textFeld());
+    // Tap the field, the keyboard opens, a long text is entered.
+    await tester.tap(textField());
     tester.view.viewInsets = const FakeViewPadding(bottom: 897);
     await tester.enterText(
-      textFeld(),
+      textField(),
       [for (var i = 1; i <= 20; i++) 'Zeile $i Laborwert Beispiel'].join('\n'),
     );
     await tester.pumpAndSettle();
 
-    // Sichtbar ist nur der Bereich zwischen AppBar und Tastatur.
-    final oben = tester
-        .getRect(find.widgetWithText(AppBar, 'Hochladen'))
-        .bottom;
-    const unten = (2400 - 897) / 3;
-    for (final knopf in [importieren(), find.text('Abbrechen')]) {
-      final rect = tester.getRect(knopf);
-      expect(rect.top, greaterThanOrEqualTo(oben), reason: '$knopf oben');
-      expect(rect.bottom, lessThanOrEqualTo(unten), reason: '$knopf unten');
+    // Only the area between the app bar and the keyboard is visible.
+    final top = tester.getRect(find.widgetWithText(AppBar, 'Hochladen')).bottom;
+    const bottom = (2400 - 897) / 3;
+    for (final button in [importButton(), find.text('Abbrechen')]) {
+      final rect = tester.getRect(button);
+      expect(rect.top, greaterThanOrEqualTo(top), reason: '$button top');
+      expect(rect.bottom, lessThanOrEqualTo(bottom), reason: '$button bottom');
     }
 
-    // Und der Knopf tut, was er soll.
-    await tester.tap(importieren());
+    // And the button does what it should.
+    await tester.tap(importButton());
     await tester.pumpAndSettle();
     expect(find.byType(EntryScreen), findsOneWidget);
   });
 
-  testWidgets('wiederholbarer Fehler: „Erneut versuchen“, Text bleibt', (
+  testWidgets('retryable error: „Erneut versuchen“, text stays', (
     tester,
   ) async {
-    await zumTextfeld(tester, schnellerMock());
-    await tester.enterText(textFeld(), 'Test modelerror');
+    await openTextField(tester, fastMock());
+    await tester.enterText(textField(), 'Test modelerror');
     await tester.pump();
-    await tester.tap(importieren());
+    await tester.tap(importButton());
     await tester.pumpAndSettle();
 
     expect(find.textContaining('nicht erreichbar'), findsOneWidget);
@@ -205,7 +199,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.widget<TextField>(textFeld()).controller!.text,
+      tester.widget<TextField>(textField()).controller!.text,
       'Test modelerror',
     );
   });

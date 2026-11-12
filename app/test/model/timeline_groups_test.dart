@@ -4,97 +4,97 @@ import 'package:lifelog/model/plain_date.dart';
 import 'package:lifelog/model/entry.dart';
 import 'package:lifelog/model/timeline_groups.dart';
 
-/// Eintrag mit Dokumentdatum und Importzeit in **lokaler** Zeit.
-EntrySummary e(String id, PlainDate? datum, DateTime importLokal) =>
+/// Entry with document date and import time in **local** time.
+EntrySummary e(String id, PlainDate? date, DateTime importedLocal) =>
     EntrySummary(
       id: id,
       module: 'health',
       type: 'other',
-      documentDate: datum,
-      importedAt: importLokal.toUtc(),
+      documentDate: date,
+      importedAt: importedLocal.toUtc(),
       issuer: null,
     );
 
-/// Gruppen als Text, z. B. „Oktober 2026: a, b“ (Listen in Records würden
-/// nach Identität verglichen, nicht nach Inhalt).
-List<String> kurz(List<TimelineGroup> gruppen) => [
-  for (final g in gruppen)
+/// Groups as text, e.g. „Oktober 2026: a, b“ (lists in records would be
+/// compared by identity, not by content).
+List<String> summary(List<TimelineGroup> groups) => [
+  for (final g in groups)
     '${g.title}: ${g.entries.map((x) => x.id).join(', ')}',
 ];
 
 void main() {
-  final heute = DateTime(2026, 11, 3, 12);
+  final today = DateTime(2026, 11, 3, 12);
 
-  group('nach Dokumentdatum', () {
-    test('Monate in der Reihenfolge des Backends, ohne Datum am Ende', () {
-      // So liefert das Backend absteigend: ohne Datum schon am Ende.
-      final liste = [
-        e('a', PlainDate(2026, 10, 14), heute),
-        e('b', PlainDate(2026, 10, 2), heute),
-        e('c', PlainDate(2026, 9, 30), heute),
-        e('d', null, heute),
+  group('by document date', () {
+    test('months in the order of the backend, without date at the end', () {
+      // This is how the backend returns descending: without date already last.
+      final list = [
+        e('a', PlainDate(2026, 10, 14), today),
+        e('b', PlainDate(2026, 10, 2), today),
+        e('c', PlainDate(2026, 9, 30), today),
+        e('d', null, today),
       ];
-      expect(kurz(groupTimeline(liste, Sort.documentDate)), [
+      expect(summary(groupTimeline(list, Sort.documentDate)), [
         'Oktober 2026: a, b',
         'September 2026: c',
         'Ohne Datum: d',
       ]);
     });
 
-    test('aufsteigend und über den Jahreswechsel', () {
-      final liste = [
-        e('a', PlainDate(2025, 12, 31), heute),
-        e('b', PlainDate(2026, 1, 1), heute),
-        e('c', PlainDate(2026, 1, 20), heute),
+    test('ascending and across the turn of the year', () {
+      final list = [
+        e('a', PlainDate(2025, 12, 31), today),
+        e('b', PlainDate(2026, 1, 1), today),
+        e('c', PlainDate(2026, 1, 20), today),
       ];
-      expect(kurz(groupTimeline(liste, Sort.documentDate)), [
+      expect(summary(groupTimeline(list, Sort.documentDate)), [
         'Dezember 2025: a',
         'Januar 2026: b, c',
       ]);
     });
 
-    test('ohne Datum landet am Ende, auch wenn es mittendrin steht', () {
-      final liste = [
-        e('a', null, heute),
-        e('b', PlainDate(2026, 3, 1), heute),
-        e('c', null, heute),
+    test('without date ends up last, even if it is in the middle', () {
+      final list = [
+        e('a', null, today),
+        e('b', PlainDate(2026, 3, 1), today),
+        e('c', null, today),
       ];
-      expect(kurz(groupTimeline(liste, Sort.documentDate)), [
+      expect(summary(groupTimeline(list, Sort.documentDate)), [
         'März 2026: b',
         'Ohne Datum: a, c',
       ]);
     });
 
-    test('Monat aus dem reinen Datum, keine Zeitzone', () {
-      // Der 1. Oktober bleibt Oktober, egal wie spät importiert wurde.
-      final liste = [e('a', PlainDate(2026, 10, 1), DateTime(2026, 9, 30, 23))];
+    test('month from the plain date, no time zone', () {
+      // 1 October stays October, no matter how late it was imported.
+      final list = [e('a', PlainDate(2026, 10, 1), DateTime(2026, 9, 30, 23))];
       expect(
-        groupTimeline(liste, Sort.documentDate).single.title,
+        groupTimeline(list, Sort.documentDate).single.title,
         'Oktober 2026',
       );
     });
   });
 
-  group('nach Importdatum', () {
-    test('Monat in lokaler Zeit, Einträge ohne Dokumentdatum normal', () {
-      final liste = [
+  group('by import date', () {
+    test('month in local time, entries without document date as usual', () {
+      final list = [
         e('a', null, DateTime(2026, 11, 1, 0, 30)),
         e('b', PlainDate(2026, 10, 14), DateTime(2026, 10, 31, 23, 30)),
         e('c', PlainDate(2026, 1, 1), DateTime(2026, 10, 2)),
       ];
-      expect(kurz(groupTimeline(liste, Sort.importedAt)), [
+      expect(summary(groupTimeline(list, Sort.importedAt)), [
         'November 2026: a',
         'Oktober 2026: b, c',
       ]);
     });
   });
 
-  test('leere Liste', () {
+  test('empty list', () {
     expect(groupTimeline([], Sort.documentDate), isEmpty);
     expect(groupTimeline([], Sort.importedAt), isEmpty);
   });
 
-  test('alle Monatsnamen deutsch', () {
+  test('all month names German', () {
     expect(monthNames, hasLength(12));
     expect(monthNames[2], 'März');
   });

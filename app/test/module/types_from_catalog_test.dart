@@ -7,40 +7,40 @@ import '../helpers.dart';
 import 'test_catalog.dart';
 
 void main() {
-  group('Mock prüft Typen gegen das Modul des Eintrags', () {
-    test('Typ aus dem Katalog ist erlaubt', () async {
-      final mock = schnellerMock(catalog: testKatalog());
+  group('mock checks types against the module of the entry', () {
+    test('type from the catalog is allowed', () async {
+      final mock = fastMock(catalog: testCatalog());
       final entry = await mock.correct(
-        laborId,
+        labReportId,
         const EntryPatch(type: 'impfpass'),
       );
       expect(entry.type, 'impfpass');
     });
 
-    test('Typ eines anderen Moduls: 400 INVALID_REQUEST', () async {
-      final mock = schnellerMock(catalog: testKatalog());
+    test('type of another module: 400 INVALID_REQUEST', () async {
+      final mock = fastMock(catalog: testCatalog());
       await expectLater(
-        mock.correctWithJson(laborId, {'type': 'training'}),
-        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
+        mock.correctWithJson(labReportId, {'type': 'training'}),
+        throwsApiException(ErrorCode.invalidRequest, status: 400),
       );
     });
 
-    test('mit Standard-Katalog ist „impfpass“ unbekannt', () async {
+    test('with the default catalog „impfpass“ is unknown', () async {
       await expectLater(
-        schnellerMock().correctWithJson(laborId, {'type': 'impfpass'}),
-        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
+        fastMock().correctWithJson(labReportId, {'type': 'impfpass'}),
+        throwsApiException(ErrorCode.invalidRequest, status: 400),
       );
     });
   });
 
-  testWidgets('Typ-Dialog zeigt die Typen aus dem Katalog', (tester) async {
-    final catalog = testKatalog();
-    grosserBildschirm(tester);
+  testWidgets('type dialog shows the types from the catalog', (tester) async {
+    final catalog = testCatalog();
+    useLargeScreen(tester);
     await tester.pumpWidget(
-      testApp(schnellerMock(catalog: catalog), catalog: catalog),
+      testApp(fastMock(catalog: catalog), catalog: catalog),
     );
     await tester.pumpAndSettle();
-    await zuGesundheit(tester);
+    await openHealth(tester);
     await tester.tap(find.text('Labor Muster GmbH, Salzburg'));
     await tester.pumpAndSettle();
 
@@ -49,7 +49,7 @@ void main() {
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
 
-    // Zusätzlicher Typ aus dem Katalog; „Training“ gehört zu Sport.
+    // Additional type from the catalog; „Training“ belongs to sport.
     expect(find.text('Impfpass').last, findsOneWidget);
     expect(find.text('Training'), findsNothing);
 
@@ -58,7 +58,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
     await tester.pumpAndSettle();
 
-    // Titel und Feld zeigen den neuen Typ, der Hinweis den erkannten.
+    // Title and field show the new type, the hint shows the recognized one.
     expect(find.text('Impfpass'), findsWidgets);
     expect(find.text('korrigiert, erkannt: Laborbefund'), findsOneWidget);
   });

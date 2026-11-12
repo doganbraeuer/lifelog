@@ -12,110 +12,108 @@ import 'package:lifelog/screens/timeline_screen.dart';
 
 import '../helpers.dart';
 
-/// Welche Seite die Navigationsleiste markiert.
-int markiert(WidgetTester tester) =>
+/// Which page the navigation bar marks as selected.
+int selectedTab(WidgetTester tester) =>
     tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
 
-/// Welche Seite sichtbar ist. Unsichtbare (am Leben gehaltene) Seiten
-/// zählen für die Finder nicht.
-int sichtbar(WidgetTester tester) {
-  final seiten = [
+/// Which page is visible. Invisible pages (kept alive) do not count for
+/// the finders.
+int visiblePage(WidgetTester tester) {
+  final pages = [
     find.byType(TimelineScreen),
     find.byType(UploadScreen),
     find.byType(QuestionScreen),
   ];
-  final treffer = [
-    for (var i = 0; i < seiten.length; i++)
-      if (seiten[i].evaluate().isNotEmpty) i,
+  final hit = [
+    for (var i = 0; i < pages.length; i++)
+      if (pages[i].evaluate().isNotEmpty) i,
   ];
-  expect(treffer, hasLength(1), reason: 'genau eine Seite sichtbar');
-  return treffer.single;
+  expect(hit, hasLength(1), reason: 'exactly one page visible');
+  return hit.single;
 }
 
-/// Wischen: nach links blättert vor, nach rechts zurück.
-Future<void> wischen(WidgetTester tester, {required bool nachLinks}) async {
+/// Swipe: to the left pages forward, to the right back.
+Future<void> swipe(WidgetTester tester, {required bool toLeft}) async {
   await tester.fling(
     find.byType(PageView),
-    Offset(nachLinks ? -300 : 300, 0),
+    Offset(toLeft ? -300 : 300, 0),
     1000,
   );
   await tester.pumpAndSettle();
 }
 
-/// Lässt eine Seitenanimation Bild für Bild ablaufen (0,6 s). Nötig, wo
-/// pumpAndSettle() nicht geht: Ein einzelnes pump(400 ms) erzeugt nur ein
-/// Bild, in dem die Animation gerade erst beginnt.
-Future<void> animationAbwarten(WidgetTester tester) async {
+/// Runs a page animation frame by frame (0.6 s). Needed where
+/// pumpAndSettle() does not work: a single pump(400 ms) only produces one
+/// frame in which the animation is only just starting.
+Future<void> waitForAnimation(WidgetTester tester) async {
   for (var i = 0; i < 30; i++) {
     await tester.pump(const Duration(milliseconds: 20));
   }
 }
 
-Finder navigation(String label) =>
+Finder navItem(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
 
-Future<void> starten(
+Future<void> startApp(
   WidgetTester tester,
   MockApiClient mock, {
-  FakeDateiAuswahl? auswahl,
+  FakeFileChooser? chooser,
 }) async {
-  await tester.pumpWidget(testApp(mock, auswahl: auswahl));
+  await tester.pumpWidget(testApp(mock, chooser: chooser));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
+  await openHealth(tester);
 }
 
 void main() {
-  group('Wischen und Navigationsleiste', () {
-    testWidgets('Wischen wechselt die Seite, die Leiste folgt', (tester) async {
-      await starten(tester, schnellerMock());
-      expect((sichtbar(tester), markiert(tester)), (0, 0));
+  group('swiping and navigation bar', () {
+    testWidgets('swiping changes the page, the bar follows', (tester) async {
+      await startApp(tester, fastMock());
+      expect((visiblePage(tester), selectedTab(tester)), (0, 0));
 
-      await wischen(tester, nachLinks: true);
-      expect((sichtbar(tester), markiert(tester)), (1, 1));
+      await swipe(tester, toLeft: true);
+      expect((visiblePage(tester), selectedTab(tester)), (1, 1));
 
-      await wischen(tester, nachLinks: true);
-      expect((sichtbar(tester), markiert(tester)), (2, 2));
+      await swipe(tester, toLeft: true);
+      expect((visiblePage(tester), selectedTab(tester)), (2, 2));
 
-      // Am Ende geht es nicht weiter.
-      await wischen(tester, nachLinks: true);
-      expect((sichtbar(tester), markiert(tester)), (2, 2));
+      // At the end it goes no further.
+      await swipe(tester, toLeft: true);
+      expect((visiblePage(tester), selectedTab(tester)), (2, 2));
 
-      await wischen(tester, nachLinks: false);
-      expect((sichtbar(tester), markiert(tester)), (1, 1));
+      await swipe(tester, toLeft: false);
+      expect((visiblePage(tester), selectedTab(tester)), (1, 1));
     });
 
-    testWidgets('Tippen in der Leiste blättert zur Seite', (tester) async {
-      await starten(tester, schnellerMock());
+    testWidgets('tapping in the bar pages to the page', (tester) async {
+      await startApp(tester, fastMock());
 
-      await tester.tap(navigation('Hochladen'));
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
-      expect((sichtbar(tester), markiert(tester)), (1, 1));
+      expect((visiblePage(tester), selectedTab(tester)), (1, 1));
 
-      await tester.tap(navigation('Zeitleiste'));
+      await tester.tap(navItem('Zeitleiste'));
       await tester.pumpAndSettle();
-      expect((sichtbar(tester), markiert(tester)), (0, 0));
+      expect((visiblePage(tester), selectedTab(tester)), (0, 0));
     });
 
-    testWidgets('Sprung über eine Seite: Leiste flackert nicht', (
-      tester,
-    ) async {
-      await starten(tester, schnellerMock());
+    testWidgets('jump over a page: the bar does not flicker', (tester) async {
+      await startApp(tester, fastMock());
 
-      await tester.tap(navigation('Fragen'));
-      // Während der Animation läuft die PageView an „Hochladen“ vorbei;
-      // die Leiste soll trotzdem durchgehend „Fragen“ zeigen.
+      await tester.tap(navItem('Fragen'));
+      // During the animation the PageView passes „Hochladen“;
+      // the bar should still show „Fragen“ throughout.
       for (var i = 0; i < 25; i++) {
         await tester.pump(const Duration(milliseconds: 16));
-        expect(markiert(tester), 2, reason: 'Frame $i');
+        expect(selectedTab(tester), 2, reason: 'Frame $i');
       }
       await tester.pumpAndSettle();
-      expect(sichtbar(tester), 2);
+      expect(visiblePage(tester), 2);
     });
   });
 
-  group('Zustand bleibt beim Wechsel erhalten', () {
-    testWidgets('Sortierung der Zeitleiste', (tester) async {
-      await starten(tester, schnellerMock());
+  group('state is kept when switching', () {
+    testWidgets('sort of the timeline', (tester) async {
+      await startApp(tester, fastMock());
 
       await tester.tap(find.byIcon(Icons.sort));
       await tester.pumpAndSettle();
@@ -126,17 +124,17 @@ void main() {
       await tester.tap(find.byIcon(Icons.arrow_downward));
       await tester.pumpAndSettle();
 
-      await wischen(tester, nachLinks: true);
-      await wischen(tester, nachLinks: true);
-      await tester.tap(navigation('Zeitleiste'));
+      await swipe(tester, toLeft: true);
+      await swipe(tester, toLeft: true);
+      await tester.tap(navItem('Zeitleiste'));
       await tester.pumpAndSettle();
 
       expect(find.text('Importdatum · älteste zuerst'), findsOneWidget);
     });
 
-    testWidgets('Scroll-Position der Zeitleiste', (tester) async {
-      // Genug Einträge, damit die Liste scrollt.
-      final mock = schnellerMock();
+    testWidgets('scroll position of the timeline', (tester) async {
+      // Enough entries so that the list scrolls.
+      final mock = fastMock();
       for (var i = 0; i < 20; i++) {
         await mock.upload(
           Uint8List.fromList(utf8.encode('%PDF-1.4 Nr. $i')),
@@ -144,7 +142,7 @@ void main() {
           module: 'health',
         );
       }
-      await starten(tester, mock);
+      await startApp(tester, mock);
 
       Finder readList() => find
           .descendant(
@@ -157,36 +155,36 @@ void main() {
 
       await tester.drag(readList(), const Offset(0, -400));
       await tester.pumpAndSettle();
-      final vorher = position();
-      expect(vorher, greaterThan(0));
+      final before = position();
+      expect(before, greaterThan(0));
 
-      await wischen(tester, nachLinks: true);
-      await wischen(tester, nachLinks: true);
-      await wischen(tester, nachLinks: false);
-      await wischen(tester, nachLinks: false);
+      await swipe(tester, toLeft: true);
+      await swipe(tester, toLeft: true);
+      await swipe(tester, toLeft: false);
+      await swipe(tester, toLeft: false);
 
-      expect(sichtbar(tester), 0);
-      expect(position(), vorher);
+      expect(visiblePage(tester), 0);
+      expect(position(), before);
     });
 
-    testWidgets('gewählte Datei auf „Hochladen“', (tester) async {
-      final auswahl = FakeDateiAuswahl()..pdf = testPdf('befund.pdf');
-      await starten(tester, schnellerMock(), auswahl: auswahl);
-      await tester.tap(navigation('Hochladen'));
+    testWidgets('chosen file on „Hochladen“', (tester) async {
+      final chooser = FakeFileChooser()..pdf = testPdf('befund.pdf');
+      await startApp(tester, fastMock(), chooser: chooser);
+      await tester.tap(navItem('Hochladen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
 
-      await wischen(tester, nachLinks: false); // zur Zeitleiste
-      await wischen(tester, nachLinks: true); // zurück
+      await swipe(tester, toLeft: false); // to the timeline
+      await swipe(tester, toLeft: true); // back
 
       expect(find.text('befund.pdf'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Hochladen'), findsOneWidget);
     });
 
-    testWidgets('letzte Antwort auf „Fragen“', (tester) async {
-      await starten(tester, schnellerMock());
-      await tester.tap(navigation('Fragen'));
+    testWidgets('last answer on „Fragen“', (tester) async {
+      await startApp(tester, fastMock());
+      await tester.tap(navItem('Fragen'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Hämoglobin');
       await tester.pump();
@@ -194,71 +192,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Quellen'), findsOneWidget);
 
-      await tester.tap(navigation('Zeitleiste'));
+      await tester.tap(navItem('Zeitleiste'));
       await tester.pumpAndSettle();
-      await wischen(tester, nachLinks: true);
-      await wischen(tester, nachLinks: true);
+      await swipe(tester, toLeft: true);
+      await swipe(tester, toLeft: true);
 
-      expect(sichtbar(tester), 2);
+      expect(visiblePage(tester), 2);
       expect(find.text('„Hämoglobin“'), findsOneWidget);
       expect(find.text('Quellen'), findsOneWidget);
     });
   });
 
-  testWidgets('laufender Upload übersteht den Wechsel; danach Zeitleiste '
-      'und neuer Eintrag', (tester) async {
+  testWidgets('a running upload survives the switch; then timeline '
+      'and new entry', (tester) async {
     final mock = MockApiClient(
       delay: Duration.zero,
       uploadDelay: const Duration(seconds: 2),
     );
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('neu.pdf');
-    grosserBildschirm(tester); // Eintrag-Ansicht ist länger als 600 px
-    await starten(tester, mock, auswahl: auswahl);
-    await tester.tap(navigation('Hochladen'));
+    final chooser = FakeFileChooser()..pdf = testPdf('neu.pdf');
+    useLargeScreen(tester); // the entry view is longer than 600 px
+    await startApp(tester, mock, chooser: chooser);
+    await tester.tap(navItem('Hochladen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
 
-    // Upload starten. Solange er läuft, dreht sich der Ladekreis endlos;
-    // deshalb hier pump(Dauer) statt pumpAndSettle().
+    // Start the upload. While it runs, the progress indicator spins endlessly;
+    // that is why pump(duration) is used here instead of pumpAndSettle().
     await tester.tap(find.widgetWithText(FilledButton, 'Hochladen'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
 
-    // Zu „Fragen“ und zurück: Der Upload läuft weiter.
-    await tester.tap(navigation('Fragen'));
-    await animationAbwarten(tester);
-    expect(sichtbar(tester), 2);
-    await tester.tap(navigation('Hochladen'));
-    await animationAbwarten(tester);
+    // To „Fragen“ and back: the upload keeps running.
+    await tester.tap(navItem('Fragen'));
+    await waitForAnimation(tester);
+    expect(visiblePage(tester), 2);
+    await tester.tap(navItem('Hochladen'));
+    await waitForAnimation(tester);
     expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
 
-    // Wieder zu „Fragen“ und dort fertig werden lassen.
-    await tester.tap(navigation('Fragen'));
+    // To „Fragen“ again and let it finish there.
+    await tester.tap(navItem('Fragen'));
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
-    // Der Rahmen hat über _zeitleiste.currentState den Eintrag geöffnet ...
+    // The shell opened the entry via _timeline.currentState ...
     expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.text('Blutdruck'), findsOneWidget);
 
-    // ... und ist zur Zeitleiste gewechselt, die neu geladen ist.
-    await zurueck(tester);
-    expect((sichtbar(tester), markiert(tester)), (0, 0));
+    // ... and switched to the timeline, which has been reloaded.
+    await tapBack(tester);
+    expect((visiblePage(tester), selectedTab(tester)), (0, 0));
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
   });
 
-  testWidgets('Duplikat: „Vorhandenen Eintrag öffnen“ wechselt zur '
-      'Zeitleiste', (tester) async {
-    final mock = schnellerMock();
+  testWidgets('duplicate: „Vorhandenen Eintrag öffnen“ switches to the '
+      'timeline', (tester) async {
+    final mock = fastMock();
     await mock.upload(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
       module: 'health',
     );
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
-    await starten(tester, mock, auswahl: auswahl);
-    await tester.tap(navigation('Hochladen'));
+    final chooser = FakeFileChooser()..pdf = testPdf('doppelt.pdf');
+    await startApp(tester, mock, chooser: chooser);
+    await tester.tap(navItem('Hochladen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
@@ -269,7 +267,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(EntryScreen), findsOneWidget);
 
-    await zurueck(tester);
-    expect((sichtbar(tester), markiert(tester)), (0, 0));
+    await tapBack(tester);
+    expect((visiblePage(tester), selectedTab(tester)), (0, 0));
   });
 }

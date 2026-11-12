@@ -7,8 +7,8 @@ import 'package:lifelog/model/entry_patch.dart';
 import '../helpers.dart';
 
 void main() {
-  test('Frage mit Treffer: Antwort mit [1] und Quelle', () async {
-    final answer = await schnellerMock().ask(
+  test('question with a hit: answer with [1] and source', () async {
+    final answer = await fastMock().ask(
       'Welchen Hämoglobinwert hatte ich im Oktober?',
       module: 'health',
     );
@@ -18,25 +18,25 @@ void main() {
     expect(answer.sources, hasLength(1));
     final source = answer.sources.single;
     expect(source.number, 1);
-    expect(source.entryId, laborId);
+    expect(source.entryId, labReportId);
     expect(source.type, 'lab_report');
     expect(source.issuer, 'Labor Muster GmbH, Salzburg');
     expect(source.documentDate, PlainDate(2026, 10, 14));
     expect(source.excerpt, 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)');
   });
 
-  test('Quellen zeigen korrigierte Werte', () async {
-    final mock = schnellerMock();
+  test('sources show corrected values', () async {
+    final mock = fastMock();
     await mock.correct(
-      laborId,
+      labReportId,
       EntryPatch(documentDate: Value(PlainDate(2026, 10, 15))),
     );
     final answer = await mock.ask('Hämoglobin', module: 'health');
     expect(answer.sources.single.documentDate, PlainDate(2026, 10, 15));
   });
 
-  test('ohne Treffer: fester Satz, keine Quellen', () async {
-    final answer = await schnellerMock().ask(
+  test('without a hit: fixed sentence, no sources', () async {
+    final answer = await fastMock().ask(
       'Wie war das Wetter in Paris?',
       module: 'health',
     );
@@ -46,31 +46,31 @@ void main() {
     expect(answer.sources, isEmpty);
   });
 
-  test('leere Frage: 400 QUESTION_MISSING', () async {
+  test('empty question: 400 QUESTION_MISSING', () async {
     for (final question in ['', '   ', '\n\t']) {
       await expectLater(
-        schnellerMock().ask(question, module: 'health'),
-        wirftApiFehler(ErrorCode.questionMissing, status: 400),
+        fastMock().ask(question, module: 'health'),
+        throwsApiException(ErrorCode.questionMissing, status: 400),
       );
     }
   });
 
   test(
-    'über 500 Zeichen: 400 QUESTION_TOO_LONG, genau 500 ist erlaubt',
+    'over 500 characters: 400 QUESTION_TOO_LONG, exactly 500 is allowed',
     () async {
       await expectLater(
-        schnellerMock().ask('a' * 501, module: 'health'),
-        wirftApiFehler(ErrorCode.questionTooLong, status: 400),
+        fastMock().ask('a' * 501, module: 'health'),
+        throwsApiException(ErrorCode.questionTooLong, status: 400),
       );
-      final answer = await schnellerMock().ask('a' * 500, module: 'health');
+      final answer = await fastMock().ask('a' * 500, module: 'health');
       expect(answer.found, isFalse);
     },
   );
 
   test('"modelerror": 503 MODEL_UNAVAILABLE', () async {
     await expectLater(
-      schnellerMock().ask('Test modelerror', module: 'health'),
-      wirftApiFehler(ErrorCode.modelUnavailable, status: 503),
+      fastMock().ask('Test modelerror', module: 'health'),
+      throwsApiException(ErrorCode.modelUnavailable, status: 503),
     );
   });
 }

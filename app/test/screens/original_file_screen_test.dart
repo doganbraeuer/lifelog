@@ -7,8 +7,8 @@ import 'package:lifelog/screens/original_file_screen.dart';
 
 import '../helpers.dart';
 
-/// Statt pdfx: zeigt nur, wie viele Bytes ankamen und ob es ein PDF ist.
-class FakePdfAnzeige implements PdfViewer {
+/// Instead of pdfx: only shows how many bytes arrived and whether it is a PDF.
+class FakePdfViewer implements PdfViewer {
   @override
   Widget buildView(Uint8List bytes) => Text(
     'PDF-Ansicht: ${bytes.length} Bytes, '
@@ -16,7 +16,7 @@ class FakePdfAnzeige implements PdfViewer {
   );
 }
 
-Future<void> zeigen(
+Future<void> showOriginal(
   WidgetTester tester,
   MockApiClient mock,
   String entryId,
@@ -28,7 +28,7 @@ Future<void> zeigen(
         api: mock,
         entryId: entryId,
         fileName: fileName,
-        pdfViewer: FakePdfAnzeige(),
+        pdfViewer: FakePdfViewer(),
       ),
     ),
   );
@@ -36,28 +36,26 @@ Future<void> zeigen(
 }
 
 void main() {
-  testWidgets('PDF wird an die PDF-Anzeige übergeben', (tester) async {
-    final mock = schnellerMock();
-    final size = (await mock.getFile(laborId)).bytes.length;
-    await zeigen(tester, mock, laborId, 'befund_oktober.pdf');
+  testWidgets('PDF is passed to the PDF viewer', (tester) async {
+    final mock = fastMock();
+    final size = (await mock.getFile(labReportId)).bytes.length;
+    await showOriginal(tester, mock, labReportId, 'befund_oktober.pdf');
 
     expect(find.text('befund_oktober.pdf'), findsOneWidget);
     expect(find.text('PDF-Ansicht: $size Bytes, %PDF-'), findsOneWidget);
   });
 
-  testWidgets('Bild wird zoombar angezeigt', (tester) async {
-    await zeigen(tester, schnellerMock(), arztbriefId, 'arztbrief.png');
+  testWidgets('image is shown zoomable', (tester) async {
+    await showOriginal(tester, fastMock(), doctorLetterId, 'arztbrief.png');
 
     expect(find.byType(InteractiveViewer), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
     expect(find.textContaining('PDF-Ansicht'), findsNothing);
   });
 
-  testWidgets('Fehler beim Laden: Meldung und erneuter Versuch', (
-    tester,
-  ) async {
-    final mock = schnellerMock()..simulateError = true;
-    await zeigen(tester, mock, laborId, 'befund_oktober.pdf');
+  testWidgets('error while loading: message and retry', (tester) async {
+    final mock = fastMock()..simulateError = true;
+    await showOriginal(tester, mock, labReportId, 'befund_oktober.pdf');
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
 
@@ -68,10 +66,10 @@ void main() {
     expect(find.textContaining('PDF-Ansicht'), findsOneWidget);
   });
 
-  testWidgets('unbekannter Eintrag: 404-Meldung des Backends', (tester) async {
-    await zeigen(
+  testWidgets('unknown entry: 404 message of the backend', (tester) async {
+    await showOriginal(
       tester,
-      schnellerMock(),
+      fastMock(),
       'ffffffffffffffffffffffff',
       'weg.pdf',
     );
@@ -79,32 +77,32 @@ void main() {
     expect(find.text('Diesen Eintrag gibt es nicht.'), findsOneWidget);
   });
 
-  group('aus der Eintrag-Ansicht', () {
-    Future<void> zumArztbrief(WidgetTester tester) async {
-      grosserBildschirm(tester);
-      await tester.pumpWidget(testApp(schnellerMock()));
+  group('from the entry view', () {
+    Future<void> openDoctorLetter(WidgetTester tester) async {
+      useLargeScreen(tester);
+      await tester.pumpWidget(testApp(fastMock()));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
+      await openHealth(tester);
       await tester.tap(find.text('Dr. Erika Beispiel, Allgemeinmedizin'));
       await tester.pumpAndSettle();
     }
 
-    testWidgets('Knopf öffnet die Datei, Zurück führt zum Eintrag', (
+    testWidgets('button opens the file, back leads to the entry', (
       tester,
     ) async {
-      await zumArztbrief(tester);
+      await openDoctorLetter(tester);
 
       await tester.tap(find.text('Originaldatei öffnen'));
       await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
       expect(find.text('arztbrief_september.png'), findsOneWidget);
 
-      await zurueck(tester);
+      await tapBack(tester);
       expect(find.text('Erkannte Angaben'), findsOneWidget);
     });
 
-    testWidgets('Tippen auf das Vorschaubild öffnet ebenfalls', (tester) async {
-      await zumArztbrief(tester);
+    testWidgets('tapping the preview image opens it as well', (tester) async {
+      await openDoctorLetter(tester);
 
       await tester.tap(find.byType(Image));
       await tester.pumpAndSettle();
@@ -112,11 +110,11 @@ void main() {
       expect(find.byType(InteractiveViewer), findsOneWidget);
     });
 
-    testWidgets('auch PDF-Einträge haben den Knopf', (tester) async {
-      grosserBildschirm(tester);
-      await tester.pumpWidget(testApp(schnellerMock()));
+    testWidgets('PDF entries have the button too', (tester) async {
+      useLargeScreen(tester);
+      await tester.pumpWidget(testApp(fastMock()));
       await tester.pumpAndSettle();
-      await zuGesundheit(tester);
+      await openHealth(tester);
       await tester.tap(find.text('Labor Muster GmbH, Salzburg'));
       await tester.pumpAndSettle();
 

@@ -8,38 +8,36 @@ import 'package:lifelog/screens/timeline_screen.dart';
 
 import '../helpers.dart';
 
-/// Primärfarbe, die aus einer Grundfarbe entsteht (so wie im Modul-Theme).
-Color primaerAus(Color color) => ColorScheme.fromSeed(seedColor: color).primary;
+/// Primary color derived from a base color (as in the module theme).
+Color primaryFrom(Color color) =>
+    ColorScheme.fromSeed(seedColor: color).primary;
 
-/// Primärfarbe, die an der Stelle des gefundenen Widgets gilt.
-Color primaerBei(WidgetTester tester, Finder finder) =>
+/// Primary color that applies at the place of the found widget.
+Color primaryAt(WidgetTester tester, Finder finder) =>
     Theme.of(tester.element(finder)).colorScheme.primary;
 
-/// Kopie eines Moduls mit anderer Farbe bzw. anderem Aktiv-Status.
-ModuleDefinition abgewandelt(
-  ModuleDefinition m, {
-  Color? color,
-  bool? active,
-}) => ModuleDefinition(
-  id: m.id,
-  name: m.name,
-  description: m.description,
-  icon: m.icon,
-  color: color ?? m.color,
-  types: m.types,
-  active: active ?? m.active,
-);
+/// Copy of a module with another color or another active state.
+ModuleDefinition modified(ModuleDefinition m, {Color? color, bool? active}) =>
+    ModuleDefinition(
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      icon: m.icon,
+      color: color ?? m.color,
+      types: m.types,
+      active: active ?? m.active,
+    );
 
-Future<void> starten(WidgetTester tester, {ModuleCatalog? catalog}) async {
-  grosserBildschirm(tester);
-  await tester.pumpWidget(testApp(schnellerMock(), catalog: catalog));
+Future<void> startApp(WidgetTester tester, {ModuleCatalog? catalog}) async {
+  useLargeScreen(tester);
+  await tester.pumpWidget(testApp(fastMock(), catalog: catalog));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  group('Kacheln', () {
-    testWidgets('eine Kachel pro Modul, drei „Bald verfügbar“', (tester) async {
-      await starten(tester);
+  group('tiles', () {
+    testWidgets('one tile per module, three „Bald verfügbar“', (tester) async {
+      await startApp(tester);
 
       expect(find.text('Lifelog'), findsOneWidget);
       expect(find.text('Mock'), findsOneWidget);
@@ -47,12 +45,12 @@ void main() {
         expect(find.text(name), findsOneWidget, reason: name);
       }
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
-      // Bereiche selbst lädt nichts und zeigt keine Zeitleiste.
+      // The modules screen itself loads nothing and shows no timeline.
       expect(find.byType(TimelineScreen), findsNothing);
     });
 
-    testWidgets('inaktive Kachel reagiert nicht', (tester) async {
-      await starten(tester);
+    testWidgets('inactive tile does not react', (tester) async {
+      await startApp(tester);
 
       await tester.tap(find.text('Ernährung'));
       await tester.pumpAndSettle();
@@ -61,11 +59,9 @@ void main() {
       expect(find.text('Lifelog'), findsOneWidget);
     });
 
-    testWidgets('Screenreader: inaktive Kachel ist deaktiviert', (
-      tester,
-    ) async {
-      final semantik = tester.ensureSemantics();
-      await starten(tester);
+    testWidgets('screen reader: inactive tile is disabled', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await startApp(tester);
 
       expect(
         tester.getSemantics(find.bySemanticsLabel('Sport, bald verfügbar')),
@@ -75,16 +71,16 @@ void main() {
         tester.getSemantics(find.bySemanticsLabel('Gesundheit')),
         isSemantics(isButton: true, isEnabled: true),
       );
-      semantik.dispose();
+      semantics.dispose();
     });
   });
 
-  group('Navigation', () {
-    testWidgets('Gesundheit öffnet den Rahmen, „Bereiche“ führt zurück', (
+  group('navigation', () {
+    testWidgets('health opens the shell, „Bereiche“ leads back', (
       tester,
     ) async {
-      await starten(tester);
-      await zuGesundheit(tester);
+      await startApp(tester);
+      await openHealth(tester);
 
       expect(find.byType(TimelineScreen), findsOneWidget);
       expect(find.text('Labor Muster GmbH, Salzburg'), findsOneWidget);
@@ -96,31 +92,31 @@ void main() {
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
     });
 
-    testWidgets('„Bereiche“ gibt es auch in Hochladen und Fragen', (
+    testWidgets('„Bereiche“ also exists in upload and questions', (
       tester,
     ) async {
-      await starten(tester);
-      for (final bereich in ['Hochladen', 'Fragen']) {
-        await zuGesundheit(tester);
+      await startApp(tester);
+      for (final tab in ['Hochladen', 'Fragen']) {
+        await openHealth(tester);
         await tester.tap(
           find.descendant(
             of: find.byType(NavigationBar),
-            matching: find.text(bereich),
+            matching: find.text(tab),
           ),
         );
         await tester.pumpAndSettle();
 
         await tester.tap(find.byTooltip('Bereiche'));
         await tester.pumpAndSettle();
-        expect(find.text('Bald verfügbar'), findsNWidgets(3), reason: bereich);
+        expect(find.text('Bald verfügbar'), findsNWidgets(3), reason: tab);
       }
     });
 
-    testWidgets('Zurück-Taste des Systems führt zu den Bereichen', (
+    testWidgets('the system back button leads to the modules screen', (
       tester,
     ) async {
-      await starten(tester);
-      await zuGesundheit(tester);
+      await startApp(tester);
+      await openHealth(tester);
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -130,84 +126,82 @@ void main() {
     });
   });
 
-  group('Farbschema', () {
-    testWidgets('Modul in seiner Farbe, Bereiche neutral', (tester) async {
-      await starten(tester);
-      final bereiche = primaerBei(tester, find.text('Lifelog'));
+  group('color scheme', () {
+    testWidgets('module in its color, modules screen neutral', (tester) async {
+      await startApp(tester);
+      final modulesPrimary = primaryAt(tester, find.text('Lifelog'));
 
-      await zuGesundheit(tester);
-      final zeitleiste = primaerBei(tester, find.byType(TimelineScreen));
+      await openHealth(tester);
+      final timelinePrimary = primaryAt(tester, find.byType(TimelineScreen));
 
-      expect(zeitleiste, primaerAus(Colors.teal));
-      expect(bereiche, isNot(zeitleiste));
+      expect(timelinePrimary, primaryFrom(Colors.teal));
+      expect(modulesPrimary, isNot(timelinePrimary));
     });
 
-    testWidgets('Farbe kommt aus dem Katalog', (tester) async {
-      final lila = ModuleCatalog([
-        abgewandelt(defaultModules.first, color: Colors.purple),
+    testWidgets('color comes from the catalog', (tester) async {
+      final violetCatalog = ModuleCatalog([
+        modified(defaultModules.first, color: Colors.purple),
       ]);
-      await starten(tester, catalog: lila);
-      await zuGesundheit(tester);
+      await startApp(tester, catalog: violetCatalog);
+      await openHealth(tester);
 
       expect(
-        primaerBei(tester, find.byType(TimelineScreen)),
-        primaerAus(Colors.purple),
+        primaryAt(tester, find.byType(TimelineScreen)),
+        primaryFrom(Colors.purple),
       );
     });
 
-    testWidgets('bleibt in Eintrag, Dialog und Originaldatei erhalten', (
+    testWidgets('is kept in the entry, dialog and original file', (
       tester,
     ) async {
-      final teal = primaerAus(Colors.teal);
-      await starten(tester);
-      await zuGesundheit(tester);
+      final teal = primaryFrom(Colors.teal);
+      await startApp(tester);
+      await openHealth(tester);
 
-      // Eintrag-Ansicht (über Navigator.push geöffnet)
+      // Entry view (opened via Navigator.push)
       await tester.tap(find.text('Dr. Erika Beispiel, Allgemeinmedizin'));
       await tester.pumpAndSettle();
-      expect(primaerBei(tester, find.byType(EntryScreen)), teal);
+      expect(primaryAt(tester, find.byType(EntryScreen)), teal);
 
       // Dialog
       await tester.tap(find.byTooltip('Quelle korrigieren'));
       await tester.pumpAndSettle();
-      expect(primaerBei(tester, find.byType(AlertDialog)), teal);
+      expect(primaryAt(tester, find.byType(AlertDialog)), teal);
       await tester.tap(find.text('Abbrechen'));
       await tester.pumpAndSettle();
 
-      // Originaldatei (aus der Eintrag-Ansicht geöffnet)
+      // Original file (opened from the entry view)
       await tester.tap(find.text('Originaldatei öffnen'));
       await tester.pumpAndSettle();
-      expect(primaerBei(tester, find.byType(OriginalFileScreen)), teal);
+      expect(primaryAt(tester, find.byType(OriginalFileScreen)), teal);
     });
 
-    testWidgets('Kacheln zeigen die Farbe ihres Moduls', (tester) async {
-      await starten(tester);
+    testWidgets('tiles show the color of their module', (tester) async {
+      await startApp(tester);
 
-      // Aktive Kacheln: Verlauf aus den Containerfarben des Moduls.
+      // Active tiles: gradient from the module's container colors.
       for (final module in defaultModules.where((m) => m.active)) {
         final ink = tester.widget<Ink>(
           find.ancestor(of: find.text(module.name), matching: find.byType(Ink)),
         );
-        final verlauf =
+        final gradient =
             (ink.decoration! as BoxDecoration).gradient! as LinearGradient;
-        final farben = ColorScheme.fromSeed(seedColor: module.color);
-        expect(verlauf.colors, [
-          farben.primaryContainer,
-          farben.secondaryContainer,
+        final scheme = ColorScheme.fromSeed(seedColor: module.color);
+        expect(gradient.colors, [
+          scheme.primaryContainer,
+          scheme.secondaryContainer,
         ], reason: module.id);
       }
     });
   });
 
-  testWidgets('Zeitleiste zeigt nur Einträge des eigenen Moduls', (
-    tester,
-  ) async {
-    // Sport ist hier aktiv; alle Mock-Einträge gehören zu Gesundheit.
+  testWidgets('timeline only shows entries of its own module', (tester) async {
+    // Sport is active here; all mock entries belong to health.
     final catalog = ModuleCatalog([
       defaultModules.first,
-      abgewandelt(defaultModules.last, active: true),
+      modified(defaultModules.last, active: true),
     ]);
-    await starten(tester, catalog: catalog);
+    await startApp(tester, catalog: catalog);
 
     await tester.tap(find.text('Sport'));
     await tester.pumpAndSettle();
@@ -216,7 +210,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Bereiche'));
     await tester.pumpAndSettle();
-    await zuGesundheit(tester);
+    await openHealth(tester);
     expect(find.text('Labor Muster GmbH, Salzburg'), findsOneWidget);
   });
 }
