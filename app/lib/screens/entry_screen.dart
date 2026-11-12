@@ -417,7 +417,15 @@ class _FieldRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Flexible(child: Text(value, style: theme.textTheme.bodyLarge)),
+              Flexible(
+                child: Text(
+                  value,
+                  style: theme.textTheme.bodyLarge,
+                  // As wide as the longest line, so the mark stays next to a
+                  // wrapped value instead of moving to the far right.
+                  textWidthBasis: TextWidthBasis.longestLine,
+                ),
+              ),
               if (found && correction == null)
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
