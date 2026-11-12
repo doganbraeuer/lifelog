@@ -53,6 +53,17 @@ func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 			{Field: "documentDate", Recognized: ptr("2026-10-14"), Corrected: ptr("2026-10-15"), CorrectedAt: at},
 			{Field: "facts.f2.value", Recognized: ptr("6,3"), Corrected: ptr("6,8"), CorrectedAt: at},
 		},
+		// Checked against the text layer: the corrected date is not in the
+		// original, the corrected value is.
+		Verification: core.Verification{
+			Status: core.VerificationChecked, Source: core.SourcePDFText, Engine: "pdftotext 26.11.0",
+			CheckedAt: &at, Confirmed: 1, Corrected: 2, Total: 2,
+			Fields: []core.FieldCheck{
+				{Field: "documentDate", Status: core.FieldCorrectedUnconfirmed, Locations: []core.Location{}},
+				{Field: "facts.f2", Status: core.FieldCorrectedConfirmed, Source: core.SourcePDFText,
+					Locations: []core.Location{{Page: 1, Box: core.Box{X: 0.301849, Y: 0.31571, W: 0.0988, H: 0.01426}}}},
+			},
+		},
 	}}
 	rec := correct(t, c, correctionID, `{"documentDate": "2026-10-15", "facts": [{"id": "f2", "value": "6,8"}]}`)
 
@@ -74,7 +85,12 @@ func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 		`"facts":[{"id":"f2","name":"Leukozyten","value":"6,8","unit":"G/l"}],` +
 		`"file":{"id":"6727a1f3c2b4e5d6f7a8b9c1","fileName":"befund_oktober.pdf","mimeType":"application/pdf","size":184320,"sha256":"3f8a"},` +
 		`"corrections":[{"field":"documentDate","recognized":"2026-10-14","corrected":"2026-10-15","correctedAt":"2026-11-03T19:05:31Z"},` +
-		`{"field":"facts.f2.value","recognized":"6,3","corrected":"6,8","correctedAt":"2026-11-03T19:05:31Z"}]}`
+		`{"field":"facts.f2.value","recognized":"6,3","corrected":"6,8","correctedAt":"2026-11-03T19:05:31Z"}],` +
+		`"verification":{"status":"checked","reason":null,"source":"pdf_text","engine":"pdftotext 26.11.0",` +
+		`"checkedAt":"2026-11-03T19:05:31Z","confirmed":1,"corrected":2,"total":2,"matchPercent":50,"fields":[` +
+		`{"field":"documentDate","status":"corrected_unconfirmed","source":null,"confidence":null,"locations":[]},` +
+		`{"field":"facts.f2","status":"corrected_confirmed","source":"pdf_text","confidence":null,` +
+		`"locations":[{"page":1,"x":0.3018,"y":0.3157,"width":0.0988,"height":0.0143}]}]}}`
 	if got := strings.TrimSpace(rec.Body.String()); got != wantBody {
 		t.Errorf("body =\n%s\nwant\n%s", got, wantBody)
 	}

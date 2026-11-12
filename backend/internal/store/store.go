@@ -34,6 +34,7 @@ type Store struct {
 	db      *mongo.Database
 	entries *mongo.Collection
 	chunks  *mongo.Collection
+	ocr     *mongo.Collection
 	files   *mongo.GridFSBucket
 }
 
@@ -59,6 +60,7 @@ func Connect(ctx context.Context, uri, database string) (*Store, error) {
 		db:      db,
 		entries: db.Collection(collEntries),
 		chunks:  db.Collection(collChunks),
+		ocr:     db.Collection(collOCR),
 		files:   db.GridFSBucket(options.GridFSBucket().SetName(bucketFiles)),
 	}
 
@@ -280,9 +282,10 @@ func (s *Store) DeleteChunks(ctx context.Context, entryID string) error {
 }
 
 // SaveCorrection writes the correctable fields of an entry back (API.md
-// 3.5): type, document date, issuer, facts and corrections. Everything else
-// (full text, file, import time, module) is not touched, not even by
-// accident, because only these five fields are in the $set.
+// 3.5): type, document date, issuer, facts and corrections, plus the
+// verification recomputed for them. Everything else (full text, file,
+// import time, module) is not touched, not even by accident, because only
+// these six fields are in the $set.
 //
 // found is false if the entry does not exist (anymore).
 func (s *Store) SaveCorrection(ctx context.Context, e core.Entry) (found bool, err error) {
@@ -300,6 +303,7 @@ func (s *Store) SaveCorrection(ctx context.Context, e core.Entry) (found bool, e
 			{Key: "issuer", Value: doc.Issuer},
 			{Key: "facts", Value: doc.Facts},
 			{Key: "corrections", Value: doc.Corrections},
+			{Key: "verification", Value: doc.Verification},
 		}}},
 	)
 	if err != nil {

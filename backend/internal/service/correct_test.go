@@ -15,12 +15,26 @@ import (
 // fakeCorrectionStore holds one entry in memory and remembers what was
 // written.
 type fakeCorrectionStore struct {
-	entry   *core.Entry // nil: the entry does not exist
-	readErr error
-	saveErr error
-	gone    bool // the entry disappears between reading and writing
-	reads   int
-	saved   []core.Entry
+	entry    *core.Entry // nil: the entry does not exist
+	readErr  error
+	saveErr  error
+	gone     bool // the entry disappears between reading and writing
+	reads    int
+	saved    []core.Entry
+	ocr      *core.OCRResult // stored words; nil: none
+	ocrErr   error
+	ocrReads int
+}
+
+func (s *fakeCorrectionStore) GetOCR(_ context.Context, id string) (core.OCRResult, bool, error) {
+	s.ocrReads++
+	if s.ocrErr != nil {
+		return core.OCRResult{}, false, s.ocrErr
+	}
+	if s.ocr == nil {
+		return core.OCRResult{}, false, nil
+	}
+	return *s.ocr, true, nil
 }
 
 func (s *fakeCorrectionStore) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {

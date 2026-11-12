@@ -17,6 +17,7 @@ import (
 
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm"
+	"lifelog/backend/internal/ocr"
 )
 
 // UploadStore is what the upload needs from the database. Implemented by
@@ -27,6 +28,8 @@ type UploadStore interface {
 	DeleteFile(ctx context.Context, id string) error
 	SaveChunks(ctx context.Context, chunks []core.Chunk) error
 	DeleteChunks(ctx context.Context, entryID string) error
+	SaveOCR(ctx context.Context, entryID string, r core.OCRResult) error
+	DeleteOCR(ctx context.Context, entryID string) error
 	SaveEntry(ctx context.Context, e core.Entry) error
 }
 
@@ -44,12 +47,14 @@ type TextUpload struct {
 }
 
 // input is what file and text upload have in common after the input
-// checks. read calls the matching model.
+// checks. read calls the matching model. text marks a text import: its
+// values are checked against the entered text instead of OCR.
 type input struct {
 	module   string
 	data     []byte // is stored and hashed
 	fileName string
 	mimeType string
+	text     bool
 	read     func(ctx context.Context) (core.Extraction, error)
 }
 
@@ -64,17 +69,27 @@ func (d *DuplicateError) Is(target error) bool { return target == core.ErrDuplic
 
 // Uploader runs the upload (docs/API.md 3.1).
 type Uploader struct {
-	store    UploadStore
-	reader   llm.Reader
-	embedder llm.Embedder
-	newID    func() string
-	now      func() time.Time
+	store      UploadStore
+	reader     llm.Reader
+	embedder   llm.Embedder
+	recognizer ocr.Recognizer // nil: OCR switched off, files stay unchecked
+	newID      func() string
+	now        func() time.Time
+	ocrTimeout time.Duration
 }
 
 // NewUploader creates the service. newID assigns ObjectIds (store.NewID).
-func NewUploader(s UploadStore, r llm.Reader, e llm.Embedder, newID func() string) *Uploader {
-	return &Uploader{store: s, reader: r, embedder: e, newID: newID, now: time.Now}
+// rec reads the original for the verification; nil switches it off.
+func NewUploader(s UploadStore, r llm.Reader, e llm.Embedder, rec ocr.Recognizer, newID func() string) *Uploader {
+	return &Uploader{store: s, reader: r, embedder: e, recognizer: rec, newID: newID, now: time.Now,
+		ocrTimeout: OCRTimeout}
 }
+
+// OCRTimeout: reading the original (text layer or OCR) may take this long.
+// It runs while the vision LLM reads, so usually it costs no extra time. If
+// it takes longer, the entry is stored unchecked (ocr_failed); the upload
+// never fails because of it.
+const OCRTimeout = 30 * time.Second
 
 // cleanupTimeout: time for removing half-stored parts. Runs with a context
 // of its own, because the request's context has often already expired or
@@ -85,12 +100,14 @@ const cleanupTimeout = 10 * time.Second
 //
 //  1. Check module, size and type.
 //  2. Compute the hash, check for a duplicate, BEFORE the model call.
-//  3. Have the vision LLM read it.
+//  3. Have the vision LLM read it. At the same time, the second reader
+//     reads the original (text layer or OCR, see verify).
 //  4. Check the extraction (core.CheckExtraction).
-//  5. Split the full text into chunks and embed them.
-//  6. Store file → chunks → entry. The entry comes last; if a step fails,
-//     the parts already stored are removed again. This way no half entry is
-//     left behind.
+//  5. Split the full text into chunks and embed them, then check the
+//     values against what the second reader read (core.Verify).
+//  6. Store file → chunks → words → entry. The entry comes last; if a step
+//     fails, the parts already stored are removed again. This way no half
+//     entry is left behind.
 //
 // Errors: core.ErrUnknownModule, core.ErrFileEmpty, core.ErrFileTooLarge,
 // core.ErrUnsupportedFileType, *DuplicateError, core.ErrUnreadable,
@@ -145,6 +162,7 @@ func (u *Uploader) UploadText(ctx context.Context, up TextUpload) (core.Entry, e
 		data:     []byte(up.Text), // Go strings are UTF-8: exactly these bytes
 		fileName: core.TextFileName,
 		mimeType: core.MimeText,
+		text:     true,
 		read: func(ctx context.Context) (core.Extraction, error) {
 			x, err := u.reader.ReadText(ctx, up.Text, core.AllowedTypes(module))
 			if err != nil {
@@ -170,7 +188,13 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 		return core.Entry{}, &DuplicateError{EntryID: id}
 	}
 
-	// 3. Read.
+	// 3. Read. The second reader starts first and runs at the same time as
+	// the vision LLM, so the upload does not take longer. If the upload
+	// fails before its result is needed, the deferred cancel stops it.
+	ocrCtx, cancelOCR := context.WithTimeout(ctx, u.ocrTimeout)
+	defer cancelOCR()
+	ocrDone := u.startOCR(ocrCtx, in)
+
 	extraction, err := in.read(ctx)
 	if err != nil {
 		return core.Entry{}, err
@@ -205,6 +229,15 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 	// same.
 	entry.ID = u.newID()
 	entry.ImportedAt = u.now().UTC().Truncate(time.Millisecond)
+
+	// Check the values. Only now wait for the second reader: it has had
+	// all the time of the model calls.
+	var words *core.OCRResult
+	entry.Verification, words = u.verify(entry, in, ocrDone)
+	// Only counts, never values.
+	slog.Info("verification", "status", entry.Verification.Status, "reason", entry.Verification.Reason,
+		"source", entry.Verification.Source, "confirmed", entry.Verification.Confirmed,
+		"total", entry.Verification.Total)
 	entry.File = core.File{
 		ID:       u.newID(),
 		FileName: in.fileName,
@@ -220,13 +253,71 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 	}
 
 	// 6. Store, entry last.
-	if err := u.save(ctx, entry, chunks, in.data); err != nil {
+	if err := u.save(ctx, entry, chunks, words, in.data); err != nil {
 		return core.Entry{}, err
 	}
 	return entry, nil
 }
 
-func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, data []byte) error {
+// ocrOutcome is the result of the second reader.
+type ocrOutcome struct {
+	result core.OCRResult
+	err    error
+}
+
+// startOCR starts reading the original in its own goroutine and returns
+// the channel its result arrives on. nil for a text import or if OCR is
+// switched off. The channel is buffered, so the goroutine never blocks,
+// even if nobody waits for it anymore (failed upload).
+func (u *Uploader) startOCR(ctx context.Context, in input) <-chan ocrOutcome {
+	if in.text || u.recognizer == nil {
+		return nil
+	}
+	done := make(chan ocrOutcome, 1)
+	go func() {
+		r, err := u.recognizer.Recognize(ctx, in.data, in.mimeType)
+		done <- ocrOutcome{r, err}
+	}()
+	return done
+}
+
+// verify checks the values (docs/API.md, verification). For a file it
+// waits for the second reader; the time limit of its context ends the
+// wait. If reading failed, the entry is unchecked with the matching reason;
+// the upload goes on. words is what to store for later checks (PATCH), nil
+// if there is nothing to store.
+func (u *Uploader) verify(e core.Entry, in input, ocrDone <-chan ocrOutcome) (core.Verification, *core.OCRResult) {
+	now := e.ImportedAt
+	if in.text {
+		return core.VerifyText(e, now), nil
+	}
+	if ocrDone == nil {
+		return core.Unchecked(core.ReasonOCRUnavailable), nil
+	}
+	out := <-ocrDone
+	return verificationFrom(e, out.result, out.err, now)
+}
+
+// verificationFrom turns what the second reader returned into the
+// verification, for the upload and for filling in old entries (Verifier).
+// If reading failed, the entry is unchecked with the matching reason. words
+// is what to store for later checks; nil if nothing was read.
+func verificationFrom(e core.Entry, r core.OCRResult, err error, now time.Time) (v core.Verification, words *core.OCRResult) {
+	if err != nil {
+		reason := ocr.Reason(err)
+		// The errors of Poppler and Tesseract name the program and its
+		// message, never document content.
+		slog.Warn("reading the original failed, entry stays unchecked", "reason", reason, "error", err)
+		return core.Unchecked(reason), nil
+	}
+	v = core.Verify(e, r, now)
+	if v.Status != core.VerificationChecked {
+		return v, nil // no text: nothing worth storing
+	}
+	return v, &r
+}
+
+func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, words *core.OCRResult, data []byte) error {
 	if err := u.store.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, data); err != nil {
 		u.cleanup(ctx, e, false)
 		return err
@@ -234,6 +325,12 @@ func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, 
 	if err := u.store.SaveChunks(ctx, chunks); err != nil {
 		u.cleanup(ctx, e, true)
 		return err
+	}
+	if words != nil {
+		if err := u.store.SaveOCR(ctx, e.ID, *words); err != nil {
+			u.cleanup(ctx, e, true)
+			return err
+		}
 	}
 	err := u.store.SaveEntry(ctx, e)
 	if err == nil {
@@ -251,8 +348,8 @@ func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, 
 	return err
 }
 
-// cleanup removes the file and (if already stored) the chunks of a failed
-// upload. The file is also deleted after an error in SaveFile: GridFS may
+// cleanup removes the file and (if already stored) the chunks and words of
+// a failed upload. The file is also deleted after an error in SaveFile: GridFS may
 // already have written some pieces. If cleaning up fails, it is logged; the
 // entry itself does not exist, so the app sees nothing half-done.
 func (u *Uploader) cleanup(ctx context.Context, e core.Entry, withChunks bool) {
@@ -262,6 +359,10 @@ func (u *Uploader) cleanup(ctx context.Context, e core.Entry, withChunks bool) {
 	if withChunks {
 		if err := u.store.DeleteChunks(ctx, e.ID); err != nil {
 			slog.Error("cleanup: chunks not deleted", "entry", e.ID, "error", err)
+		}
+		// Also if they were never stored: deleting nothing is no error.
+		if err := u.store.DeleteOCR(ctx, e.ID); err != nil {
+			slog.Error("cleanup: ocr words not deleted", "entry", e.ID, "error", err)
 		}
 	}
 	if err := u.store.DeleteFile(ctx, e.File.ID); err != nil {

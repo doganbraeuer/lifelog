@@ -46,6 +46,14 @@ const (
 	// Reason: if the main model hangs until the deadline, there would be no
 	// time left for the fallback (observed on 2026-11-04).
 	DefaultFallbackReserveSeconds = 20
+
+	// OCR (docs/API.md, verification): "tesseract" reads PDF text layers
+	// with Poppler and photos and scans with Tesseract; "none" switches the
+	// check off (every file entry is then unchecked/ocr_unavailable).
+	OCREngineTesseract   = "tesseract"
+	OCREngineNone        = "none"
+	DefaultOCREngine     = OCREngineTesseract
+	DefaultTesseractLang = "deu"
 )
 
 // renamedVariables maps the German variable names used until 2026-11-09 to
@@ -71,6 +79,8 @@ type Config struct {
 	GeminiEmbeddingModel  string
 	Address               string
 	Port                  string
+	OCREngine             string // OCREngineTesseract or OCREngineNone
+	TesseractLang         string // language pack, e.g. "deu" or "deu+eng"
 }
 
 // ListenAddress returns e.g. "127.0.0.1:8080". net.JoinHostPort puts IPv6
@@ -147,8 +157,10 @@ func Load(getenv func(string) string) (Config, error) {
 		GeminiFallbackModel: strings.TrimSpace(getenv("GEMINI_FALLBACK_MODEL")),
 		GeminiEmbeddingModel: withDefault(getenv("GEMINI_EMBEDDING_MODEL"),
 			DefaultGeminiEmbeddingModel),
-		Address: withDefault(getenv("ADDRESS"), DefaultAddress),
-		Port:    withDefault(getenv("PORT"), DefaultPort),
+		Address:       withDefault(getenv("ADDRESS"), DefaultAddress),
+		Port:          withDefault(getenv("PORT"), DefaultPort),
+		OCREngine:     withDefault(getenv("OCR_ENGINE"), DefaultOCREngine),
+		TesseractLang: withDefault(getenv("TESSERACT_LANG"), DefaultTesseractLang),
 	}
 
 	var missing []string
@@ -168,6 +180,9 @@ func Load(getenv func(string) string) (Config, error) {
 
 	if p, err := strconv.Atoi(c.Port); err != nil || p < 1 || p > 65535 {
 		return Config{}, errors.New("PORT must be a number between 1 and 65535")
+	}
+	if c.OCREngine != OCREngineTesseract && c.OCREngine != OCREngineNone {
+		return Config{}, errors.New("OCR_ENGINE must be tesseract or none")
 	}
 
 	// Whether the reserve fits the read time limit is checked by gemini.Neu

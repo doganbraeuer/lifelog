@@ -19,6 +19,7 @@ const throwawayFile = "bbbbbbbbbbbbbbbbbbbbbbbb"
 type fakeDeleteStore struct {
 	entry  *core.Entry // nil: the entry does not exist (anymore)
 	chunks bool
+	ocr    bool
 	file   bool
 
 	failsAt   string // name of the method that returns an error
@@ -64,6 +65,14 @@ func (s *fakeDeleteStore) DeleteChunks(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *fakeDeleteStore) DeleteOCR(ctx context.Context, id string) error {
+	if err := s.step(ctx, "DeleteOCR", id); err != nil {
+		return err
+	}
+	s.ocr = false
+	return nil
+}
+
 // DeleteFile behaves like store: if the file is missing, no error.
 func (s *fakeDeleteStore) DeleteFile(ctx context.Context, id string) error {
 	if err := s.step(ctx, "DeleteFile", id); err != nil {
@@ -93,6 +102,7 @@ func deleteData() *fakeDeleteStore {
 			File:  core.File{ID: throwawayFile, FileName: "befund_geheim.pdf", MimeType: "application/pdf"},
 		},
 		chunks: true,
+		ocr:    true,
 		file:   true,
 	}
 }
@@ -100,6 +110,7 @@ func deleteData() *fakeDeleteStore {
 var allSteps = []string{
 	"GetEntry(" + idLab + ")",
 	"DeleteChunks(" + idLab + ")",
+	"DeleteOCR(" + idLab + ")",
 	"DeleteFile(" + throwawayFile + ")",
 	"DeleteEntry(" + idLab + ")",
 }
@@ -112,7 +123,7 @@ func TestDelete_SuccessInThisOrder(t *testing.T) {
 	if !reflect.DeepEqual(s.log, allSteps) {
 		t.Errorf("calls\n%v\nwant\n%v", s.log, allSteps)
 	}
-	if s.entry != nil || s.chunks || s.file {
+	if s.entry != nil || s.chunks || s.ocr || s.file {
 		t.Errorf("not everything deleted: entry %v, chunks %v, file %v", s.entry != nil, s.chunks, s.file)
 	}
 }
@@ -120,7 +131,7 @@ func TestDelete_SuccessInThisOrder(t *testing.T) {
 // If a step fails, the later ones do not run, and the entry stays visible
 // (API.md 3.7). A second call cleans up, a third gives 404.
 func TestDelete_FailsInOneStep(t *testing.T) {
-	for i, step := range []string{"GetEntry", "DeleteChunks", "DeleteFile", "DeleteEntry"} {
+	for i, step := range []string{"GetEntry", "DeleteChunks", "DeleteOCR", "DeleteFile", "DeleteEntry"} {
 		t.Run(step, func(t *testing.T) {
 			s := deleteData()
 			s.failsAt = step
@@ -142,7 +153,7 @@ func TestDelete_FailsInOneStep(t *testing.T) {
 			if err := d.Delete(context.Background(), idLab); err != nil {
 				t.Fatalf("second call: %v", err)
 			}
-			if s.entry != nil || s.chunks || s.file {
+			if s.entry != nil || s.chunks || s.ocr || s.file {
 				t.Error("second call did not delete everything")
 			}
 			if err := d.Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {

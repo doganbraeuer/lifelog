@@ -45,7 +45,7 @@ func TestEntry_Found(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Full entry: all fields from API.md section 2 are present.
-	for _, field := range []string{"id", "module", "type", "documentDate", "importedAt", "issuer", "fullText", "facts", "file", "corrections"} {
+	for _, field := range []string{"id", "module", "type", "documentDate", "importedAt", "issuer", "fullText", "facts", "file", "corrections", "verification"} {
 		if _, ok := a[field]; !ok {
 			t.Errorf("field %s missing", field)
 		}
@@ -154,5 +154,40 @@ func TestInlineWithName(t *testing.T) {
 		if params["filename"] != name && !(name == "" || strings.ContainsAny(name, "\r\n")) {
 			t.Errorf("%q → %q: filename = %q", name, value, params["filename"])
 		}
+	}
+}
+
+// An entry without verification (seed data, old entries) shows
+// unchecked/not_run with the full shape: nulls and empty lists.
+func TestEntry_VerificationNotRun(t *testing.T) {
+	rec := get(t, storeWithEntry(), "/api/v1/entries/"+testID)
+	var a struct {
+		Verification map[string]any `json:"verification"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &a); err != nil {
+		t.Fatal(err)
+	}
+	v := a.Verification
+	if v["status"] != "unchecked" || v["reason"] != "not_run" {
+		t.Errorf("verification %v", v)
+	}
+	for _, key := range []string{"source", "engine", "checkedAt", "matchPercent"} {
+		if val, ok := v[key]; !ok || val != nil {
+			t.Errorf("%s = %v (present %v), want null", key, val, ok)
+		}
+	}
+	if f, ok := v["fields"].([]any); !ok || len(f) != 0 {
+		t.Errorf("fields = %#v, want []", v["fields"])
+	}
+}
+
+// A location in a text import is a range, without page and rectangle.
+func TestLocationToJSON_TextRange(t *testing.T) {
+	b, err := json.Marshal(locationToJSON(core.Location{Start: 0, End: 11}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != `{"start":0,"end":11}` {
+		t.Errorf("got %s", b)
 	}
 }

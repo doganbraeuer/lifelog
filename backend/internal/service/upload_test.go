@@ -14,6 +14,7 @@ import (
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm"
 	"lifelog/backend/internal/llm/fake"
+	ocrfake "lifelog/backend/internal/ocr/fake"
 )
 
 // fakeStore records all calls in order and can fail for single methods.
@@ -24,10 +25,27 @@ type fakeStore struct {
 	entries []core.Entry
 	chunks  []core.Chunk
 	files   map[string][]byte
+	ocr     map[string]core.OCRResult // entry ID → stored words
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{hashes: map[string]string{}, errs: map[string]error{}, files: map[string][]byte{}}
+	return &fakeStore{hashes: map[string]string{}, errs: map[string]error{}, files: map[string][]byte{},
+		ocr: map[string]core.OCRResult{}}
+}
+
+func (s *fakeStore) SaveOCR(_ context.Context, entryID string, r core.OCRResult) error {
+	s.log = append(s.log, "SaveOCR")
+	if err := s.errs["SaveOCR"]; err != nil {
+		return err
+	}
+	s.ocr[entryID] = r
+	return nil
+}
+
+func (s *fakeStore) DeleteOCR(_ context.Context, entryID string) error {
+	s.log = append(s.log, "DeleteOCR")
+	delete(s.ocr, entryID)
+	return nil
 }
 
 func (s *fakeStore) EntryByHash(_ context.Context, sha string) (string, bool, error) {
@@ -84,7 +102,20 @@ func (s *fakeStore) SaveEntry(_ context.Context, e core.Entry) error {
 
 // isEmpty: after a failed upload nothing may be left.
 func (s *fakeStore) isEmpty() bool {
-	return len(s.entries) == 0 && len(s.chunks) == 0 && len(s.files) == 0
+	return len(s.entries) == 0 && len(s.chunks) == 0 && len(s.files) == 0 && len(s.ocr) == 0
+}
+
+// ocrResult builds what the second reader could read from text: one line
+// per text line, all on page 1, source OCR, confidence 90.
+func ocrResult(text string) core.OCRResult {
+	r := core.OCRResult{Engine: "tesseract 5.5.4 deu", Pages: []core.OCRPage{{Number: 1, Source: core.SourceOCR, Width: 2480, Height: 3508}}}
+	for l, line := range strings.Split(text, "\n") {
+		for i, w := range strings.Fields(line) {
+			r.Words = append(r.Words, core.OCRWord{Text: w, Source: core.SourceOCR, Confidence: 90, Page: 1, Line: l,
+				Box: core.Box{X: 0.1 * float64(i), Y: 0.03 * float64(l), W: 0.08, H: 0.02}})
+		}
+	}
+	return r
 }
 
 func ptr(s string) *string { return &s }
@@ -109,6 +140,7 @@ type setup struct {
 	store    *fakeStore
 	reader   *fake.Reader
 	embedder *fake.Embedder
+	ocr      *ocrfake.Recognizer
 	uploader *Uploader
 }
 
@@ -117,9 +149,11 @@ func newSetup() setup {
 		store:    newFakeStore(),
 		reader:   &fake.Reader{Extraction: extraction()},
 		embedder: &fake.Embedder{},
+		// The original says what the model read, except the CRP unit.
+		ocr: &ocrfake.Recognizer{Result: ocrResult("Labor Muster GmbH\nBefund vom 14.10.2026\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/l")},
 	}
 	n := 0
-	s.uploader = NewUploader(s.store, s.reader, s.embedder, func() string {
+	s.uploader = NewUploader(s.store, s.reader, s.embedder, s.ocr, func() string {
 		n++
 		return fmt.Sprintf("%024d", n) // 000…001, 000…002: valid ObjectId form
 	})
@@ -135,7 +169,7 @@ func TestUpload_Success(t *testing.T) {
 	}
 
 	// Order: check first, then file → chunks → entry last.
-	want := []string{"EntryByHash", "SaveFile", "SaveChunks", "SaveEntry"}
+	want := []string{"EntryByHash", "SaveFile", "SaveChunks", "SaveOCR", "SaveEntry"}
 	if !slices.Equal(s.store.log, want) {
 		t.Errorf("order = %v, want %v", s.store.log, want)
 	}
@@ -274,9 +308,11 @@ func TestUpload_CleanupOnStoreErrors(t *testing.T) {
 		{"file fails", "SaveFile",
 			[]string{"EntryByHash", "SaveFile", "DeleteFile"}},
 		{"chunks fail", "SaveChunks",
-			[]string{"EntryByHash", "SaveFile", "SaveChunks", "DeleteChunks", "DeleteFile"}},
+			[]string{"EntryByHash", "SaveFile", "SaveChunks", "DeleteChunks", "DeleteOCR", "DeleteFile"}},
+		{"words fail", "SaveOCR",
+			[]string{"EntryByHash", "SaveFile", "SaveChunks", "SaveOCR", "DeleteChunks", "DeleteOCR", "DeleteFile"}},
 		{"entry fails", "SaveEntry",
-			[]string{"EntryByHash", "SaveFile", "SaveChunks", "SaveEntry", "DeleteChunks", "DeleteFile"}},
+			[]string{"EntryByHash", "SaveFile", "SaveChunks", "SaveOCR", "SaveEntry", "DeleteChunks", "DeleteOCR", "DeleteFile"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

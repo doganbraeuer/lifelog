@@ -51,6 +51,7 @@ type Entry struct {
 	Facts        []Fact
 	File         File
 	Corrections  []Correction
+	Verification Verification // check by a second reader; zero value until the upload sets it
 }
 
 // Fact is an extracted fact. Value always stays a string, exactly as on the

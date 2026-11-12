@@ -63,6 +63,49 @@ pricing page. On 429/503 the backend retries up to twice; with
 that, 20 s of the read time limit (50 s) are reserved by default
 (`GEMINI_FALLBACK_RESERVE_SECONDS`); the main model gets 30 s.
 
+## Verification (text layer and OCR)
+
+A second reader checks the values the vision LLM extracted
+(docs/API.md, section 2, verification). It runs locally, with open source
+programs, and costs no model call:
+
+```sh
+brew install poppler tesseract tesseract-lang          # macOS
+sudo apt install poppler-utils tesseract-ocr tesseract-ocr-deu   # Debian/Ubuntu
+```
+
+- PDF pages with a text layer: `pdftotext -bbox-layout` (Poppler).
+- PDF pages without a text layer: `pdftoppm` renders the page, Tesseract
+  (`TESSERACT_LANG`, default `deu`) reads it.
+- Photos (JPEG, PNG, HEIC, WebP) are prepared in Go first
+  (`ocr.PrepareImage`): turned upright (EXIF orientation, HEIC rotation),
+  scaled to a long side between 2500 (at most twice the size) and 4096
+  pixels, and handed to Tesseract as an RGB PNG with `--dpi 300`. Images
+  over 50 megapixels are not decoded. HEIC is decoded by
+  `github.com/gen2brain/heic` (a decoder compiled to WebAssembly, no cgo,
+  nothing to install). The settings were chosen by measurement
+  (`docs/ocr/README.md`).
+
+It runs at the same time as the vision LLM (limit 30 s), so an upload does
+not take longer. The words with their positions are stored in the
+collection `ocr`; PATCH checks corrected values against them. If a program
+is missing, the server still starts and logs a warning; the affected
+entries are stored `unchecked` with `reason: ocr_unavailable`. `OCR_ENGINE=none`
+switches the check off. The tests that need the programs skip themselves if
+they are missing.
+
+```sh
+go run ./cmd/ocrcheck            # show what it would fill in for old entries, and measure demo/
+go run ./cmd/ocrcheck -write     # store the verification of entries that were never checked
+go run ./cmd/ocrcheck -recheck   # show what checking every entry again would change (+ -write: store it)
+go run ./cmd/ocrcheck -values -out ../docs/ocr/<date>-tesseract.md   # measurement report
+go run ./cmd/ocrcheck -upscale 3000                    # measure another scaling (0 = off)
+go run ./cmd/ocrcheck -downscale 3000                  # measure scaling large photos down (0 = off)
+go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg   # a real photo
+```
+
+`cmd/ocrcheck` calls no model. Results and their assessment: `docs/ocr/`.
+
 ## Vector index
 
 Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
@@ -167,12 +210,16 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `cmd/seed` | Insert or remove the synthetic seed entries |
 | `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
 | `cmd/models` | List available Gemini models |
+| `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
 | `internal/config` | Read and check environment variables, mask secrets |
-| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections |
+| `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original |
 | `internal/llm` | Replaceable interface to the models (`Reader`, `Embedder`, `Answerer`) |
 | `internal/llm/gemini` | Implementation with Gemini, including retry and fallback model |
 | `internal/llm/fake` | Fake models for tests |
+| `internal/ocr` | Replaceable second reader: `Recognizer` (file), `Engine` (image), `PDF`; `Pipeline` uses the text layer where possible and OCR where needed |
+| `internal/ocr/poppler`, `internal/ocr/tesseract` | Implementations with the command line programs (stdin/stdout, no temporary files) |
+| `internal/ocr/fake` | Fake second reader for tests |
 | `internal/service` | Use cases: upload, text import, question, correction, delete |
-| `internal/store` | MongoDB: entries, chunks with embeddings, original files (GridFS), indexes |
+| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), indexes |
 | `internal/api` | Router, handlers, error format, JSON types |

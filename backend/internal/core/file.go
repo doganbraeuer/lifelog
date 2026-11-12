@@ -16,6 +16,7 @@ const (
 	MimeJPEG = "image/jpeg"
 	MimePNG  = "image/png"
 	MimeHEIC = "image/heic"
+	MimeWebP = "image/webp" // since 2026-11-11
 	MimePDF  = "application/pdf"
 )
 
@@ -42,17 +43,15 @@ func CheckFile(data []byte) (string, error) {
 	return DetectFileType(data)
 }
 
-// DetectFileType recognizes JPEG, PNG, PDF and HEIC from the first bytes.
+// DetectFileType recognizes JPEG, PNG, WebP, PDF and HEIC from the first
+// bytes.
 func DetectFileType(data []byte) (string, error) {
-	// http.DetectContentType knows JPEG, PNG and PDF by their "magic bytes"
-	// (e.g. every PDF starts with "%PDF-").
-	switch http.DetectContentType(data) {
-	case MimeJPEG:
-		return MimeJPEG, nil
-	case MimePNG:
-		return MimePNG, nil
-	case MimePDF:
-		return MimePDF, nil
+	// http.DetectContentType knows JPEG, PNG, WebP and PDF by their "magic
+	// bytes" (e.g. every PDF starts with "%PDF-", every WebP with "RIFF",
+	// the size and "WEBPVP").
+	switch t := http.DetectContentType(data); t {
+	case MimeJPEG, MimePNG, MimeWebP, MimePDF:
+		return t, nil
 	}
 	// Go does not know HEIC (the default format of the iPhone camera), so we
 	// check it ourselves.
