@@ -423,6 +423,8 @@ text import (docs/API.md, 3.9).
 | keine Sprache, Stille | no speech | `NO_SPEECH`, `speech.ErrNoSpeech` |
 | zu lange Aufnahme | too long | `AUDIO_TOO_LONG`, `speech.ErrTooLong`, `core.MaxAudioSeconds` (300) |
 | erfundener Satz der Erkennung | hallucination | `core.CleanTranscript` |
+| Fachwortliste (Prompt für Whisper) | vocabulary | `whisper.Vocabulary`, `whisper.VocabularyTerms`; form field `prompt`; `cmd/speechcheck -vocabulary=false` measures without it. German on purpose: sample text, not an instruction |
+| Schlüsselbegriff (Messung) | key term | `cmd/speechcheck`, compared with `core.TextContains` |
 | Wortfehlerrate (Messung) | word error rate (WER) | `core.WordErrorRate` |
 | Audioformat erkennen | detect audio type | `core.DetectAudioType`, `core.CheckAudio` |
 

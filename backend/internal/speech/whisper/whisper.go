@@ -4,8 +4,9 @@
 // only talks to it on 127.0.0.1; the phone never does.
 //
 // Start it with backend/scripts/whisper-server.sh (or .ps1): German,
-// voice activity detection, no context from earlier text, no temperature
-// fallback (backend/README.md, speech).
+// voice activity detection, no temperature fallback, the prompt kept for
+// every window (backend/README.md, speech). Every request carries the
+// Vocabulary as prompt.
 package whisper
 
 import (
@@ -37,6 +38,10 @@ const maxResponseBytes = 4 << 20
 
 // Whisper implements speech.Engine.
 type Whisper struct {
+	// Prompt is sent with every recording; New sets Vocabulary, "" sends
+	// none (cmd/speechcheck -vocabulary=false).
+	Prompt string
+
 	url    string
 	model  string
 	client *http.Client
@@ -48,7 +53,7 @@ func New(baseURL string) *Whisper {
 	if baseURL == "" {
 		baseURL = DefaultURL
 	}
-	return &Whisper{url: strings.TrimRight(baseURL, "/"), model: DefaultModel, client: &http.Client{}}
+	return &Whisper{Prompt: Vocabulary, url: strings.TrimRight(baseURL, "/"), model: DefaultModel, client: &http.Client{}}
 }
 
 // Name is e.g. "whisper.cpp large-v3-turbo".
@@ -58,7 +63,7 @@ func (w *Whisper) Name() string { return "whisper.cpp " + w.model }
 // called "audio.wav": whisper-server writes the file name to its log, and
 // the name from the phone could tell something about the content.
 func (w *Whisper) Recognize(ctx context.Context, wav []byte) ([]core.Segment, error) {
-	body, contentType, err := form(wav)
+	body, contentType, err := form(wav, w.Prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -91,20 +96,25 @@ func (w *Whisper) Recognize(ctx context.Context, wav []byte) ([]core.Segment, er
 }
 
 // form builds the multipart request: language fixed to German,
-// temperature 0 without fallback, segments with times.
-func form(wav []byte) (io.Reader, string, error) {
+// temperature 0 without fallback, segments with times, and the prompt
+// unless it is empty.
+func form(wav []byte, prompt string) (io.Reader, string, error) {
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
 	fw, err := mw.CreateFormFile("file", "audio.wav")
 	if err == nil {
 		_, err = fw.Write(wav)
 	}
-	for _, f := range [][2]string{
+	fields := [][2]string{
 		{"language", core.TranscriptLanguage},
 		{"temperature", "0.0"},
 		{"temperature_inc", "0.0"},
 		{"response_format", "verbose_json"},
-	} {
+	}
+	if prompt != "" {
+		fields = append(fields, [2]string{"prompt", prompt})
+	}
+	for _, f := range fields {
 		if err == nil {
 			err = mw.WriteField(f[0], f[1])
 		}

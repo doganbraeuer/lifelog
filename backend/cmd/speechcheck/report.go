@@ -11,7 +11,16 @@ type report struct {
 	Engine    string // "whisper.cpp large-v3-turbo"
 	Converter string // "ffmpeg 8.1.1"
 	Machine   string // "Apple M3 Pro, darwin/arm64"
+	Prompt    string // sent to Whisper with every recording; "" = none
+	Vocab     []vocabTerm
 	Rows      []row
+}
+
+// vocabTerm is one term of the Whisper prompt and the test sentences it
+// happens to be in.
+type vocabTerm struct {
+	Term      string
+	Sentences []string // "04", "08"
 }
 
 // sourceSummary sums up the single recordings of one source (not the
@@ -86,6 +95,11 @@ func (rep report) Markdown() string {
 	p("- Engine: %s, started with `backend/scripts/whisper-server.sh`\n", rep.Engine)
 	p("- Converter: %s\n", rep.Converter)
 	p("- Machine: %s\n", rep.Machine)
+	if rep.Prompt != "" {
+		p("- Prompt: the list of %d medical terms (`whisper.Vocabulary`, see below)\n", len(rep.Vocab))
+	} else {
+		p("- Prompt: none (`-vocabulary=false`); the terms of the list are still checked below\n")
+	}
 	p("- Key terms are compared word by word (`core.TextContains`): case, punctuation at the edges and decimal comma ")
 	p("do not count, word boundaries do („keiner Guss“ is not „kein Erguss“, „101“ is not „1-0-1“). ")
 	p("Each term lists the spellings that count as right (`cmd/speechcheck/samples.go`).\n")
@@ -132,6 +146,18 @@ func (rep report) Markdown() string {
 		p(" (%s)", strings.Join(invented, "; "))
 	}
 	p("\n")
+	var leaks []string
+	for _, r := range rep.Rows {
+		if len(r.Leaked) > 0 {
+			leaks = append(leaks, fmt.Sprintf("%s %s: %s", r.Source, r.Name, strings.Join(r.Leaked, ", ")))
+		}
+	}
+	p("- %s No term of the list written without being said, in %d recordings (for recordings without speech also in what Whisper alone writes)",
+		mark(len(leaks) == 0), len(rep.Rows))
+	if len(leaks) > 0 {
+		p(": %s", strings.Join(leaks, "; "))
+	}
+	p("\n")
 	for _, r := range rep.Rows {
 		if r.Joined {
 			est := r.rtf() * threeMinutes
@@ -169,6 +195,22 @@ func (rep report) Markdown() string {
 			r.Source, r.Name, r.What, r.Seconds, r.Elapsed.Seconds(), r.rtf(), r.Result, wer, terms, cell(strings.Join(r.Missing, ", ")))
 	}
 	p("\n")
+
+	p("## Vocabulary\n\n")
+	p("The terms of `whisper.Vocabulary`, written as general terms of doctor's letters, lab reports and prescriptions, ")
+	p("not taken from the test sentences. Terms that happen to be said in a test sentence are marked with its number ")
+	p("(also when they are the written form of what was said, e.g. „1-0-1“ for „eins null eins“, or part of a word ")
+	p("like „FSME-Auffrischung“); a better result for those terms can come from the list itself.\n\n")
+	var in, out []string
+	for _, v := range rep.Vocab {
+		if len(v.Sentences) > 0 {
+			in = append(in, fmt.Sprintf("%s (%s)", v.Term, strings.Join(v.Sentences, ", ")))
+		} else {
+			out = append(out, v.Term)
+		}
+	}
+	p("- In the test sentences (%d of %d): %s\n", len(in), len(rep.Vocab), cell(strings.Join(in, ", ")))
+	p("- Not in the test sentences (%d): %s\n\n", len(out), cell(strings.Join(out, ", ")))
 
 	p("## Recognized text\n\n")
 	p("Only single recordings with speech (the joined ones contain the same sentences).\n\n")

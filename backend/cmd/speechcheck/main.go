@@ -8,6 +8,7 @@
 //	go run ./cmd/speechcheck                                        # synthetic voice and generated audio only
 //	go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech    # plus own recordings 01.m4a … 10.m4a
 //	go run ./cmd/speechcheck -own … -out ../docs/speech/2026-11-12-whisper.md
+//	go run ./cmd/speechcheck -vocabulary=false                      # without the list of medical terms as prompt
 //
 // What it measures (docs/speech/README.md):
 //
@@ -16,8 +17,8 @@
 //     background noise. A voice is personal: these files stay outside the
 //     repository.
 //   - Synthetic voice: demo/speech/NN_anna.m4a (demo/speech/make-voice.sh).
-//   - Generated here: digital silence, white noise, and sentence 03 with
-//     that noise.
+//   - Generated here: digital silence, loud and quiet white noise, brown
+//     noise, and sentence 03 with the loud noise.
 //   - Per voice, sentences 01–08 joined into one longer recording, for the
 //     speed of a spoken doctor's letter of a few minutes.
 //
@@ -47,15 +48,16 @@ func main() {
 	demo := flag.String("demo", "../demo", "folder with the demo data (reference texts and synthetic voice in speech/)")
 	own := flag.String("own", "", "folder with own recordings 01.m4a … 10.m4a (outside the repository); empty = skip them")
 	out := flag.String("out", "", "also write the measurement as Markdown to this file, e.g. ../docs/speech/2026-11-12-whisper.md")
+	vocabulary := flag.Bool("vocabulary", true, "send the list of medical terms (whisper.Vocabulary) as prompt, as the backend does")
 	flag.Parse()
 
-	if err := run(*demo, *own, *out); err != nil {
+	if err := run(*demo, *own, *out, *vocabulary); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(demoDir, ownDir, out string) error {
+func run(demoDir, ownDir, out string, vocabulary bool) error {
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
@@ -74,12 +76,20 @@ func run(demoDir, ownDir, out string) error {
 		return fmt.Errorf("%w (see backend/README.md, speech)", err)
 	}
 	engine := whisper.New(url)
+	if !vocabulary {
+		engine.Prompt = ""
+	}
 	if err := engine.Ping(ctx); err != nil {
 		return fmt.Errorf("whisper-server does not answer at %s; start it with backend/scripts/whisper-server.sh: %w", url, err)
 	}
 	pipeline := &speech.Pipeline{Converter: conv, Engine: engine}
 
-	recs, err := recordings(ctx, conv, filepath.Join(demoDir, "speech"), ownDir)
+	speechDir := filepath.Join(demoDir, "speech")
+	recs, err := recordings(ctx, conv, speechDir, ownDir)
+	if err != nil {
+		return err
+	}
+	refs, err := references(speechDir)
 	if err != nil {
 		return err
 	}
@@ -94,7 +104,7 @@ func run(demoDir, ownDir, out string) error {
 		return err
 	}
 
-	rows, err := measure(ctx, pipeline, recs)
+	rows, err := measure(ctx, pipeline, recs, whisper.VocabularyTerms())
 	if err != nil {
 		return err
 	}
@@ -103,6 +113,8 @@ func run(demoDir, ownDir, out string) error {
 		Engine:    engine.Name(),
 		Converter: conv.Name(),
 		Machine:   machine(),
+		Prompt:    engine.Prompt,
+		Vocab:     vocabularyInSentences(whisper.VocabularyTerms(), refs),
 		Rows:      rows,
 	}
 	md := rep.Markdown()
@@ -141,4 +153,19 @@ func machine() string {
 		}
 	}
 	return arch
+}
+
+// vocabularyInSentences lists every term of the vocabulary with the test
+// sentences it happens to be in (see said).
+func vocabularyInSentences(vocab []string, refs map[string]string) []vocabTerm {
+	out := make([]vocabTerm, len(vocab))
+	for i, t := range vocab {
+		out[i].Term = t
+		for _, s := range spoken() {
+			if said(t, refs[s.ID], s.Terms) {
+				out[i].Sentences = append(out[i].Sentences, s.ID)
+			}
+		}
+	}
+	return out
 }

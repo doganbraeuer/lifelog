@@ -31,6 +31,9 @@ const (
 	// threshold of core.SpeechSeconds, so Whisper is really asked and its
 	// voice activity detection and the cleaning have to catch it.
 	noiseDBFS = -30
+	// quietNoiseDBFS: a second, quieter white noise, closer to the
+	// threshold of the voice activity detection.
+	quietNoiseDBFS = -40
 	// noiseSeed: the noise is the same on every run.
 	noiseSeed = 2026
 	// pauseSeconds: pause between the sentences of a joined recording.
@@ -70,6 +73,10 @@ type row struct {
 	// Only for recordings without speech:
 	CaughtBy     string // which check gave NO_SPEECH, from the error
 	WhisperAlone string // what Whisper writes without our checks
+
+	// Leaked: terms of the vocabulary (Whisper prompt) in the result or in
+	// WhisperAlone that were not said.
+	Leaked []string
 }
 
 // rtf is the real-time factor: processing time per second of recording.
@@ -186,6 +193,10 @@ func recordings(ctx context.Context, conv speech.Converter, speechDir, ownDir st
 			Audio: core.WAV(make([]int16, n)), Mime: core.MimeAudioWAV},
 		recording{Source: sourceGenerated, Name: "noise", What: fmt.Sprintf("%d s white noise at %d dBFS", generatedSeconds, noiseDBFS),
 			Audio: core.WAV(noise(n, noiseDBFS, noiseSeed)), Mime: core.MimeAudioWAV},
+		recording{Source: sourceGenerated, Name: "quiet noise", What: fmt.Sprintf("%d s white noise at %d dBFS", generatedSeconds, quietNoiseDBFS),
+			Audio: core.WAV(noise(n, quietNoiseDBFS, noiseSeed+1)), Mime: core.MimeAudioWAV},
+		recording{Source: sourceGenerated, Name: "brown noise", What: fmt.Sprintf("%d s brown noise (low rumble) at %d dBFS", generatedSeconds, noiseDBFS),
+			Audio: core.WAV(brownNoise(n, noiseDBFS, noiseSeed+2)), Mime: core.MimeAudioWAV},
 		recording{Source: sourceGenerated, Name: "03 + noise", What: fmt.Sprintf("Anna's sentence 03 with white noise at %d dBFS", noiseDBFS),
 			Ref: refs["03"], Terms: termsBloodPressure,
 			Audio: core.WAV(mix(voice03, noise(len(voice03), noiseDBFS, noiseSeed))), Mime: core.MimeAudioWAV},
@@ -196,8 +207,9 @@ func recordings(ctx context.Context, conv speech.Converter, speechDir, ownDir st
 // measure sends every recording through the pipeline, one after another,
 // with the same time limit as the API. Recordings without speech also go
 // to Whisper directly, without the loudness check and the cleaning, to
-// show what those checks prevent.
-func measure(ctx context.Context, p *speech.Pipeline, recs []recording) ([]row, error) {
+// show what those checks prevent. vocab are the terms of the Whisper
+// prompt; every result is checked for terms that were not said.
+func measure(ctx context.Context, p *speech.Pipeline, recs []recording, vocab []string) ([]row, error) {
 	var rows []row
 	for _, rec := range recs {
 		pcm, err := p.Converter.ToPCM(ctx, rec.Audio, core.MaxAudioSeconds+1)
@@ -246,11 +258,44 @@ func measure(ctx context.Context, p *speech.Pipeline, recs []recording) ([]row, 
 				r.Missing = append(r.Missing, label(tm, rec.Ref))
 			}
 		}
+		r.Leaked = leaked(vocab, rec.Ref, rec.Terms, r.Text, r.WhisperAlone)
 		rows = append(rows, r)
 		fmt.Printf("  %-10s %-13s %5.1f s  %5.1f s  %-9s WER %3.0f %%  terms %d/%d\n",
 			r.Source, r.Name, r.Seconds, r.Elapsed.Seconds(), r.Result, r.WER*100, r.Found, r.Terms)
 	}
 	return rows, nil
+}
+
+// said reports whether a vocabulary term was said in a sentence: it is in
+// the reference, also as part of a word with hyphens ("FSME" in
+// "FSME-Auffrischung"), or in an accepted spelling of one of the key terms
+// ("1-0-1" is how "eins null eins" should be written, "mg/dl" for
+// "Milligramm pro Deziliter").
+func said(t, ref string, keyTerms []term) bool {
+	if core.TextContains(ref, t) || core.TextContains(strings.ReplaceAll(ref, "-", " "), t) {
+		return true
+	}
+	for _, kt := range keyTerms {
+		if slices.ContainsFunc(kt, func(form string) bool { return core.TextContains(form, t) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// leaked returns the terms that appear in one of the texts but were not
+// said.
+func leaked(vocab []string, ref string, keyTerms []term, texts ...string) []string {
+	var out []string
+	for _, term := range vocab {
+		if said(term, ref, keyTerms) {
+			continue
+		}
+		if slices.ContainsFunc(texts, func(t string) bool { return core.TextContains(t, term) }) {
+			out = append(out, term)
+		}
+	}
+	return out
 }
 
 // label names a key term by the form the reference uses (dates have many).
@@ -271,6 +316,29 @@ func noise(n int, dbfs float64, seed uint64) []int16 {
 	out := make([]int16, n)
 	for i := range out {
 		out[i] = clip(r.NormFloat64() * amp)
+	}
+	return out
+}
+
+// brownNoise is low-frequency noise (white noise summed up, like rumble
+// in a room), scaled to an RMS level of dbfs; the same seed gives the same
+// samples.
+func brownNoise(n int, dbfs float64, seed uint64) []int16 {
+	r := rand.New(rand.NewPCG(seed, seed))
+	v := make([]float64, n)
+	var x, sum float64
+	for i := range v {
+		x = 0.995*x + r.NormFloat64() // leaky, so it does not drift away
+		v[i] = x
+		sum += x * x
+	}
+	out := make([]int16, n)
+	if n == 0 {
+		return out
+	}
+	scale := math.MaxInt16 * math.Pow(10, dbfs/20) / math.Sqrt(sum/float64(n))
+	for i := range v {
+		out[i] = clip(v[i] * scale)
 	}
 	return out
 }

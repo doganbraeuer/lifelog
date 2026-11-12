@@ -48,7 +48,8 @@ func TestRecognize(t *testing.T) {
 	defer srv.Close()
 
 	wav := core.WAV(make([]int16, 1600))
-	segs, err := New(srv.URL+"/").Recognize(context.Background(), wav)
+	w := New(srv.URL + "/")
+	segs, err := w.Recognize(context.Background(), wav)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +60,20 @@ func TestRecognize(t *testing.T) {
 	if len(segs) != 2 || segs[0] != want[0] || segs[1] != want[1] {
 		t.Errorf("segments %+v", segs)
 	}
-	wantFields := map[string]string{"language": "de", "temperature": "0.0", "temperature_inc": "0.0", "response_format": "verbose_json"}
+	wantFields := map[string]string{"language": "de", "temperature": "0.0", "temperature_inc": "0.0", "response_format": "verbose_json", "prompt": Vocabulary}
 	for k, v := range wantFields {
 		if fields[k] != v {
 			t.Errorf("field %s = %q, want %q", k, fields[k], v)
 		}
+	}
+
+	// Without a prompt the field is not sent at all.
+	w.Prompt = ""
+	if _, err := w.Recognize(context.Background(), wav); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fields["prompt"]; ok {
+		t.Error("empty prompt sent")
 	}
 	if fileName != "audio.wav" || fileSize != len(wav) {
 		t.Errorf("file %q (%d bytes), want audio.wav (%d)", fileName, fileSize, len(wav))

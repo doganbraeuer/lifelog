@@ -145,10 +145,14 @@ The models (`ggml-large-v3-turbo.bin`, `ggml-silero-v5.1.2.bin` for the
 voice activity detection) stay outside the repository.
 
 What the server is started with (scripts): German only (`--language de`),
-no context from earlier text (`--max-context 0`, against repeated
-sentences), no temperature fallback (`--no-fallback`), non-speech tokens
-suppressed (`--suppress-nst`), voice activity detection (`--vad`). The
-backend adds its own checks: recordings with less than 0.3 s of sound are
+no temperature fallback (`--no-fallback`), non-speech tokens suppressed
+(`--suppress-nst`), voice activity detection (`--vad`), and the prompt kept
+for every 30-second window (`--carry-initial-prompt`). The backend sends a
+list of medical terms as prompt with every recording
+(`internal/speech/whisper/vocabulary.go`), so Whisper writes „1-0-1“
+instead of „101“ and knows terms like „Gonarthrose“. `--max-context 0`
+would switch that prompt off; see `docs/speech/README.md` for the
+measurement. The backend adds its own checks: recordings with less than 0.3 s of sound are
 answered with `NO_SPEECH` without asking Whisper, and known invented
 sentences ("Untertitel im Auftrag des ZDF") are removed.
 

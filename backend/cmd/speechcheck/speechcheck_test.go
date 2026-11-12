@@ -111,7 +111,7 @@ func TestReport(t *testing.T) {
 		{Source: sourceOwn, Name: "02", Ref: "Puls 64 heute", Seconds: 5, Elapsed: 2 * time.Second, Result: "text", Text: "Puls 46", WER: 0.5, Terms: 2, Found: 1, Missing: []string{"Puls 64"}},
 		{Source: sourceOwn, Name: "09", Seconds: 10, Elapsed: time.Second, Result: "text", Text: "Untertitel"},
 		{Source: sourceOwn, Name: "01–08 joined", Ref: "x", Joined: true, Seconds: 60, Elapsed: 6 * time.Second, Result: "text", Terms: 4, Found: 3},
-		{Source: sourceGenerated, Name: "silence", Seconds: 10, Result: "NO_SPEECH", CaughtBy: "0.00 s above the silence threshold", WhisperAlone: "Untertitel im Auftrag des ZDF"},
+		{Source: sourceGenerated, Name: "silence", Seconds: 10, Result: "NO_SPEECH", CaughtBy: "0.00 s above the silence threshold", WhisperAlone: "Untertitel im Auftrag des ZDF", Leaked: []string{"1-0-1"}},
 		{Source: sourceGenerated, Name: "03 + noise", Ref: "Puls 64", Seconds: 5, Elapsed: time.Second, Result: "text", Text: "plus 64", WER: 0.5, Terms: 1},
 	}
 	sums := summarize(rows)
@@ -124,7 +124,8 @@ func TestReport(t *testing.T) {
 		t.Errorf("summary %+v (the joined recording must not count)", s)
 	}
 
-	md := report{Date: "2026-11-12", Engine: "whisper.cpp x", Converter: "ffmpeg y", Machine: "m", Rows: rows}.Markdown()
+	vocab := []vocabTerm{{Term: "Puls", Sentences: []string{"03"}}, {Term: "1-0-1", Sentences: []string{"02"}}, {Term: "HbA1c"}}
+	md := report{Date: "2026-11-12", Engine: "whisper.cpp x", Converter: "ffmpeg y", Machine: "m", Prompt: "Puls, 1-0-1, HbA1c.", Vocab: vocab, Rows: rows}.Markdown()
 	for _, want := range []string{
 		"| iPhone | 3 | 2/2 | 25.0 % | 3/4 (75 %) | 0/1 | 0.40 |",
 		"❌ Key terms, iPhone: 75 %",
@@ -136,6 +137,10 @@ func TestReport(t *testing.T) {
 		"- Recognized: Puls 46",
 		"| generated | silence |  | 0.00 s above the silence threshold | Untertitel im Auftrag des ZDF |",
 		"| iPhone | 09 |  | nothing: text | – |",
+		"- Prompt: the list of 3 medical terms",
+		"❌ No term of the list written without being said, in 6 recordings (for recordings without speech also in what Whisper alone writes): generated silence: 1-0-1",
+		"- In the test sentences (2 of 3): Puls (03), 1-0-1 (02)",
+		"- Not in the test sentences (1): HbA1c",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report misses %q:\n%s", want, md)
@@ -146,5 +151,71 @@ func TestReport(t *testing.T) {
 	}
 	if strings.Contains(md, "**iPhone 01–08 joined**") {
 		t.Error("joined recording printed as text")
+	}
+}
+
+func TestLeaked(t *testing.T) {
+	vocab := []string{"Puls", "1-0-1", "mg/dl", "Vitamin D"}
+	dose := []term{{"eins null eins", "1-0-1"}, {"Milligramm pro Deziliter", "mg/dl"}}
+	tests := []struct {
+		name  string
+		ref   string
+		terms []term
+		texts []string
+		want  []string
+	}{
+		{"said and written", "Puls 64, 1-0-1", nil, []string{"Puls 64, 1-0-1"}, nil},
+		{"written, not said", "Puls 64", nil, []string{"Puls 64, Vitamin D 1-0-1"}, []string{"1-0-1", "Vitamin D"}},
+		{"said in words, written as an accepted spelling", "eins null eins, 232 Milligramm pro Deziliter", dose, []string{"1-0-1, 232 mg/dl"}, nil},
+		{"accepted spelling of another sentence", "Puls 64", nil, []string{"Puls 64 mg/dl"}, []string{"mg/dl"}},
+		{"in silence, from Whisper alone", "", nil, []string{"", "mg/dl"}, []string{"mg/dl"}},
+		{"a part of a term is no term", "", nil, []string{"Vitamin C, 1-0"}, nil},
+	}
+	for _, tt := range tests {
+		if got := leaked(vocab, tt.ref, tt.terms, tt.texts...); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestBrownNoise(t *testing.T) {
+	n := 10 * core.SpeechSampleRate
+	a := brownNoise(n, noiseDBFS, 7)
+	if !slices.Equal(a, brownNoise(n, noiseDBFS, 7)) {
+		t.Error("same seed, different noise")
+	}
+	var sum float64
+	for _, v := range a {
+		sum += float64(v) * float64(v)
+	}
+	if db := 20 * math.Log10(math.Sqrt(sum/float64(n))/math.MaxInt16); math.Abs(db-noiseDBFS) > 0.5 {
+		t.Errorf("level %.1f dBFS, want %d", db, noiseDBFS)
+	}
+	if s := core.SpeechSeconds(a); s < core.MinSpeechSeconds {
+		t.Errorf("brown noise has only %.2f s above the silence threshold", s)
+	}
+	if len(brownNoise(0, noiseDBFS, 7)) != 0 {
+		t.Error("no samples wanted")
+	}
+}
+
+func TestVocabularyInSentences(t *testing.T) {
+	refs, err := references(speechDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := vocabularyInSentences([]string{"Puls", "Ibuprofen", "1-0-1", "mg/dl", "FSME", "HbA1c"}, refs)
+	want := []vocabTerm{
+		{Term: "Puls", Sentences: []string{"03"}},
+		{Term: "Ibuprofen", Sentences: []string{"07", "08"}},
+		{Term: "1-0-1", Sentences: []string{"02"}}, // said as „eins null eins“
+		{Term: "mg/dl", Sentences: []string{"01"}}, // said as „Milligramm pro Deziliter“
+		{Term: "FSME", Sentences: []string{"05"}},  // in „FSME-Auffrischung“
+		{Term: "HbA1c"},
+	}
+	for i := range want {
+		if got[i].Term != want[i].Term || !slices.Equal(got[i].Sentences, want[i].Sentences) {
+			t.Errorf("%+v, want %+v", got[i], want[i])
+		}
 	}
 }

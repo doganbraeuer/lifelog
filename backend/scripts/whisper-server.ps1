@@ -47,14 +47,17 @@ foreach ($m in $Models) {
   if (-not (Test-Path (Join-Path $ModelDir $m.File))) { throw "$(Join-Path $ModelDir $m.File) is missing. Run: whisper-server.ps1 download" }
 }
 
-# German only, no context from earlier text (avoids loops), no temperature
-# fallback, non-speech tokens suppressed, voice activity detection: only
-# parts with speech are decoded. Only reachable from this machine.
+# German only, no temperature fallback, non-speech tokens suppressed,
+# voice activity detection: only parts with speech are decoded. The backend
+# sends a list of medical terms as prompt (internal/speech/whisper,
+# Vocabulary); --carry-initial-prompt keeps it for every 30-second window.
+# "--max-context 0" would switch the prompt off (measured 2026-11-12,
+# docs/speech/README.md). Only reachable from this machine.
 & $Server `
   --model (Join-Path $ModelDir "ggml-large-v3-turbo.bin") `
   --host 127.0.0.1 --port $Port `
   --language de `
-  --max-context 0 `
+  --carry-initial-prompt `
   --no-fallback `
   --suppress-nst `
   --vad --vad-model (Join-Path $ModelDir "ggml-silero-v5.1.2.bin")
