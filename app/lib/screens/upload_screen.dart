@@ -139,7 +139,7 @@ class _UploadScreenState extends State<UploadScreen> {
       if (!mounted) return;
       setState(() {
         _error = ApiException(
-          code: 'PICK_FAILED',
+          code: ErrorCode.pickFailed,
           message: e.code.contains('access_denied')
               ? 'Kein Zugriff auf Kamera oder Fotos. Bitte in den '
                     'Einstellungen des Geräts erlauben.'

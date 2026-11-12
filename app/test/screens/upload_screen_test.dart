@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
+import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/screens/upload_screen.dart';
@@ -214,6 +215,25 @@ void main() {
     expect(find.textContaining('Kein Zugriff'), findsOneWidget);
   });
 
+  testWidgets('choice failed for another reason: message to try again', (
+    tester,
+  ) async {
+    await goToUpload(tester, fastMock(), _BrokenChooser());
+
+    await tester.tap(find.text('Bild auswählen'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Die Auswahl hat nicht geklappt. Bitte noch einmal versuchen.'),
+      findsOneWidget,
+    );
+    expect(find.text('Bild auswählen'), findsOneWidget);
+  });
+
+  test('PICK_FAILED is the app-only code from docs/GLOSSARY.md', () {
+    expect(ErrorCode.pickFailed, 'PICK_FAILED');
+  });
+
   testWidgets('photo after a restart (Android) is offered again', (
     tester,
   ) async {
@@ -235,4 +255,10 @@ class _NoAccessChooser extends FakeFileChooser {
   @override
   Future<ChosenFile?> takePhoto() async =>
       throw PlatformException(code: 'camera_access_denied');
+}
+
+class _BrokenChooser extends FakeFileChooser {
+  @override
+  Future<ChosenFile?> pickImage() async =>
+      throw PlatformException(code: 'invalid_image');
 }

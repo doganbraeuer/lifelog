@@ -34,6 +34,10 @@ abstract final class ErrorCode {
   /// Recording a spoken note failed on the device: microphone access
   /// denied, or the recorder did not start.
   static const recordingFailed = 'RECORDING_FAILED';
+
+  /// Choosing a photo or file failed on the device (camera, photo library
+  /// or file picker), e.g. access denied.
+  static const pickFailed = 'PICK_FAILED';
 }
 
 /// Every error of an [ApiClient] call. The app evaluates [code] and may show
