@@ -3,21 +3,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/mock_api_client.dart';
-import 'package:lifelog/plattform/datei_auswahl.dart';
+import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/screens/upload_screen.dart';
 
-import '../hilfen.dart';
+import '../helpers.dart';
 
-/// Startet die App und wechselt zum Bereich „Hochladen“.
-Future<void> zumUpload(
+/// Starts the app and switches to the „Hochladen“ page.
+Future<void> goToUpload(
   WidgetTester tester,
   MockApiClient mock,
-  FakeDateiAuswahl auswahl,
+  FakeFileChooser chooser,
 ) async {
-  grosserBildschirm(tester);
-  await tester.pumpWidget(testApp(mock, auswahl: auswahl));
+  useLargeScreen(tester);
+  await tester.pumpWidget(testApp(mock, chooser: chooser));
   await tester.pumpAndSettle();
-  await zuGesundheit(tester);
+  await openHealth(tester);
   await tester.tap(
     find.descendant(
       of: find.byType(NavigationBar),
@@ -27,70 +27,70 @@ Future<void> zumUpload(
   await tester.pumpAndSettle();
 }
 
-/// Hochladen-Knopf; der Text steht auch in der Navigationsleiste und der
-/// AppBar, deshalb über den Knopf-Typ suchen.
-Finder hochladenKnopf() => find.widgetWithText(FilledButton, 'Hochladen');
+/// The upload button; the text is also in the navigation bar and the app
+/// bar, so search by the button type.
+Finder uploadButton() => find.widgetWithText(FilledButton, 'Hochladen');
 
 void main() {
-  testWidgets('zeigt den Cloud-Hinweis und die drei Auswahlknöpfe', (
+  testWidgets('shows the cloud notice and the three choice buttons', (
     tester,
   ) async {
-    await zumUpload(tester, schnellerMock(), FakeDateiAuswahl());
+    await goToUpload(tester, fastMock(), FakeFileChooser());
 
-    expect(find.text(cloudHinweis), findsOneWidget);
+    expect(find.text(cloudNotice), findsOneWidget);
     expect(find.text('Foto aufnehmen'), findsOneWidget);
     expect(find.text('Bild auswählen'), findsOneWidget);
     expect(find.text('PDF auswählen'), findsOneWidget);
   });
 
-  testWidgets('Abbrechen der Auswahl ändert nichts', (tester) async {
-    await zumUpload(tester, schnellerMock(), FakeDateiAuswahl());
+  testWidgets('cancelling the choice changes nothing', (tester) async {
+    await goToUpload(tester, fastMock(), FakeFileChooser());
 
     await tester.tap(find.text('Foto aufnehmen'));
     await tester.pumpAndSettle();
 
     expect(find.text('Foto aufnehmen'), findsOneWidget);
-    expect(hochladenKnopf(), findsNothing);
+    expect(uploadButton(), findsNothing);
   });
 
-  testWidgets('PDF wählen, prüfen, hochladen, Eintrag öffnet sich', (
+  testWidgets('choose a PDF, check it, upload it, the entry opens', (
     tester,
   ) async {
     final mock = MockApiClient(
-      verzoegerung: Duration.zero,
-      uploadVerzoegerung: const Duration(seconds: 2),
+      delay: Duration.zero,
+      uploadDelay: const Duration(seconds: 2),
     );
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('befund.pdf');
-    await zumUpload(tester, mock, auswahl);
+    final chooser = FakeFileChooser()..pdf = testPdf('befund.pdf');
+    await goToUpload(tester, mock, chooser);
 
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
     expect(find.text('befund.pdf'), findsOneWidget);
     expect(find.byTooltip('Datei verwerfen'), findsOneWidget);
 
-    await tester.tap(hochladenKnopf());
+    await tester.tap(uploadButton());
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining('bis zu einer Minute'), findsOneWidget);
-    // Während des Uploads lässt sich die Datei nicht verwerfen.
+    // During the upload the file cannot be discarded.
     expect(find.byTooltip('Datei verwerfen'), findsNothing);
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
-    // Der neue Eintrag ist offen ...
+    // The new entry is open ...
     expect(find.text('Erkannte Angaben'), findsOneWidget);
     expect(find.text('Blutdruck'), findsOneWidget);
 
-    // ... und nach „Zurück“ steht er in der Zeitleiste.
-    await zurueck(tester);
+    // ... and after „Zurück“ it is in the timeline.
+    await tapBack(tester);
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.listEntries(module: 'health'), hasLength(4));
   });
 
-  testWidgets('X auf der Vorschau verwirft die Datei', (tester) async {
-    final mock = schnellerMock();
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('falsch.pdf');
-    await zumUpload(tester, mock, auswahl);
+  testWidgets('X on the preview discards the file', (tester) async {
+    final mock = fastMock();
+    final chooser = FakeFileChooser()..pdf = testPdf('falsch.pdf');
+    await goToUpload(tester, mock, chooser);
 
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
@@ -101,55 +101,55 @@ void main() {
 
     expect(find.text('falsch.pdf'), findsNothing);
     expect(find.text('PDF auswählen'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(3));
   });
 
-  testWidgets('Duplikat: Hinweis und Sprung zum vorhandenen Eintrag', (
+  testWidgets('duplicate: notice and jump to the existing entry', (
     tester,
   ) async {
-    final mock = schnellerMock();
-    final vorhanden = await mock.hochladen(
+    final mock = fastMock();
+    final preloaded = await mock.upload(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
-      modul: 'gesundheit',
+      module: 'health',
     );
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
-    await zumUpload(tester, mock, auswahl);
+    final chooser = FakeFileChooser()..pdf = testPdf('doppelt.pdf');
+    await goToUpload(tester, mock, chooser);
 
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
-    await tester.tap(hochladenKnopf());
+    await tester.tap(uploadButton());
     await tester.pumpAndSettle();
 
     expect(find.text('Diese Datei hast du schon hochgeladen.'), findsOneWidget);
-    // Die Datei ist verworfen, die Auswahlknöpfe sind wieder da.
+    // The file is discarded, the choice buttons are back.
     expect(find.text('PDF auswählen'), findsOneWidget);
 
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
     expect(find.text('Erkannte Angaben'), findsOneWidget);
-    expect(find.textContaining(vorhanden.datei.dateiname), findsWidgets);
+    expect(find.textContaining(preloaded.file.fileName), findsWidgets);
   });
 
-  testWidgets('über 10 MB: Meldung ohne Upload', (tester) async {
-    final mock = schnellerMock();
-    final gross = Uint8List(maxDateiGroesse + 1)..setAll(0, '%PDF-'.codeUnits);
-    final auswahl = FakeDateiAuswahl()
-      ..bild = AusgewaehlteDatei(bytes: gross, name: 'riesig.pdf');
-    await zumUpload(tester, mock, auswahl);
+  testWidgets('over 10 MB: message without upload', (tester) async {
+    final mock = fastMock();
+    final large = Uint8List(maxFileSize + 1)..setAll(0, '%PDF-'.codeUnits);
+    final chooser = FakeFileChooser()
+      ..image = ChosenFile(bytes: large, name: 'riesig.pdf');
+    await goToUpload(tester, mock, chooser);
 
     await tester.tap(find.text('Bild auswählen'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('größer als 10 MB'), findsOneWidget);
-    expect(hochladenKnopf(), findsNothing);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+    expect(uploadButton(), findsNothing);
+    expect(await mock.listEntries(module: 'health'), hasLength(3));
   });
 
-  testWidgets('Größe schon bei der Auswahl bekannt (DateiZuGross)', (
+  testWidgets('size already known when choosing (FileTooLargeException)', (
     tester,
   ) async {
-    await zumUpload(tester, schnellerMock(), _ZuGrosseAuswahl());
+    await goToUpload(tester, fastMock(), _TooLargeChooser());
 
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
@@ -157,26 +157,26 @@ void main() {
     expect(find.textContaining('größer als 10 MB'), findsOneWidget);
   });
 
-  testWidgets('wiederholbarer Fehler: Datei bleibt, „Erneut versuchen“', (
+  testWidgets('retryable error: the file stays, „Erneut versuchen“', (
     tester,
   ) async {
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('modellfehler.pdf');
-    await zumUpload(tester, schnellerMock(), auswahl);
+    final chooser = FakeFileChooser()..pdf = testPdf('modelerror.pdf');
+    await goToUpload(tester, fastMock(), chooser);
 
     await tester.tap(find.text('PDF auswählen'));
     await tester.pumpAndSettle();
-    await tester.tap(hochladenKnopf());
+    await tester.tap(uploadButton());
     await tester.pumpAndSettle();
 
     expect(find.textContaining('nicht erreichbar'), findsOneWidget);
-    expect(find.text('modellfehler.pdf'), findsOneWidget);
+    expect(find.text('modelerror.pdf'), findsOneWidget);
     expect(find.text('Erneut versuchen'), findsOneWidget);
   });
 
-  testWidgets('Kein Zugriff auf die Kamera: verständliche Meldung', (
+  testWidgets('no access to the camera: understandable message', (
     tester,
   ) async {
-    await zumUpload(tester, schnellerMock(), _KeinZugriffAuswahl());
+    await goToUpload(tester, fastMock(), _NoAccessChooser());
 
     await tester.tap(find.text('Foto aufnehmen'));
     await tester.pumpAndSettle();
@@ -184,25 +184,25 @@ void main() {
     expect(find.textContaining('Kein Zugriff'), findsOneWidget);
   });
 
-  testWidgets('Foto nach Neustart (Android) wird wieder angeboten', (
+  testWidgets('photo after a restart (Android) is offered again', (
     tester,
   ) async {
-    final auswahl = FakeDateiAuswahl()..verloren = testPdf('verloren.pdf');
-    await zumUpload(tester, schnellerMock(), auswahl);
+    final chooser = FakeFileChooser()..lost = testPdf('verloren.pdf');
+    await goToUpload(tester, fastMock(), chooser);
 
     expect(find.text('verloren.pdf'), findsOneWidget);
-    expect(hochladenKnopf(), findsOneWidget);
+    expect(uploadButton(), findsOneWidget);
   });
 }
 
-class _ZuGrosseAuswahl extends FakeDateiAuswahl {
+class _TooLargeChooser extends FakeFileChooser {
   @override
-  Future<AusgewaehlteDatei?> pdfAuswaehlen() async =>
-      throw const DateiZuGross(20 * 1024 * 1024);
+  Future<ChosenFile?> pickPdf() async =>
+      throw const FileTooLargeException(20 * 1024 * 1024);
 }
 
-class _KeinZugriffAuswahl extends FakeDateiAuswahl {
+class _NoAccessChooser extends FakeFileChooser {
   @override
-  Future<AusgewaehlteDatei?> fotoAufnehmen() async =>
+  Future<ChosenFile?> takePhoto() async =>
       throw PlatformException(code: 'camera_access_denied');
 }

@@ -5,251 +5,251 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
-import '../model/antwort.dart';
-import '../model/eintrag.dart';
-import '../model/eintrag_aenderung.dart';
-import '../model/json_hilfen.dart';
+import '../model/answer.dart';
+import '../model/entry.dart';
+import '../model/entry_patch.dart';
+import '../model/json_helpers.dart';
 import 'api_client.dart';
-import 'api_fehler.dart';
-import 'mime_typ.dart';
+import 'api_exception.dart';
+import 'mime_type.dart';
 
-/// Spricht über HTTP mit dem Go-Backend (docs/API.md).
+/// Talks to the Go backend over HTTP (docs/API.md).
 class HttpApiClient implements ApiClient {
-  /// [baseUrl] ohne `/api/v1`, z. B. `http://10.0.2.2:8080`.
-  /// [client] lässt sich in Tests durch einen `MockClient` ersetzen.
+  /// [baseUrl] without `/api/v1`, e.g. `http://10.0.2.2:8080`.
+  /// In tests [client] can be replaced by a `MockClient`.
   HttpApiClient({required String baseUrl, http.Client? client})
-    : _basis = '${_ohneSchraegstrich(baseUrl.trim())}/api/v1',
+    : _base = '${_withoutTrailingSlash(baseUrl.trim())}/api/v1',
       _client = client ?? http.Client();
 
-  /// Für schnelle Aufrufe (Liste, Eintrag, Korrektur).
-  static const standardTimeout = Duration(seconds: 20);
+  /// For quick calls (list, entry, correction).
+  static const defaultTimeout = Duration(seconds: 20);
 
-  /// Für Frage (Sprachmodell) und Datei (kann groß sein).
-  static const langerTimeout = Duration(seconds: 60);
+  /// For questions (language model) and files (can be large).
+  static const longTimeout = Duration(seconds: 60);
 
-  /// Upload: Das Backend braucht bis zu ca. 60 s, laut API mindestens 90 s.
+  /// Upload: the backend needs up to about 60 s, the API asks for at least
+  /// 90 s.
   static const uploadTimeout = Duration(seconds: 90);
 
-  final String _basis;
+  final String _base;
   final http.Client _client;
 
-  static const _jsonHeader = {
+  static const _jsonHeaders = {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json',
   };
 
   @override
-  bool get istMock => false;
+  bool get isMock => false;
 
   @override
-  void schliessen() => _client.close();
+  void close() => _client.close();
 
   @override
-  Future<List<EintragKurz>> eintraege({
-    required String modul,
-    Sortierung sortierung = Sortierung.dokumentdatum,
-    Richtung richtung = Richtung.absteigend,
+  Future<List<EntrySummary>> listEntries({
+    required String module,
+    Sort sort = Sort.documentDate,
+    SortOrder order = SortOrder.desc,
   }) async {
-    final uri = _uri('/eintraege').replace(
+    final uri = _uri('/entries').replace(
       queryParameters: {
-        'modul': modul,
-        'sortierung': sortierung.name,
-        'richtung': richtung.name,
+        'module': module,
+        'sort': sort.name,
+        'order': order.name,
       },
     );
-    final antwort = await _senden(
-      () => _client.get(uri, headers: _jsonHeader),
-      standardTimeout,
+    final response = await _send(
+      () => _client.get(uri, headers: _jsonHeaders),
+      defaultTimeout,
     );
-    return _lesen(
-      antwort,
-      (json) => liste(json, 'eintraege', EintragKurz.fromJson),
+    return _read(
+      response,
+      (json) => readList(json, 'entries', EntrySummary.fromJson),
     );
   }
 
   @override
-  Future<Eintrag> eintrag(String id) async {
-    final antwort = await _senden(
-      () => _client.get(_uri(_eintragPfad(id)), headers: _jsonHeader),
-      standardTimeout,
+  Future<Entry> getEntry(String id) async {
+    final response = await _send(
+      () => _client.get(_uri(_entryPath(id)), headers: _jsonHeaders),
+      defaultTimeout,
     );
-    return _lesen(antwort, Eintrag.fromJson);
+    return _read(response, Entry.fromJson);
   }
 
   @override
-  Future<DateiInhalt> datei(String id) async {
-    final antwort = await _senden(
-      () => _client.get(_uri('${_eintragPfad(id)}/datei')),
-      langerTimeout,
+  Future<FileContent> getFile(String id) async {
+    final response = await _send(
+      () => _client.get(_uri('${_entryPath(id)}/file')),
+      longTimeout,
     );
-    final contentType = antwort.headers['content-type'];
-    final mimeTyp = contentType == null
+    final contentType = response.headers['content-type'];
+    final mimeType = contentType == null
         ? 'application/octet-stream'
         : contentType.split(';').first.trim().toLowerCase();
-    return DateiInhalt(bytes: antwort.bodyBytes, mimeTyp: mimeTyp);
+    return FileContent(bytes: response.bodyBytes, mimeType: mimeType);
   }
 
   @override
-  Future<Eintrag> hochladen(
+  Future<Entry> upload(
     Uint8List bytes,
-    String dateiname, {
-    required String modul,
+    String fileName, {
+    required String module,
   }) async {
-    final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
+    final request = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
-      ..fields['modul'] = modul
+      ..fields['module'] = module
       ..files.add(
         http.MultipartFile.fromBytes(
-          'datei',
+          'file',
           bytes,
-          filename: dateiname,
+          filename: fileName,
           contentType: MediaType.parse(
-            erkenneMimeTyp(bytes) ?? 'application/octet-stream',
+            detectMimeType(bytes) ?? 'application/octet-stream',
           ),
         ),
       );
-    return _formularSenden(anfrage);
+    return _sendForm(request);
   }
 
   @override
-  Future<Eintrag> textImportieren(String text, {required String modul}) {
-    // Gleicher Endpunkt wie der Upload, nur Feld `text` statt `datei`.
-    // MultipartRequest schickt Formularfelder als UTF-8.
-    final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
+  Future<Entry> importText(String text, {required String module}) {
+    // Same endpoint as the upload, only the field `text` instead of `file`.
+    // MultipartRequest sends form fields as UTF-8.
+    final request = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
       ..fields['text'] = text
-      ..fields['modul'] = modul;
-    return _formularSenden(anfrage);
+      ..fields['module'] = module;
+    return _sendForm(request);
   }
 
-  /// Schickt Upload oder Text-Import. Das Backend braucht bis zu ca. 60 s.
-  Future<Eintrag> _formularSenden(http.MultipartRequest anfrage) async {
-    final antwort = await _senden(
-      () async => http.Response.fromStream(await _client.send(anfrage)),
+  /// Sends an upload or a text import. The backend needs up to about 60 s.
+  Future<Entry> _sendForm(http.MultipartRequest request) async {
+    final response = await _send(
+      () async => http.Response.fromStream(await _client.send(request)),
       uploadTimeout,
     );
-    return _lesen(antwort, Eintrag.fromJson);
+    return _read(response, Entry.fromJson);
   }
 
   @override
-  Future<Eintrag> korrigieren(String id, EintragAenderung aenderung) async {
-    final antwort = await _senden(
+  Future<Entry> correct(String id, EntryPatch patch) async {
+    final response = await _send(
       () => _client.patch(
-        _uri(_eintragPfad(id)),
-        headers: _jsonHeader,
-        body: jsonEncode(aenderung.toJson()),
+        _uri(_entryPath(id)),
+        headers: _jsonHeaders,
+        body: jsonEncode(patch.toJson()),
       ),
-      standardTimeout,
+      defaultTimeout,
     );
-    return _lesen(antwort, Eintrag.fromJson);
+    return _read(response, Entry.fromJson);
   }
 
   @override
-  Future<void> loeschen(String id) async {
-    // Erfolg ist 204 ohne Body; Fehler kommen wie immer als JSON.
-    await _senden(
-      () => _client.delete(_uri(_eintragPfad(id)), headers: _jsonHeader),
-      standardTimeout,
+  Future<void> deleteEntry(String id) async {
+    // Success is 204 without a body; errors come as JSON as always.
+    await _send(
+      () => _client.delete(_uri(_entryPath(id)), headers: _jsonHeaders),
+      defaultTimeout,
     );
   }
 
   @override
-  Future<FrageAntwort> fragen(String frage, {required String modul}) async {
-    final antwort = await _senden(
+  Future<Answer> ask(String question, {required String module}) async {
+    final response = await _send(
       () => _client.post(
-        _uri('/fragen'),
-        headers: _jsonHeader,
-        body: jsonEncode({'frage': frage, 'modul': modul}),
+        _uri('/questions'),
+        headers: _jsonHeaders,
+        body: jsonEncode({'question': question, 'module': module}),
       ),
-      langerTimeout,
+      longTimeout,
     );
-    return _lesen(antwort, FrageAntwort.fromJson);
+    return _read(response, Answer.fromJson);
   }
 
   // ---------------------------------------------------------------------
 
-  Uri _uri(String pfad) => Uri.parse('$_basis$pfad');
+  Uri _uri(String path) => Uri.parse('$_base$path');
 
-  String _eintragPfad(String id) => '/eintraege/${Uri.encodeComponent(id)}';
+  String _entryPath(String id) => '/entries/${Uri.encodeComponent(id)}';
 
-  static String _ohneSchraegstrich(String url) => url.endsWith('/')
-      ? _ohneSchraegstrich(url.substring(0, url.length - 1))
+  static String _withoutTrailingSlash(String url) => url.endsWith('/')
+      ? _withoutTrailingSlash(url.substring(0, url.length - 1))
       : url;
 
-  /// Führt die Anfrage aus und wandelt Netzwerk- und HTTP-Fehler in
-  /// [ApiFehler] um. Gibt nur Antworten mit Status 2xx zurück.
-  Future<http.Response> _senden(
-    Future<http.Response> Function() anfrage,
+  /// Runs the request and turns network and HTTP errors into an
+  /// [ApiException]. Only returns responses with status 2xx.
+  Future<http.Response> _send(
+    Future<http.Response> Function() request,
     Duration timeout,
   ) async {
-    final http.Response antwort;
+    final http.Response response;
     try {
-      antwort = await anfrage().timeout(timeout);
+      response = await request().timeout(timeout);
     } on TimeoutException {
-      throw const ApiFehler(
-        code: FehlerCode.netzwerkFehler,
-        nachricht:
+      throw const ApiException(
+        code: ErrorCode.networkError,
+        message:
             'Der Server antwortet nicht. '
             'Bitte später noch einmal versuchen.',
       );
     } on http.ClientException {
-      throw const ApiFehler(
-        code: FehlerCode.netzwerkFehler,
-        nachricht:
+      throw const ApiException(
+        code: ErrorCode.networkError,
+        message:
             'Keine Verbindung zum Server. '
             'Bitte prüfe die Internetverbindung.',
       );
     }
-    if (antwort.statusCode >= 200 && antwort.statusCode < 300) return antwort;
-    throw _fehlerAus(antwort);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response;
+    }
+    throw _errorFrom(response);
   }
 
-  /// Liest das Fehlerformat `{"fehler": {"code", "nachricht", "details"}}`.
-  ApiFehler _fehlerAus(http.Response antwort) {
+  /// Reads the error format `{"error": {"code", "message", "details"}}`.
+  ApiException _errorFrom(http.Response response) {
     try {
-      final json = jsonDecode(utf8.decode(antwort.bodyBytes));
-      if (json case {'fehler': final Map<String, dynamic> fehler}) {
-        if (fehler case {
+      final json = jsonDecode(utf8.decode(response.bodyBytes));
+      if (json case {'error': final Map<String, dynamic> error}) {
+        if (error case {
           'code': final String code,
-          'nachricht': final String nachricht,
+          'message': final String message,
         }) {
-          final details = fehler['details'];
-          return ApiFehler(
-            httpStatus: antwort.statusCode,
+          final details = error['details'];
+          return ApiException(
+            httpStatus: response.statusCode,
             code: code,
-            nachricht: nachricht,
+            message: message,
             details: details is Map<String, dynamic> ? details : const {},
           );
         }
       }
     } on FormatException {
-      // Kein JSON (z. B. HTML-Fehlerseite eines Proxys): unten behandelt.
+      // Not JSON (e.g. an HTML error page of a proxy): handled below.
     }
-    return ApiFehler(
-      httpStatus: antwort.statusCode,
-      code: FehlerCode.unbekannteAntwort,
-      nachricht:
-          'Unerwartete Antwort vom Server (Status ${antwort.statusCode}).',
+    return ApiException(
+      httpStatus: response.statusCode,
+      code: ErrorCode.unexpectedResponse,
+      message:
+          'Unerwartete Antwort vom Server (Status ${response.statusCode}).',
     );
   }
 
-  /// Dekodiert den Body als UTF-8-JSON und wandelt ihn um. Passt die
-  /// Antwort nicht zum Vertrag, gibt es [FehlerCode.unbekannteAntwort].
-  T _lesen<T>(
-    http.Response antwort,
-    T Function(Map<String, dynamic>) umwandeln,
-  ) {
+  /// Decodes the body as UTF-8 JSON and converts it. If the response does
+  /// not match the contract, the result is [ErrorCode.unexpectedResponse].
+  T _read<T>(http.Response response, T Function(Map<String, dynamic>) convert) {
     try {
-      // Immer UTF-8 dekodieren: Fehlt `charset` im Header, würde
-      // `antwort.body` Latin-1 annehmen und Umlaute verfälschen.
-      final json = jsonDecode(utf8.decode(antwort.bodyBytes));
-      return umwandeln(objekt(json, 'Antwort'));
+      // Always decode as UTF-8: without `charset` in the header,
+      // `response.body` would assume Latin-1 and garble umlauts.
+      final json = jsonDecode(utf8.decode(response.bodyBytes));
+      return convert(asObject(json, 'response'));
     } on FormatException catch (e) {
-      throw ApiFehler(
-        httpStatus: antwort.statusCode,
-        code: FehlerCode.unbekannteAntwort,
-        nachricht: 'Die Antwort des Servers ist unvollständig.',
-        details: {'grund': e.message},
+      throw ApiException(
+        httpStatus: response.statusCode,
+        code: ErrorCode.unexpectedResponse,
+        message: 'Die Antwort des Servers ist unvollständig.',
+        details: {'reason': e.message},
       );
     }
   }

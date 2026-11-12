@@ -4,866 +4,849 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
-import '../model/antwort.dart';
-import '../model/datum.dart';
-import '../model/eintrag.dart';
-import '../model/eintrag_aenderung.dart';
-import '../model/json_hilfen.dart';
-import '../module/modul_katalog.dart';
+import '../model/answer.dart';
+import '../model/plain_date.dart';
+import '../model/entry.dart';
+import '../model/entry_patch.dart';
+import '../model/json_helpers.dart';
+import '../module/module_catalog.dart';
 import 'api_client.dart';
-import 'api_fehler.dart';
-import 'mime_typ.dart';
-import 'mock/mock_daten.dart';
-import 'zeitleisten_sortierung.dart';
+import 'api_exception.dart';
+import 'mime_type.dart';
+import 'mock/mock_data.dart';
+import 'timeline_sort.dart';
 
-/// Antwort ohne Treffer, wörtlich aus docs/API.md.
-const keinTrefferAntwort = 'Dazu finde ich nichts in deinen Dokumenten.';
+/// Answer without a hit, literally from docs/API.md.
+const notFoundAnswer = 'Dazu finde ich nichts in deinen Dokumenten.';
 
-/// Ein Backend im Speicher, das sich wie docs/API.md verhält: gleiche
-/// Sortierung, gleiche Korrekturregeln, gleiche Fehlercodes. So bringt der
-/// Wechsel zum echten Backend keine Überraschungen.
+/// An in-memory backend that behaves like docs/API.md: same sorting, same
+/// correction rules, same error codes. That way switching to the real
+/// backend brings no surprises.
 ///
-/// Intern speichert der Mock jeden Eintrag als JSON-Map, genau wie das
-/// Backend ihn liefern würde. Korrekturen prüft er am JSON-Body, so dass
-/// auch Fehler wie ein falsches Datumsformat nachgestellt werden können.
+/// Internally the mock stores every entry as a JSON map, exactly as the
+/// backend would return it. It checks corrections against the JSON body,
+/// so that errors like a wrong date format can be reproduced too.
 ///
-/// Fehler zum Ausprobieren von Hand:
-/// - Upload mit `unlesbar`, `auslesefehler` oder `modellfehler` im
-///   Dateinamen liefert 422, 502 bzw. 503.
-/// - Eine Frage mit dem Wort `modellfehler` liefert 503.
+/// Errors for trying out by hand:
+/// - An upload with `unreadable`, `extractionerror` or `modelerror` in
+///   the file name returns 422, 502 or 503.
+/// - A question with the word `modelerror` returns 503.
 class MockApiClient implements ApiClient {
   MockApiClient({
-    bool mitBeispieldaten = true,
-    this.verzoegerung = const Duration(milliseconds: 300),
-    this.uploadVerzoegerung = const Duration(seconds: 2),
-    DateTime Function()? uhr,
-    ModulKatalog? katalog,
-  }) : _uhr = uhr ?? (() => DateTime.now().toUtc()),
-       _katalog = katalog ?? ModulKatalog.standard() {
-    if (mitBeispieldaten) {
-      for (final e in beispieldaten()) {
+    bool withSampleData = true,
+    this.delay = const Duration(milliseconds: 300),
+    this.uploadDelay = const Duration(seconds: 2),
+    DateTime Function()? clock,
+    ModuleCatalog? catalog,
+  }) : _clock = clock ?? (() => DateTime.now().toUtc()),
+       _catalog = catalog ?? ModuleCatalog.defaults() {
+    if (withSampleData) {
+      for (final e in sampleData()) {
         final id = e.json['id'] as String;
-        _eintraege[id] = e.json;
-        _dateien[id] = e.bytes;
+        _entries[id] = e.json;
+        _files[id] = e.bytes;
       }
     }
   }
 
-  /// Künstliche Wartezeit pro Aufruf, damit Ladeanzeigen sichtbar werden.
-  final Duration verzoegerung;
+  /// Artificial delay per call, so that loading indicators become visible.
+  final Duration delay;
 
-  /// Wartezeit beim Upload (das echte Backend braucht bis zu 60 s).
-  final Duration uploadVerzoegerung;
+  /// Delay for uploads (the real backend needs up to 60 s).
+  final Duration uploadDelay;
 
-  /// Wenn `true`, scheitert jeder Aufruf mit `500 INTERNER_FEHLER`.
-  bool simulierterFehler = false;
+  /// If `true`, every call fails with `500 INTERNAL_ERROR`.
+  bool simulateError = false;
 
-  final DateTime Function() _uhr;
+  final DateTime Function() _clock;
 
-  /// Erlaubte Typen pro Modul, wie sie auch das Backend prüft.
-  final ModulKatalog _katalog;
-  final _eintraege = <String, Map<String, dynamic>>{};
-  final _dateien = <String, Uint8List>{};
-  final _zufall = Random();
-  var _zaehler = 0;
-
-  @override
-  bool get istMock => true;
+  /// Allowed types per module, as the backend checks them too.
+  final ModuleCatalog _catalog;
+  final _entries = <String, Map<String, dynamic>>{};
+  final _files = <String, Uint8List>{};
+  final _random = Random();
+  var _counter = 0;
 
   @override
-  void schliessen() {}
+  bool get isMock => true;
+
+  @override
+  void close() {}
 
   // ---------------------------------------------------------------------
-  // GET /eintraege
+  // GET /entries
   // ---------------------------------------------------------------------
 
   @override
-  Future<List<EintragKurz>> eintraege({
-    required String modul,
-    Sortierung sortierung = Sortierung.dokumentdatum,
-    Richtung richtung = Richtung.absteigend,
-  }) => eintraegeMitParametern({
-    'modul': modul,
-    'sortierung': sortierung.name,
-    'richtung': richtung.name,
+  Future<List<EntrySummary>> listEntries({
+    required String module,
+    Sort sort = Sort.documentDate,
+    SortOrder order = SortOrder.desc,
+  }) => listEntriesWithParameters({
+    'module': module,
+    'sort': sort.name,
+    'order': order.name,
   });
 
-  /// Wie [eintraege], aber mit rohen Query-Parametern. So lässt sich auch
-  /// `400 UNGUELTIGER_PARAMETER` testen.
+  /// Like [listEntries], but with raw query parameters. This makes it
+  /// possible to test `400 INVALID_PARAMETER` too.
   @visibleForTesting
-  Future<List<EintragKurz>> eintraegeMitParametern(
+  Future<List<EntrySummary>> listEntriesWithParameters(
     Map<String, String> parameter,
   ) async {
-    await _warte(verzoegerung);
-    final modul = parameter['modul'] ?? '';
-    if (!_modulBekannt(modul)) {
-      throw ApiFehler(
+    await _wait(delay);
+    final module = parameter['module'] ?? '';
+    if (!_isKnownModule(module)) {
+      throw ApiException(
         httpStatus: 400,
-        code: FehlerCode.ungueltigerParameter,
-        nachricht: _unbekanntesModul,
-        details: {'parameter': 'modul', 'wert': modul},
+        code: ErrorCode.invalidParameter,
+        message: _unknownModule,
+        details: {'parameter': 'module', 'value': module},
       );
     }
-    final sortierung = _enumParameter(
+    final sort = _enumParameter(
       parameter,
-      'sortierung',
-      Sortierung.values,
-      Sortierung.dokumentdatum,
-      'Unbekannte Sortierung. Erlaubt sind dokumentdatum und importdatum.',
+      'sort',
+      Sort.values,
+      Sort.documentDate,
+      'Unbekannte Sortierung. Erlaubt sind documentDate und importedAt.',
     );
-    final richtung = _enumParameter(
+    final order = _enumParameter(
       parameter,
-      'richtung',
-      Richtung.values,
-      Richtung.absteigend,
-      'Unbekannte Richtung. Erlaubt sind absteigend und aufsteigend.',
+      'order',
+      SortOrder.values,
+      SortOrder.desc,
+      'Unbekannte Richtung. Erlaubt sind desc und asc.',
     );
-    final gewaehlt = _modulOderStandard(modul);
-    return sortiereZeitleiste(
-      _eintraege.values
-          .where((json) => json['modul'] == gewaehlt)
-          .map(EintragKurz.fromJson),
-      sortierung,
-      richtung,
+    final chosen = _moduleOrDefault(module);
+    return sortTimeline(
+      _entries.values
+          .where((json) => json['module'] == chosen)
+          .map(EntrySummary.fromJson),
+      sort,
+      order,
     );
   }
 
   // ---------------------------------------------------------------------
-  // Module (docs/API.md, Abschnitt 1 „Module“)
+  // Modules (docs/API.md, section 1 "Modules")
   // ---------------------------------------------------------------------
 
-  static const _unbekanntesModul = 'Unbekanntes Modul.';
+  static const _unknownModule = 'Unbekanntes Modul.';
 
-  /// Fehlt `modul` oder ist es leer, gilt `gesundheit`.
-  static String _modulOderStandard(String modul) =>
-      modul.isEmpty ? 'gesundheit' : modul;
+  /// If `module` is missing or empty, `health` applies.
+  static String _moduleOrDefault(String module) =>
+      module.isEmpty ? 'health' : module;
 
-  /// Bekannt ist jedes Modul aus dem Katalog. (Das echte Backend kennt im
-  /// Prototyp nur `gesundheit`; die App fragt andere Module aber gar nicht
-  /// an, solange sie inaktiv sind.)
-  bool _modulBekannt(String modul) =>
-      _katalog.nachId(_modulOderStandard(modul)) != null;
+  /// Every module from the catalog is known. (In the prototype the real
+  /// backend only knows `health`; but the app does not request other
+  /// modules at all while they are inactive.)
+  bool _isKnownModule(String module) =>
+      _catalog.byId(_moduleOrDefault(module)) != null;
 
-  /// Prüft das Modul für Upload, Text-Import und Frage: unbekannt ergibt
-  /// `400 UNGUELTIGE_ANFRAGE`. Gibt die gültige Modul-ID zurück.
-  String _pruefeModul(String modul) {
-    if (!_modulBekannt(modul)) {
-      throw ApiFehler(
+  /// Checks the module for upload, text import and question: an unknown one
+  /// results in `400 INVALID_REQUEST`. Returns the valid module ID.
+  String _checkModule(String module) {
+    if (!_isKnownModule(module)) {
+      throw ApiException(
         httpStatus: 400,
-        code: FehlerCode.ungueltigeAnfrage,
-        nachricht: _unbekanntesModul,
-        details: {'feld': 'modul', 'wert': modul},
+        code: ErrorCode.invalidRequest,
+        message: _unknownModule,
+        details: {'field': 'module', 'value': module},
       );
     }
-    return _modulOderStandard(modul);
+    return _moduleOrDefault(module);
   }
 
-  /// Wie [_pruefeModul], dazu: In ein Modul ohne Typen kann nichts
-  /// importiert werden, weil es keinen erlaubten `typ` gibt.
-  String _pruefeImportModul(String modul) {
-    final id = _pruefeModul(modul);
-    if (_katalog.typen(id).isEmpty) {
-      throw ApiFehler(
+  /// Like [_checkModule], plus: nothing can be imported into a module
+  /// without types, because there is no allowed `type`.
+  String _checkImportModule(String module) {
+    final id = _checkModule(module);
+    if (_catalog.types(id).isEmpty) {
+      throw ApiException(
         httpStatus: 400,
-        code: FehlerCode.ungueltigeAnfrage,
-        nachricht: 'In diesem Modul ist noch kein Import möglich.',
-        details: {'feld': 'modul', 'wert': modul},
+        code: ErrorCode.invalidRequest,
+        message: 'In diesem Modul ist noch kein Import möglich.',
+        details: {'field': 'module', 'value': module},
       );
     }
     return id;
   }
 
-  /// Bevorzugter Typ, falls das Modul ihn kennt, sonst der erste.
-  String _typFuer(String modul, String bevorzugt) {
-    final typen = _katalog.typen(modul).map((t) => t.id).toList();
-    return typen.contains(bevorzugt) ? bevorzugt : typen.first;
+  /// Preferred type if the module knows it, otherwise the first one.
+  String _typeFor(String module, String preferred) {
+    final types = _catalog.types(module).map((t) => t.id).toList();
+    return types.contains(preferred) ? preferred : types.first;
   }
 
   T _enumParameter<T extends Enum>(
     Map<String, String> parameter,
     String name,
-    List<T> werte,
-    T standard,
-    String nachricht,
+    List<T> values,
+    T defaultValue,
+    String message,
   ) {
-    final wert = parameter[name];
-    if (wert == null) return standard;
-    for (final w in werte) {
-      if (w.name == wert) return w;
+    final value = parameter[name];
+    if (value == null) return defaultValue;
+    for (final w in values) {
+      if (w.name == value) return w;
     }
-    throw ApiFehler(
+    throw ApiException(
       httpStatus: 400,
-      code: FehlerCode.ungueltigerParameter,
-      nachricht: nachricht,
-      details: {'parameter': name, 'wert': wert},
+      code: ErrorCode.invalidParameter,
+      message: message,
+      details: {'parameter': name, 'value': value},
     );
   }
 
   // ---------------------------------------------------------------------
-  // GET /eintraege/{id} und /eintraege/{id}/datei
+  // GET /entries/{id} and /entries/{id}/file
   // ---------------------------------------------------------------------
 
   @override
-  Future<Eintrag> eintrag(String id) async {
-    await _warte(verzoegerung);
-    return Eintrag.fromJson(_finde(id));
+  Future<Entry> getEntry(String id) async {
+    await _wait(delay);
+    return Entry.fromJson(_find(id));
   }
 
   @override
-  Future<DateiInhalt> datei(String id) async {
-    await _warte(verzoegerung);
-    final json = _finde(id);
-    final datei = objekt(json['datei'], 'datei');
-    return DateiInhalt(
-      bytes: _dateien[json['id']]!,
-      mimeTyp: text(datei, 'mimeTyp'),
+  Future<FileContent> getFile(String id) async {
+    await _wait(delay);
+    final json = _find(id);
+    final file = asObject(json['file'], 'file');
+    return FileContent(
+      bytes: _files[json['id']]!,
+      mimeType: readString(file, 'mimeType'),
     );
   }
 
   static final _objectId = RegExp(r'^[0-9a-fA-F]{24}$');
 
-  Map<String, dynamic> _finde(String id) {
+  Map<String, dynamic> _find(String id) {
     if (!_objectId.hasMatch(id)) {
-      throw ApiFehler(
+      throw ApiException(
         httpStatus: 400,
-        code: FehlerCode.ungueltigeId,
-        nachricht: 'Die ID ist ungültig.',
-        details: {'id': id},
+        code: ErrorCode.invalidId,
+        message: 'Die ID ist ungültig.',
       );
     }
-    final json = _eintraege[id.toLowerCase()];
+    final json = _entries[id.toLowerCase()];
     if (json == null) {
-      throw const ApiFehler(
+      throw const ApiException(
         httpStatus: 404,
-        code: FehlerCode.eintragNichtGefunden,
-        nachricht: 'Diesen Eintrag gibt es nicht.',
+        code: ErrorCode.entryNotFound,
+        message: 'Diesen Eintrag gibt es nicht.',
       );
     }
     return json;
   }
 
   // ---------------------------------------------------------------------
-  // POST /eintraege
+  // POST /entries
   // ---------------------------------------------------------------------
 
   @override
-  Future<Eintrag> hochladen(
+  Future<Entry> upload(
     Uint8List bytes,
-    String dateiname, {
-    required String modul,
+    String fileName, {
+    required String module,
   }) async {
-    await _warte(uploadVerzoegerung);
+    await _wait(uploadDelay);
 
-    // 1. Modul, Größe und Typ prüfen.
-    final modulId = _pruefeImportModul(modul);
+    // 1. Check module, size and type.
+    final moduleId = _checkImportModule(module);
     if (bytes.isEmpty) {
-      throw const ApiFehler(
+      throw const ApiException(
         httpStatus: 400,
-        code: FehlerCode.dateiFehlt,
-        nachricht: 'Es wurde keine Datei mitgeschickt.',
+        code: ErrorCode.fileMissing,
+        message: 'Es wurde keine Datei mitgeschickt.',
       );
     }
-    if (bytes.length > maxDateiGroesse) {
-      throw const ApiFehler(
+    if (bytes.length > maxFileSize) {
+      throw const ApiException(
         httpStatus: 413,
-        code: FehlerCode.dateiZuGross,
-        nachricht: 'Die Datei ist größer als 10 MB.',
-        details: {'maxBytes': maxDateiGroesse},
+        code: ErrorCode.fileTooLarge,
+        message: 'Die Datei ist größer als 10 MB.',
       );
     }
-    final mimeTyp = erkenneMimeTyp(bytes);
-    if (mimeTyp == null) {
-      throw const ApiFehler(
+    final mimeType = detectMimeType(bytes);
+    if (mimeType == null) {
+      throw const ApiException(
         httpStatus: 415,
-        code: FehlerCode.dateitypNichtUnterstuetzt,
-        nachricht:
+        code: ErrorCode.unsupportedFileType,
+        message:
             'Dieser Dateityp wird nicht unterstützt. '
             'Erlaubt sind JPEG, PNG, HEIC und PDF.',
       );
     }
 
-    // 2. Duplikat-Prüfung über den SHA-256-Hash, vor dem Modellaufruf.
-    final hash = _pruefeDuplikat(
+    // 2. Duplicate check via the SHA-256 hash, before the model call.
+    final hash = _checkDuplicate(
       bytes,
       'Diese Datei hast du schon hochgeladen.',
     );
 
-    // 3. "Vision-LLM": Fehler lassen sich über den Dateinamen auslösen.
-    _pruefeAusloeser(dateiname);
+    // 3. "Vision LLM": errors can be triggered via the file name.
+    _checkTriggers(fileName);
 
-    // 4.–6. Eintrag anlegen und speichern.
-    return _speichern(
-      modul: modulId,
-      typ: _typFuer(modulId, 'arztbrief'),
-      dokumentdatum: Datum.aus(_uhr().toLocal()),
-      quelle: 'Mock-Praxis Beispiel',
-      volltext:
+    // 4.–6. Create and store the entry.
+    return _store(
+      module: moduleId,
+      type: _typeFor(moduleId, 'doctor_letter'),
+      documentDate: PlainDate.fromDateTime(_clock().toLocal()),
+      issuer: 'Mock-Praxis Beispiel',
+      fullText:
           'Mock-Praxis Beispiel\n'
           'Dieser Eintrag stammt aus dem Mock, nicht aus einer echten '
           'Auswertung.\n'
-          'Dateiname: $dateiname\n'
+          'Dateiname: $fileName\n'
           'Blutdruck 120/80 mmHg',
-      infos: [
-        {'id': 'i1', 'name': 'Blutdruck', 'wert': '120/80', 'einheit': 'mmHg'},
+      facts: [
+        {'id': 'f1', 'name': 'Blutdruck', 'value': '120/80', 'unit': 'mmHg'},
       ],
-      dateiname: dateiname,
-      mimeTyp: mimeTyp,
+      fileName: fileName,
+      mimeType: mimeType,
       bytes: bytes,
       hash: hash,
     );
   }
 
-  /// Datum `TT.MM.JJJJ` im Text (z. B. „vom 21.10.2026“).
-  static final _datumImText = RegExp(r'\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b');
+  /// Date `DD.MM.YYYY` in the text (e.g. „vom 21.10.2026“).
+  static final _dateInText = RegExp(r'\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b');
 
   @override
-  Future<Eintrag> textImportieren(String text, {required String modul}) async {
-    await _warte(uploadVerzoegerung);
+  Future<Entry> importText(String text, {required String module}) async {
+    await _wait(uploadDelay);
 
-    // 1. Modul und Text prüfen.
-    final modulId = _pruefeImportModul(modul);
+    // 1. Check module and text.
+    final moduleId = _checkImportModule(module);
     if (text.trim().isEmpty) {
-      throw const ApiFehler(
+      throw const ApiException(
         httpStatus: 400,
-        code: FehlerCode.dateiFehlt,
-        nachricht: 'Bitte einen Text eingeben.',
+        code: ErrorCode.fileMissing,
+        message: 'Bitte einen Text eingeben.',
       );
     }
-    if (text.runes.length > maxTextLaenge) {
-      throw const ApiFehler(
+    if (text.runes.length > maxTextLength) {
+      throw const ApiException(
         httpStatus: 413,
-        code: FehlerCode.dateiZuGross,
-        nachricht: 'Der Text ist länger als 100 000 Zeichen.',
-        details: {'maxZeichen': maxTextLaenge},
+        code: ErrorCode.fileTooLarge,
+        message: 'Der Text ist länger als 100 000 Zeichen.',
+        details: {'maxChars': maxTextLength},
       );
     }
 
-    // 2. Der Text wird als text.txt gespeichert; Duplikat über diese Bytes.
+    // 2. The text is stored as text.txt; duplicates via these bytes.
     final bytes = Uint8List.fromList(utf8.encode(text));
-    final hash = _pruefeDuplikat(
+    final hash = _checkDuplicate(
       bytes,
       'Diesen Text hast du schon importiert.',
     );
 
-    // 3. "Sprachmodell": Auslöser wie beim Dateinamen, hier im Text.
-    _pruefeAusloeser(text);
+    // 3. "Language model": triggers as for the file name, here in the text.
+    _checkTriggers(text);
 
-    // Statt eines Modells: erstes Datum im Text, erste Zeile als Quelle.
-    // volltext ist der eingegebene Text, unverändert (docs/API.md 3.1).
-    Datum? datum;
-    for (final treffer in _datumImText.allMatches(text)) {
-      final tag = int.parse(treffer[1]!);
-      final monat = int.parse(treffer[2]!);
-      final jahr = int.parse(treffer[3]!);
-      if (Datum.istGueltig(jahr, monat, tag)) {
-        datum = Datum(jahr, monat, tag);
+    // Instead of a model: first date in the text, first line as the issuer.
+    // fullText is the entered text, unchanged (docs/API.md 3.1).
+    PlainDate? date;
+    for (final hits in _dateInText.allMatches(text)) {
+      final day = int.parse(hits[1]!);
+      final month = int.parse(hits[2]!);
+      final year = int.parse(hits[3]!);
+      if (PlainDate.isValid(year, month, day)) {
+        date = PlainDate(year, month, day);
         break;
       }
     }
-    final ersteZeile = text
+    final firstLine = text
         .split('\n')
         .map((z) => z.trim())
         .firstWhere((z) => z.isNotEmpty);
 
-    return _speichern(
-      modul: modulId,
-      typ: _typFuer(modulId, 'sonstiges'),
-      dokumentdatum: datum,
-      quelle: ersteZeile,
-      volltext: text,
-      infos: const [],
-      dateiname: 'text.txt',
-      mimeTyp: 'text/plain; charset=utf-8',
+    return _store(
+      module: moduleId,
+      type: _typeFor(moduleId, 'other'),
+      documentDate: date,
+      issuer: firstLine,
+      fullText: text,
+      facts: const [],
+      fileName: 'text.txt',
+      mimeType: 'text/plain; charset=utf-8',
       bytes: bytes,
       hash: hash,
     );
   }
 
-  /// Wirft `409 DUPLIKAT`, wenn es den Hash schon gibt (über alle Module).
-  /// Gibt sonst den Hash zurück.
-  String _pruefeDuplikat(Uint8List bytes, String nachricht) {
+  /// Throws `409 DUPLICATE` if the hash already exists (across all modules).
+  /// Otherwise returns the hash.
+  String _checkDuplicate(Uint8List bytes, String message) {
     final hash = sha256.convert(bytes).toString();
-    for (final json in _eintraege.values) {
-      if (objekt(json['datei'], 'datei')['sha256'] == hash) {
-        throw ApiFehler(
+    for (final json in _entries.values) {
+      if (asObject(json['file'], 'file')['sha256'] == hash) {
+        throw ApiException(
           httpStatus: 409,
-          code: FehlerCode.duplikat,
-          nachricht: nachricht,
-          details: {'eintragId': json['id']},
+          code: ErrorCode.duplicate,
+          message: message,
+          details: {'entryId': json['id']},
         );
       }
     }
     return hash;
   }
 
-  /// Fehler des Modells zum Ausprobieren: `unlesbar`, `auslesefehler`
-  /// oder `modellfehler` im Dateinamen bzw. im Text.
-  void _pruefeAusloeser(String inhalt) {
-    final klein = inhalt.toLowerCase();
-    if (klein.contains('unlesbar')) {
-      throw const ApiFehler(
+  /// Model errors for trying out: `unreadable`, `extractionerror` or
+  /// `modelerror` in the file name or in the text.
+  void _checkTriggers(String content) {
+    final lower = content.toLowerCase();
+    if (lower.contains('unreadable')) {
+      throw const ApiException(
         httpStatus: 422,
-        code: FehlerCode.nichtLesbar,
-        nachricht:
+        code: ErrorCode.unreadable,
+        message:
             'In der Datei ist kein Dokument erkennbar. '
             'Versuche es mit einem schärferen Foto.',
       );
     }
-    if (klein.contains('auslesefehler')) {
-      throw const ApiFehler(
+    if (lower.contains('extractionerror')) {
+      throw const ApiException(
         httpStatus: 502,
-        code: FehlerCode.auslesenFehlgeschlagen,
-        nachricht:
+        code: ErrorCode.extractionFailed,
+        message:
             'Das Dokument konnte nicht ausgewertet werden. '
             'Bitte später noch einmal versuchen.',
       );
     }
-    if (klein.contains('modellfehler')) {
-      throw _modellNichtErreichbar;
+    if (lower.contains('modelerror')) {
+      throw _modelUnavailable;
     }
   }
 
-  /// Legt einen neuen Eintrag samt Originaldatei an.
-  Eintrag _speichern({
-    required String modul,
-    required String typ,
-    required Datum? dokumentdatum,
-    required String? quelle,
-    required String volltext,
-    required List<Map<String, dynamic>> infos,
-    required String dateiname,
-    required String mimeTyp,
+  /// Creates a new entry together with its original file.
+  Entry _store({
+    required String module,
+    required String type,
+    required PlainDate? documentDate,
+    required String? issuer,
+    required String fullText,
+    required List<Map<String, dynamic>> facts,
+    required String fileName,
+    required String mimeType,
     required Uint8List bytes,
     required String hash,
   }) {
-    final id = _neueId();
+    final id = _newId();
     final json = <String, dynamic>{
       'id': id,
-      'modul': modul,
-      'typ': typ,
-      'dokumentdatum': dokumentdatum?.iso,
-      'importdatum': formatZeitpunkt(_uhr()),
-      'quelle': quelle,
-      'volltext': volltext,
-      'infos': <dynamic>[
-        for (final info in infos) <String, dynamic>{...info},
+      'module': module,
+      'type': type,
+      'documentDate': documentDate?.iso,
+      'importedAt': formatTimestamp(_clock()),
+      'issuer': issuer,
+      'fullText': fullText,
+      'facts': <dynamic>[
+        for (final fact in facts) <String, dynamic>{...fact},
       ],
-      'datei': <String, dynamic>{
-        'id': _neueId(),
-        'dateiname': dateiname,
-        'mimeTyp': mimeTyp,
-        'groesse': bytes.length,
+      'file': <String, dynamic>{
+        'id': _newId(),
+        'fileName': fileName,
+        'mimeType': mimeType,
+        'size': bytes.length,
         'sha256': hash,
       },
-      'korrekturen': <dynamic>[],
+      'corrections': <dynamic>[],
     };
-    _eintraege[id] = json;
-    _dateien[id] = Uint8List.fromList(bytes);
-    return Eintrag.fromJson(json);
+    _entries[id] = json;
+    _files[id] = Uint8List.fromList(bytes);
+    return Entry.fromJson(json);
   }
 
   // ---------------------------------------------------------------------
-  // DELETE /eintraege/{id}
+  // DELETE /entries/{id}
   // ---------------------------------------------------------------------
 
   @override
-  Future<void> loeschen(String id) async {
-    await _warte(verzoegerung);
-    final json = _finde(id); // 400 UNGUELTIGE_ID oder 404
-    // Im Mock gibt es keine Abschnitte; Datei und Eintrag verschwinden.
-    // Danach ist der Hash frei, dieselbe Datei lässt sich neu hochladen.
-    _dateien.remove(json['id']);
-    _eintraege.remove(json['id']);
+  Future<void> deleteEntry(String id) async {
+    await _wait(delay);
+    final json = _find(id); // 400 INVALID_ID or 404
+    // The mock has no chunks; file and entry disappear.
+    // Afterwards the hash is free, the same file can be uploaded again.
+    _files.remove(json['id']);
+    _entries.remove(json['id']);
   }
 
-  /// ID im Stil einer MongoDB-ObjectId: 24 Hex-Zeichen.
-  String _neueId() {
+  /// ID in the style of a MongoDB ObjectId: 24 hex characters.
+  String _newId() {
     String id;
     do {
-      final sekunden = _uhr().millisecondsSinceEpoch ~/ 1000;
-      final zufall = [
+      final seconds = _clock().millisecondsSinceEpoch ~/ 1000;
+      final randomPart = [
         for (var i = 0; i < 5; i++)
-          _zufall.nextInt(256).toRadixString(16).padLeft(2, '0'),
+          _random.nextInt(256).toRadixString(16).padLeft(2, '0'),
       ].join();
-      _zaehler = (_zaehler + 1) & 0xFFFFFF;
+      _counter = (_counter + 1) & 0xFFFFFF;
       id =
-          sekunden.toRadixString(16).padLeft(8, '0') +
-          zufall +
-          _zaehler.toRadixString(16).padLeft(6, '0');
-    } while (_eintraege.containsKey(id));
+          seconds.toRadixString(16).padLeft(8, '0') +
+          randomPart +
+          _counter.toRadixString(16).padLeft(6, '0');
+    } while (_entries.containsKey(id));
     return id;
   }
 
   // ---------------------------------------------------------------------
-  // PATCH /eintraege/{id}
+  // PATCH /entries/{id}
   // ---------------------------------------------------------------------
 
   @override
-  Future<Eintrag> korrigieren(String id, EintragAenderung aenderung) =>
-      korrigiereMitJson(id, aenderung.toJson());
+  Future<Entry> correct(String id, EntryPatch patch) =>
+      correctWithJson(id, patch.toJson());
 
-  /// Wie [korrigieren], aber mit rohem JSON-Body. So lassen sich auch
-  /// ungültige Anfragen testen, die mit [EintragAenderung] gar nicht
-  /// entstehen können (z. B. `"dokumentdatum": "15.10.2026"`).
+  /// Like [correct], but with a raw JSON body. This makes it possible to
+  /// test invalid requests too that cannot be created with [EntryPatch]
+  /// (e.g. `"documentDate": "15.10.2026"`).
   @visibleForTesting
-  Future<Eintrag> korrigiereMitJson(
-    String id,
-    Map<String, dynamic> body,
-  ) async {
-    await _warte(verzoegerung);
-    final json = _finde(id);
+  Future<Entry> correctWithJson(String id, Map<String, dynamic> body) async {
+    await _wait(delay);
+    final json = _find(id);
 
-    // 1. Alles prüfen. Ist ein Teil ungültig, wird nichts geändert.
-    final aenderungen = _pruefeKorrektur(json, body);
+    // 1. Check everything. If any part is invalid, nothing is changed.
+    final changes = _checkPatch(json, body);
 
-    // 2. und 3. Werte schreiben und `korrekturen` pflegen.
-    final jetzt = formatZeitpunkt(_uhr());
-    for (final (feld, neu) in aenderungen) {
-      _setze(json, feld, neu, jetzt);
+    // 2. and 3. Write the values and maintain `corrections`.
+    final timestamp = formatTimestamp(_clock());
+    for (final (field, newValue) in changes) {
+      _set(json, field, newValue, timestamp);
     }
-    return Eintrag.fromJson(json);
+    return Entry.fromJson(json);
   }
 
-  static const _korrigierbar = {'typ', 'dokumentdatum', 'quelle', 'infos'};
-  static const _nichtKorrigierbar = {
+  static const _correctable = {'type', 'documentDate', 'issuer', 'facts'};
+  static const _notCorrectable = {
     'id',
-    'modul',
-    'importdatum',
-    'volltext',
-    'datei',
-    'korrekturen',
+    'module',
+    'importedAt',
+    'fullText',
+    'file',
+    'corrections',
   };
 
-  /// Prüft den Body und gibt die Änderungen als Liste von
-  /// (Feldpfad, neuer Wert) zurück.
-  List<(String, String?)> _pruefeKorrektur(
+  /// Checks the body and returns the changes as a list of
+  /// (field path, new value).
+  List<(String, String?)> _checkPatch(
     Map<String, dynamic> json,
     Map<String, dynamic> body,
   ) {
     if (body.isEmpty) {
-      throw _ungueltig('Die Anfrage enthält keine Änderung.');
+      throw _invalid('Die Anfrage enthält keine Änderung.');
     }
-    for (final feld in body.keys) {
-      if (_nichtKorrigierbar.contains(feld)) {
-        throw _nichtKorrigierbarFehler(feld);
+    for (final field in body.keys) {
+      if (_notCorrectable.contains(field)) {
+        throw _notCorrectableError(field);
       }
-      if (!_korrigierbar.contains(feld)) {
-        throw _ungueltig('Unbekanntes Feld: $feld.', {'feld': feld});
+      if (!_correctable.contains(field)) {
+        throw _invalid('Unbekanntes Feld: $field.', {'field': field});
       }
     }
 
-    final ergebnis = <(String, String?)>[];
+    final result = <(String, String?)>[];
 
-    if (body.containsKey('typ')) {
-      final typ = body['typ'];
-      // Ein Typ gilt nur innerhalb des Moduls, zu dem der Eintrag gehört.
-      final erlaubt = [
-        for (final t in _katalog.typen(json['modul'] as String)) t.id,
+    if (body.containsKey('type')) {
+      final type = body['type'];
+      // A type only applies within the module the entry belongs to.
+      final allowed = [
+        for (final t in _catalog.types(json['module'] as String)) t.id,
       ];
-      if (typ is! String || !erlaubt.contains(typ)) {
-        throw _ungueltig(
-          'Unbekannter Typ. Erlaubt sind ${erlaubt.join(', ')}.',
-          {'feld': 'typ', 'wert': typ},
-        );
+      if (type is! String || !allowed.contains(type)) {
+        throw _invalid('Unbekannter Typ. Erlaubt sind ${allowed.join(', ')}.', {
+          'field': 'type',
+          'value': type,
+        });
       }
-      ergebnis.add(('typ', typ));
+      result.add(('type', type));
     }
 
-    if (body.containsKey('dokumentdatum')) {
-      final wert = body['dokumentdatum'];
-      if (wert == null) {
-        ergebnis.add(('dokumentdatum', null));
-      } else if (wert is String && Datum.tryParse(wert) != null) {
-        ergebnis.add(('dokumentdatum', wert));
-      } else if (wert is String && Datum.format.hasMatch(wert)) {
-        throw _ungueltig('Das Dokumentdatum ist kein gültiges Kalenderdatum.', {
-          'feld': 'dokumentdatum',
-          'wert': wert,
+    if (body.containsKey('documentDate')) {
+      final value = body['documentDate'];
+      if (value == null) {
+        result.add(('documentDate', null));
+      } else if (value is String && PlainDate.tryParse(value) != null) {
+        result.add(('documentDate', value));
+      } else if (value is String && PlainDate.format.hasMatch(value)) {
+        throw _invalid('Das Dokumentdatum ist kein gültiges Kalenderdatum.', {
+          'field': 'documentDate',
+          'value': value,
         });
       } else {
-        throw _ungueltig(
+        throw _invalid(
           'Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.',
-          {'feld': 'dokumentdatum', 'wert': wert},
+          {'field': 'documentDate', 'value': value},
         );
       }
     }
 
-    if (body.containsKey('quelle')) {
-      final wert = body['quelle'];
-      if (wert != null && wert is! String) {
-        throw _ungueltig('Die Quelle muss ein Text oder null sein.', {
-          'feld': 'quelle',
-          'wert': wert,
+    if (body.containsKey('issuer')) {
+      final value = body['issuer'];
+      if (value != null && value is! String) {
+        throw _invalid('Die Quelle muss ein Text oder null sein.', {
+          'field': 'issuer',
+          'value': value,
         });
       }
-      // Leerraum entfernen; bleibt nichts übrig, gilt das wie null (3.5).
-      ergebnis.add(('quelle', _ohneLeerraum(wert as String?)));
+      // Remove whitespace; if nothing remains, it counts as null (3.5).
+      result.add(('issuer', _trimToNull(value as String?)));
     }
 
-    if (body.containsKey('infos')) {
-      final infos = body['infos'];
-      if (infos is! List) {
-        throw _ungueltig('"infos" muss eine Liste sein.', {'feld': 'infos'});
+    if (body.containsKey('facts')) {
+      final facts = body['facts'];
+      if (facts is! List) {
+        throw _invalid('"facts" muss eine Liste sein.', {'field': 'facts'});
       }
-      final vorhandeneIds = {
-        for (final info in json['infos'] as List) (info as Map)['id'],
+      final existingIds = {
+        for (final fact in json['facts'] as List) (fact as Map)['id'],
       };
-      final gesehen = <String>{};
-      for (final element in infos) {
+      final seen = <String>{};
+      for (final element in facts) {
         if (element is! Map<String, dynamic>) {
-          throw _ungueltig('Jede Info muss ein Objekt sein.');
+          throw _invalid('Jede Info muss ein Objekt sein.');
         }
         final id = element['id'];
         if (id is! String || id.isEmpty) {
-          throw _ungueltig('Jede Info braucht eine id.', {'feld': 'infos'});
+          throw _invalid('Jede Info braucht eine id.', {'field': 'facts'});
         }
-        if (!gesehen.add(id)) {
-          throw _ungueltig('Die Info $id kommt mehrfach vor.', {'infoId': id});
+        if (!seen.add(id)) {
+          throw _invalid('Die Info $id kommt mehrfach vor.', {'factId': id});
         }
-        for (final schluessel in element.keys) {
-          if (schluessel == 'name') {
-            throw _nichtKorrigierbarFehler('infos.$id.name');
+        for (final key in element.keys) {
+          if (key == 'name') {
+            throw _notCorrectableError('facts.$id.name');
           }
-          if (!{'id', 'wert', 'einheit'}.contains(schluessel)) {
-            throw _ungueltig('Unbekanntes Feld: infos.$id.$schluessel.', {
-              'feld': 'infos.$id.$schluessel',
+          if (!{'id', 'value', 'unit'}.contains(key)) {
+            throw _invalid('Unbekanntes Feld: facts.$id.$key.', {
+              'field': 'facts.$id.$key',
             });
           }
         }
-        if (!element.containsKey('wert') && !element.containsKey('einheit')) {
-          throw _ungueltig('Die Info $id enthält keine Änderung.', {
-            'infoId': id,
+        if (!element.containsKey('value') && !element.containsKey('unit')) {
+          throw _invalid('Die Info $id enthält keine Änderung.', {
+            'factId': id,
           });
         }
-        if (!vorhandeneIds.contains(id)) {
-          throw ApiFehler(
+        if (!existingIds.contains(id)) {
+          throw ApiException(
             httpStatus: 404,
-            code: FehlerCode.infoNichtGefunden,
-            nachricht: 'Diese Info gibt es in dem Eintrag nicht.',
-            details: {'infoId': id},
+            code: ErrorCode.factNotFound,
+            message: 'Diese Info gibt es in dem Eintrag nicht.',
+            details: {'factId': id},
           );
         }
-        if (element.containsKey('wert')) {
-          final wert = element['wert'];
-          if (wert is! String) {
-            throw _ungueltig('Der Wert muss ein Text sein.', {
-              'feld': 'infos.$id.wert',
-              'wert': wert,
+        if (element.containsKey('value')) {
+          final value = element['value'];
+          if (value is! String) {
+            throw _invalid('Der Wert muss ein Text sein.', {
+              'field': 'facts.$id.value',
+              'value': value,
             });
           }
-          // Eine Info hat immer einen Wert: leer ist ein Fehler (3.5).
-          if (wert.trim().isEmpty) {
-            throw _ungueltig('Der Wert darf nicht leer sein.', {
-              'feld': 'infos.$id.wert',
-              'wert': wert,
+          // A fact always has a value: empty is an error (3.5).
+          if (value.trim().isEmpty) {
+            throw _invalid('Der Wert darf nicht leer sein.', {
+              'field': 'facts.$id.value',
+              'value': value,
             });
           }
-          ergebnis.add(('infos.$id.wert', wert.trim()));
+          result.add(('facts.$id.value', value.trim()));
         }
-        if (element.containsKey('einheit')) {
-          final einheit = element['einheit'];
-          if (einheit != null && einheit is! String) {
-            throw _ungueltig('Die Einheit muss ein Text oder null sein.', {
-              'feld': 'infos.$id.einheit',
-              'wert': einheit,
+        if (element.containsKey('unit')) {
+          final unit = element['unit'];
+          if (unit != null && unit is! String) {
+            throw _invalid('Die Einheit muss ein Text oder null sein.', {
+              'field': 'facts.$id.unit',
+              'value': unit,
             });
           }
-          ergebnis.add((
-            'infos.$id.einheit',
-            _ohneLeerraum(einheit as String?),
-          ));
+          result.add(('facts.$id.unit', _trimToNull(unit as String?)));
         }
       }
     }
-    return ergebnis;
+    return result;
   }
 
-  /// Entfernt Leerraum am Anfang und Ende; ein leerer Text wird zu `null`.
-  static String? _ohneLeerraum(String? text) {
-    final ohne = text?.trim();
-    return (ohne == null || ohne.isEmpty) ? null : ohne;
+  /// Removes whitespace at the start and end; an empty string becomes `null`.
+  static String? _trimToNull(String? text) {
+    final trimmed = text?.trim();
+    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
   }
 
-  /// Setzt ein Feld und pflegt `korrekturen` nach den Regeln aus
-  /// docs/API.md, Abschnitt 2:
-  /// - Ein Feld, dessen Wert sich nicht ändert, erzeugt keine Korrektur.
-  /// - Pro Feld höchstens eine Korrektur; `erkannt` bleibt der Originalwert.
-  /// - Zurück auf den erkannten Wert: Die Korrektur wird entfernt.
-  void _setze(
+  /// Sets a field and maintains `corrections` according to the rules from
+  /// docs/API.md, section 2:
+  /// - A field whose value does not change creates no correction.
+  /// - At most one correction per field; `recognized` stays the original.
+  /// - Back to the recognized value: the correction is removed.
+  void _set(
     Map<String, dynamic> json,
-    String feld,
-    String? neu,
-    String zeitpunkt,
+    String field,
+    String? newValue,
+    String correctedAt,
   ) {
-    final alt = _lies(json, feld);
-    if (alt == neu) return;
+    final old = _read(json, field);
+    if (old == newValue) return;
 
-    final korrekturen = json['korrekturen'] as List;
-    final index = korrekturen.indexWhere((k) => (k as Map)['feld'] == feld);
-    // Gibt es noch keine Korrektur, ist der aktuelle Wert der erkannte.
-    final erkannt = index >= 0
-        ? (korrekturen[index] as Map)['erkannt'] as String?
-        : alt;
+    final corrections = json['corrections'] as List;
+    final index = corrections.indexWhere((k) => (k as Map)['field'] == field);
+    // Without a correction yet, the current value is the recognized one.
+    final recognized = index >= 0
+        ? (corrections[index] as Map)['recognized'] as String?
+        : old;
 
-    _schreibe(json, feld, neu);
+    _write(json, field, newValue);
 
-    if (neu == erkannt) {
-      if (index >= 0) korrekturen.removeAt(index);
+    if (newValue == recognized) {
+      if (index >= 0) corrections.removeAt(index);
     } else if (index >= 0) {
-      final korrektur = korrekturen[index] as Map<String, dynamic>;
-      korrektur['korrigiert'] = neu;
-      korrektur['zeitpunkt'] = zeitpunkt;
+      final correction = corrections[index] as Map<String, dynamic>;
+      correction['corrected'] = newValue;
+      correction['correctedAt'] = correctedAt;
     } else {
-      korrekturen.add(<String, dynamic>{
-        'feld': feld,
-        'erkannt': erkannt,
-        'korrigiert': neu,
-        'zeitpunkt': zeitpunkt,
+      corrections.add(<String, dynamic>{
+        'field': field,
+        'recognized': recognized,
+        'corrected': newValue,
+        'correctedAt': correctedAt,
       });
     }
   }
 
-  String? _lies(Map<String, dynamic> json, String feld) {
-    final (info, schluessel) = _ziel(json, feld);
-    return info[schluessel] as String?;
+  String? _read(Map<String, dynamic> json, String field) {
+    final (fact, key) = _target(json, field);
+    return fact[key] as String?;
   }
 
-  void _schreibe(Map<String, dynamic> json, String feld, String? wert) {
-    final (ziel, schluessel) = _ziel(json, feld);
-    // Eine Einheit ohne Wert fehlt im JSON ganz (laut API "optional").
-    if (wert == null && feld.startsWith('infos.')) {
-      ziel.remove(schluessel);
+  void _write(Map<String, dynamic> json, String field, String? value) {
+    final (target, key) = _target(json, field);
+    // A unit without a value is missing from the JSON entirely ("optional").
+    if (value == null && field.startsWith('facts.')) {
+      target.remove(key);
     } else {
-      ziel[schluessel] = wert;
+      target[key] = value;
     }
   }
 
-  /// Liefert die Map und den Schlüssel, unter dem ein Feldpfad steht.
-  (Map<String, dynamic>, String) _ziel(Map<String, dynamic> json, String feld) {
-    if (!feld.startsWith('infos.')) return (json, feld);
-    final teile = feld.split('.'); // infos, <id>, wert|einheit
-    final info = (json['infos'] as List)
+  /// Returns the map and the key under which a field path is stored.
+  (Map<String, dynamic>, String) _target(
+    Map<String, dynamic> json,
+    String field,
+  ) {
+    if (!field.startsWith('facts.')) return (json, field);
+    final parts = field.split('.'); // facts, <id>, value|unit
+    final fact = (json['facts'] as List)
         .cast<Map<String, dynamic>>()
-        .firstWhere((i) => i['id'] == teile[1]);
-    return (info, teile[2]);
+        .firstWhere((i) => i['id'] == parts[1]);
+    return (fact, parts[2]);
   }
 
-  ApiFehler _ungueltig(String nachricht, [Map<String, dynamic>? details]) =>
-      ApiFehler(
+  ApiException _invalid(String message, [Map<String, dynamic>? details]) =>
+      ApiException(
         httpStatus: 400,
-        code: FehlerCode.ungueltigeAnfrage,
-        nachricht: nachricht,
+        code: ErrorCode.invalidRequest,
+        message: message,
         details: details ?? const {},
       );
 
-  ApiFehler _nichtKorrigierbarFehler(String feld) => ApiFehler(
+  ApiException _notCorrectableError(String field) => ApiException(
     httpStatus: 400,
-    code: FehlerCode.feldNichtKorrigierbar,
-    nachricht: 'Das Feld $feld kann nicht korrigiert werden.',
-    details: {'feld': feld},
+    code: ErrorCode.fieldNotCorrectable,
+    message: 'Das Feld $field kann nicht korrigiert werden.',
+    details: {'field': field},
   );
 
   // ---------------------------------------------------------------------
-  // POST /fragen
+  // POST /questions
   // ---------------------------------------------------------------------
 
-  static const maxFrageLaenge = 500;
+  static const maxQuestionLength = 500;
 
   @override
-  Future<FrageAntwort> fragen(String frage, {required String modul}) async {
-    await _warte(verzoegerung);
-    // Wie im Backend: erst die Frage prüfen, dann das Modul.
-    if (frage.trim().isEmpty) {
-      throw const ApiFehler(
+  Future<Answer> ask(String question, {required String module}) async {
+    await _wait(delay);
+    // As in the backend: check the question first, then the module.
+    if (question.trim().isEmpty) {
+      throw const ApiException(
         httpStatus: 400,
-        code: FehlerCode.frageFehlt,
-        nachricht: 'Bitte gib eine Frage ein.',
+        code: ErrorCode.questionMissing,
+        message: 'Bitte gib eine Frage ein.',
       );
     }
-    final laenge = frage.runes.length;
-    if (laenge > maxFrageLaenge) {
-      throw ApiFehler(
+    // As in the backend, without details (docs/API.md 3.6).
+    if (question.runes.length > maxQuestionLength) {
+      throw const ApiException(
         httpStatus: 400,
-        code: FehlerCode.frageZuLang,
-        nachricht:
-            'Die Frage darf höchstens $maxFrageLaenge Zeichen lang '
+        code: ErrorCode.questionTooLong,
+        message:
+            'Die Frage darf höchstens $maxQuestionLength Zeichen lang '
             'sein.',
-        details: {'maxZeichen': maxFrageLaenge, 'laenge': laenge},
       );
     }
-    final modulId = _pruefeModul(modul);
-    final woerter = _woerter(frage).where((w) => !_stoppwoerter.contains(w));
-    if (woerter.contains('modellfehler')) throw _modellNichtErreichbar;
+    final moduleId = _checkModule(module);
+    final words = _words(question).where((w) => !_stopWords.contains(w));
+    if (words.contains('modelerror')) throw _modelUnavailable;
 
-    // Statt Vektorsuche: einfache Wortsuche in den Zeilen des Volltexts.
-    // Eine Zeile zählt pro Fragewort, das in einem ihrer Wörter steckt
-    // (oder umgekehrt, damit "Hämoglobinwert" auch "Hämoglobin" findet).
-    final suchwoerter = woerter.where((w) => w.length >= 4).toSet();
-    final treffer = <(int, Map<String, dynamic>, String)>[];
-    // Nur Dokumente des gewählten Moduls durchsuchen.
-    for (final json in _eintraege.values.where((j) => j['modul'] == modulId)) {
-      for (final zeile in (json['volltext'] as String).split('\n')) {
-        final zeilenWoerter = _woerter(zeile)
-            .where((w) => w.length >= 4)
-            .toList();
-        final punkte = suchwoerter
-            .where(
-              (s) => zeilenWoerter.any((z) => z.contains(s) || s.contains(z)),
-            )
+    // Instead of vector search: a simple word search in the lines of the
+    // full text. A line scores per question word contained in one of its
+    // words (or the other way round, so "Hämoglobinwert" finds "Hämoglobin").
+    final searchWords = words.where((w) => w.length >= 4).toSet();
+    final hits = <(int, Map<String, dynamic>, String)>[];
+    // Only search documents of the chosen module.
+    for (final json in _entries.values.where((j) => j['module'] == moduleId)) {
+      for (final line in (json['fullText'] as String).split('\n')) {
+        final lineWords = _words(line).where((w) => w.length >= 4).toList();
+        final score = searchWords
+            .where((s) => lineWords.any((z) => z.contains(s) || s.contains(z)))
             .length;
-        if (punkte > 0) treffer.add((punkte, json, zeile.trim()));
+        if (score > 0) hits.add((score, json, line.trim()));
       }
     }
-    if (treffer.isEmpty) {
-      return const FrageAntwort(
-        antwort: keinTrefferAntwort,
-        gefunden: false,
-        quellen: [],
-      );
+    if (hits.isEmpty) {
+      return const Answer(answer: notFoundAnswer, found: false, sources: []);
     }
 
-    // Höchstens zwei Abschnitte mit der besten Punktzahl.
-    treffer.sort((a, b) => b.$1.compareTo(a.$1));
-    final beste = treffer.where((t) => t.$1 == treffer.first.$1).take(2);
-    final quellen = <Quelle>[];
-    final saetze = <String>[];
-    for (final (_, json, auszug) in beste) {
-      final kurz = EintragKurz.fromJson(json);
-      final nr = quellen.length + 1;
-      quellen.add(
-        Quelle(
-          nr: nr,
-          eintragId: kurz.id,
-          modul: kurz.modul,
-          typ: kurz.typ,
-          quelle: kurz.quelle,
-          dokumentdatum: kurz.dokumentdatum,
-          auszug: auszug,
+    // At most two chunks with the best score.
+    hits.sort((a, b) => b.$1.compareTo(a.$1));
+    final best = hits.where((t) => t.$1 == hits.first.$1).take(2);
+    final sources = <Source>[];
+    final sentences = <String>[];
+    for (final (_, json, excerpt) in best) {
+      final summary = EntrySummary.fromJson(json);
+      final number = sources.length + 1;
+      sources.add(
+        Source(
+          number: number,
+          entryId: summary.id,
+          module: summary.module,
+          type: summary.type,
+          issuer: summary.issuer,
+          documentDate: summary.documentDate,
+          excerpt: excerpt,
         ),
       );
-      final von = kurz.quelle == null ? '' : ' von ${kurz.quelle}';
-      final vom = kurz.dokumentdatum == null
+      final byIssuer = summary.issuer == null ? '' : ' von ${summary.issuer}';
+      final onDate = summary.documentDate == null
           ? ''
-          : ' vom ${kurz.dokumentdatum!.anzeige}';
-      saetze.add(
-        'Im Dokument „${_katalog.typName(kurz.modul, kurz.typ)}“$von$vom '
+          : ' vom ${summary.documentDate!.display}';
+      sentences.add(
+        'Im Dokument „${_catalog.typeName(summary.module, summary.type)}“$byIssuer$onDate '
         'steht: '
-        '$auszug [$nr].',
+        '$excerpt [$number].',
       );
     }
-    return FrageAntwort(
-      antwort: saetze.join(' '),
-      gefunden: true,
-      quellen: quellen,
-    );
+    return Answer(answer: sentences.join(' '), found: true, sources: sources);
   }
 
-  static final _wortMuster = RegExp(r'[\p{L}\p{N}]+', unicode: true);
+  static final _wordPattern = RegExp(r'[\p{L}\p{N}]+', unicode: true);
 
-  static Iterable<String> _woerter(String text) =>
-      _wortMuster.allMatches(text.toLowerCase()).map((m) => m[0]!);
+  static Iterable<String> _words(String text) =>
+      _wordPattern.allMatches(text.toLowerCase()).map((m) => m[0]!);
 
-  static const _stoppwoerter = {
+  // German on purpose: the questions are German user input.
+  static const _stopWords = {
     'aber',
     'alle',
     'auch',
@@ -913,24 +896,24 @@ class MockApiClient implements ApiClient {
   };
 
   // ---------------------------------------------------------------------
-  // Gemeinsames
+  // Shared
   // ---------------------------------------------------------------------
 
-  static const _modellNichtErreichbar = ApiFehler(
+  static const _modelUnavailable = ApiException(
     httpStatus: 503,
-    code: FehlerCode.modellNichtErreichbar,
-    nachricht:
+    code: ErrorCode.modelUnavailable,
+    message:
         'Der Auswertungsdienst ist gerade nicht erreichbar. '
         'Bitte später noch einmal versuchen.',
   );
 
-  Future<void> _warte(Duration dauer) async {
-    if (dauer > Duration.zero) await Future<void>.delayed(dauer);
-    if (simulierterFehler) {
-      throw const ApiFehler(
+  Future<void> _wait(Duration duration) async {
+    if (duration > Duration.zero) await Future<void>.delayed(duration);
+    if (simulateError) {
+      throw const ApiException(
         httpStatus: 500,
-        code: FehlerCode.internerFehler,
-        nachricht:
+        code: ErrorCode.internalError,
+        message:
             'Im Backend ist ein Fehler aufgetreten. '
             'Bitte später noch einmal versuchen.',
       );

@@ -1,16 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'hilfen.dart';
+import 'helpers.dart';
 
 void main() {
-  testWidgets('App startet mit Zeitleiste und Navigationsleiste', (
-    tester,
-  ) async {
-    await tester.pumpWidget(testApp(schnellerMock()));
+  testWidgets('app starts with timeline and navigation bar', (tester) async {
+    await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
-    await zuGesundheit(tester);
+    await openHealth(tester);
 
-    // "Zeitleiste" steht in der AppBar und in der Navigationsleiste.
+    // "Zeitleiste" is in the app bar and in the navigation bar.
     expect(find.text('Zeitleiste'), findsNWidgets(2));
     expect(find.text('Hochladen'), findsOneWidget);
     expect(find.text('Fragen'), findsOneWidget);
