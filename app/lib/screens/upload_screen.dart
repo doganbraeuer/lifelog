@@ -6,6 +6,7 @@ import '../api/api_exception.dart';
 import '../api/mime_type.dart';
 import '../model/entry.dart';
 import '../platform/file_chooser.dart';
+import '../platform/voice_recorder.dart';
 import '../widgets/motion.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_banner.dart';
@@ -28,6 +29,7 @@ class UploadScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.fileChooser,
+    required this.voiceRecorder,
     required this.moduleId,
     required this.uploaded,
     required this.openEntry,
@@ -35,6 +37,9 @@ class UploadScreen extends StatefulWidget {
 
   final ApiClient api;
   final FileChooser fileChooser;
+
+  /// Microphone for spoken notes.
+  final VoiceRecorder voiceRecorder;
 
   /// Module to upload into (field `module` of the upload).
   final String moduleId;

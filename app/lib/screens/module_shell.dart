@@ -5,6 +5,7 @@ import '../api/api_client.dart';
 import '../model/entry.dart';
 import '../module/module_definition.dart';
 import '../platform/file_chooser.dart';
+import '../platform/voice_recorder.dart';
 import '../widgets/motion.dart';
 import '../widgets/navigation.dart';
 import 'entry_screen.dart';
@@ -24,11 +25,13 @@ class ModuleShell extends StatefulWidget {
     required this.module,
     required this.api,
     required this.fileChooser,
+    required this.voiceRecorder,
   });
 
   final ModuleDefinition module;
   final ApiClient api;
   final FileChooser fileChooser;
+  final VoiceRecorder voiceRecorder;
 
   @override
   State<ModuleShell> createState() => _ModuleShellState();
@@ -143,6 +146,7 @@ class _ModuleShellState extends State<ModuleShell> {
             child: UploadScreen(
               api: widget.api,
               fileChooser: widget.fileChooser,
+              voiceRecorder: widget.voiceRecorder,
               moduleId: widget.module.id,
               uploaded: _uploaded,
               openEntry: _openEntry,
