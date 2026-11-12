@@ -363,7 +363,8 @@ the text layer of a PDF, or OCR for photos and scans.
 | Hochskalieren kleiner Bilder vor OCR | upscale | `ImageOptions.MinLongSide`, `DefaultMinLongSide`; `cmd/ocrcheck -upscale` |
 | Verkleinern großer Bilder vor OCR | downscale | `ImageOptions.MaxLongSide`, `DefaultMaxLongSide`; `cmd/ocrcheck -downscale` |
 | Bild zu groß zum Einlesen (Pixelzahl) | image too large | `ImageOptions.MaxPixels`, `ocr.ErrImageTooLarge`, reason `image_too_large` |
-| echtes Handyfoto eines Demo-Dokuments | phone photo, suffix `_phone` | `demo/phone/`, `cmd/ocrcheck -extra` |
+| echtes Handyfoto eines Demo-Dokuments auf Papier | phone photo of paper, suffix `_paper` | `demo/phone/`, `cmd/ocrcheck -extra`, kind `Phone photo of paper (real)` |
+| echtes Handyfoto eines Demo-Dokuments auf dem Bildschirm | phone photo of a screen, suffix `_phone` | `demo/phone/`, kind `Phone photo of a screen (real)` |
 
 ### API (entry JSON)
 

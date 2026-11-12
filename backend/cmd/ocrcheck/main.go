@@ -9,7 +9,7 @@
 //	go run ./cmd/ocrcheck -values -out ../docs/ocr/2026-11-11-tesseract.md
 //	go run ./cmd/ocrcheck -upscale 0       # measure without scaling small images up
 //	go run ./cmd/ocrcheck -downscale 3000  # measure with large images scaled down to 3000 pixels
-//	go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
+//	go run ./cmd/ocrcheck -extra ~/Desktop/01_lab_report_2026-01-20_paper.jpg
 //
 // It does three things:
 //
@@ -60,7 +60,7 @@ func main() {
 	values := flag.Bool("values", false, "list the fields that were not confirmed, with expected value and OCR row")
 	upscale := flag.Int("upscale", ocr.DefaultMinLongSide, "scale images whose long side is shorter up to this many pixels before OCR; 0 = off")
 	downscale := flag.Int("downscale", ocr.DefaultMaxLongSide, "scale images whose long side is longer down to this many pixels before OCR; 0 = off")
-	extra := flag.String("extra", "", "comma-separated files outside demo/ to measure too, named like the document, e.g. 01_lab_report_2026-01-20_phone.jpg")
+	extra := flag.String("extra", "", "comma-separated files outside demo/ to measure too, named like the document with _paper (photo of paper) or _phone (photo of a screen), e.g. 01_lab_report_2026-01-20_paper.jpg")
 	flag.Parse()
 
 	if err := run(options{write: *write, recheck: *recheck, demoDir: *demo, out: *out, values: *values, upscale: *upscale, downscale: *downscale, extra: *extra}); err != nil {
@@ -336,12 +336,13 @@ func measure(ctx context.Context, p *ocr.Pipeline, entries []core.Entry, demoDir
 			if variant == "photo" && strings.HasPrefix(f.Path, "live") {
 				variant = "photo (live)" // a second photo of the same document, see demo/README.md
 			}
-			if variant == "phone" {
-				variant = "phone " + strings.ToUpper(strings.TrimPrefix(filepath.Ext(f.Name), ".")) // JPG, HEIC
-			}
+			ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(f.Name), ".")) // JPG, HEIC
 			kind := kindPhoto
-			if f.variantName() == "phone" {
-				kind = kindPhone
+			switch variant {
+			case "phone":
+				variant, kind = "phone, screen "+ext, kindPhone
+			case "paper":
+				variant, kind = "phone, paper "+ext, kindPaper
 			}
 			rep.Rows = append(rep.Rows, measureFile(ctx, p, f, data, mime, variant, kind, ref))
 		}

@@ -92,7 +92,7 @@ Chosen: **2500**.
 Images with a long side of at least 2500 pixels are not touched; real phone
 photos (3,000–4,000 pixels) are therefore read as they are.
 
-## 2026-11-11: a real phone photo
+## 2026-11-11: a real phone photo (of a screen, not paper)
 
 Result: [2026-11-11-tesseract-phone.md](2026-11-11-tesseract-phone.md).
 
@@ -182,18 +182,74 @@ no program on the server, and works the same on macOS, Linux and Windows.
 It would prefer a libheif installed on the machine; the backend switches
 that off (`heic.ForceWasmMode`), so all machines decode the same way.
 
+## 2026-11-12: a real phone photo of paper
+
+Result: [2026-11-12-tesseract-paper.md](2026-11-12-tesseract-paper.md).
+
+The two earlier phone photos (`demo/phone/*_phone.jpg`, `*_phone.heic`)
+**show the document on a screen, not on paper**; they are labelled
+"phone, screen" in the measurement and counted as "Phone photo of a screen
+(real)". The first photo of real paper: lab report 01, printed,
+photographed with an iPhone 14 Pro Max on a table (2268 × 4032 pixels,
+JPEG, taken upright): `demo/phone/01_lab_report_2026-01-20_paper.jpg`
+(variant `_paper`, "Phone photo of paper (real)"). The location had been
+removed before; checked again: no GPS directory in EXIF, nothing in XMP.
+
+| Variant | Match | Facts (value + unit) | Facts (value only) | Mean OCR confidence | Time |
+|---|---|---|---|---|---|
+| Phone photo of paper | 71 % | 3/5 | **5/5** | 92 | 1.8 s |
+| Phone photo of a screen, JPEG | 100 % | 5/5 | 5/5 | 91 | 1.6 s |
+| Phone photo of a screen, HEIC | 57 % | 2/5 | 3/5 | 81 | 4.1 s |
+| Demo photo (synthetic) | 57 % | 2/5 | 5/5 | 92 | 0.6 s |
+
+**On paper every value is read correctly**, and so are date and issuer.
+The only thing that fails is the unit: **`mg/dl` is read as `mgj/dl`**
+(HDL-Cholesterin and Triglyceride). This is systematic, not chance: the
+same confusion causes all five unconfirmed facts of the two synthetic lab
+report photos (`demo/photos/01…`, `06…`). Presumably Tesseract reads the
+descender of the `g` together with the `/` as a `j`. Apart from it, the
+current measurement has only two other misread units: `mog/dl` on the
+screen HEIC and `mUy/l` on a rendered PDF page.
+
+Because the check is strict (value **and** unit, decision of 2026-11-11),
+such a fact is `unconfirmed` although its value is right, and the entry
+shows 71 % instead of 100 %.
+
+### Open point: values with a misread unit
+
+Two ways out, **neither is implemented**; to be decided together:
+
+1. **Own status "value confirmed, unit uncertain"** (e.g.
+   `value_confirmed`, and `corrected_value_confirmed` after a correction):
+   the value was found in the row of its name, the unit next to it was
+   not. Honest about what the second reader saw, and shows the user which
+   part to look at. Costs: a new status in the API contract (docs/API.md,
+   verification) that the app has to show, and a rule for how it counts in
+   `confirmed` and `matchPercent` (probably not as confirmed, or as half).
+2. **Tolerate this one confusion on purpose:** when comparing units, treat
+   `gj` like `g/` (so `mgj/dl` matches `mg/dl`), as a fixed list of known
+   OCR confusions in the normalization, not as general fuzzy matching.
+   Fixes exactly the measured failures without an API change. Costs: the
+   check becomes less strict (it would also accept a unit that really
+   reads `mgj/dl`, which does not exist), and every further confusion
+   needs a new list entry backed by measurement.
+
+The measurement already shows how many facts fail only because of the
+unit: column "Facts (value only)" in every report.
+
 ## Adding a real photo
 
 Print a demo document, photograph it with a phone and save the photo
-(JPEG, PNG, HEIC or WebP) named after the document with `_phone`, e.g.
-`01_lab_report_2026-01-20_phone.jpg`. **Check for the location before it
+(JPEG, PNG, HEIC or WebP) named after the document with `_paper`, e.g.
+`01_lab_report_2026-01-20_paper.jpg` (`_phone` is used for photos of the
+document on a screen). **Check for the location before it
 goes into `demo/phone/`** (`mdls <file> | grep -i -E 'latitude|gps'`):
 on 2026-11-11 a HEIC sent by AirDrop still contained it although Location
 was switched off in the share options.
 To measure it once without adding it:
 
 ```sh
-cd backend && go run ./cmd/ocrcheck -values -extra ~/Desktop/01_lab_report_2026-01-20_phone.jpg
+cd backend && go run ./cmd/ocrcheck -values -extra ~/Desktop/01_lab_report_2026-01-20_paper.jpg
 ```
 
 It is checked against the same entry as the PDF and the demo photo of that

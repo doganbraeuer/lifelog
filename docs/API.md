@@ -1166,7 +1166,15 @@ same way with `start`/`end` in `fullText`.
   (at an angle, with moiré) 57 %, with every value but two units read
   wrongly; Apple's own decoder gives the same text, so it is the photo.
   Decision: Tesseract is enough for now; PaddleOCR only if further real
-  photos (of paper) do clearly worse.
+  photos (of paper) do clearly worse. The first photo of paper
+  (2026-11-12): every value read, but `mg/dl` read as `mgj/dl` twice, the
+  same confusion as on the synthetic photos.
+- **Values with a misread unit:** a fact whose value is found but whose
+  unit is misread (`mgj/dl`) is `unconfirmed`. Two proposals, neither
+  implemented: a status "value confirmed, unit uncertain", or tolerating
+  this one known confusion when comparing units. Details:
+  [docs/ocr/README.md](ocr/README.md), "Open point: values with a misread
+  unit".
 - **Old entries:** entries stored before 2026-11-11 are `not_run`.
   `go run ./cmd/ocrcheck -write` fills in their verification (without
   `-write` it only shows what it would store). After a change to OCR or

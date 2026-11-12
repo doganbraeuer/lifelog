@@ -19,21 +19,22 @@ const (
 	kindPDFText = "PDF, text layer"
 	kindPDFOCR  = "PDF, OCR (forced)"
 	kindPhoto   = "Photo"
-	kindPhone   = "Phone photo (real)"
+	kindPhone   = "Phone photo of a screen (real)"
+	kindPaper   = "Phone photo of paper (real)"
 	kindText    = "Text import"
 )
 
-var kindOrder = []string{kindPDFText, kindPDFOCR, kindPhoto, kindPhone, kindText}
+var kindOrder = []string{kindPDFText, kindPDFOCR, kindPhoto, kindPhone, kindPaper, kindText}
 
 // demoFile is one file in demo/, or one given with -extra.
 type demoFile struct {
 	Path  string // relative to the demo folder, e.g. "photos/01_…_photo.png"; absolute for -extra
 	Name  string // file name
-	Doc   string // document it shows: the name without extension and suffix (_photo, _app, _phone)
+	Doc   string // document it shows: the name without extension and suffix (_photo, _app, _phone, _paper)
 	Extra bool   // given with -extra, outside the demo folder
 }
 
-// variantName: "pdf", "photo", "app", "phone" or "text".
+// variantName: "pdf", "photo", "app", "phone", "paper" or "text".
 func (f demoFile) variantName() string {
 	switch {
 	case strings.HasSuffix(f.Name, ".pdf"):
@@ -44,16 +45,18 @@ func (f demoFile) variantName() string {
 		return "app"
 	case strings.Contains(f.Name, "_phone."):
 		return "phone"
+	case strings.Contains(f.Name, "_paper."):
+		return "paper"
 	}
 	return "photo"
 }
 
 // documentKey: "04_prescription_2026-05-18_app.png" → "04_prescription_2026-05-18".
-// "_phone" marks a real phone photo of a printed demo document (demo/phone/
-// or -extra).
+// Real phone photos (demo/phone/ or -extra): "_phone" marks a photo of the
+// document shown on a screen, "_paper" a photo of it printed on paper.
 func documentKey(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
-	for _, suffix := range []string{"_photo", "_app", "_phone"} {
+	for _, suffix := range []string{"_photo", "_app", "_phone", "_paper"} {
 		base = strings.TrimSuffix(base, suffix)
 	}
 	return base
@@ -101,7 +104,7 @@ func demoFiles(dir string) ([]demoFile, error) {
 			}
 		}
 	}
-	order := map[string]int{"pdf": 0, "photo": 1, "app": 2, "phone": 3, "text": 4}
+	order := map[string]int{"pdf": 0, "photo": 1, "app": 2, "phone": 3, "paper": 4, "text": 5}
 	slices.SortFunc(files, func(a, b demoFile) int {
 		if a.Doc != b.Doc {
 			return strings.Compare(a.Doc, b.Doc)
