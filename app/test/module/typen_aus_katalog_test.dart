@@ -17,17 +17,17 @@ void main() {
       expect(eintrag.typ, 'impfpass');
     });
 
-    test('Typ eines anderen Moduls: 400 UNGUELTIGE_ANFRAGE', () async {
+    test('Typ eines anderen Moduls: 400 INVALID_REQUEST', () async {
       final mock = schnellerMock(katalog: testKatalog());
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'typ': 'training'}),
+        mock.korrigiereMitJson(laborId, {'type': 'training'}),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });
 
     test('mit Standard-Katalog ist „impfpass“ unbekannt', () async {
       await expectLater(
-        schnellerMock().korrigiereMitJson(laborId, {'typ': 'impfpass'}),
+        schnellerMock().korrigiereMitJson(laborId, {'type': 'impfpass'}),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });

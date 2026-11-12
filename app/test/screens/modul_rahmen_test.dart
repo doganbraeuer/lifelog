@@ -144,7 +144,7 @@ void main() {
         await mock.hochladen(
           Uint8List.fromList(utf8.encode('%PDF-1.4 Nr. $i')),
           'dokument_$i.pdf',
-          modul: 'gesundheit',
+          modul: 'health',
         );
       }
       await starten(tester, mock);
@@ -257,7 +257,7 @@ void main() {
     await mock.hochladen(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
     await starten(tester, mock, auswahl: auswahl);

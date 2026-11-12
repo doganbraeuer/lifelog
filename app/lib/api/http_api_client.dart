@@ -47,14 +47,14 @@ class HttpApiClient implements ApiClient {
   @override
   Future<List<EintragKurz>> eintraege({
     required String modul,
-    Sortierung sortierung = Sortierung.dokumentdatum,
-    Richtung richtung = Richtung.absteigend,
+    Sortierung sortierung = Sortierung.documentDate,
+    Richtung richtung = Richtung.desc,
   }) async {
-    final uri = _uri('/eintraege').replace(
+    final uri = _uri('/entries').replace(
       queryParameters: {
-        'modul': modul,
-        'sortierung': sortierung.name,
-        'richtung': richtung.name,
+        'module': modul,
+        'sort': sortierung.name,
+        'order': richtung.name,
       },
     );
     final antwort = await _senden(
@@ -63,7 +63,7 @@ class HttpApiClient implements ApiClient {
     );
     return _lesen(
       antwort,
-      (json) => liste(json, 'eintraege', EintragKurz.fromJson),
+      (json) => liste(json, 'entries', EintragKurz.fromJson),
     );
   }
 
@@ -79,7 +79,7 @@ class HttpApiClient implements ApiClient {
   @override
   Future<DateiInhalt> datei(String id) async {
     final antwort = await _senden(
-      () => _client.get(_uri('${_eintragPfad(id)}/datei')),
+      () => _client.get(_uri('${_eintragPfad(id)}/file')),
       langerTimeout,
     );
     final contentType = antwort.headers['content-type'];
@@ -95,12 +95,12 @@ class HttpApiClient implements ApiClient {
     String dateiname, {
     required String modul,
   }) async {
-    final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
+    final anfrage = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
-      ..fields['modul'] = modul
+      ..fields['module'] = modul
       ..files.add(
         http.MultipartFile.fromBytes(
-          'datei',
+          'file',
           bytes,
           filename: dateiname,
           contentType: MediaType.parse(
@@ -115,10 +115,10 @@ class HttpApiClient implements ApiClient {
   Future<Eintrag> textImportieren(String text, {required String modul}) {
     // Gleicher Endpunkt wie der Upload, nur Feld `text` statt `datei`.
     // MultipartRequest schickt Formularfelder als UTF-8.
-    final anfrage = http.MultipartRequest('POST', _uri('/eintraege'))
+    final anfrage = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
       ..fields['text'] = text
-      ..fields['modul'] = modul;
+      ..fields['module'] = modul;
     return _formularSenden(anfrage);
   }
 
@@ -157,9 +157,9 @@ class HttpApiClient implements ApiClient {
   Future<FrageAntwort> fragen(String frage, {required String modul}) async {
     final antwort = await _senden(
       () => _client.post(
-        _uri('/fragen'),
+        _uri('/questions'),
         headers: _jsonHeader,
-        body: jsonEncode({'frage': frage, 'modul': modul}),
+        body: jsonEncode({'question': frage, 'module': modul}),
       ),
       langerTimeout,
     );
@@ -170,7 +170,7 @@ class HttpApiClient implements ApiClient {
 
   Uri _uri(String pfad) => Uri.parse('$_basis$pfad');
 
-  String _eintragPfad(String id) => '/eintraege/${Uri.encodeComponent(id)}';
+  String _eintragPfad(String id) => '/entries/${Uri.encodeComponent(id)}';
 
   static String _ohneSchraegstrich(String url) => url.endsWith('/')
       ? _ohneSchraegstrich(url.substring(0, url.length - 1))
@@ -204,14 +204,14 @@ class HttpApiClient implements ApiClient {
     throw _fehlerAus(antwort);
   }
 
-  /// Liest das Fehlerformat `{"fehler": {"code", "nachricht", "details"}}`.
+  /// Liest das Fehlerformat `{"error": {"code", "message", "details"}}`.
   ApiFehler _fehlerAus(http.Response antwort) {
     try {
       final json = jsonDecode(utf8.decode(antwort.bodyBytes));
-      if (json case {'fehler': final Map<String, dynamic> fehler}) {
+      if (json case {'error': final Map<String, dynamic> fehler}) {
         if (fehler case {
           'code': final String code,
-          'nachricht': final String nachricht,
+          'message': final String nachricht,
         }) {
           final details = fehler['details'];
           return ApiFehler(
@@ -249,7 +249,7 @@ class HttpApiClient implements ApiClient {
         httpStatus: antwort.statusCode,
         code: FehlerCode.unbekannteAntwort,
         nachricht: 'Die Antwort des Servers ist unvollständig.',
-        details: {'grund': e.message},
+        details: {'reason': e.message},
       );
     }
   }

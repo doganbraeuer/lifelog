@@ -14,52 +14,52 @@ void main() {
   test('Beispiel aus docs/API.md, Abschnitt 3.5', () {
     final aenderung = EintragAenderung(
       dokumentdatum: Wert(Datum(2026, 10, 15)),
-      infos: const [InfoAenderung('i2', wert: '6,8')],
+      infos: const [InfoAenderung('f2', wert: '6,8')],
     );
     expect(
       jsonEncode(aenderung.toJson()),
-      '{"dokumentdatum":"2026-10-15","infos":[{"id":"i2","wert":"6,8"}]}',
+      '{"documentDate":"2026-10-15","facts":[{"id":"f2","value":"6,8"}]}',
     );
   });
 
   group('fehlendes Feld und null sind verschieden', () {
-    test('dokumentdatum', () {
+    test('documentDate', () {
       expect(
-        const EintragAenderung(typ: 'rezept').toJson(),
-        isNot(contains('dokumentdatum')),
+        const EintragAenderung(typ: 'prescription').toJson(),
+        isNot(contains('documentDate')),
       );
 
       final geloescht = const EintragAenderung(dokumentdatum: Wert(null))
           .toJson();
-      expect(geloescht.containsKey('dokumentdatum'), isTrue);
-      expect(geloescht['dokumentdatum'], isNull);
+      expect(geloescht.containsKey('documentDate'), isTrue);
+      expect(geloescht['documentDate'], isNull);
     });
 
-    test('quelle', () {
+    test('issuer', () {
       expect(
-        const EintragAenderung(typ: 'rezept').toJson(),
-        isNot(contains('quelle')),
+        const EintragAenderung(typ: 'prescription').toJson(),
+        isNot(contains('issuer')),
       );
 
       final geloescht = const EintragAenderung(quelle: Wert(null)).toJson();
-      expect(geloescht.containsKey('quelle'), isTrue);
-      expect(geloescht['quelle'], isNull);
+      expect(geloescht.containsKey('issuer'), isTrue);
+      expect(geloescht['issuer'], isNull);
 
       expect(const EintragAenderung(quelle: Wert('Labor X')).toJson(), {
-        'quelle': 'Labor X',
+        'issuer': 'Labor X',
       });
     });
 
     test('einheit einer Info', () {
-      expect(const InfoAenderung('i1', wert: '7').toJson(), {
-        'id': 'i1',
-        'wert': '7',
+      expect(const InfoAenderung('f1', wert: '7').toJson(), {
+        'id': 'f1',
+        'value': '7',
       });
 
-      final geloescht = const InfoAenderung('i1', einheit: Wert(null)).toJson();
-      expect(geloescht.containsKey('einheit'), isTrue);
-      expect(geloescht['einheit'], isNull);
-      expect(geloescht.containsKey('wert'), isFalse);
+      final geloescht = const InfoAenderung('f1', einheit: Wert(null)).toJson();
+      expect(geloescht.containsKey('unit'), isTrue);
+      expect(geloescht['unit'], isNull);
+      expect(geloescht.containsKey('value'), isFalse);
     });
   });
 }

@@ -28,9 +28,9 @@ int vergleicheZeitleiste(
   Sortierung sortierung,
   Richtung richtung,
 ) {
-  final faktor = richtung == Richtung.aufsteigend ? 1 : -1;
+  final faktor = richtung == Richtung.asc ? 1 : -1;
 
-  if (sortierung == Sortierung.dokumentdatum) {
+  if (sortierung == Sortierung.documentDate) {
     final datumA = a.dokumentdatum;
     final datumB = b.dokumentdatum;
     if (datumA == null && datumB == null) {

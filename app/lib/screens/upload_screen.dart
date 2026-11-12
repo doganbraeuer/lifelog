@@ -536,7 +536,7 @@ class _FehlerKarte extends StatelessWidget {
   Widget build(BuildContext context) {
     final farben = Theme.of(context).colorScheme;
     final vorhandeneId = fehler.code == FehlerCode.duplikat
-        ? fehler.details['eintragId']
+        ? fehler.details['entryId']
         : null;
     return Card(
       color: farben.errorContainer,

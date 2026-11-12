@@ -16,11 +16,11 @@ class EintragKurz {
 
   factory EintragKurz.fromJson(Map<String, dynamic> json) => EintragKurz(
     id: text(json, 'id'),
-    modul: text(json, 'modul'),
-    typ: text(json, 'typ'),
-    dokumentdatum: datumOderNull(json, 'dokumentdatum'),
-    importdatum: zeitstempel(json, 'importdatum'),
-    quelle: textOderNull(json, 'quelle'),
+    modul: text(json, 'module'),
+    typ: text(json, 'type'),
+    dokumentdatum: datumOderNull(json, 'documentDate'),
+    importdatum: zeitstempel(json, 'importedAt'),
+    quelle: textOderNull(json, 'issuer'),
   );
 
   final String id;
@@ -61,10 +61,10 @@ class Eintrag extends EintragKurz {
       dokumentdatum: kurz.dokumentdatum,
       importdatum: kurz.importdatum,
       quelle: kurz.quelle,
-      volltext: text(json, 'volltext'),
-      infos: liste(json, 'infos', Info.fromJson),
-      datei: Datei.fromJson(objekt(json['datei'], 'datei')),
-      korrekturen: liste(json, 'korrekturen', Korrektur.fromJson),
+      volltext: text(json, 'fullText'),
+      infos: liste(json, 'facts', Info.fromJson),
+      datei: Datei.fromJson(objekt(json['file'], 'file')),
+      korrekturen: liste(json, 'corrections', Korrektur.fromJson),
     );
   }
 
@@ -74,14 +74,14 @@ class Eintrag extends EintragKurz {
   final List<Korrektur> korrekturen;
 
   /// Die Korrektur zu einem Feldpfad wie `dokumentdatum` oder
-  /// `infos.i2.wert`, oder `null`, wenn das Feld nicht korrigiert wurde.
+  /// `facts.f2.value`, oder `null`, wenn das Feld nicht korrigiert wurde.
   Korrektur? korrektur(String feld) =>
       korrekturen.where((k) => k.feld == feld).firstOrNull;
 
   /// Regel 4 aus docs/API.md: Eine Info gilt als korrigiert, wenn ein
   /// `feld` in `korrekturen` mit `infos.<id>.` beginnt.
   bool infoKorrigiert(String infoId) =>
-      korrekturen.any((k) => k.feld.startsWith('infos.$infoId.'));
+      korrekturen.any((k) => k.feld.startsWith('facts.$infoId.'));
 }
 
 /// Eine extrahierte Angabe, z. B. Hämoglobin 14,2 g/dl.
@@ -96,8 +96,8 @@ class Info {
   factory Info.fromJson(Map<String, dynamic> json) => Info(
     id: text(json, 'id'),
     name: text(json, 'name'),
-    wert: text(json, 'wert'),
-    einheit: textOderNull(json, 'einheit'),
+    wert: text(json, 'value'),
+    einheit: textOderNull(json, 'unit'),
   );
 
   final String id;
@@ -120,9 +120,9 @@ class Datei {
 
   factory Datei.fromJson(Map<String, dynamic> json) => Datei(
     id: text(json, 'id'),
-    dateiname: text(json, 'dateiname'),
-    mimeTyp: text(json, 'mimeTyp'),
-    groesse: ganzzahl(json, 'groesse'),
+    dateiname: text(json, 'fileName'),
+    mimeTyp: text(json, 'mimeType'),
+    groesse: ganzzahl(json, 'size'),
     sha256: text(json, 'sha256'),
   );
 
@@ -157,20 +157,20 @@ class Korrektur {
   });
 
   factory Korrektur.fromJson(Map<String, dynamic> json) => Korrektur(
-    feld: text(json, 'feld'),
-    erkannt: textOderNull(json, 'erkannt'),
-    korrigiert: textOderNull(json, 'korrigiert'),
-    zeitpunkt: zeitstempel(json, 'zeitpunkt'),
+    feld: text(json, 'field'),
+    erkannt: textOderNull(json, 'recognized'),
+    korrigiert: textOderNull(json, 'corrected'),
+    zeitpunkt: zeitstempel(json, 'correctedAt'),
   );
 
-  /// Pfad wie `typ`, `dokumentdatum`, `quelle`, `infos.i2.wert`.
+  /// Pfad wie `typ`, `dokumentdatum`, `quelle`, `facts.f2.value`.
   final String feld;
   final String? erkannt;
   final String? korrigiert;
   final DateTime zeitpunkt;
 }
 
-/// Inhalt der Originaldatei, wie ihn `GET /eintraege/{id}/datei` liefert.
+/// Inhalt der Originaldatei, wie ihn `GET /entries/{id}/file` liefert.
 class DateiInhalt {
   const DateiInhalt({required this.bytes, required this.mimeTyp});
 

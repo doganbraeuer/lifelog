@@ -1,7 +1,7 @@
 // Beispieldaten für den Mock. Alle Daten sind synthetisch.
 //
 // Die drei Einträge stammen aus docs/API.md (Abschnitt 2 und 3.2). Für
-// Arztbrief und "sonstiges" nennt die API nur die Kurzform, Volltext und
+// Arztbrief und "other" nennt die API nur die Kurzform, Volltext und
 // Infos sind hier ergänzt.
 
 import 'dart:convert';
@@ -33,32 +33,32 @@ List<MockEintrag> beispieldaten() {
       'Befundart: Blutbild klein';
   final laborbefund = <String, dynamic>{
     'id': '6727a1f3c2b4e5d6f7a8b9c0',
-    'modul': 'gesundheit',
-    'typ': 'laborbefund',
-    'dokumentdatum': '2026-10-14',
-    'importdatum': '2026-11-03T18:42:07Z',
-    'quelle': 'Labor Muster GmbH, Salzburg',
-    'volltext': laborVolltext,
-    'infos': [
-      {'id': 'i1', 'name': 'Hämoglobin', 'wert': '14,2', 'einheit': 'g/dl'},
-      {'id': 'i2', 'name': 'Leukozyten', 'wert': '6,8', 'einheit': 'G/l'},
-      {'id': 'i3', 'name': 'CRP', 'wert': '<0,5', 'einheit': 'mg/dl'},
-      {'id': 'i4', 'name': 'Befundart', 'wert': 'Blutbild klein'},
+    'module': 'health',
+    'type': 'lab_report',
+    'documentDate': '2026-10-14',
+    'importedAt': '2026-11-03T18:42:07Z',
+    'issuer': 'Labor Muster GmbH, Salzburg',
+    'fullText': laborVolltext,
+    'facts': [
+      {'id': 'f1', 'name': 'Hämoglobin', 'value': '14,2', 'unit': 'g/dl'},
+      {'id': 'f2', 'name': 'Leukozyten', 'value': '6,8', 'unit': 'G/l'},
+      {'id': 'f3', 'name': 'CRP', 'value': '<0,5', 'unit': 'mg/dl'},
+      {'id': 'f4', 'name': 'Befundart', 'value': 'Blutbild klein'},
     ],
-    'datei': {
+    'file': {
       'id': '6727a1f3c2b4e5d6f7a8b9c1',
-      'dateiname': 'befund_oktober.pdf',
-      'mimeTyp': 'application/pdf',
-      'groesse': 184320,
+      'fileName': 'befund_oktober.pdf',
+      'mimeType': 'application/pdf',
+      'size': 184320,
       'sha256':
           '3f8a1c0e9b7d2f4a6c5e8b1d0a9f7e3c2b4d6a8f0e1c3b5d7a9f2e4c6b8d0a1f',
     },
-    'korrekturen': [
+    'corrections': [
       {
-        'feld': 'infos.i2.wert',
-        'erkannt': '6,3',
-        'korrigiert': '6,8',
-        'zeitpunkt': '2026-11-03T19:05:31Z',
+        'field': 'facts.f2.value',
+        'recognized': '6,3',
+        'corrected': '6,8',
+        'correctedAt': '2026-11-03T19:05:31Z',
       },
     ],
   };
@@ -66,12 +66,12 @@ List<MockEintrag> beispieldaten() {
   final arztbriefBild = erzeugeMockPng();
   final arztbrief = <String, dynamic>{
     'id': '6727a20bc2b4e5d6f7a8b9d4',
-    'modul': 'gesundheit',
-    'typ': 'arztbrief',
-    'dokumentdatum': '2026-09-02',
-    'importdatum': '2026-11-03T18:50:12Z',
-    'quelle': 'Dr. Erika Beispiel, Allgemeinmedizin',
-    'volltext':
+    'module': 'health',
+    'type': 'doctor_letter',
+    'documentDate': '2026-09-02',
+    'importedAt': '2026-11-03T18:50:12Z',
+    'issuer': 'Dr. Erika Beispiel, Allgemeinmedizin',
+    'fullText':
         'Dr. Erika Beispiel\nÄrztin für Allgemeinmedizin\n'
         'Beispielgasse 7, 5020 Salzburg\n\n'
         'Arztbrief vom 02.09.2026\n'
@@ -80,49 +80,49 @@ List<MockEintrag> beispieldaten() {
         'Blutdruck 128/82 mmHg\n'
         'Puls 72/min\n'
         'Körpergewicht 78 kg',
-    'infos': [
+    'facts': [
       {
-        'id': 'i1',
+        'id': 'f1',
         'name': 'Vorstellungsgrund',
-        'wert': 'Kontrolle nach Erkältung',
+        'value': 'Kontrolle nach Erkältung',
       },
-      {'id': 'i2', 'name': 'Blutdruck', 'wert': '128/82', 'einheit': 'mmHg'},
-      {'id': 'i3', 'name': 'Puls', 'wert': '72', 'einheit': '/min'},
-      {'id': 'i4', 'name': 'Körpergewicht', 'wert': '78', 'einheit': 'kg'},
+      {'id': 'f2', 'name': 'Blutdruck', 'value': '128/82', 'unit': 'mmHg'},
+      {'id': 'f3', 'name': 'Puls', 'value': '72', 'unit': '/min'},
+      {'id': 'f4', 'name': 'Körpergewicht', 'value': '78', 'unit': 'kg'},
     ],
-    'datei': _dateiJson(
+    'file': _dateiJson(
       '6727a20bc2b4e5d6f7a8b9d5',
       'arztbrief_september.png',
       'image/png',
       arztbriefBild,
     ),
-    'korrekturen': <dynamic>[],
+    'corrections': <dynamic>[],
   };
 
   final sonstigesBild = erzeugeMockPng(breite: 200, hoehe: 260);
   final sonstiges = <String, dynamic>{
     'id': '6727a2a9c2b4e5d6f7a8b9e7',
-    'modul': 'gesundheit',
-    'typ': 'sonstiges',
-    'dokumentdatum': null,
-    'importdatum': '2026-11-03T19:01:44Z',
-    'quelle': null,
-    'volltext':
+    'module': 'health',
+    'type': 'other',
+    'documentDate': null,
+    'importedAt': '2026-11-03T19:01:44Z',
+    'issuer': null,
+    'fullText':
         'Impfpass (Auszug)\n'
         'Tetanus/Diphtherie Auffrischung\n'
         'Chargennummer AB1234\n'
         'Unterschrift unleserlich',
-    'infos': [
-      {'id': 'i1', 'name': 'Impfung', 'wert': 'Tetanus/Diphtherie'},
-      {'id': 'i2', 'name': 'Chargennummer', 'wert': 'AB1234'},
+    'facts': [
+      {'id': 'f1', 'name': 'Impfung', 'value': 'Tetanus/Diphtherie'},
+      {'id': 'f2', 'name': 'Chargennummer', 'value': 'AB1234'},
     ],
-    'datei': _dateiJson(
+    'file': _dateiJson(
       '6727a2a9c2b4e5d6f7a8b9e8',
       'scan_impfpass.png',
       'image/png',
       sonstigesBild,
     ),
-    'korrekturen': <dynamic>[],
+    'corrections': <dynamic>[],
   };
 
   return [
@@ -142,9 +142,9 @@ Map<String, dynamic> _dateiJson(
   Uint8List bytes,
 ) => {
   'id': id,
-  'dateiname': dateiname,
-  'mimeTyp': mimeTyp,
-  'groesse': bytes.length,
+  'fileName': dateiname,
+  'mimeType': mimeTyp,
+  'size': bytes.length,
   'sha256': sha256.convert(bytes).toString(),
 };
 

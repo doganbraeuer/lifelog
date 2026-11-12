@@ -66,7 +66,7 @@ void main() {
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // Quelle
     expect(find.text('21.10.2026'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.eintraege(modul: 'health'), hasLength(4));
 
     await tester.tap(find.text('Originaldatei öffnen'));
     await tester.pumpAndSettle();
@@ -119,7 +119,7 @@ void main() {
     tester,
   ) async {
     final mock = schnellerMock();
-    final vorhanden = await mock.textImportieren(text, modul: 'gesundheit');
+    final vorhanden = await mock.textImportieren(text, modul: 'health');
     await zumTextfeld(tester, mock);
     await tester.enterText(textFeld(), text);
     await tester.pump();

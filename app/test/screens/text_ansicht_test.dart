@@ -91,26 +91,26 @@ void main() {
     const text = 'Testeintrag\nÜberweisung vom 21.10.2026';
     final eintrag = {
       'id': id,
-      'modul': 'gesundheit',
-      'typ': 'sonstiges',
-      'dokumentdatum': null,
-      'importdatum': '2026-11-04T10:00:00Z',
-      'quelle': null,
-      'volltext': text,
-      'infos': <Object>[],
-      'datei': {
+      'module': 'health',
+      'type': 'other',
+      'documentDate': null,
+      'importedAt': '2026-11-04T10:00:00Z',
+      'issuer': null,
+      'fullText': text,
+      'facts': <Object>[],
+      'file': {
         'id': '6727b000c2b4e5d6f7a8b9f1',
-        'dateiname': 'text.txt',
-        'mimeTyp': 'text/plain; charset=utf-8',
-        'groesse': utf8.encode(text).length,
+        'fileName': 'text.txt',
+        'mimeType': 'text/plain; charset=utf-8',
+        'size': utf8.encode(text).length,
         'sha256': '0' * 64,
       },
-      'korrekturen': <Object>[],
+      'corrections': <Object>[],
     };
     final api = HttpApiClient(
       baseUrl: 'http://test.local',
       client: MockClient((anfrage) async {
-        if (anfrage.url.path.endsWith('/datei')) {
+        if (anfrage.url.path.endsWith('/file')) {
           return http.Response.bytes(
             utf8.encode(text),
             200,

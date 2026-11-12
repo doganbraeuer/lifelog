@@ -8,31 +8,31 @@ import 'package:lifelog/model/eintrag.dart';
 const beispielJson = '''
 {
   "id": "6727a1f3c2b4e5d6f7a8b9c0",
-  "modul": "gesundheit",
-  "typ": "laborbefund",
-  "dokumentdatum": "2026-10-14",
-  "importdatum": "2026-11-03T18:42:07Z",
-  "quelle": "Labor Muster GmbH, Salzburg",
-  "volltext": "Labor Muster GmbH\\nHämoglobin 14,2 g/dl",
-  "infos": [
-    { "id": "i1", "name": "Hämoglobin", "wert": "14,2", "einheit": "g/dl" },
-    { "id": "i2", "name": "Leukozyten", "wert": "6,8", "einheit": "G/l" },
-    { "id": "i3", "name": "CRP", "wert": "<0,5", "einheit": "mg/dl" },
-    { "id": "i4", "name": "Befundart", "wert": "Blutbild klein" }
+  "module": "health",
+  "type": "lab_report",
+  "documentDate": "2026-10-14",
+  "importedAt": "2026-11-03T18:42:07Z",
+  "issuer": "Labor Muster GmbH, Salzburg",
+  "fullText": "Labor Muster GmbH\\nHämoglobin 14,2 g/dl",
+  "facts": [
+    { "id": "f1", "name": "Hämoglobin", "value": "14,2", "unit": "g/dl" },
+    { "id": "f2", "name": "Leukozyten", "value": "6,8", "unit": "G/l" },
+    { "id": "f3", "name": "CRP", "value": "<0,5", "unit": "mg/dl" },
+    { "id": "f4", "name": "Befundart", "value": "Blutbild klein" }
   ],
-  "datei": {
+  "file": {
     "id": "6727a1f3c2b4e5d6f7a8b9c1",
-    "dateiname": "befund_oktober.pdf",
-    "mimeTyp": "application/pdf",
-    "groesse": 184320,
+    "fileName": "befund_oktober.pdf",
+    "mimeType": "application/pdf",
+    "size": 184320,
     "sha256": "3f8a1c0e9b7d2f4a6c5e8b1d0a9f7e3c2b4d6a8f0e1c3b5d7a9f2e4c6b8d0a1f"
   },
-  "korrekturen": [
+  "corrections": [
     {
-      "feld": "infos.i2.wert",
-      "erkannt": "6,3",
-      "korrigiert": "6,8",
-      "zeitpunkt": "2026-11-03T19:05:31Z"
+      "field": "facts.f2.value",
+      "recognized": "6,3",
+      "corrected": "6,8",
+      "correctedAt": "2026-11-03T19:05:31Z"
     }
   ]
 }
@@ -45,7 +45,7 @@ void main() {
   test('liest den vollständigen Eintrag', () {
     final eintrag = Eintrag.fromJson(beispiel());
     expect(eintrag.id, '6727a1f3c2b4e5d6f7a8b9c0');
-    expect(eintrag.modul, 'gesundheit');
+    expect(eintrag.modul, 'health');
     expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
     expect(eintrag.importdatum, DateTime.utc(2026, 11, 3, 18, 42, 7));
     expect(eintrag.importdatum.isUtc, isTrue);
@@ -58,16 +58,16 @@ void main() {
 
   test('Korrekturen lassen sich pro Feld abfragen', () {
     final eintrag = Eintrag.fromJson(beispiel());
-    expect(eintrag.korrektur('infos.i2.wert')?.erkannt, '6,3');
-    expect(eintrag.korrektur('dokumentdatum'), isNull);
-    expect(eintrag.infoKorrigiert('i2'), isTrue);
-    expect(eintrag.infoKorrigiert('i1'), isFalse);
+    expect(eintrag.korrektur('facts.f2.value')?.erkannt, '6,3');
+    expect(eintrag.korrektur('documentDate'), isNull);
+    expect(eintrag.infoKorrigiert('f2'), isTrue);
+    expect(eintrag.infoKorrigiert('f1'), isFalse);
   });
 
   test('null für dokumentdatum und quelle', () {
     final json = beispiel()
-      ..['dokumentdatum'] = null
-      ..['quelle'] = null;
+      ..['documentDate'] = null
+      ..['issuer'] = null;
     final kurz = EintragKurz.fromJson(json);
     expect(kurz.dokumentdatum, isNull);
     expect(kurz.quelle, isNull);
@@ -79,15 +79,15 @@ void main() {
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['dokumentdatum'] = '14.10.2026'),
+      () => Eintrag.fromJson(beispiel()..['documentDate'] = '14.10.2026'),
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['infos'] = 'keine Liste'),
+      () => Eintrag.fromJson(beispiel()..['facts'] = 'keine Liste'),
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['importdatum'] = 'gestern'),
+      () => Eintrag.fromJson(beispiel()..['importedAt'] = 'gestern'),
       throwsFormatException,
     );
   });

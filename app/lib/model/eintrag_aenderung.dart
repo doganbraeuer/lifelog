@@ -5,8 +5,8 @@ import 'datum.dart';
 /// Damit unterscheidet ein PATCH drei Fälle:
 /// - Feld ist `null` (keine Hülle): Das Feld fehlt im JSON und bleibt
 ///   unverändert.
-/// - `Wert(null)`: Im JSON steht `"feld": null`, der Wert wird gelöscht.
-/// - `Wert(x)`: Im JSON steht `"feld": x`.
+/// - `Wert(null)`: Im JSON steht `"field": null`, der Wert wird gelöscht.
+/// - `Wert(x)`: Im JSON steht `"field": x`.
 class Wert<T> {
   const Wert(this.wert);
 
@@ -28,12 +28,12 @@ class InfoAenderung {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    if (wert != null) 'wert': wert,
-    if (einheit != null) 'einheit': einheit?.wert,
+    if (wert != null) 'value': wert,
+    if (einheit != null) 'unit': einheit?.wert,
   };
 }
 
-/// Body für `PATCH /api/v1/eintraege/{id}` (docs/API.md, Abschnitt 3.5).
+/// Body für `PATCH /api/v1/entries/{id}` (docs/API.md, Abschnitt 3.5).
 /// Er enthält nur die Felder, die sich ändern sollen.
 class EintragAenderung {
   const EintragAenderung({
@@ -58,9 +58,9 @@ class EintragAenderung {
       typ == null && dokumentdatum == null && quelle == null && infos.isEmpty;
 
   Map<String, dynamic> toJson() => {
-    if (typ != null) 'typ': typ,
-    if (dokumentdatum != null) 'dokumentdatum': dokumentdatum?.wert?.iso,
-    if (quelle != null) 'quelle': quelle?.wert,
-    if (infos.isNotEmpty) 'infos': [for (final i in infos) i.toJson()],
+    if (typ != null) 'type': typ,
+    if (dokumentdatum != null) 'documentDate': dokumentdatum?.wert?.iso,
+    if (quelle != null) 'issuer': quelle?.wert,
+    if (infos.isNotEmpty) 'facts': [for (final i in infos) i.toJson()],
   };
 }

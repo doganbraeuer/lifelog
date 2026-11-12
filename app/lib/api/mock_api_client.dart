@@ -55,7 +55,7 @@ class MockApiClient implements ApiClient {
   /// Wartezeit beim Upload (das echte Backend braucht bis zu 60 s).
   final Duration uploadVerzoegerung;
 
-  /// Wenn `true`, scheitert jeder Aufruf mit `500 INTERNER_FEHLER`.
+  /// Wenn `true`, scheitert jeder Aufruf mit `500 INTERNAL_ERROR`.
   bool simulierterFehler = false;
 
   final DateTime Function() _uhr;
@@ -74,54 +74,54 @@ class MockApiClient implements ApiClient {
   void schliessen() {}
 
   // ---------------------------------------------------------------------
-  // GET /eintraege
+  // GET /entries
   // ---------------------------------------------------------------------
 
   @override
   Future<List<EintragKurz>> eintraege({
     required String modul,
-    Sortierung sortierung = Sortierung.dokumentdatum,
-    Richtung richtung = Richtung.absteigend,
+    Sortierung sortierung = Sortierung.documentDate,
+    Richtung richtung = Richtung.desc,
   }) => eintraegeMitParametern({
-    'modul': modul,
-    'sortierung': sortierung.name,
-    'richtung': richtung.name,
+    'module': modul,
+    'sort': sortierung.name,
+    'order': richtung.name,
   });
 
   /// Wie [eintraege], aber mit rohen Query-Parametern. So lässt sich auch
-  /// `400 UNGUELTIGER_PARAMETER` testen.
+  /// `400 INVALID_PARAMETER` testen.
   @visibleForTesting
   Future<List<EintragKurz>> eintraegeMitParametern(
     Map<String, String> parameter,
   ) async {
     await _warte(verzoegerung);
-    final modul = parameter['modul'] ?? '';
+    final modul = parameter['module'] ?? '';
     if (!_modulBekannt(modul)) {
       throw ApiFehler(
         httpStatus: 400,
         code: FehlerCode.ungueltigerParameter,
         nachricht: _unbekanntesModul,
-        details: {'parameter': 'modul', 'wert': modul},
+        details: {'parameter': 'module', 'value': modul},
       );
     }
     final sortierung = _enumParameter(
       parameter,
-      'sortierung',
+      'sort',
       Sortierung.values,
-      Sortierung.dokumentdatum,
-      'Unbekannte Sortierung. Erlaubt sind dokumentdatum und importdatum.',
+      Sortierung.documentDate,
+      'Unbekannte Sortierung. Erlaubt sind documentDate und importedAt.',
     );
     final richtung = _enumParameter(
       parameter,
-      'richtung',
+      'order',
       Richtung.values,
-      Richtung.absteigend,
-      'Unbekannte Richtung. Erlaubt sind absteigend und aufsteigend.',
+      Richtung.desc,
+      'Unbekannte Richtung. Erlaubt sind desc und asc.',
     );
     final gewaehlt = _modulOderStandard(modul);
     return sortiereZeitleiste(
       _eintraege.values
-          .where((json) => json['modul'] == gewaehlt)
+          .where((json) => json['module'] == gewaehlt)
           .map(EintragKurz.fromJson),
       sortierung,
       richtung,
@@ -136,7 +136,7 @@ class MockApiClient implements ApiClient {
 
   /// Fehlt `modul` oder ist es leer, gilt `gesundheit`.
   static String _modulOderStandard(String modul) =>
-      modul.isEmpty ? 'gesundheit' : modul;
+      modul.isEmpty ? 'health' : modul;
 
   /// Bekannt ist jedes Modul aus dem Katalog. (Das echte Backend kennt im
   /// Prototyp nur `gesundheit`; die App fragt andere Module aber gar nicht
@@ -145,14 +145,14 @@ class MockApiClient implements ApiClient {
       _katalog.nachId(_modulOderStandard(modul)) != null;
 
   /// Prüft das Modul für Upload, Text-Import und Frage: unbekannt ergibt
-  /// `400 UNGUELTIGE_ANFRAGE`. Gibt die gültige Modul-ID zurück.
+  /// `400 INVALID_REQUEST`. Gibt die gültige Modul-ID zurück.
   String _pruefeModul(String modul) {
     if (!_modulBekannt(modul)) {
       throw ApiFehler(
         httpStatus: 400,
         code: FehlerCode.ungueltigeAnfrage,
         nachricht: _unbekanntesModul,
-        details: {'feld': 'modul', 'wert': modul},
+        details: {'field': 'module', 'value': modul},
       );
     }
     return _modulOderStandard(modul);
@@ -167,7 +167,7 @@ class MockApiClient implements ApiClient {
         httpStatus: 400,
         code: FehlerCode.ungueltigeAnfrage,
         nachricht: 'In diesem Modul ist noch kein Import möglich.',
-        details: {'feld': 'modul', 'wert': modul},
+        details: {'field': 'module', 'value': modul},
       );
     }
     return id;
@@ -195,12 +195,12 @@ class MockApiClient implements ApiClient {
       httpStatus: 400,
       code: FehlerCode.ungueltigerParameter,
       nachricht: nachricht,
-      details: {'parameter': name, 'wert': wert},
+      details: {'parameter': name, 'value': wert},
     );
   }
 
   // ---------------------------------------------------------------------
-  // GET /eintraege/{id} und /eintraege/{id}/datei
+  // GET /entries/{id} und /entries/{id}/file
   // ---------------------------------------------------------------------
 
   @override
@@ -213,10 +213,10 @@ class MockApiClient implements ApiClient {
   Future<DateiInhalt> datei(String id) async {
     await _warte(verzoegerung);
     final json = _finde(id);
-    final datei = objekt(json['datei'], 'datei');
+    final datei = objekt(json['file'], 'file');
     return DateiInhalt(
       bytes: _dateien[json['id']]!,
-      mimeTyp: text(datei, 'mimeTyp'),
+      mimeTyp: text(datei, 'mimeType'),
     );
   }
 
@@ -228,7 +228,6 @@ class MockApiClient implements ApiClient {
         httpStatus: 400,
         code: FehlerCode.ungueltigeId,
         nachricht: 'Die ID ist ungültig.',
-        details: {'id': id},
       );
     }
     final json = _eintraege[id.toLowerCase()];
@@ -243,7 +242,7 @@ class MockApiClient implements ApiClient {
   }
 
   // ---------------------------------------------------------------------
-  // POST /eintraege
+  // POST /entries
   // ---------------------------------------------------------------------
 
   @override
@@ -268,7 +267,6 @@ class MockApiClient implements ApiClient {
         httpStatus: 413,
         code: FehlerCode.dateiZuGross,
         nachricht: 'Die Datei ist größer als 10 MB.',
-        details: {'maxBytes': maxDateiGroesse},
       );
     }
     final mimeTyp = erkenneMimeTyp(bytes);
@@ -294,7 +292,7 @@ class MockApiClient implements ApiClient {
     // 4.–6. Eintrag anlegen und speichern.
     return _speichern(
       modul: modulId,
-      typ: _typFuer(modulId, 'arztbrief'),
+      typ: _typFuer(modulId, 'doctor_letter'),
       dokumentdatum: Datum.aus(_uhr().toLocal()),
       quelle: 'Mock-Praxis Beispiel',
       volltext:
@@ -304,7 +302,7 @@ class MockApiClient implements ApiClient {
           'Dateiname: $dateiname\n'
           'Blutdruck 120/80 mmHg',
       infos: [
-        {'id': 'i1', 'name': 'Blutdruck', 'wert': '120/80', 'einheit': 'mmHg'},
+        {'id': 'f1', 'name': 'Blutdruck', 'value': '120/80', 'unit': 'mmHg'},
       ],
       dateiname: dateiname,
       mimeTyp: mimeTyp,
@@ -334,7 +332,7 @@ class MockApiClient implements ApiClient {
         httpStatus: 413,
         code: FehlerCode.dateiZuGross,
         nachricht: 'Der Text ist länger als 100 000 Zeichen.',
-        details: {'maxZeichen': maxTextLaenge},
+        details: {'maxChars': maxTextLaenge},
       );
     }
 
@@ -367,7 +365,7 @@ class MockApiClient implements ApiClient {
 
     return _speichern(
       modul: modulId,
-      typ: _typFuer(modulId, 'sonstiges'),
+      typ: _typFuer(modulId, 'other'),
       dokumentdatum: datum,
       quelle: ersteZeile,
       volltext: text,
@@ -379,17 +377,17 @@ class MockApiClient implements ApiClient {
     );
   }
 
-  /// Wirft `409 DUPLIKAT`, wenn es den Hash schon gibt (über alle Module).
+  /// Wirft `409 DUPLICATE`, wenn es den Hash schon gibt (über alle Module).
   /// Gibt sonst den Hash zurück.
   String _pruefeDuplikat(Uint8List bytes, String nachricht) {
     final hash = sha256.convert(bytes).toString();
     for (final json in _eintraege.values) {
-      if (objekt(json['datei'], 'datei')['sha256'] == hash) {
+      if (objekt(json['file'], 'file')['sha256'] == hash) {
         throw ApiFehler(
           httpStatus: 409,
           code: FehlerCode.duplikat,
           nachricht: nachricht,
-          details: {'eintragId': json['id']},
+          details: {'entryId': json['id']},
         );
       }
     }
@@ -439,23 +437,23 @@ class MockApiClient implements ApiClient {
     final id = _neueId();
     final json = <String, dynamic>{
       'id': id,
-      'modul': modul,
-      'typ': typ,
-      'dokumentdatum': dokumentdatum?.iso,
-      'importdatum': formatZeitpunkt(_uhr()),
-      'quelle': quelle,
-      'volltext': volltext,
-      'infos': <dynamic>[
+      'module': modul,
+      'type': typ,
+      'documentDate': dokumentdatum?.iso,
+      'importedAt': formatZeitpunkt(_uhr()),
+      'issuer': quelle,
+      'fullText': volltext,
+      'facts': <dynamic>[
         for (final info in infos) <String, dynamic>{...info},
       ],
-      'datei': <String, dynamic>{
+      'file': <String, dynamic>{
         'id': _neueId(),
-        'dateiname': dateiname,
-        'mimeTyp': mimeTyp,
-        'groesse': bytes.length,
+        'fileName': dateiname,
+        'mimeType': mimeTyp,
+        'size': bytes.length,
         'sha256': hash,
       },
-      'korrekturen': <dynamic>[],
+      'corrections': <dynamic>[],
     };
     _eintraege[id] = json;
     _dateien[id] = Uint8List.fromList(bytes);
@@ -463,13 +461,13 @@ class MockApiClient implements ApiClient {
   }
 
   // ---------------------------------------------------------------------
-  // DELETE /eintraege/{id}
+  // DELETE /entries/{id}
   // ---------------------------------------------------------------------
 
   @override
   Future<void> loeschen(String id) async {
     await _warte(verzoegerung);
-    final json = _finde(id); // 400 UNGUELTIGE_ID oder 404
+    final json = _finde(id); // 400 INVALID_ID oder 404
     // Im Mock gibt es keine Abschnitte; Datei und Eintrag verschwinden.
     // Danach ist der Hash frei, dieselbe Datei lässt sich neu hochladen.
     _dateien.remove(json['id']);
@@ -495,7 +493,7 @@ class MockApiClient implements ApiClient {
   }
 
   // ---------------------------------------------------------------------
-  // PATCH /eintraege/{id}
+  // PATCH /entries/{id}
   // ---------------------------------------------------------------------
 
   @override
@@ -504,7 +502,7 @@ class MockApiClient implements ApiClient {
 
   /// Wie [korrigieren], aber mit rohem JSON-Body. So lassen sich auch
   /// ungültige Anfragen testen, die mit [EintragAenderung] gar nicht
-  /// entstehen können (z. B. `"dokumentdatum": "15.10.2026"`).
+  /// entstehen können (z. B. `"documentDate": "15.10.2026"`).
   @visibleForTesting
   Future<Eintrag> korrigiereMitJson(
     String id,
@@ -524,14 +522,14 @@ class MockApiClient implements ApiClient {
     return Eintrag.fromJson(json);
   }
 
-  static const _korrigierbar = {'typ', 'dokumentdatum', 'quelle', 'infos'};
+  static const _korrigierbar = {'type', 'documentDate', 'issuer', 'facts'};
   static const _nichtKorrigierbar = {
     'id',
-    'modul',
-    'importdatum',
-    'volltext',
-    'datei',
-    'korrekturen',
+    'module',
+    'importedAt',
+    'fullText',
+    'file',
+    'corrections',
   };
 
   /// Prüft den Body und gibt die Änderungen als Liste von
@@ -548,65 +546,65 @@ class MockApiClient implements ApiClient {
         throw _nichtKorrigierbarFehler(feld);
       }
       if (!_korrigierbar.contains(feld)) {
-        throw _ungueltig('Unbekanntes Feld: $feld.', {'feld': feld});
+        throw _ungueltig('Unbekanntes Feld: $feld.', {'field': feld});
       }
     }
 
     final ergebnis = <(String, String?)>[];
 
-    if (body.containsKey('typ')) {
-      final typ = body['typ'];
+    if (body.containsKey('type')) {
+      final typ = body['type'];
       // Ein Typ gilt nur innerhalb des Moduls, zu dem der Eintrag gehört.
       final erlaubt = [
-        for (final t in _katalog.typen(json['modul'] as String)) t.id,
+        for (final t in _katalog.typen(json['module'] as String)) t.id,
       ];
       if (typ is! String || !erlaubt.contains(typ)) {
         throw _ungueltig(
           'Unbekannter Typ. Erlaubt sind ${erlaubt.join(', ')}.',
-          {'feld': 'typ', 'wert': typ},
+          {'field': 'type', 'value': typ},
         );
       }
-      ergebnis.add(('typ', typ));
+      ergebnis.add(('type', typ));
     }
 
-    if (body.containsKey('dokumentdatum')) {
-      final wert = body['dokumentdatum'];
+    if (body.containsKey('documentDate')) {
+      final wert = body['documentDate'];
       if (wert == null) {
-        ergebnis.add(('dokumentdatum', null));
+        ergebnis.add(('documentDate', null));
       } else if (wert is String && Datum.tryParse(wert) != null) {
-        ergebnis.add(('dokumentdatum', wert));
+        ergebnis.add(('documentDate', wert));
       } else if (wert is String && Datum.format.hasMatch(wert)) {
         throw _ungueltig('Das Dokumentdatum ist kein gültiges Kalenderdatum.', {
-          'feld': 'dokumentdatum',
-          'wert': wert,
+          'field': 'documentDate',
+          'value': wert,
         });
       } else {
         throw _ungueltig(
           'Das Dokumentdatum muss im Format JJJJ-MM-TT angegeben werden.',
-          {'feld': 'dokumentdatum', 'wert': wert},
+          {'field': 'documentDate', 'value': wert},
         );
       }
     }
 
-    if (body.containsKey('quelle')) {
-      final wert = body['quelle'];
+    if (body.containsKey('issuer')) {
+      final wert = body['issuer'];
       if (wert != null && wert is! String) {
         throw _ungueltig('Die Quelle muss ein Text oder null sein.', {
-          'feld': 'quelle',
-          'wert': wert,
+          'field': 'issuer',
+          'value': wert,
         });
       }
       // Leerraum entfernen; bleibt nichts übrig, gilt das wie null (3.5).
-      ergebnis.add(('quelle', _ohneLeerraum(wert as String?)));
+      ergebnis.add(('issuer', _ohneLeerraum(wert as String?)));
     }
 
-    if (body.containsKey('infos')) {
-      final infos = body['infos'];
+    if (body.containsKey('facts')) {
+      final infos = body['facts'];
       if (infos is! List) {
-        throw _ungueltig('"infos" muss eine Liste sein.', {'feld': 'infos'});
+        throw _ungueltig('"facts" muss eine Liste sein.', {'field': 'facts'});
       }
       final vorhandeneIds = {
-        for (final info in json['infos'] as List) (info as Map)['id'],
+        for (final info in json['facts'] as List) (info as Map)['id'],
       };
       final gesehen = <String>{};
       for (final element in infos) {
@@ -615,24 +613,24 @@ class MockApiClient implements ApiClient {
         }
         final id = element['id'];
         if (id is! String || id.isEmpty) {
-          throw _ungueltig('Jede Info braucht eine id.', {'feld': 'infos'});
+          throw _ungueltig('Jede Info braucht eine id.', {'field': 'facts'});
         }
         if (!gesehen.add(id)) {
-          throw _ungueltig('Die Info $id kommt mehrfach vor.', {'infoId': id});
+          throw _ungueltig('Die Info $id kommt mehrfach vor.', {'factId': id});
         }
         for (final schluessel in element.keys) {
           if (schluessel == 'name') {
-            throw _nichtKorrigierbarFehler('infos.$id.name');
+            throw _nichtKorrigierbarFehler('facts.$id.name');
           }
-          if (!{'id', 'wert', 'einheit'}.contains(schluessel)) {
-            throw _ungueltig('Unbekanntes Feld: infos.$id.$schluessel.', {
-              'feld': 'infos.$id.$schluessel',
+          if (!{'id', 'value', 'unit'}.contains(schluessel)) {
+            throw _ungueltig('Unbekanntes Feld: facts.$id.$schluessel.', {
+              'field': 'facts.$id.$schluessel',
             });
           }
         }
-        if (!element.containsKey('wert') && !element.containsKey('einheit')) {
+        if (!element.containsKey('value') && !element.containsKey('unit')) {
           throw _ungueltig('Die Info $id enthält keine Änderung.', {
-            'infoId': id,
+            'factId': id,
           });
         }
         if (!vorhandeneIds.contains(id)) {
@@ -640,36 +638,36 @@ class MockApiClient implements ApiClient {
             httpStatus: 404,
             code: FehlerCode.infoNichtGefunden,
             nachricht: 'Diese Info gibt es in dem Eintrag nicht.',
-            details: {'infoId': id},
+            details: {'factId': id},
           );
         }
-        if (element.containsKey('wert')) {
-          final wert = element['wert'];
+        if (element.containsKey('value')) {
+          final wert = element['value'];
           if (wert is! String) {
             throw _ungueltig('Der Wert muss ein Text sein.', {
-              'feld': 'infos.$id.wert',
-              'wert': wert,
+              'field': 'facts.$id.value',
+              'value': wert,
             });
           }
           // Eine Info hat immer einen Wert: leer ist ein Fehler (3.5).
           if (wert.trim().isEmpty) {
             throw _ungueltig('Der Wert darf nicht leer sein.', {
-              'feld': 'infos.$id.wert',
-              'wert': wert,
+              'field': 'facts.$id.value',
+              'value': wert,
             });
           }
-          ergebnis.add(('infos.$id.wert', wert.trim()));
+          ergebnis.add(('facts.$id.value', wert.trim()));
         }
-        if (element.containsKey('einheit')) {
-          final einheit = element['einheit'];
+        if (element.containsKey('unit')) {
+          final einheit = element['unit'];
           if (einheit != null && einheit is! String) {
             throw _ungueltig('Die Einheit muss ein Text oder null sein.', {
-              'feld': 'infos.$id.einheit',
-              'wert': einheit,
+              'field': 'facts.$id.unit',
+              'value': einheit,
             });
           }
           ergebnis.add((
-            'infos.$id.einheit',
+            'facts.$id.unit',
             _ohneLeerraum(einheit as String?),
           ));
         }
@@ -698,11 +696,11 @@ class MockApiClient implements ApiClient {
     final alt = _lies(json, feld);
     if (alt == neu) return;
 
-    final korrekturen = json['korrekturen'] as List;
-    final index = korrekturen.indexWhere((k) => (k as Map)['feld'] == feld);
+    final korrekturen = json['corrections'] as List;
+    final index = korrekturen.indexWhere((k) => (k as Map)['field'] == feld);
     // Gibt es noch keine Korrektur, ist der aktuelle Wert der erkannte.
     final erkannt = index >= 0
-        ? (korrekturen[index] as Map)['erkannt'] as String?
+        ? (korrekturen[index] as Map)['recognized'] as String?
         : alt;
 
     _schreibe(json, feld, neu);
@@ -711,14 +709,14 @@ class MockApiClient implements ApiClient {
       if (index >= 0) korrekturen.removeAt(index);
     } else if (index >= 0) {
       final korrektur = korrekturen[index] as Map<String, dynamic>;
-      korrektur['korrigiert'] = neu;
-      korrektur['zeitpunkt'] = zeitpunkt;
+      korrektur['corrected'] = neu;
+      korrektur['correctedAt'] = zeitpunkt;
     } else {
       korrekturen.add(<String, dynamic>{
-        'feld': feld,
-        'erkannt': erkannt,
-        'korrigiert': neu,
-        'zeitpunkt': zeitpunkt,
+        'field': feld,
+        'recognized': erkannt,
+        'corrected': neu,
+        'correctedAt': zeitpunkt,
       });
     }
   }
@@ -731,7 +729,7 @@ class MockApiClient implements ApiClient {
   void _schreibe(Map<String, dynamic> json, String feld, String? wert) {
     final (ziel, schluessel) = _ziel(json, feld);
     // Eine Einheit ohne Wert fehlt im JSON ganz (laut API "optional").
-    if (wert == null && feld.startsWith('infos.')) {
+    if (wert == null && feld.startsWith('facts.')) {
       ziel.remove(schluessel);
     } else {
       ziel[schluessel] = wert;
@@ -740,9 +738,9 @@ class MockApiClient implements ApiClient {
 
   /// Liefert die Map und den Schlüssel, unter dem ein Feldpfad steht.
   (Map<String, dynamic>, String) _ziel(Map<String, dynamic> json, String feld) {
-    if (!feld.startsWith('infos.')) return (json, feld);
+    if (!feld.startsWith('facts.')) return (json, feld);
     final teile = feld.split('.'); // infos, <id>, wert|einheit
-    final info = (json['infos'] as List)
+    final info = (json['facts'] as List)
         .cast<Map<String, dynamic>>()
         .firstWhere((i) => i['id'] == teile[1]);
     return (info, teile[2]);
@@ -760,11 +758,11 @@ class MockApiClient implements ApiClient {
     httpStatus: 400,
     code: FehlerCode.feldNichtKorrigierbar,
     nachricht: 'Das Feld $feld kann nicht korrigiert werden.',
-    details: {'feld': feld},
+    details: {'field': feld},
   );
 
   // ---------------------------------------------------------------------
-  // POST /fragen
+  // POST /questions
   // ---------------------------------------------------------------------
 
   static const maxFrageLaenge = 500;
@@ -780,15 +778,14 @@ class MockApiClient implements ApiClient {
         nachricht: 'Bitte gib eine Frage ein.',
       );
     }
-    final laenge = frage.runes.length;
-    if (laenge > maxFrageLaenge) {
-      throw ApiFehler(
+    // Wie im Backend ohne details (docs/API.md 3.6).
+    if (frage.runes.length > maxFrageLaenge) {
+      throw const ApiFehler(
         httpStatus: 400,
         code: FehlerCode.frageZuLang,
         nachricht:
             'Die Frage darf höchstens $maxFrageLaenge Zeichen lang '
             'sein.',
-        details: {'maxZeichen': maxFrageLaenge, 'laenge': laenge},
       );
     }
     final modulId = _pruefeModul(modul);
@@ -801,8 +798,8 @@ class MockApiClient implements ApiClient {
     final suchwoerter = woerter.where((w) => w.length >= 4).toSet();
     final treffer = <(int, Map<String, dynamic>, String)>[];
     // Nur Dokumente des gewählten Moduls durchsuchen.
-    for (final json in _eintraege.values.where((j) => j['modul'] == modulId)) {
-      for (final zeile in (json['volltext'] as String).split('\n')) {
+    for (final json in _eintraege.values.where((j) => j['module'] == modulId)) {
+      for (final zeile in (json['fullText'] as String).split('\n')) {
         final zeilenWoerter = _woerter(zeile)
             .where((w) => w.length >= 4)
             .toList();

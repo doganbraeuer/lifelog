@@ -87,7 +87,7 @@ class _EintragScreenState extends State<EintragScreen> {
       // Erlaubt sind die Typen des Moduls, zu dem der Eintrag gehört.
       modulId: eintrag.modul,
       aktuell: eintrag.typ,
-      korrektur: eintrag.korrektur('typ'),
+      korrektur: eintrag.korrektur('type'),
     );
     if (typ != null && typ != eintrag.typ) {
       await _speichern(EintragAenderung(typ: typ));
@@ -98,7 +98,7 @@ class _EintragScreenState extends State<EintragScreen> {
     final datum = await zeigeDatumAuswahl(
       context,
       aktuell: eintrag.dokumentdatum,
-      korrektur: eintrag.korrektur('dokumentdatum'),
+      korrektur: eintrag.korrektur('documentDate'),
     );
     if (datum != null && datum.wert != eintrag.dokumentdatum) {
       await _speichern(EintragAenderung(dokumentdatum: datum));
@@ -109,7 +109,7 @@ class _EintragScreenState extends State<EintragScreen> {
     final quelle = await zeigeQuelleDialog(
       context,
       aktuell: eintrag.quelle,
-      korrektur: eintrag.korrektur('quelle'),
+      korrektur: eintrag.korrektur('issuer'),
     );
     if (quelle != null && quelle.wert != eintrag.quelle) {
       await _speichern(EintragAenderung(quelle: quelle));
@@ -120,8 +120,8 @@ class _EintragScreenState extends State<EintragScreen> {
     final aenderung = await zeigeInfoDialog(
       context,
       info: info,
-      wertKorrektur: eintrag.korrektur('infos.${info.id}.wert'),
-      einheitKorrektur: eintrag.korrektur('infos.${info.id}.einheit'),
+      wertKorrektur: eintrag.korrektur('facts.${info.id}.value'),
+      einheitKorrektur: eintrag.korrektur('facts.${info.id}.unit'),
     );
     if (aenderung != null) {
       await _speichern(EintragAenderung(infos: [aenderung]));
@@ -255,14 +255,14 @@ class _EintragScreenState extends State<EintragScreen> {
         _FeldZeile(
           label: 'Typ',
           wert: typName(eintrag.typ),
-          korrektur: _hinweis(eintrag.korrektur('typ'), typName),
+          korrektur: _hinweis(eintrag.korrektur('type'), typName),
           bearbeiten: bearbeiten(() => _typKorrigieren(eintrag)),
         ),
         _FeldZeile(
           label: 'Dokumentdatum',
           wert: eintrag.dokumentdatum?.anzeige ?? 'nicht erkannt',
           korrektur: _hinweis(
-            eintrag.korrektur('dokumentdatum'),
+            eintrag.korrektur('documentDate'),
             (iso) => Datum.tryParse(iso)?.anzeige ?? iso,
           ),
           bearbeiten: bearbeiten(() => _datumKorrigieren(eintrag)),
@@ -270,7 +270,7 @@ class _EintragScreenState extends State<EintragScreen> {
         _FeldZeile(
           label: 'Quelle',
           wert: eintrag.quelle ?? 'nicht erkannt',
-          korrektur: _hinweis(eintrag.korrektur('quelle')),
+          korrektur: _hinweis(eintrag.korrektur('issuer')),
           bearbeiten: bearbeiten(() => _quelleKorrigieren(eintrag)),
         ),
         _FeldZeile(
@@ -287,12 +287,12 @@ class _EintragScreenState extends State<EintragScreen> {
             wert: [info.wert, ?info.einheit].join(' '),
             korrektur: [
               ?_hinweis(
-                eintrag.korrektur('infos.${info.id}.wert'),
+                eintrag.korrektur('facts.${info.id}.value'),
                 null,
                 'Wert',
               ),
               ?_hinweis(
-                eintrag.korrektur('infos.${info.id}.einheit'),
+                eintrag.korrektur('facts.${info.id}.unit'),
                 null,
                 'Einheit',
               ),

@@ -116,7 +116,7 @@ void main() {
       await mock.textImportieren(
         '${'Sehr lange Bezeichnung einer ausstellenden Stelle ' * 4}\n'
         'Befund vom 21.10.2026',
-        modul: 'gesundheit',
+        modul: 'health',
       );
       await tester.pumpWidget(testApp(mock));
       await tester.pumpAndSettle();

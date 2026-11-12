@@ -10,7 +10,7 @@ import 'modul_definition.dart';
 /// keine Typen; die werden erst festgelegt, wenn das Modul gebaut wird.
 const standardModule = <ModulDefinition>[
   ModulDefinition(
-    id: 'gesundheit',
+    id: 'health',
     name: 'Gesundheit',
     beschreibung: 'Befunde, Arztbriefe, Laborwerte',
     symbol: Icons.monitor_heart_outlined,
@@ -23,25 +23,25 @@ const standardModule = <ModulDefinition>[
     // kennzeichnen nur den Typ, nie einen Wert.
     typen: [
       TypDefinition(
-        id: 'arztbrief',
+        id: 'doctor_letter',
         name: 'Arztbrief',
         symbol: Icons.description_outlined,
         farbe: Color(0xFFF5A623), // Orange wie im Icon
       ),
       TypDefinition(
-        id: 'laborbefund',
+        id: 'lab_report',
         name: 'Laborbefund',
         symbol: Icons.science_outlined,
         farbe: Color(0xFF2F80ED), // Blau wie im Icon
       ),
       TypDefinition(
-        id: 'rezept',
+        id: 'prescription',
         name: 'Rezept',
         symbol: Icons.medication_outlined,
         farbe: Color(0xFF7E57C2), // Violett
       ),
       TypDefinition(
-        id: 'sonstiges',
+        id: 'other',
         name: 'Sonstiges',
         symbol: Icons.insert_drive_file_outlined,
         // keine eigene Farbe: Modulfarbe (Teal)
@@ -49,7 +49,7 @@ const standardModule = <ModulDefinition>[
     ],
   ),
   ModulDefinition(
-    id: 'ernaehrung',
+    id: 'nutrition',
     name: 'Ernährung',
     beschreibung: 'Mahlzeiten und Nährwerte',
     symbol: Icons.eco_outlined,
@@ -58,7 +58,7 @@ const standardModule = <ModulDefinition>[
     typen: [],
   ),
   ModulDefinition(
-    id: 'rezepte',
+    id: 'recipes',
     name: 'Rezepte',
     beschreibung: 'Kochrezepte sammeln',
     symbol: Icons.menu_book_outlined,

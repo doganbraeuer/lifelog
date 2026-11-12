@@ -7,8 +7,8 @@ import 'package:lifelog/model/zeitleisten_gruppen.dart';
 /// Eintrag mit Dokumentdatum und Importzeit in **lokaler** Zeit.
 EintragKurz e(String id, Datum? datum, DateTime importLokal) => EintragKurz(
   id: id,
-  modul: 'gesundheit',
-  typ: 'sonstiges',
+  modul: 'health',
+  typ: 'other',
   dokumentdatum: datum,
   importdatum: importLokal.toUtc(),
   quelle: null,
@@ -33,7 +33,7 @@ void main() {
         e('c', Datum(2026, 9, 30), heute),
         e('d', null, heute),
       ];
-      expect(kurz(gruppiereZeitleiste(liste, Sortierung.dokumentdatum)), [
+      expect(kurz(gruppiereZeitleiste(liste, Sortierung.documentDate)), [
         'Oktober 2026: a, b',
         'September 2026: c',
         'Ohne Datum: d',
@@ -46,7 +46,7 @@ void main() {
         e('b', Datum(2026, 1, 1), heute),
         e('c', Datum(2026, 1, 20), heute),
       ];
-      expect(kurz(gruppiereZeitleiste(liste, Sortierung.dokumentdatum)), [
+      expect(kurz(gruppiereZeitleiste(liste, Sortierung.documentDate)), [
         'Dezember 2025: a',
         'Januar 2026: b, c',
       ]);
@@ -58,7 +58,7 @@ void main() {
         e('b', Datum(2026, 3, 1), heute),
         e('c', null, heute),
       ];
-      expect(kurz(gruppiereZeitleiste(liste, Sortierung.dokumentdatum)), [
+      expect(kurz(gruppiereZeitleiste(liste, Sortierung.documentDate)), [
         'März 2026: b',
         'Ohne Datum: a, c',
       ]);
@@ -68,7 +68,7 @@ void main() {
       // Der 1. Oktober bleibt Oktober, egal wie spät importiert wurde.
       final liste = [e('a', Datum(2026, 10, 1), DateTime(2026, 9, 30, 23))];
       expect(
-        gruppiereZeitleiste(liste, Sortierung.dokumentdatum).single.titel,
+        gruppiereZeitleiste(liste, Sortierung.documentDate).single.titel,
         'Oktober 2026',
       );
     });
@@ -81,7 +81,7 @@ void main() {
         e('b', Datum(2026, 10, 14), DateTime(2026, 10, 31, 23, 30)),
         e('c', Datum(2026, 1, 1), DateTime(2026, 10, 2)),
       ];
-      expect(kurz(gruppiereZeitleiste(liste, Sortierung.importdatum)), [
+      expect(kurz(gruppiereZeitleiste(liste, Sortierung.importedAt)), [
         'November 2026: a',
         'Oktober 2026: b, c',
       ]);
@@ -89,8 +89,8 @@ void main() {
   });
 
   test('leere Liste', () {
-    expect(gruppiereZeitleiste([], Sortierung.dokumentdatum), isEmpty);
-    expect(gruppiereZeitleiste([], Sortierung.importdatum), isEmpty);
+    expect(gruppiereZeitleiste([], Sortierung.documentDate), isEmpty);
+    expect(gruppiereZeitleiste([], Sortierung.importedAt), isEmpty);
   });
 
   test('alle Monatsnamen deutsch', () {

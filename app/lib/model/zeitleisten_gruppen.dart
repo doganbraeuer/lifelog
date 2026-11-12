@@ -63,11 +63,11 @@ List<ZeitleistenGruppe> gruppiereZeitleiste(
 
 String? _monatstitel(EintragKurz eintrag, Sortierung sortierung) {
   switch (sortierung) {
-    case Sortierung.dokumentdatum:
+    case Sortierung.documentDate:
       final datum = eintrag.dokumentdatum;
       if (datum == null) return null;
       return '${monatsnamen[datum.monat - 1]} ${datum.jahr}';
-    case Sortierung.importdatum:
+    case Sortierung.importedAt:
       final lokal = eintrag.importdatum.toLocal();
       return '${monatsnamen[lokal.month - 1]} ${lokal.year}';
   }

@@ -10,7 +10,7 @@ void main() {
   test('Frage mit Treffer: Antwort mit [1] und Quelle', () async {
     final antwort = await schnellerMock().fragen(
       'Welchen Hämoglobinwert hatte ich im Oktober?',
-      modul: 'gesundheit',
+      modul: 'health',
     );
 
     expect(antwort.gefunden, isTrue);
@@ -19,7 +19,7 @@ void main() {
     final quelle = antwort.quellen.single;
     expect(quelle.nr, 1);
     expect(quelle.eintragId, laborId);
-    expect(quelle.typ, 'laborbefund');
+    expect(quelle.typ, 'lab_report');
     expect(quelle.quelle, 'Labor Muster GmbH, Salzburg');
     expect(quelle.dokumentdatum, Datum(2026, 10, 14));
     expect(quelle.auszug, 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)');
@@ -31,14 +31,14 @@ void main() {
       laborId,
       EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 15))),
     );
-    final antwort = await mock.fragen('Hämoglobin', modul: 'gesundheit');
+    final antwort = await mock.fragen('Hämoglobin', modul: 'health');
     expect(antwort.quellen.single.dokumentdatum, Datum(2026, 10, 15));
   });
 
   test('ohne Treffer: fester Satz, keine Quellen', () async {
     final antwort = await schnellerMock().fragen(
       'Wie war das Wetter in Paris?',
-      modul: 'gesundheit',
+      modul: 'health',
     );
     expect(antwort.gefunden, isFalse);
     expect(antwort.antwort, 'Dazu finde ich nichts in deinen Dokumenten.');
@@ -46,30 +46,30 @@ void main() {
     expect(antwort.quellen, isEmpty);
   });
 
-  test('leere Frage: 400 FRAGE_FEHLT', () async {
+  test('leere Frage: 400 QUESTION_MISSING', () async {
     for (final frage in ['', '   ', '\n\t']) {
       await expectLater(
-        schnellerMock().fragen(frage, modul: 'gesundheit'),
+        schnellerMock().fragen(frage, modul: 'health'),
         wirftApiFehler(FehlerCode.frageFehlt, status: 400),
       );
     }
   });
 
-  test('über 500 Zeichen: 400 FRAGE_ZU_LANG, genau 500 ist erlaubt', () async {
+  test('über 500 Zeichen: 400 QUESTION_TOO_LONG, genau 500 ist erlaubt', () async {
     await expectLater(
-      schnellerMock().fragen('a' * 501, modul: 'gesundheit'),
+      schnellerMock().fragen('a' * 501, modul: 'health'),
       wirftApiFehler(FehlerCode.frageZuLang, status: 400),
     );
     final antwort = await schnellerMock().fragen(
       'a' * 500,
-      modul: 'gesundheit',
+      modul: 'health',
     );
     expect(antwort.gefunden, isFalse);
   });
 
-  test('"modellfehler": 503 MODELL_NICHT_ERREICHBAR', () async {
+  test('"modellfehler": 503 MODEL_UNAVAILABLE', () async {
     await expectLater(
-      schnellerMock().fragen('Test modellfehler', modul: 'gesundheit'),
+      schnellerMock().fragen('Test modellfehler', modul: 'health'),
       wirftApiFehler(FehlerCode.modellNichtErreichbar, status: 503),
     );
   });

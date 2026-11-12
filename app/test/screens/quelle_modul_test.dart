@@ -23,17 +23,17 @@ void main() {
         (_) async => http.Response.bytes(
           utf8.encode(
             jsonEncode({
-              'antwort': 'Laut Trainingsplan [1].',
-              'gefunden': true,
-              'quellen': [
+              'answer': 'Laut Trainingsplan [1].',
+              'found': true,
+              'sources': [
                 {
-                  'nr': 1,
-                  'eintragId': laborId,
-                  'modul': 'sport',
-                  'typ': 'training',
-                  'quelle': 'Laufverein Beispiel',
-                  'dokumentdatum': null,
-                  'auszug': '10 km locker',
+                  'number': 1,
+                  'entryId': laborId,
+                  'module': 'sport',
+                  'type': 'training',
+                  'issuer': 'Laufverein Beispiel',
+                  'documentDate': null,
+                  'excerpt': '10 km locker',
                 },
               ],
             }),
@@ -50,7 +50,7 @@ void main() {
         child: MaterialApp(
           home: FrageScreen(
             api: api,
-            modulId: 'gesundheit',
+            modulId: 'health',
             eintragOeffnen: (_) async {},
           ),
         ),

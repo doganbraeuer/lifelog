@@ -27,45 +27,45 @@ HttpApiClient client(MockClientHandler handler, {String baseUrl = basis}) =>
     HttpApiClient(baseUrl: baseUrl, client: MockClient(handler));
 
 void main() {
-  group('eintraege', () {
+  group('entries', () {
     test('URL mit Query-Parametern und Antwort wie in 3.2', () async {
       late http.Request anfrage;
       final api = client((request) async {
         anfrage = request;
         return jsonAntwort({
-          'eintraege': [
+          'entries': [
             {
               'id': laborId,
-              'modul': 'gesundheit',
-              'typ': 'laborbefund',
-              'dokumentdatum': '2026-10-14',
-              'importdatum': '2026-11-03T18:42:07Z',
-              'quelle': 'Labor Muster GmbH, Salzburg',
+              'module': 'health',
+              'type': 'lab_report',
+              'documentDate': '2026-10-14',
+              'importedAt': '2026-11-03T18:42:07Z',
+              'issuer': 'Labor Muster GmbH, Salzburg',
             },
             {
               'id': sonstigesId,
-              'modul': 'gesundheit',
-              'typ': 'sonstiges',
-              'dokumentdatum': null,
-              'importdatum': '2026-11-03T19:01:44Z',
-              'quelle': null,
+              'module': 'health',
+              'type': 'other',
+              'documentDate': null,
+              'importedAt': '2026-11-03T19:01:44Z',
+              'issuer': null,
             },
           ],
-          'anzahl': 2,
+          'count': 2,
         });
       });
 
       final liste = await api.eintraege(
-        sortierung: Sortierung.importdatum,
-        richtung: Richtung.aufsteigend,
-        modul: 'gesundheit',
+        sortierung: Sortierung.importedAt,
+        richtung: Richtung.asc,
+        modul: 'health',
       );
 
       expect(anfrage.method, 'GET');
       expect(
         anfrage.url.toString(),
-        '$basis/api/v1/eintraege'
-        '?modul=gesundheit&sortierung=importdatum&richtung=aufsteigend',
+        '$basis/api/v1/entries'
+        '?module=health&sort=importedAt&order=asc',
       );
       expect(liste, hasLength(2));
       expect(liste.first.dokumentdatum, Datum(2026, 10, 14));
@@ -76,10 +76,10 @@ void main() {
       late Uri url;
       final api = client(baseUrl: '$basis/', (request) async {
         url = request.url;
-        return jsonAntwort({'eintraege': [], 'anzahl': 0});
+        return jsonAntwort({'entries': [], 'count': 0});
       });
-      expect(await api.eintraege(modul: 'gesundheit'), isEmpty);
-      expect(url.path, '/api/v1/eintraege');
+      expect(await api.eintraege(modul: 'health'), isEmpty);
+      expect(url.path, '/api/v1/entries');
     });
   });
 
@@ -95,16 +95,16 @@ void main() {
         );
       });
       final eintrag = await api.eintrag(laborId);
-      expect(url.toString(), '$basis/api/v1/eintraege/$laborId');
+      expect(url.toString(), '$basis/api/v1/entries/$laborId');
       expect(eintrag.infos.first.name, 'Hämoglobin');
     });
 
     test('Fehler-JSON wird zu ApiFehler', () async {
       final api = client(
         (_) async => jsonAntwort({
-          'fehler': {
-            'code': 'EINTRAG_NICHT_GEFUNDEN',
-            'nachricht': 'Diesen Eintrag gibt es nicht.',
+          'error': {
+            'code': 'ENTRY_NOT_FOUND',
+            'message': 'Diesen Eintrag gibt es nicht.',
             'details': {},
           },
         }, 404),
@@ -122,10 +122,10 @@ void main() {
     test('details werden übernommen', () async {
       final api = client(
         (_) async => jsonAntwort({
-          'fehler': {
-            'code': 'DUPLIKAT',
-            'nachricht': 'Diese Datei hast du schon hochgeladen.',
-            'details': {'eintragId': laborId},
+          'error': {
+            'code': 'DUPLICATE',
+            'message': 'Diese Datei hast du schon hochgeladen.',
+            'details': {'entryId': laborId},
           },
         }, 409),
       );
@@ -133,16 +133,16 @@ void main() {
         await api.hochladen(
           Uint8List.fromList('%PDF-'.codeUnits),
           'a.pdf',
-          modul: 'gesundheit',
+          modul: 'health',
         );
         fail('Fehler erwartet');
       } on ApiFehler catch (f) {
-        expect(f.details['eintragId'], laborId);
+        expect(f.details['entryId'], laborId);
       }
     });
 
     test(
-      'Fehler ohne JSON (z. B. HTML vom Proxy): UNBEKANNTE_ANTWORT',
+      'Fehler ohne JSON (z. B. HTML vom Proxy): UNEXPECTED_RESPONSE',
       () async {
         final api = client(
           (_) async => http.Response('<html>Bad Gateway</html>', 502),
@@ -154,7 +154,7 @@ void main() {
       },
     );
 
-    test('Erfolg mit unpassendem JSON: UNBEKANNTE_ANTWORT', () async {
+    test('Erfolg mit unpassendem JSON: UNEXPECTED_RESPONSE', () async {
       final api = client((_) async => jsonAntwort({'foo': 1}));
       await expectLater(
         api.eintrag(laborId),
@@ -162,7 +162,7 @@ void main() {
       );
     });
 
-    test('keine Verbindung: NETZWERK_FEHLER', () async {
+    test('keine Verbindung: NETWORK_ERROR', () async {
       final api = client((_) async => throw http.ClientException('offline'));
       await expectLater(
         api.eintrag(laborId),
@@ -182,13 +182,13 @@ void main() {
       );
     });
     final datei = await api.datei(laborId);
-    expect(url.path, '/api/v1/eintraege/$laborId/datei');
+    expect(url.path, '/api/v1/entries/$laborId/file');
     expect(datei.bytes, [1, 2, 3]);
     expect(datei.mimeTyp, 'application/pdf');
     expect(datei.istPdf, isTrue);
   });
 
-  test('hochladen schickt multipart mit Feld "datei"', () async {
+  test('hochladen schickt multipart mit Feld "file"', () async {
     late http.Request anfrage;
     final api = client((request) async {
       anfrage = request;
@@ -202,22 +202,22 @@ void main() {
     final eintrag = await api.hochladen(
       bytes,
       'befund.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
 
     expect(anfrage.method, 'POST');
-    expect(anfrage.url.toString(), '$basis/api/v1/eintraege');
+    expect(anfrage.url.toString(), '$basis/api/v1/entries');
     expect(anfrage.headers['content-type'], startsWith('multipart/form-data'));
     final body = latin1.decode(anfrage.bodyBytes).toLowerCase();
-    expect(body, contains('name="datei"; filename="befund.pdf"'));
+    expect(body, contains('name="file"; filename="befund.pdf"'));
     expect(body, contains('content-type: application/pdf'));
     expect(body, contains('%pdf-1.4 inhalt'));
-    expect(body, contains('name="modul"\r\n\r\ngesundheit'));
+    expect(body, contains('name="module"\r\n\r\nhealth'));
     expect(body, isNot(contains('name="text"')));
     expect(eintrag.id, laborId);
   });
 
-  test('textImportieren schickt multipart mit "text" und "modul"', () async {
+  test('textImportieren schickt multipart mit "text" und "module"', () async {
     late http.Request anfrage;
     final api = client((request) async {
       anfrage = request;
@@ -229,11 +229,11 @@ void main() {
     });
     await api.textImportieren(
       'Überweisung vom 21.10.2026',
-      modul: 'gesundheit',
+      modul: 'health',
     );
 
     expect(anfrage.method, 'POST');
-    expect(anfrage.url.toString(), '$basis/api/v1/eintraege');
+    expect(anfrage.url.toString(), '$basis/api/v1/entries');
     expect(anfrage.headers['content-type'], startsWith('multipart/form-data'));
     // Formularfelder als UTF-8, damit Umlaute ankommen. Bei Nicht-ASCII
     // schreibt das http-Paket einen eigenen Teil-Header mit charset dazu.
@@ -248,8 +248,8 @@ void main() {
         'Überweisung vom 21.10.2026\r\n',
       ),
     );
-    expect(body, contains('name="modul"\r\n\r\ngesundheit'));
-    expect(body, isNot(contains('name="datei"')));
+    expect(body, contains('name="module"\r\n\r\nhealth'));
+    expect(body, isNot(contains('name="file"')));
   });
 
   group('loeschen', () {
@@ -262,15 +262,15 @@ void main() {
       await api.loeschen(laborId);
 
       expect(anfrage.method, 'DELETE');
-      expect(anfrage.url.path, '/api/v1/eintraege/$laborId');
+      expect(anfrage.url.path, '/api/v1/entries/$laborId');
     });
 
     test('404 wird zu ApiFehler', () async {
       final api = client(
         (_) async => jsonAntwort({
-          'fehler': {
-            'code': 'EINTRAG_NICHT_GEFUNDEN',
-            'nachricht': 'Diesen Eintrag gibt es nicht.',
+          'error': {
+            'code': 'ENTRY_NOT_FOUND',
+            'message': 'Diesen Eintrag gibt es nicht.',
           },
         }, 404),
       );
@@ -284,10 +284,10 @@ void main() {
   test('Liste null statt [] passt nicht zum Vertrag', () async {
     // docs/API.md: Listen sind immer ein Array, nie null.
     final api = client(
-      (_) async => jsonAntwort({'eintraege': null, 'anzahl': 0}),
+      (_) async => jsonAntwort({'entries': null, 'count': 0}),
     );
     await expectLater(
-      api.eintraege(modul: 'gesundheit'),
+      api.eintraege(modul: 'health'),
       wirftApiFehler(FehlerCode.unbekannteAntwort, status: 200),
     );
   });
@@ -306,17 +306,17 @@ void main() {
       laborId,
       const EintragAenderung(
         dokumentdatum: Wert(null),
-        infos: [InfoAenderung('i1', einheit: Wert(null))],
+        infos: [InfoAenderung('f1', einheit: Wert(null))],
       ),
     );
 
     expect(anfrage.method, 'PATCH');
-    expect(anfrage.url.path, '/api/v1/eintraege/$laborId');
+    expect(anfrage.url.path, '/api/v1/entries/$laborId');
     expect(anfrage.headers['content-type'], startsWith('application/json'));
     expect(jsonDecode(anfrage.body), {
-      'dokumentdatum': null,
-      'infos': [
-        {'id': 'i1', 'einheit': null},
+      'documentDate': null,
+      'facts': [
+        {'id': 'f1', 'unit': null},
       ],
     });
   });
@@ -326,34 +326,34 @@ void main() {
     final api = client((request) async {
       anfrage = request;
       return jsonAntwort({
-        'antwort': 'Im Laborbefund steht: Hämoglobin 14,2 g/dl [1].',
-        'gefunden': true,
-        'quellen': [
+        'answer': 'Im Laborbefund steht: Hämoglobin 14,2 g/dl [1].',
+        'found': true,
+        'sources': [
           {
-            'nr': 3,
-            'eintragId': laborId,
-            'modul': 'gesundheit',
-            'typ': 'laborbefund',
-            'quelle': 'Labor Muster GmbH, Salzburg',
-            'dokumentdatum': '2026-10-14',
-            'auszug': 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)',
+            'number': 3,
+            'entryId': laborId,
+            'module': 'health',
+            'type': 'lab_report',
+            'issuer': 'Labor Muster GmbH, Salzburg',
+            'documentDate': '2026-10-14',
+            'excerpt': 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)',
           },
         ],
       });
     });
-    final antwort = await api.fragen('Hämoglobin?', modul: 'gesundheit');
+    final antwort = await api.fragen('Hämoglobin?', modul: 'health');
 
     expect(anfrage.method, 'POST');
-    expect(anfrage.url.path, '/api/v1/fragen');
+    expect(anfrage.url.path, '/api/v1/questions');
     expect(jsonDecode(anfrage.body), {
-      'frage': 'Hämoglobin?',
-      'modul': 'gesundheit',
+      'question': 'Hämoglobin?',
+      'module': 'health',
     });
     expect(antwort.gefunden, isTrue);
     final quelle = antwort.quellen.single;
     // nr muss nicht bei 1 beginnen (nur zitierte Abschnitte, API.md 3.6).
     expect(quelle.nr, 3);
-    expect(quelle.modul, 'gesundheit');
+    expect(quelle.modul, 'health');
     expect(quelle.auszug, startsWith('Hämoglobin'));
     expect(quelle.dokumentdatum, Datum(2026, 10, 14));
   });
@@ -361,22 +361,22 @@ void main() {
   test('Quelle ohne modul passt nicht zum Vertrag', () async {
     final api = client(
       (_) async => jsonAntwort({
-        'antwort': 'x [1].',
-        'gefunden': true,
-        'quellen': [
+        'answer': 'x [1].',
+        'found': true,
+        'sources': [
           {
-            'nr': 1,
-            'eintragId': laborId,
-            'typ': 'laborbefund',
-            'quelle': null,
-            'dokumentdatum': null,
-            'auszug': 'x',
+            'number': 1,
+            'entryId': laborId,
+            'type': 'lab_report',
+            'issuer': null,
+            'documentDate': null,
+            'excerpt': 'x',
           },
         ],
       }),
     );
     await expectLater(
-      api.fragen('x', modul: 'gesundheit'),
+      api.fragen('x', modul: 'health'),
       wirftApiFehler(FehlerCode.unbekannteAntwort),
     );
   });

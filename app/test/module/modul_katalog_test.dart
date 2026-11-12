@@ -9,25 +9,25 @@ void main() {
   group('Standard-Module', () {
     test('IDs wie vorgesehen (noch abzustimmen), in dieser Reihenfolge', () {
       expect(katalog.module.map((m) => m.id), [
-        'gesundheit',
-        'ernaehrung',
-        'rezepte',
+        'health',
+        'nutrition',
+        'recipes',
         'sport',
       ]);
     });
 
     test('nur Gesundheit ist aktiv', () {
       expect(katalog.module.where((m) => m.aktiv).map((m) => m.id), [
-        'gesundheit',
+        'health',
       ]);
     });
 
     test('Gesundheit hat genau die Typen aus docs/API.md', () {
-      expect(katalog.typen('gesundheit').map((t) => t.id), [
-        'arztbrief',
-        'laborbefund',
-        'rezept',
-        'sonstiges',
+      expect(katalog.typen('health').map((t) => t.id), [
+        'doctor_letter',
+        'lab_report',
+        'prescription',
+        'other',
       ]);
     });
 
@@ -52,24 +52,24 @@ void main() {
 
   group('Nachschlagen', () {
     test('Modul nach ID', () {
-      expect(katalog.nachId('gesundheit')?.name, 'Gesundheit');
-      expect(katalog.nachId('ernaehrung')?.name, 'Ernährung');
+      expect(katalog.nachId('health')?.name, 'Gesundheit');
+      expect(katalog.nachId('nutrition')?.name, 'Ernährung');
       expect(katalog.nachId('garten'), isNull);
     });
 
     test('Typname und Symbol', () {
-      expect(katalog.typName('gesundheit', 'laborbefund'), 'Laborbefund');
+      expect(katalog.typName('health', 'lab_report'), 'Laborbefund');
       expect(
-        katalog.typSymbol('gesundheit', 'laborbefund'),
+        katalog.typSymbol('health', 'lab_report'),
         Icons.science_outlined,
       );
     });
 
     test('unbekannter Typ oder unbekanntes Modul: ID und Ersatz-Symbol', () {
-      expect(katalog.typName('gesundheit', 'roentgenbild'), 'roentgenbild');
-      expect(katalog.typName('garten', 'laborbefund'), 'laborbefund');
+      expect(katalog.typName('health', 'roentgenbild'), 'roentgenbild');
+      expect(katalog.typName('garten', 'lab_report'), 'lab_report');
       expect(
-        katalog.typSymbol('garten', 'laborbefund'),
+        katalog.typSymbol('garten', 'lab_report'),
         ModulKatalog.unbekanntesSymbol,
       );
       expect(katalog.typen('garten'), isEmpty);
@@ -78,8 +78,8 @@ void main() {
     test('ein Typ gilt nur in seinem Modul', () {
       // „rezept“ ist in Gesundheit ein ärztliches Rezept; Sport kennt ihn
       // nicht, also gibt es dort nur den Rohwert.
-      expect(katalog.typName('gesundheit', 'rezept'), 'Rezept');
-      expect(katalog.nachId('sport')!.typ('rezept'), isNull);
+      expect(katalog.typName('health', 'prescription'), 'Rezept');
+      expect(katalog.nachId('sport')!.typ('prescription'), isNull);
     });
   });
 

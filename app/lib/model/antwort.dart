@@ -1,7 +1,7 @@
 import 'datum.dart';
 import 'json_hilfen.dart';
 
-/// Antwort auf `POST /api/v1/fragen` (docs/API.md, Abschnitt 3.6).
+/// Antwort auf `POST /api/v1/questions` (docs/API.md, Abschnitt 3.6).
 class FrageAntwort {
   const FrageAntwort({
     required this.antwort,
@@ -10,9 +10,9 @@ class FrageAntwort {
   });
 
   factory FrageAntwort.fromJson(Map<String, dynamic> json) => FrageAntwort(
-    antwort: text(json, 'antwort'),
-    gefunden: wahrheitswert(json, 'gefunden'),
-    quellen: liste(json, 'quellen', Quelle.fromJson),
+    antwort: text(json, 'answer'),
+    gefunden: wahrheitswert(json, 'found'),
+    quellen: liste(json, 'sources', Quelle.fromJson),
   );
 
   /// Antworttext. Verweise wie `[1]` zeigen auf [Quelle.nr].
@@ -36,13 +36,13 @@ class Quelle {
   });
 
   factory Quelle.fromJson(Map<String, dynamic> json) => Quelle(
-    nr: ganzzahl(json, 'nr'),
-    eintragId: text(json, 'eintragId'),
-    modul: text(json, 'modul'),
-    typ: text(json, 'typ'),
-    quelle: textOderNull(json, 'quelle'),
-    dokumentdatum: datumOderNull(json, 'dokumentdatum'),
-    auszug: text(json, 'auszug'),
+    nr: ganzzahl(json, 'number'),
+    eintragId: text(json, 'entryId'),
+    modul: text(json, 'module'),
+    typ: text(json, 'type'),
+    quelle: textOderNull(json, 'issuer'),
+    dokumentdatum: datumOderNull(json, 'documentDate'),
+    auszug: text(json, 'excerpt'),
   );
 
   /// Passt zum Verweis `[nr]` im Antworttext. Nicht unbedingt lückenlos

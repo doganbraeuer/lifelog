@@ -19,11 +19,11 @@ void main() {
     final eintrag = await mock.hochladen(
       bytes,
       'befund.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
 
     expect(eintrag.id, matches(RegExp(r'^[0-9a-f]{24}$')));
-    expect(eintrag.modul, 'gesundheit');
+    expect(eintrag.modul, 'health');
     expect(eintrag.korrekturen, isEmpty);
     expect(eintrag.importdatum, DateTime.utc(2026, 11, 4, 9, 30));
     expect(eintrag.datei.dateiname, 'befund.pdf');
@@ -31,43 +31,43 @@ void main() {
     expect(eintrag.datei.groesse, bytes.length);
     expect(eintrag.datei.sha256, sha256.convert(bytes).toString());
 
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.eintraege(modul: 'health'), hasLength(4));
     expect((await mock.datei(eintrag.id)).bytes, bytes);
   });
 
-  test('dieselbe Datei zweimal: 409 DUPLIKAT mit eintragId', () async {
+  test('dieselbe Datei zweimal: 409 DUPLICATE mit eintragId', () async {
     final mock = schnellerMock();
     final erster = await mock.hochladen(
       pdf('doppelt'),
       'a.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
     try {
       await mock.hochladen(
         pdf('doppelt'),
         'anderer_name.pdf',
-        modul: 'gesundheit',
+        modul: 'health',
       );
       fail('Fehler erwartet');
     } on ApiFehler catch (f) {
       expect(f.httpStatus, 409);
       expect(f.code, FehlerCode.duplikat);
-      expect(f.details['eintragId'], erster.id);
+      expect(f.details['entryId'], erster.id);
     }
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.eintraege(modul: 'health'), hasLength(4));
   });
 
-  test('leere Datei: 400 DATEI_FEHLT', () async {
+  test('leere Datei: 400 FILE_MISSING', () async {
     await expectLater(
-      schnellerMock().hochladen(Uint8List(0), 'leer.pdf', modul: 'gesundheit'),
+      schnellerMock().hochladen(Uint8List(0), 'leer.pdf', modul: 'health'),
       wirftApiFehler(FehlerCode.dateiFehlt, status: 400),
     );
   });
 
-  test('über 10 MB: 413 DATEI_ZU_GROSS', () async {
+  test('über 10 MB: 413 FILE_TOO_LARGE', () async {
     final gross = Uint8List(maxDateiGroesse + 1)..setAll(0, '%PDF-'.codeUnits);
     await expectLater(
-      schnellerMock().hochladen(gross, 'gross.pdf', modul: 'gesundheit'),
+      schnellerMock().hochladen(gross, 'gross.pdf', modul: 'health'),
       wirftApiFehler(FehlerCode.dateiZuGross, status: 413),
     );
   });
@@ -77,7 +77,7 @@ void main() {
     final eintrag = await schnellerMock().hochladen(
       grenze,
       'grenze.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
     expect(eintrag.datei.groesse, maxDateiGroesse);
   });
@@ -87,7 +87,7 @@ void main() {
       schnellerMock().hochladen(
         Uint8List.fromList(utf8.encode('hallo')),
         'text.pdf',
-        modul: 'gesundheit',
+        modul: 'health',
       ),
       wirftApiFehler(FehlerCode.dateitypNichtUnterstuetzt, status: 415),
     );
@@ -102,10 +102,10 @@ void main() {
       test('$name: $status $code, nichts gespeichert', () async {
         final mock = schnellerMock();
         await expectLater(
-          mock.hochladen(pdf(name), name, modul: 'gesundheit'),
+          mock.hochladen(pdf(name), name, modul: 'health'),
           wirftApiFehler(code, status: status),
         );
-        expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+        expect(await mock.eintraege(modul: 'health'), hasLength(3));
       });
     }
   });

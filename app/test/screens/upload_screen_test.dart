@@ -84,7 +84,7 @@ void main() {
     // ... und nach „Zurück“ steht er in der Zeitleiste.
     await zurueck(tester);
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(4));
+    expect(await mock.eintraege(modul: 'health'), hasLength(4));
   });
 
   testWidgets('X auf der Vorschau verwirft die Datei', (tester) async {
@@ -101,7 +101,7 @@ void main() {
 
     expect(find.text('falsch.pdf'), findsNothing);
     expect(find.text('PDF auswählen'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+    expect(await mock.eintraege(modul: 'health'), hasLength(3));
   });
 
   testWidgets('Duplikat: Hinweis und Sprung zum vorhandenen Eintrag', (
@@ -111,7 +111,7 @@ void main() {
     final vorhanden = await mock.hochladen(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
-      modul: 'gesundheit',
+      modul: 'health',
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
     await zumUpload(tester, mock, auswahl);
@@ -143,7 +143,7 @@ void main() {
 
     expect(find.textContaining('größer als 10 MB'), findsOneWidget);
     expect(hochladenKnopf(), findsNothing);
-    expect(await mock.eintraege(modul: 'gesundheit'), hasLength(3));
+    expect(await mock.eintraege(modul: 'health'), hasLength(3));
   });
 
   testWidgets('Größe schon bei der Auswahl bekannt (DateiZuGross)', (

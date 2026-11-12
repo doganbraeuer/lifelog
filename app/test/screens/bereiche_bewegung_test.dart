@@ -16,10 +16,10 @@ void main() {
     await tester.pumpWidget(testApp(schnellerMock()));
 
     // Im ersten Bild noch nicht voll sichtbar ...
-    expect(deckkraft(tester, 'gesundheit'), lessThan(1));
+    expect(deckkraft(tester, 'health'), lessThan(1));
     // ... nach dem Einblenden schon.
     await tester.pumpAndSettle();
-    for (final id in ['gesundheit', 'ernaehrung', 'rezepte', 'sport']) {
+    for (final id in ['health', 'nutrition', 'recipes', 'sport']) {
       expect(deckkraft(tester, id), 1, reason: id);
     }
   });
@@ -34,7 +34,7 @@ void main() {
     await tester.pumpWidget(testApp(schnellerMock()));
     await tester.pump();
 
-    for (final id in ['gesundheit', 'ernaehrung', 'rezepte', 'sport']) {
+    for (final id in ['health', 'nutrition', 'recipes', 'sport']) {
       expect(deckkraft(tester, id), 1, reason: id);
     }
     // Es läuft keine Animation mehr (Bild steht).
@@ -51,11 +51,11 @@ void main() {
       tester.getCenter(find.text('Gesundheit')),
     );
     await tester.pump(Durations.medium2);
-    expect(skalierung(tester, 'gesundheit'), 0.97);
+    expect(skalierung(tester, 'health'), 0.97);
 
     await finger.cancel();
     await tester.pumpAndSettle();
-    expect(skalierung(tester, 'gesundheit'), 1);
+    expect(skalierung(tester, 'health'), 1);
   });
 
   testWidgets('inaktive Kachel: kein Druck-Effekt', (tester) async {

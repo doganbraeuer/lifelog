@@ -14,10 +14,10 @@ import 'package:lifelog/model/eintrag_aenderung.dart';
 import '../hilfen.dart';
 import '../module/test_katalog.dart';
 
-const g = 'gesundheit';
+const g = 'health';
 
 void main() {
-  group('modul', () {
+  group('module', () {
     test('Liste nur mit Einträgen des Moduls', () async {
       // Im Test-Katalog hat Sport den Typ „training“, Import ist möglich.
       final mock = schnellerMock(katalog: testKatalog());
@@ -37,22 +37,22 @@ void main() {
     test('ohne oder mit leerem modul gilt gesundheit', () async {
       final mock = schnellerMock();
       expect(await mock.eintraegeMitParametern({}), hasLength(3));
-      expect(await mock.eintraegeMitParametern({'modul': ''}), hasLength(3));
+      expect(await mock.eintraegeMitParametern({'module': ''}), hasLength(3));
     });
 
-    test('unbekanntes Modul in der Liste: 400 UNGUELTIGER_PARAMETER', () async {
+    test('unbekanntes Modul in der Liste: 400 INVALID_PARAMETER', () async {
       try {
         await schnellerMock().eintraege(modul: 'garten');
         fail('Fehler erwartet');
       } on ApiFehler catch (f) {
         expect(f.httpStatus, 400);
         expect(f.code, FehlerCode.ungueltigerParameter);
-        expect(f.details, {'parameter': 'modul', 'wert': 'garten'});
+        expect(f.details, {'parameter': 'module', 'value': 'garten'});
       }
     });
 
     test('unbekanntes Modul bei Upload, Text und Frage: 400 '
-        'UNGUELTIGE_ANFRAGE', () async {
+        'INVALID_REQUEST', () async {
       final mock = schnellerMock();
       for (final aufruf in [
         () => mock.hochladen(testPdf('a.pdf').bytes, 'a.pdf', modul: 'garten'),
@@ -64,7 +64,7 @@ void main() {
           fail('Fehler erwartet');
         } on ApiFehler catch (f) {
           expect(f.code, FehlerCode.ungueltigeAnfrage);
-          expect(f.details, {'feld': 'modul', 'wert': 'garten'});
+          expect(f.details, {'field': 'module', 'value': 'garten'});
         }
       }
     });
@@ -82,7 +82,7 @@ void main() {
     test('Modul ohne Typen: kein Import möglich', () async {
       // Im Standard-Katalog hat Ernährung noch keine Typen.
       await expectLater(
-        schnellerMock().textImportieren('Müsli', modul: 'ernaehrung'),
+        schnellerMock().textImportieren('Müsli', modul: 'nutrition'),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });
@@ -110,7 +110,7 @@ void main() {
       final bytes = utf8.encode(text);
 
       expect(eintrag.modul, g);
-      expect(eintrag.typ, 'sonstiges');
+      expect(eintrag.typ, 'other');
       expect(eintrag.volltext, text); // unverändert
       expect(eintrag.quelle, 'Hausarztpraxis Beispiel');
       // 31.02. gibt es nicht; das erste gültige Datum zählt.
@@ -137,7 +137,7 @@ void main() {
       expect(eintrag.dokumentdatum, isNull);
     });
 
-    test('leer oder nur Leerzeichen: 400 DATEI_FEHLT', () async {
+    test('leer oder nur Leerzeichen: 400 FILE_MISSING', () async {
       for (final leer in ['', '   ', '\n\t ']) {
         await expectLater(
           schnellerMock().textImportieren(leer, modul: g),
@@ -159,7 +159,7 @@ void main() {
     });
 
     test(
-      'derselbe Text zweimal: 409 DUPLIKAT; ein Leerzeichen mehr nicht',
+      'derselbe Text zweimal: 409 DUPLICATE; ein Leerzeichen mehr nicht',
       () async {
         final mock = schnellerMock();
         final erster = await mock.textImportieren(text, modul: g);
@@ -168,7 +168,7 @@ void main() {
           fail('Fehler erwartet');
         } on ApiFehler catch (f) {
           expect(f.code, FehlerCode.duplikat);
-          expect(f.details['eintragId'], erster.id);
+          expect(f.details['entryId'], erster.id);
         }
         final zweiter = await mock.textImportieren('$text ', modul: g);
         expect(zweiter.id, isNot(erster.id));
@@ -257,9 +257,9 @@ void main() {
 
     test('Leerraum wird entfernt', () async {
       final eintrag = await mock.korrigiereMitJson(laborId, {
-        'quelle': '  Labor X  ',
-        'infos': [
-          {'id': 'i1', 'wert': ' 15,0 ', 'einheit': ' g/l '},
+        'issuer': '  Labor X  ',
+        'facts': [
+          {'id': 'f1', 'value': ' 15,0 ', 'unit': ' g/l '},
         ],
       });
       expect(eintrag.quelle, 'Labor X');
@@ -269,29 +269,29 @@ void main() {
 
     test('leere quelle und einheit gelten als null', () async {
       final eintrag = await mock.korrigiereMitJson(laborId, {
-        'quelle': '   ',
-        'infos': [
-          {'id': 'i1', 'einheit': ' '},
+        'issuer': '   ',
+        'facts': [
+          {'id': 'f1', 'unit': ' '},
         ],
       });
       expect(eintrag.quelle, isNull);
-      expect(eintrag.korrektur('quelle')?.korrigiert, isNull);
+      expect(eintrag.korrektur('issuer')?.korrigiert, isNull);
       expect(eintrag.infos.first.einheit, isNull);
-      expect(eintrag.korrektur('infos.i1.einheit')?.erkannt, 'g/dl');
+      expect(eintrag.korrektur('facts.f1.unit')?.erkannt, 'g/dl');
     });
 
     test('leerer wert ist ein Fehler, nichts geändert', () async {
       try {
         await mock.korrigiereMitJson(laborId, {
-          'quelle': 'Neu',
-          'infos': [
-            {'id': 'i1', 'wert': '  '},
+          'issuer': 'Neu',
+          'facts': [
+            {'id': 'f1', 'value': '  '},
           ],
         });
         fail('Fehler erwartet');
       } on ApiFehler catch (f) {
         expect(f.code, FehlerCode.ungueltigeAnfrage);
-        expect(f.details['feld'], 'infos.i1.wert');
+        expect(f.details['field'], 'facts.f1.value');
       }
       expect(
         (await mock.eintrag(laborId)).quelle,
@@ -302,9 +302,9 @@ void main() {
     test('nach dem Abschneiden unverändert: keine Korrektur', () async {
       final eintrag = await mock.korrigieren(
         laborId,
-        const EintragAenderung(infos: [InfoAenderung('i1', wert: ' 14,2 ')]),
+        const EintragAenderung(infos: [InfoAenderung('f1', wert: ' 14,2 ')]),
       );
-      expect(eintrag.korrektur('infos.i1.wert'), isNull);
+      expect(eintrag.korrektur('facts.f1.value'), isNull);
     });
   });
 }

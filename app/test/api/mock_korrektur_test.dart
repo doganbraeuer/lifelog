@@ -19,12 +19,12 @@ void main() {
         // Ausgangslage: i2 wurde schon von 6,3 auf 6,8 korrigiert.
         final eintrag = await mock.korrigieren(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('i2', wert: '7,0')]),
+          const EintragAenderung(infos: [InfoAenderung('f2', wert: '7,0')]),
         );
 
         expect(eintrag.infos[1].wert, '7,0');
         final korrekturen = eintrag.korrekturen.where(
-          (k) => k.feld == 'infos.i2.wert',
+          (k) => k.feld == 'facts.f2.value',
         );
         expect(korrekturen, hasLength(1));
         expect(korrekturen.single.erkannt, '6,3');
@@ -38,25 +38,25 @@ void main() {
       () async {
         final eintrag = await mock.korrigieren(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('i2', wert: '6,3')]),
+          const EintragAenderung(infos: [InfoAenderung('f2', wert: '6,3')]),
         );
 
         expect(eintrag.infos[1].wert, '6,3');
-        expect(eintrag.korrektur('infos.i2.wert'), isNull);
-        expect(eintrag.infoKorrigiert('i2'), isFalse);
+        expect(eintrag.korrektur('facts.f2.value'), isNull);
+        expect(eintrag.infoKorrigiert('f2'), isFalse);
       },
     );
 
     test('unveränderter Wert erzeugt keine Korrektur', () async {
       final eintrag = await mock.korrigieren(
         laborId,
-        const EintragAenderung(infos: [InfoAenderung('i1', wert: '14,2')]),
+        const EintragAenderung(infos: [InfoAenderung('f1', wert: '14,2')]),
       );
 
-      expect(eintrag.korrektur('infos.i1.wert'), isNull);
+      expect(eintrag.korrektur('facts.f1.value'), isNull);
       // Die bestehende Korrektur bleibt unverändert.
       expect(
-        eintrag.korrektur('infos.i2.wert')?.zeitpunkt,
+        eintrag.korrektur('facts.f2.value')?.zeitpunkt,
         DateTime.utc(2026, 11, 3, 19, 5, 31),
       );
     });
@@ -67,7 +67,7 @@ void main() {
         EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 15))),
       );
       expect(eintrag.dokumentdatum, Datum(2026, 10, 15));
-      final korrektur = eintrag.korrektur('dokumentdatum')!;
+      final korrektur = eintrag.korrektur('documentDate')!;
       expect(korrektur.erkannt, '2026-10-14');
       expect(korrektur.korrigiert, '2026-10-15');
     });
@@ -78,11 +78,11 @@ void main() {
         const EintragAenderung(dokumentdatum: Wert(null)),
       );
       expect(eintrag.dokumentdatum, isNull);
-      expect(eintrag.korrektur('dokumentdatum')?.erkannt, '2026-10-14');
-      expect(eintrag.korrektur('dokumentdatum')?.korrigiert, isNull);
+      expect(eintrag.korrektur('documentDate')?.erkannt, '2026-10-14');
+      expect(eintrag.korrektur('documentDate')?.korrigiert, isNull);
 
       // Ein Eintrag ohne Datum steht jetzt am Ende der Zeitleiste.
-      final liste = await mock.eintraege(modul: 'gesundheit');
+      final liste = await mock.eintraege(modul: 'health');
       expect(liste.last.id, laborId);
 
       eintrag = await mock.korrigieren(
@@ -90,19 +90,19 @@ void main() {
         EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 14))),
       );
       expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
-      expect(eintrag.korrektur('dokumentdatum'), isNull);
+      expect(eintrag.korrektur('documentDate'), isNull);
     });
 
     test('Einheit entfernen', () async {
       final eintrag = await mock.korrigieren(
         laborId,
         const EintragAenderung(
-          infos: [InfoAenderung('i1', einheit: Wert(null))],
+          infos: [InfoAenderung('f1', einheit: Wert(null))],
         ),
       );
       expect(eintrag.infos[0].einheit, isNull);
       expect(eintrag.infos[0].wert, '14,2');
-      final korrektur = eintrag.korrektur('infos.i1.einheit')!;
+      final korrektur = eintrag.korrektur('facts.f1.unit')!;
       expect(korrektur.erkannt, 'g/dl');
       expect(korrektur.korrigiert, isNull);
     });
@@ -111,23 +111,23 @@ void main() {
       final eintrag = await mock.korrigieren(
         laborId,
         const EintragAenderung(
-          infos: [InfoAenderung('i4', einheit: Wert('Typ'))],
+          infos: [InfoAenderung('f4', einheit: Wert('Typ'))],
         ),
       );
       expect(eintrag.infos[3].einheit, 'Typ');
-      expect(eintrag.korrektur('infos.i4.einheit')?.erkannt, isNull);
+      expect(eintrag.korrektur('facts.f4.unit')?.erkannt, isNull);
     });
 
     test('typ und quelle', () async {
       final eintrag = await mock.korrigieren(
         laborId,
-        const EintragAenderung(typ: 'arztbrief', quelle: Wert('Labor X')),
+        const EintragAenderung(typ: 'doctor_letter', quelle: Wert('Labor X')),
       );
-      expect(eintrag.typ, 'arztbrief');
+      expect(eintrag.typ, 'doctor_letter');
       expect(eintrag.quelle, 'Labor X');
-      expect(eintrag.korrektur('typ')?.erkannt, 'laborbefund');
+      expect(eintrag.korrektur('type')?.erkannt, 'lab_report');
       expect(
-        eintrag.korrektur('quelle')?.erkannt,
+        eintrag.korrektur('issuer')?.erkannt,
         'Labor Muster GmbH, Salzburg',
       );
     });
@@ -138,7 +138,7 @@ void main() {
         const EintragAenderung(quelle: Wert('Impfstelle')),
       );
       expect(eintrag.quelle, 'Impfstelle');
-      expect(eintrag.korrektur('quelle')?.erkannt, isNull);
+      expect(eintrag.korrektur('issuer')?.erkannt, isNull);
     });
   });
 
@@ -152,24 +152,24 @@ void main() {
 
     test('Datum im falschen Format oder nicht im Kalender', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'dokumentdatum': '15.10.2026'}),
+        mock.korrigiereMitJson(laborId, {'documentDate': '15.10.2026'}),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'dokumentdatum': '2026-02-30'}),
+        mock.korrigiereMitJson(laborId, {'documentDate': '2026-02-30'}),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });
 
     test('unbekannter typ', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'typ': 'kochrezept'}),
+        mock.korrigiereMitJson(laborId, {'type': 'kochrezept'}),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });
 
     test('nicht korrigierbare Felder', () async {
-      for (final feld in ['volltext', 'modul', 'importdatum', 'datei']) {
+      for (final feld in ['fullText', 'module', 'importedAt', 'file']) {
         await expectLater(
           mock.korrigiereMitJson(laborId, {feld: 'x'}),
           wirftApiFehler(FehlerCode.feldNichtKorrigierbar, status: 400),
@@ -188,34 +188,34 @@ void main() {
     test('Info ohne id', () async {
       await expectLater(
         mock.korrigiereMitJson(laborId, {
-          'infos': [
-            {'wert': '1'},
+          'facts': [
+            {'value': '1'},
           ],
         }),
         wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
       );
     });
 
-    test('unbekannte Info: 404 INFO_NICHT_GEFUNDEN mit infoId', () async {
+    test('unbekannte Info: 404 FACT_NOT_FOUND mit infoId', () async {
       try {
         await mock.korrigieren(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('i9', wert: '1')]),
+          const EintragAenderung(infos: [InfoAenderung('f9', wert: '1')]),
         );
         fail('Fehler erwartet');
       } on ApiFehler catch (f) {
         expect(f.httpStatus, 404);
         expect(f.code, FehlerCode.infoNichtGefunden);
-        expect(f.details['infoId'], 'i9');
+        expect(f.details['factId'], 'f9');
       }
     });
 
     test('ist ein Teil ungültig, ändert sich gar nichts', () async {
       await expectLater(
         mock.korrigiereMitJson(laborId, {
-          'dokumentdatum': '2026-10-20',
-          'infos': [
-            {'id': 'i9', 'wert': '1'},
+          'documentDate': '2026-10-20',
+          'facts': [
+            {'id': 'f9', 'value': '1'},
           ],
         }),
         wirftApiFehler(FehlerCode.infoNichtGefunden),
@@ -226,7 +226,7 @@ void main() {
     });
 
     test('ungültige und unbekannte Eintrag-ID', () async {
-      const aenderung = EintragAenderung(typ: 'rezept');
+      const aenderung = EintragAenderung(typ: 'prescription');
       await expectLater(
         mock.korrigieren('123', aenderung),
         wirftApiFehler(FehlerCode.ungueltigeId, status: 400),

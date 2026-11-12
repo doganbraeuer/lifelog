@@ -38,8 +38,8 @@ class ZeitleisteScreen extends StatefulWidget {
 }
 
 class ZeitleisteScreenState extends State<ZeitleisteScreen> {
-  var _sortierung = Sortierung.dokumentdatum;
-  var _richtung = Richtung.absteigend;
+  var _sortierung = Sortierung.documentDate;
+  var _richtung = Richtung.desc;
 
   List<EintragKurz>? _eintraege;
   ApiFehler? _fehler;
@@ -91,9 +91,9 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
   }
 
   void _richtungUmschalten() {
-    _richtung = _richtung == Richtung.absteigend
-        ? Richtung.aufsteigend
-        : Richtung.absteigend;
+    _richtung = _richtung == Richtung.desc
+        ? Richtung.asc
+        : Richtung.desc;
     neuLaden();
   }
 
@@ -110,7 +110,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final absteigend = _richtung == Richtung.absteigend;
+    final absteigend = _richtung == Richtung.desc;
     return Scaffold(
       appBar: AppBar(
         leading: const BereicheKnopf(),
@@ -123,13 +123,13 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
             onSelected: _sortierungWaehlen,
             itemBuilder: (_) => [
               CheckedPopupMenuItem(
-                value: Sortierung.dokumentdatum,
-                checked: _sortierung == Sortierung.dokumentdatum,
+                value: Sortierung.documentDate,
+                checked: _sortierung == Sortierung.documentDate,
                 child: const Text('Nach Dokumentdatum'),
               ),
               CheckedPopupMenuItem(
-                value: Sortierung.importdatum,
-                checked: _sortierung == Sortierung.importdatum,
+                value: Sortierung.importedAt,
+                checked: _sortierung == Sortierung.importedAt,
                 child: const Text('Nach Importdatum'),
               ),
             ],
@@ -149,7 +149,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${_sortierung == Sortierung.dokumentdatum ? 'Dokumentdatum' : 'Importdatum'}'
+                  '${_sortierung == Sortierung.documentDate ? 'Dokumentdatum' : 'Importdatum'}'
                   ' · ${absteigend ? 'neueste zuerst' : 'älteste zuerst'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -230,7 +230,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
             key: ValueKey('eintrag-${eintrag.id}'),
             geschlossen: (context, oeffnen) => _EintragZeile(
               eintrag: eintrag,
-              zeigeImport: _sortierung == Sortierung.importdatum,
+              zeigeImport: _sortierung == Sortierung.importedAt,
               linieUnten: !letzter,
               onTap: oeffnen,
             ),

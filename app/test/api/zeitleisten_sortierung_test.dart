@@ -7,8 +7,8 @@ import 'package:lifelog/model/eintrag.dart';
 EintragKurz eintrag(String id, Datum? datum, int stunde, int minute) =>
     EintragKurz(
       id: id,
-      modul: 'gesundheit',
-      typ: 'sonstiges',
+      modul: 'health',
+      typ: 'other',
       dokumentdatum: datum,
       importdatum: DateTime.utc(2026, 11, 3, stunde, minute),
       quelle: null,
@@ -31,7 +31,7 @@ void main() {
   test('dokumentdatum absteigend (Standard)', () {
     // Gleiches Datum: importdatum absteigend, dann id absteigend.
     // Ohne Datum am Ende, untereinander importdatum absteigend.
-    expect(ids(Sortierung.dokumentdatum, Richtung.absteigend), [
+    expect(ids(Sortierung.documentDate, Richtung.desc), [
       'f',
       'e',
       'a',
@@ -42,7 +42,7 @@ void main() {
   });
 
   test('dokumentdatum aufsteigend: ohne Datum trotzdem am Ende', () {
-    expect(ids(Sortierung.dokumentdatum, Richtung.aufsteigend), [
+    expect(ids(Sortierung.documentDate, Richtung.asc), [
       'b',
       'a',
       'e',
@@ -53,7 +53,7 @@ void main() {
   });
 
   test('importdatum absteigend', () {
-    expect(ids(Sortierung.importdatum, Richtung.absteigend), [
+    expect(ids(Sortierung.importedAt, Richtung.desc), [
       'f',
       'e',
       'c',
@@ -64,7 +64,7 @@ void main() {
   });
 
   test('importdatum aufsteigend', () {
-    expect(ids(Sortierung.importdatum, Richtung.aufsteigend), [
+    expect(ids(Sortierung.importedAt, Richtung.asc), [
       'd',
       'a',
       'b',
@@ -77,8 +77,8 @@ void main() {
   test('Reihenfolge hängt nicht von der Eingabe-Reihenfolge ab', () {
     final umgedreht = sortiereZeitleiste(
       alle.reversed,
-      Sortierung.dokumentdatum,
-      Richtung.absteigend,
+      Sortierung.documentDate,
+      Richtung.desc,
     );
     expect(umgedreht.map((x) => x.id), ['f', 'e', 'a', 'b', 'c', 'd']);
   });
