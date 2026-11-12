@@ -173,6 +173,17 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 502 | `AUSLESEN_FEHLGESCHLAGEN` | `EXTRACTION_FAILED` |
 | 503 | `MODELL_NICHT_ERREICHBAR` | `MODEL_UNAVAILABLE` |
 
+### App-only error codes
+
+The backend never sends these; the app sets them itself in an
+`ApiException` and shows its German `message`.
+
+| German (until 2026-11-09) | English | When | Where in app/lib |
+|---|---|---|---|
+| `NETZWERK_FEHLER` | `NETWORK_ERROR` | No connection or timeout | `api/api_exception.dart` (`ErrorCode.networkError`) |
+| `UNBEKANNTE_ANTWORT` | `UNEXPECTED_RESPONSE` | The response does not match the contract | `api/api_exception.dart` (`ErrorCode.unexpectedResponse`) |
+| – | `PICK_FAILED` | Choosing a photo or file failed (camera, photo library or file picker), e.g. access denied | `screens/upload_screen.dart` |
+
 ### Status
 
 | German | English |
