@@ -5,13 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lifelog/api/api_client.dart';
-import 'package:lifelog/api/api_fehler.dart';
+import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/http_api_client.dart';
-import 'package:lifelog/model/datum.dart';
-import 'package:lifelog/model/eintrag_aenderung.dart';
+import 'package:lifelog/model/plain_date.dart';
+import 'package:lifelog/model/entry_patch.dart';
 
-import '../hilfen.dart';
-import '../model/eintrag_test.dart' show beispielJson;
+import '../helpers.dart';
+import '../model/entry_test.dart' show beispielJson;
 
 const basis = 'http://test.local:8080';
 

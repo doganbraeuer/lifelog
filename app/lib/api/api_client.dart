@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import '../model/antwort.dart';
-import '../model/eintrag.dart';
-import '../model/eintrag_aenderung.dart';
+import '../model/answer.dart';
+import '../model/entry.dart';
+import '../model/entry_patch.dart';
 
 /// Sortierfeld der Zeitleiste. Die Namen entsprechen den Werten des
 /// Query-Parameters `sortierung`.

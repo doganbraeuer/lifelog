@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock_api_client.dart';
-import 'package:lifelog/screens/eintrag_screen.dart';
-import 'package:lifelog/screens/originaldatei_screen.dart';
-import 'package:lifelog/screens/zeitleiste_screen.dart';
+import 'package:lifelog/screens/entry_screen.dart';
+import 'package:lifelog/screens/original_file_screen.dart';
+import 'package:lifelog/screens/timeline_screen.dart';
 
-import '../hilfen.dart';
+import '../helpers.dart';
 
 const text =
     'Hausarztpraxis Beispiel\n'

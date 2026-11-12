@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
-import 'api/api_client_auswahl.dart';
-import 'module/modul_katalog.dart';
-import 'plattform/datei_auswahl.dart';
-import 'screens/bereiche_screen.dart';
+import 'api/api_client_factory.dart';
+import 'module/module_catalog.dart';
+import 'platform/file_chooser.dart';
+import 'screens/modules_screen.dart';
 
 void main() {
   runApp(

@@ -1,7 +1,7 @@
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 
-import 'bewegung.dart';
+import 'motion.dart';
 
 /// Container Transform (Material Motion): Die angetippte Fläche wächst zur
 /// neuen Seite und schrumpft beim Schließen zurück.

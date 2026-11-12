@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'hilfen.dart';
+import 'helpers.dart';
 
 void main() {
   testWidgets('App startet mit Zeitleiste und Navigationsleiste', (

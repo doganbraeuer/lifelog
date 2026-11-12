@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'bewegung.dart';
+import 'motion.dart';
 
 /// Ruhige Animation während das Backend ein Dokument auswertet: Über ein
 /// Dokument-Symbol gleitet eine Linie auf und ab.

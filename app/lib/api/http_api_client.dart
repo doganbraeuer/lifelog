@@ -5,13 +5,13 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
-import '../model/antwort.dart';
-import '../model/eintrag.dart';
-import '../model/eintrag_aenderung.dart';
-import '../model/json_hilfen.dart';
+import '../model/answer.dart';
+import '../model/entry.dart';
+import '../model/entry_patch.dart';
+import '../model/json_helpers.dart';
 import 'api_client.dart';
-import 'api_fehler.dart';
-import 'mime_typ.dart';
+import 'api_exception.dart';
+import 'mime_type.dart';
 
 /// Spricht über HTTP mit dem Go-Backend (docs/API.md).
 class HttpApiClient implements ApiClient {

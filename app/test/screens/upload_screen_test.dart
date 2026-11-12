@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/mock_api_client.dart';
-import 'package:lifelog/plattform/datei_auswahl.dart';
+import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/screens/upload_screen.dart';
 
-import '../hilfen.dart';
+import '../helpers.dart';
 
 /// Startet die App und wechselt zum Bereich „Hochladen“.
 Future<void> zumUpload(

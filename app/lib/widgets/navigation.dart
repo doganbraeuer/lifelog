@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../module/modul_definition.dart';
+import '../module/module_definition.dart';
 
 /// Farbschema eines Moduls, erzeugt aus seiner Grundfarbe.
 ThemeData modulTheme(ModulDefinition modul) =>

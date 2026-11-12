@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
-import '../api/api_fehler.dart';
-import '../api/mime_typ.dart';
-import '../model/eintrag.dart';
-import '../plattform/datei_auswahl.dart';
-import '../widgets/bewegung.dart';
+import '../api/api_exception.dart';
+import '../api/mime_type.dart';
+import '../model/entry.dart';
+import '../platform/file_chooser.dart';
+import '../widgets/motion.dart';
 import '../widgets/format.dart';
-import '../widgets/mock_hinweis.dart';
+import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import '../widgets/scan_animation.dart';
 

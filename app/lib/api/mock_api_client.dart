@@ -4,17 +4,17 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
-import '../model/antwort.dart';
-import '../model/datum.dart';
-import '../model/eintrag.dart';
-import '../model/eintrag_aenderung.dart';
-import '../model/json_hilfen.dart';
-import '../module/modul_katalog.dart';
+import '../model/answer.dart';
+import '../model/plain_date.dart';
+import '../model/entry.dart';
+import '../model/entry_patch.dart';
+import '../model/json_helpers.dart';
+import '../module/module_catalog.dart';
 import 'api_client.dart';
-import 'api_fehler.dart';
-import 'mime_typ.dart';
-import 'mock/mock_daten.dart';
-import 'zeitleisten_sortierung.dart';
+import 'api_exception.dart';
+import 'mime_type.dart';
+import 'mock/mock_data.dart';
+import 'timeline_sort.dart';
 
 /// Antwort ohne Treffer, wörtlich aus docs/API.md.
 const keinTrefferAntwort = 'Dazu finde ich nichts in deinen Dokumenten.';

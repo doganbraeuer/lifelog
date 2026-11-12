@@ -4,10 +4,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
-import 'package:lifelog/api/api_fehler.dart';
-import 'package:lifelog/api/mime_typ.dart';
+import 'package:lifelog/api/api_exception.dart';
+import 'package:lifelog/api/mime_type.dart';
 
-import '../hilfen.dart';
+import '../helpers.dart';
 
 Uint8List pdf(String inhalt) =>
     Uint8List.fromList(utf8.encode('%PDF-1.4 $inhalt'));
