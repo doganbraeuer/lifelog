@@ -432,6 +432,7 @@ text import (docs/API.md, 3.9).
 | response fields | `text`, `durationSeconds`, `language` (always `de`), `engine` |
 | status field | `speech`: `ok`, `unavailable`, `off` |
 | env | `SPEECH_ENGINE` (`whisper` default, `none`), `WHISPER_URL` (default `http://127.0.0.1:8178`) |
+| start script | `backend/scripts/whisper-server.sh` / `.ps1` (`download` fetches and verifies the models); its env: `WHISPER_MODEL_DIR`, `WHISPER_PORT`, `WHISPER_SERVER` (Windows) |
 | local server | `whisper-server` (whisper.cpp), model `ggml-large-v3-turbo.bin`, VAD model `ggml-silero-*.bin` |
 | measurement | `cmd/speechcheck`, results in `docs/speech/`, reference texts in `demo/speech/` |
 
