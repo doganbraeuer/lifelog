@@ -2,12 +2,18 @@ package core
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
+// segs builds segments as Whisper returns them: each text starts with a
+// space (the start of a word).
 func segs(texts ...string) []Segment {
 	out := make([]Segment, len(texts))
 	for i, t := range texts {
+		if !strings.HasPrefix(t, " ") && !strings.HasPrefix(t, "\n") {
+			t = " " + t
+		}
 		out[i] = Segment{Start: float64(i), End: float64(i + 1), Text: t}
 	}
 	return out
@@ -38,6 +44,14 @@ func TestCleanTranscript(t *testing.T) {
 			"Untertitel des Befunds lautet Kniegelenk rechts mit leichtem Erguss und Schwellung seit zwei Wochen nach dem Sturz."},
 		{"loop folded", segs("Dreimal täglich.", "Dreimal täglich.", "dreimal täglich", "Dreimal täglich."), "Dreimal täglich."},
 		{"two repeats stay", segs("Bitte noch einmal.", "Bitte noch einmal."), "Bitte noch einmal. Bitte noch einmal."},
+		{"word cut between two segments (real whisper-server output)",
+			[]Segment{
+				{Start: 0, End: 3.56, Text: " Arztbrief vom 12. November 2026."},
+				{Start: 4.14, End: 8.33, Text: " Kniegelenk rechts, leichter Erguss, Ibuprofen 400 mg dre"},
+				{Start: 8.33, End: 9.58, Text: "imal täglich."},
+			},
+			"Arztbrief vom 12. November 2026. Kniegelenk rechts, leichter Erguss, Ibuprofen 400 mg dreimal täglich."},
+		{"first segment without space stays", []Segment{{Text: "Puls 64."}}, "Puls 64."},
 		{"loop between other text",
 			segs("Blutdruck 122 zu 79.", "Danke.", "Danke.", "Danke.", "Puls 64."),
 			"Blutdruck 122 zu 79. Danke. Puls 64."},

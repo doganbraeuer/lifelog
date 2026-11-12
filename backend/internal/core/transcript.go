@@ -1,6 +1,9 @@
 package core
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // Segment is one piece of a recognized recording, with its time in seconds.
 type Segment struct {
@@ -46,16 +49,30 @@ const minRepeats = 3
 
 // CleanTranscript joins the segments into one text, without known
 // inventions and without loops (see above). Segments are separated by a
-// space. The result is empty if nothing is left: the caller answers
-// NO_SPEECH then.
+// space, except when a segment does not start with whitespace: Whisper
+// marks the start of a word with a space, so such a segment continues the
+// word of the one before (the voice activity detection can cut inside a
+// word: "… 400 mg dre" + "imal täglich."). The result is empty if nothing
+// is left: the caller answers NO_SPEECH then.
 func CleanTranscript(segments []Segment) string {
-	var texts []string
+	var pieces []string
 	for _, s := range segments {
 		t := strings.Join(strings.Fields(s.Text), " ")
-		if t == "" || isHallucination(t) {
+		if t == "" {
 			continue
 		}
-		texts = append(texts, t)
+		if r := []rune(s.Text); len(pieces) > 0 && !unicode.IsSpace(r[0]) {
+			pieces[len(pieces)-1] += t
+			continue
+		}
+		pieces = append(pieces, t)
+	}
+
+	var texts []string
+	for _, t := range pieces {
+		if !isHallucination(t) {
+			texts = append(texts, t)
+		}
 	}
 
 	var out []string
