@@ -30,6 +30,14 @@ int readInt(Map<String, dynamic> json, String field) {
   throw FormatException('Field "$field" is missing or not an integer');
 }
 
+/// Reads a number. JSON does not tell `21` from `21.0`, so both an int and a
+/// double are accepted.
+double readDouble(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value is num) return value.toDouble();
+  throw FormatException('Field "$field" is missing or not a number');
+}
+
 bool readBool(Map<String, dynamic> json, String field) {
   final value = json[field];
   if (value is bool) return value;

@@ -69,6 +69,13 @@ ChosenFile testPdf(String name, [String content = '']) => ChosenFile(
   name: name,
 );
 
+/// A small "M4A recording": an MP4 box `ftyp` with the brand `M4A `, as the
+/// package record writes it, then arbitrary bytes.
+Uint8List testM4a([String content = '']) => Uint8List.fromList([
+  0, 0, 0, 0x18, ...'ftypM4A '.codeUnits, 0, 0, 0, 0, ...'isom'.codeUnits, //
+  ...'mp42'.codeUnits, ...content.codeUnits,
+]);
+
 /// Expects a future to fail with an [ApiException] with this code.
 Matcher throwsApiException(String code, {int? status}) => throwsA(
   isA<ApiException>()
@@ -85,6 +92,7 @@ MockApiClient fastMock({
   withSampleData: withSampleData,
   delay: Duration.zero,
   uploadDelay: Duration.zero,
+  transcriptionDelay: Duration.zero,
   clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
   catalog: catalog,
 );

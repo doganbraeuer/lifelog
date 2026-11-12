@@ -9,6 +9,8 @@ import '../model/plain_date.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
+import '../model/server_status.dart';
+import '../model/transcript.dart';
 import '../module/module_catalog.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
@@ -31,11 +33,18 @@ const notFoundAnswer = 'Dazu finde ich nichts in deinen Dokumenten.';
 /// - An upload with `unreadable`, `extractionerror` or `modelerror` in
 ///   the file name returns 422, 502 or 503.
 /// - A question with the word `modelerror` returns 503.
+/// - A transcription with `nospeech`, `toolong`, `unreadable` or
+///   `modelerror` in the file name returns 422 NO_SPEECH, 413
+///   AUDIO_TOO_LONG, 422 UNREADABLE or 503. The app names its recordings
+///   itself, so these only work in tests.
+/// - With [speechStatus] other than `ok`, `/status` reports it and a
+///   transcription returns 503.
 class MockApiClient implements ApiClient {
   MockApiClient({
     bool withSampleData = true,
     this.delay = const Duration(milliseconds: 300),
     this.uploadDelay = const Duration(seconds: 2),
+    this.transcriptionDelay = const Duration(seconds: 3),
     DateTime Function()? clock,
     ModuleCatalog? catalog,
   }) : _clock = clock ?? (() => DateTime.now().toUtc()),
@@ -55,8 +64,15 @@ class MockApiClient implements ApiClient {
   /// Delay for uploads (the real backend needs up to 60 s).
   final Duration uploadDelay;
 
+  /// Delay for transcriptions (the real backend needs up to 120 s).
+  final Duration transcriptionDelay;
+
   /// If `true`, every call fails with `500 INTERNAL_ERROR`.
   bool simulateError = false;
+
+  /// Field `speech` in `/status`. Anything but `ok` makes a transcription
+  /// fail with 503, as in the backend.
+  SpeechStatus speechStatus = SpeechStatus.ok;
 
   final DateTime Function() _clock;
 
@@ -894,6 +910,100 @@ class MockApiClient implements ApiClient {
     'zeig',
     'zeige',
   };
+
+  // ---------------------------------------------------------------------
+  // POST /transcriptions and GET /status
+  // ---------------------------------------------------------------------
+
+  /// Fixed sample text instead of a speech recognition. German on purpose:
+  /// it stands for what a user says.
+  static const sampleTranscript =
+      'Notiz vom 12.11.2026 nach dem Arzttermin. Kniegelenk rechts, '
+      'leichter Erguss. Ibuprofen 400 Milligramm dreimal täglich für eine '
+      'Woche.';
+
+  @override
+  Future<Transcript> transcribe(Uint8List bytes, String fileName) async {
+    await _wait(transcriptionDelay);
+
+    // 1. Size and format, as in docs/API.md 3.9 (messages from the table).
+    if (bytes.isEmpty) {
+      throw const ApiException(
+        httpStatus: 400,
+        code: ErrorCode.fileMissing,
+        message: 'Bitte eine Aufnahme mitschicken.',
+      );
+    }
+    if (bytes.length > maxFileSize) {
+      throw const ApiException(
+        httpStatus: 413,
+        code: ErrorCode.fileTooLarge,
+        message: 'Die Aufnahme ist größer als 10 MB.',
+      );
+    }
+    if (detectAudioType(bytes) == null) {
+      throw const ApiException(
+        httpStatus: 415,
+        code: ErrorCode.unsupportedFileType,
+        message:
+            'Dieses Audioformat wird nicht unterstützt. Erlaubt sind M4A, '
+            '3GP, AMR, WAV, OGG, WebM, MP3 und FLAC.',
+      );
+    }
+
+    // 2. "Speech recognition": switched off or failing, or errors
+    // triggered via the file name.
+    final lower = fileName.toLowerCase();
+    if (speechStatus != SpeechStatus.ok || lower.contains('modelerror')) {
+      throw _speechUnavailable;
+    }
+    if (lower.contains('toolong')) {
+      throw const ApiException(
+        httpStatus: 413,
+        code: ErrorCode.audioTooLong,
+        message:
+            'Die Aufnahme ist länger als 5 Minuten. Bitte kürzer sprechen '
+            'oder aufteilen.',
+        details: {'maxSeconds': maxRecordingSeconds},
+      );
+    }
+    if (lower.contains('unreadable')) {
+      throw const ApiException(
+        httpStatus: 422,
+        code: ErrorCode.unreadable,
+        message: 'Die Aufnahme lässt sich nicht abspielen.',
+      );
+    }
+    if (lower.contains('nospeech')) {
+      throw const ApiException(
+        httpStatus: 422,
+        code: ErrorCode.noSpeech,
+        message: 'In der Aufnahme ist keine Sprache zu hören.',
+      );
+    }
+
+    // 3. Only the text comes back; nothing is stored (3.9).
+    return const Transcript(
+      text: sampleTranscript,
+      durationSeconds: 21.4,
+      language: 'de',
+      engine: 'Mock',
+    );
+  }
+
+  @override
+  Future<ServerStatus> getStatus() async {
+    await _wait(delay);
+    return ServerStatus(status: 'ok', database: 'ok', speech: speechStatus);
+  }
+
+  static const _speechUnavailable = ApiException(
+    httpStatus: 503,
+    code: ErrorCode.modelUnavailable,
+    message:
+        'Die Spracherkennung ist gerade nicht erreichbar. Bitte später noch '
+        'einmal versuchen.',
+  );
 
   // ---------------------------------------------------------------------
   // Shared
