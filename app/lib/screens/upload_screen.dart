@@ -192,7 +192,9 @@ class _UploadScreenState extends State<UploadScreen> {
   Future<void> _importText() async {
     final text = _text.text;
     if (text.trim().isEmpty) return;
-    FocusScope.of(context).unfocus(); // Close the keyboard
+    // Close the keyboard. Unfocus the field itself, not the scope: a scope
+    // would remember the field and give the focus back later.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _uploading = true;
       _error = null;

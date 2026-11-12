@@ -62,7 +62,9 @@ class _QuestionScreenState extends State<QuestionScreen> {
   Future<void> _ask([String? question]) async {
     final text = (question ?? _field.text).trim();
     if (text.isEmpty || _searching) return;
-    FocusScope.of(context).unfocus(); // Close the keyboard
+    // Close the keyboard. Unfocus the field itself, not the scope: a scope
+    // would remember the field and give the focus back later.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _asked = text;
       _answer = null;

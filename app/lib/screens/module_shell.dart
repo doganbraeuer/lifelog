@@ -61,6 +61,7 @@ class _ModuleShellState extends State<ModuleShell> {
   /// themselves (not on the automatic switch after an upload).
   Future<void> _showPage(int index, {bool haptics = true}) async {
     if (index == _index && _animatingTo == null) return;
+    _dropFocus();
     if (haptics && index != _index) HapticFeedback.selectionClick();
     setState(() => _index = index);
     if (motionDisabled(context)) {
@@ -82,14 +83,24 @@ class _ModuleShellState extends State<ModuleShell> {
   void _pageChanged(int index) {
     if (_animatingTo != null && index != _animatingTo) return;
     if (index != _index) {
+      _dropFocus();
       HapticFeedback.selectionClick();
       setState(() => _index = index);
     }
   }
 
+  /// Takes the focus away from a text field on the page being left.
+  ///
+  /// All pages stay alive, so their text fields keep their focus when the
+  /// page is hidden. When a route on top (e.g. an entry) is closed, Flutter
+  /// gives the focus back to that field, and its keyboard would then cover
+  /// the navigation bar of another page.
+  void _dropFocus() => FocusManager.instance.primaryFocus?.unfocus();
+
   /// Switches to the timeline and opens the entry there. That way „Zurück“
   /// (back) leads from the entry into the (reloaded) timeline.
   void _openEntry(String entryId) {
+    _dropFocus();
     _showPage(0, haptics: false);
     _timeline.currentState?.openEntry(entryId);
   }
@@ -102,6 +113,7 @@ class _ModuleShellState extends State<ModuleShell> {
   /// Opens an entry on top of the current page without switching to the
   /// timeline. That way „Zurück“ leads back e.g. to the answer to a question.
   Future<void> _openEntryOnTop(String entryId) async {
+    _dropFocus();
     await openPage<void>(
       context,
       EntryScreen(api: widget.api, entryId: entryId),
