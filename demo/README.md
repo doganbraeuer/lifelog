@@ -64,7 +64,7 @@ was added:
 
 | File | Document |
 |---|---|
-| `01_lab_report_2026-01-20_paper.jpg` | Lab report 01 printed on paper, on a table, photographed with an iPhone 14 Pro Max on 2026-11-11, upright JPEG. Location removed before it was added (no GPS in EXIF); device, time and image data unchanged. |
+| `01_lab_report_2026-01-20_paper.jpg` | Lab report 01 printed on paper, photographed upright with an iPhone 14 Pro Max on 2026-11-11, cropped to the sheet (2188 × 3104). Cropped losslessly with `jpegtran -crop … -copy none`: the pixels of the sheet are unchanged, all metadata removed. |
 | `01_lab_report_2026-01-20_phone.jpg` | **Screen, not paper:** lab report 01 on a screen, photographed with an iPhone 14 Pro Max on 2026-11-11, upright JPEG. EXIF, XMP and Apple segments removed; the image data is unchanged byte for byte. |
 | `01_lab_report_2026-01-20_phone.heic` | **Screen, not paper:** the same document on the screen, photographed again as HEIC (the iPhone's own format): stored lying on its side with "rotate by 90°", at an angle, with moiré. The GPS block and the maker note in EXIF were overwritten with zeros; the image data is unchanged. |
 

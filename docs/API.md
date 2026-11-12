@@ -1167,8 +1167,8 @@ same way with `start`/`end` in `fullText`.
   wrongly; Apple's own decoder gives the same text, so it is the photo.
   Decision: Tesseract is enough for now; PaddleOCR only if further real
   photos (of paper) do clearly worse. The first photo of paper
-  (2026-11-12): every value read, but `mg/dl` read as `mgj/dl` twice, the
-  same confusion as on the synthetic photos.
+  (2026-11-12): every value read, but `mg/dl` read as `mgj/dl`, the same
+  confusion as on the synthetic photos.
 - **Values with a misread unit:** a fact whose value is found but whose
   unit is misread (`mgj/dl`) is `unconfirmed`. Two proposals, neither
   implemented: a status "value confirmed, unit uncertain", or tolerating
