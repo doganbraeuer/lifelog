@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'json_helpers.dart';
 import 'plain_date.dart';
+import 'verification.dart';
 
 /// Short form of an entry for the timeline (docs/API.md, section 2).
 class EntrySummary {
@@ -37,7 +38,7 @@ class EntrySummary {
   final String? issuer;
 }
 
-/// Full entry with full text, facts, file and corrections.
+/// Full entry with full text, facts, file, corrections and verification.
 class Entry extends EntrySummary {
   const Entry({
     required super.id,
@@ -50,6 +51,7 @@ class Entry extends EntrySummary {
     required this.facts,
     required this.file,
     required this.corrections,
+    this.verification = const Verification.notRun(),
   });
 
   factory Entry.fromJson(Map<String, dynamic> json) {
@@ -65,6 +67,13 @@ class Entry extends EntrySummary {
       facts: readList(json, 'facts', Fact.fromJson),
       file: File.fromJson(asObject(json['file'], 'file')),
       corrections: readList(json, 'corrections', Correction.fromJson),
+      // Always present according to docs/API.md; an older backend without
+      // it counts as "never checked".
+      verification: json['verification'] == null
+          ? const Verification.notRun()
+          : Verification.fromJson(
+              asObject(json['verification'], 'verification'),
+            ),
     );
   }
 
@@ -72,6 +81,9 @@ class Entry extends EntrySummary {
   final List<Fact> facts;
   final File file;
   final List<Correction> corrections;
+
+  /// Check of date, issuer and facts against the original.
+  final Verification verification;
 
   /// The correction for a field path like `documentDate` or
   /// `facts.f2.value`, or `null` if the field was not corrected.
