@@ -40,7 +40,10 @@ void main() {
     expect(find.text('14.10.2026'), findsOneWidget);
     expect(find.text(labIssuer), findsOneWidget);
     expect(find.text('6,8 G/l'), findsOneWidget);
-    expect(find.text('Wert korrigiert, erkannt: 6,3'), findsOneWidget);
+    expect(
+      find.text('Wert korrigiert, erkannt: 6,3 · im Original gefunden'),
+      findsOneWidget,
+    );
     expect(find.text('befund_oktober.pdf'), findsOneWidget);
     expect(find.text('180 KB · PDF'), findsOneWidget);
     expect(find.textContaining('nicht korrigiert werden'), findsOneWidget);
@@ -65,7 +68,12 @@ void main() {
       await tapAndSettle(tester, saveButton());
 
       expect(find.text('15,0 g/dl'), findsOneWidget);
-      expect(find.text('Wert korrigiert, erkannt: 14,2'), findsOneWidget);
+      expect(
+        find.text(
+          'Wert korrigiert, erkannt: 14,2 · nicht im Original gefunden',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Korrektur gespeichert.'), findsOneWidget);
       expect((await mock.getEntry(labReportId)).facts.first.value, '15,0');
     });
@@ -91,7 +99,10 @@ void main() {
       await tapAndSettle(tester, saveButton());
 
       expect(find.text('<0,5'), findsOneWidget);
-      expect(find.text('Einheit korrigiert, erkannt: mg/dl'), findsOneWidget);
+      expect(
+        find.text('Einheit korrigiert, erkannt: mg/dl · im Original gefunden'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('an empty value is not saved', (tester) async {
@@ -144,7 +155,12 @@ void main() {
       await tapAndSettle(tester, find.text('OK'));
 
       expect(find.text('15.10.2026'), findsOneWidget);
-      expect(find.text('korrigiert, erkannt: 14.10.2026'), findsOneWidget);
+      expect(
+        find.text(
+          'korrigiert, erkannt: 14.10.2026 · nicht im Original gefunden',
+        ),
+        findsOneWidget,
+      );
       expect(
         (await mock.getEntry(labReportId)).documentDate,
         PlainDate(2026, 10, 15),
@@ -212,7 +228,12 @@ void main() {
       await tapAndSettle(tester, saveButton());
 
       expect(find.text('Labor Beispiel'), findsOneWidget);
-      expect(find.text('korrigiert, erkannt: $labIssuer'), findsOneWidget);
+      expect(
+        find.text(
+          'korrigiert, erkannt: $labIssuer · nicht im Original gefunden',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('cancel changes nothing', (tester) async {

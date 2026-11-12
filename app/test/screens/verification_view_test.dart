@@ -257,4 +257,97 @@ void main() {
       );
     });
   });
+
+  group('marks per value', () {
+    Finder foundMarks() => find.byTooltip(foundLabel);
+    Finder notFoundLines() => find.text(notFoundLabel);
+
+    testWidgets('found: check mark, not found: calm line, corrected: hint', (
+      tester,
+    ) async {
+      await openEntryNamed(tester, fastMock(), labIssuer);
+
+      // Date, issuer, Hämoglobin and Befundart; not type and import date,
+      // and not the corrected Leukozyten.
+      expect(foundMarks(), findsNWidgets(4));
+      // CRP: the text layer says „unter 0,5“.
+      expect(notFoundLines(), findsOneWidget);
+      expect(
+        find.text('Wert korrigiert, erkannt: 6,3 · im Original gefunden'),
+        findsOneWidget,
+      );
+
+      // No warning colors for „not found“.
+      final colors = Theme.of(tester.element(notFoundLines())).colorScheme;
+      final icon = tester.widget<Icon>(find.byIcon(Icons.search_off));
+      expect(icon.color, colors.onSurfaceVariant);
+      final line = tester.widget<Text>(notFoundLines());
+      expect(line.style?.color, colors.onSurfaceVariant);
+      expect(line.style?.color, isNot(colors.error));
+    });
+
+    testWidgets('photo and mixed PDF', (tester) async {
+      await openEntryNamed(tester, fastMock(), 'Dr. Erika Beispiel');
+      // Puls: OCR read „/mln“.
+      expect(notFoundLines(), findsOneWidget);
+      expect(foundMarks(), findsNWidgets(5));
+      await tapBack(tester);
+
+      await tester.tap(find.textContaining('Dr. Jonas Muster'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Wert korrigiert, erkannt: 2 · nicht im Original gefunden'),
+        findsOneWidget,
+      );
+      expect(foundMarks(), findsNWidgets(5));
+      expect(notFoundLines(), findsNothing);
+    });
+
+    testWidgets('unchecked: no marks at all', (tester) async {
+      await openEntryNamed(tester, fastMock(), 'Radiologie Beispiel');
+      expect(foundMarks(), findsNothing);
+      expect(notFoundLines(), findsNothing);
+      expect(find.textContaining('im Original gefunden'), findsNothing);
+    });
+
+    testWidgets('a correction shows the new result from the response', (
+      tester,
+    ) async {
+      await openEntryNamed(tester, fastMock(), labIssuer);
+
+      await tapAndSettle(tester, find.byTooltip('Hämoglobin korrigieren'));
+      await tester.enterText(find.widgetWithText(TextField, 'Wert'), '15,0');
+      await tapAndSettle(
+        tester,
+        find.widgetWithText(FilledButton, 'Speichern'),
+      );
+
+      expect(
+        find.text(
+          'Wert korrigiert, erkannt: 14,2 · nicht im Original gefunden',
+        ),
+        findsOneWidget,
+      );
+      expect(foundMarks(), findsNWidgets(3));
+    });
+
+    testWidgets('back to the recognized value: the hint goes, a mark comes', (
+      tester,
+    ) async {
+      await openEntryNamed(tester, fastMock(), labIssuer);
+
+      await tapAndSettle(tester, find.byTooltip('Leukozyten korrigieren'));
+      await tapAndSettle(tester, find.text('Erkannten Wert übernehmen: 6,3'));
+      await tapAndSettle(
+        tester,
+        find.widgetWithText(FilledButton, 'Speichern'),
+      );
+
+      expect(find.textContaining('korrigiert, erkannt'), findsNothing);
+      // 6,3 is not in the PDF: Leukozyten and CRP are not found.
+      expect(notFoundLines(), findsNWidgets(2));
+      expect(foundMarks(), findsNWidgets(4));
+      expect(find.text('4 von 6 Werten im Original gefunden'), findsOneWidget);
+    });
+  });
 }
