@@ -1,6 +1,6 @@
 # Lifelog REST API (prototype)
 
-Status: 2026-11-11 · Version `v1` · Draft
+Status: 2026-11-12 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
 This document defines the interface between the Flutter app (`app/`) and the
@@ -73,24 +73,29 @@ depends on the code.
 | 400 | `INVALID_REQUEST` | JSON not readable, required field missing, wrong format, unknown field, unknown `module`, upload with both `file` and `text` |
 | 400 | `INVALID_PARAMETER` | Unknown value for a query parameter |
 | 400 | `INVALID_ID` | ID is not a valid ObjectId |
-| 400 | `FILE_MISSING` | Upload without `file` and without `text`, or the content is empty |
+| 400 | `FILE_MISSING` | Upload without `file` and without `text`, or the content is empty; transcription without `audio` |
 | 400 | `FIELD_NOT_CORRECTABLE` | Correction of a field that is not (yet) correctable, e.g. `fullText` |
 | 400 | `QUESTION_MISSING` | Question missing or only whitespace |
 | 400 | `QUESTION_TOO_LONG` | Question longer than 500 characters |
 | 404 | `ENTRY_NOT_FOUND` | No entry with this ID |
 | 404 | `FACT_NOT_FOUND` | Correction refers to an unknown fact ID |
 | 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded |
-| 413 | `FILE_TOO_LARGE` | File larger than 10 MB or text longer than 100,000 characters |
-| 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC, WebP or PDF |
-| 422 | `UNREADABLE` | The vision LLM recognizes no document in the file |
+| 413 | `FILE_TOO_LARGE` | File or recording larger than 10 MB, or text longer than 100,000 characters |
+| 413 | `AUDIO_TOO_LONG` | Recording longer than 5 minutes (since 2026-11-12) |
+| 415 | `UNSUPPORTED_FILE_TYPE` | Upload: not JPEG, PNG, HEIC, WebP or PDF. Transcription: not one of the audio formats in 3.9 |
+| 422 | `UNREADABLE` | The vision LLM recognizes no document in the file, or a recording cannot be decoded |
+| 422 | `NO_SPEECH` | No speech in the recording: silence, noise, or shorter than 0.5 s (since 2026-11-12) |
 | 500 | `INTERNAL_ERROR` | Unexpected error in the backend, e.g. database unreachable |
 | 502 | `EXTRACTION_FAILED` | The vision LLM returns a response that does not match the expected JSON |
-| 503 | `MODEL_UNAVAILABLE` | Language or embedding model does not respond or reports a limit |
+| 503 | `MODEL_UNAVAILABLE` | Language, embedding or speech recognition model does not respond or reports a limit |
 
 ### Important rules
 
 - The app never calls a model directly. All calls to the vision LLM, the
-  language model and the embedding model go through the backend.
+  language model, the embedding model and the speech recognition go through
+  the backend.
+- Recordings are never stored: `POST /transcriptions` returns only the
+  text (3.9).
 - The API gives no medical assessments or recommendations. It only returns
   what is in the documents.
 - Lists are always an array. An empty list is `[]`, never `null` and never a
@@ -394,6 +399,7 @@ The list only returns what the timeline needs. `fullText`, `facts`, `file`,
 | `DELETE` | `/api/v1/entries/{id}` | Delete an entry with its original file and chunks |
 | `POST` | `/api/v1/questions` | Ask a question, answer with sources |
 | `GET` | `/api/v1/status` | Health check: is the backend running, is the database reachable? |
+| `POST` | `/api/v1/transcriptions` | Turn a recording into text; nothing is stored (since 2026-11-12) |
 
 ### 3.1 Upload and extract a file or text
 
@@ -1017,7 +1023,8 @@ so it is not confused with the module `health`.
 ```json
 {
   "status": "ok",
-  "database": "ok"
+  "database": "ok",
+  "speech": "ok"
 }
 ```
 
@@ -1026,12 +1033,140 @@ so it is not confused with the module `health`.
 ```json
 {
   "status": "error",
-  "database": "unreachable"
+  "database": "unreachable",
+  "speech": "ok"
 }
 ```
 
+`speech` (since 2026-11-12) tells whether transcription (3.9) works right
+now:
+
+| `speech` | Meaning |
+|---|---|
+| `ok` | The speech recognition answers |
+| `unavailable` | Switched on, but the speech recognition or `ffmpeg` does not answer; `POST /transcriptions` gives `503` |
+| `off` | Switched off on this server (`SPEECH_ENGINE=none`) |
+
+The HTTP status depends only on the database. The app can use `speech` to
+hide or disable the microphone button.
+
 This endpoint deliberately does not use the error format from section 1, so
 monitoring tools can read both cases the same way.
+
+### 3.9 Transcribe a recording
+
+Since 2026-11-12. Turns a spoken note (e.g. a "spoken doctor's letter"
+after a visit) into text. The backend **only returns the text**: no entry
+is created, the recording is **not stored**, and there is no duplicate
+check. The flow in the app:
+
+1. Record, then send the recording here.
+2. Show the returned `text` to the user for checking and editing. It is
+   unchecked machine output.
+3. Only when the user confirms: send the (edited) text with
+   `POST /api/v1/entries` and the form field `text` (3.1, text import,
+   unchanged). From there on it is an ordinary text import.
+4. Delete the local recording on the phone.
+
+```http
+POST /api/v1/transcriptions
+Content-Type: multipart/form-data; boundary=----lifelog
+```
+
+**Request**
+
+| Form field | Note |
+|---|---|
+| `audio` | Exactly one recording |
+
+```http
+------lifelog
+Content-Disposition: form-data; name="audio"; filename="notiz.m4a"
+Content-Type: audio/mp4
+
+<binary data>
+------lifelog--
+```
+
+Allowed formats. The backend recognizes the format from the content, not
+from the file name or the `Content-Type`:
+
+| MIME type | Format | Typical source |
+|---|---|---|
+| `audio/mp4` | M4A / MP4 with AAC | iOS (Voice Memos, AVAudioRecorder), Android, Flutter package `record` (default) |
+| `audio/3gpp` | 3GP | older Android recorders |
+| `audio/amr` | AMR | older Android recorders |
+| `audio/wav` | WAV | `record` with `AudioEncoder.wav` |
+| `audio/ogg` | OGG (Opus, Vorbis) | messengers, Android |
+| `audio/webm` | WebM (Opus) | Android, browsers |
+| `audio/mpeg` | MP3 | other apps |
+| `audio/flac` | FLAC | other apps |
+
+Limits:
+
+- At most **10 MB** and at most **5 minutes**. Recordings shorter than
+  0.5 seconds count as "no speech".
+- Recommended for the app: package `record` with `AudioEncoder.aacLc`
+  (M4A), mono, 16 kHz, about 32 kbit/s. A minute is then about 240 KB.
+- Language: always German. Whisper is not asked to detect the language and
+  does not translate.
+
+The call is **synchronous** and can take up to about 120 seconds (time
+limit of the backend). The app sets its HTTP timeout for this call to at
+least 130 seconds and shows a loading indicator.
+
+**Response `200 OK`**
+
+```json
+{
+  "text": "Arztbrief vom 12. November 2026. Kniegelenk rechts, leichter Erguss. Ibuprofen 400 Milligramm dreimal täglich für eine Woche.",
+  "durationSeconds": 21.4,
+  "language": "de",
+  "engine": "whisper.cpp large-v3-turbo"
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `text` | String | Recognized text, never empty (no speech → `422 NO_SPEECH`). Sentences separated by a space; how numbers and units are written ("400 Milligramm" or "400 mg") depends on the model. |
+| `durationSeconds` | Number | Length of the recording in seconds, one decimal |
+| `language` | String | Always `de` |
+| `engine` | String | Program and model, for display and support |
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `FILE_MISSING` | No field `audio`, or it is empty | Bitte eine Aufnahme mitschicken. |
+| 400 | `INVALID_REQUEST` | More than one `audio` field (`details.field`: `audio`) | Bitte genau eine Aufnahme mitschicken. |
+| 413 | `FILE_TOO_LARGE` | Over 10 MB | Die Aufnahme ist größer als 10 MB. |
+| 413 | `AUDIO_TOO_LONG` | Over 5 minutes; `details.maxSeconds`: `300` | Die Aufnahme ist länger als 5 Minuten. Bitte kürzer sprechen oder aufteilen. |
+| 415 | `UNSUPPORTED_FILE_TYPE` | Not one of the formats above | Dieses Audioformat wird nicht unterstützt. Erlaubt sind M4A, 3GP, AMR, WAV, OGG, WebM, MP3 und FLAC. |
+| 422 | `UNREADABLE` | Damaged, or no audio track | Die Aufnahme lässt sich nicht abspielen. |
+| 422 | `NO_SPEECH` | Silence, noise only, or shorter than 0.5 s | In der Aufnahme ist keine Sprache zu hören. |
+| 503 | `MODEL_UNAVAILABLE` | Speech recognition or `ffmpeg` not reachable, or the time limit was exceeded | Die Spracherkennung ist gerade nicht erreichbar. Bitte später noch einmal versuchen. |
+| 500 | `INTERNAL_ERROR` | Unexpected error | |
+
+**How the backend does it** (for understanding; not part of the contract):
+
+1. Check size and format.
+2. Convert with `ffmpeg` to 16 kHz mono PCM, the format Whisper needs. The
+   recording lies in a temporary file for these few seconds (an M4A from
+   iOS cannot be read through a pipe); the file is deleted right after,
+   also on errors. Nothing else is written.
+3. Check the length (5 minutes) and the loudness: if there is less than
+   0.3 seconds of sound above the noise floor, the answer is `NO_SPEECH`
+   without asking Whisper at all. Whisper is known to invent sentences in
+   silence ("Untertitel im Auftrag des ZDF").
+4. Whisper (whisper.cpp, model large-v3-turbo, running locally as its own
+   server) with voice activity detection (only parts with speech are
+   decoded), language fixed to German, temperature 0, no context from
+   earlier text.
+5. Remove known phantom sentences and repeated identical segments; if
+   nothing is left, `NO_SPEECH`.
+
+The server log contains only length, size and result codes, never the
+text.
 
 ---
 
@@ -1198,9 +1333,42 @@ same way with `start`/`end` in `fullText`.
   the file) are turned upright. PNG and WebP can carry EXIF too, but
   phones do not write it; these images are read as they are stored.
 
+### Further points on transcription
+
+- **Mark spoken entries:** an entry made from a transcription looks like
+  any text import (`file.mimeType` `text/plain`). If the timeline should
+  show a microphone, the text import could accept an optional field
+  (e.g. `origin=speech`).
+- **Words with timestamps:** Whisper knows when each word was spoken. If
+  answers should later jump to a place in a recording, the recording
+  would have to be stored after all; not planned.
+- **Longer recordings:** over 5 minutes would need an asynchronous call
+  (start, then poll), because a synchronous request would take too long.
+- **Speed on Windows:** without a graphics card large-v3-turbo is much
+  slower; the quantized model `ggml-large-v3-turbo-q5_0.bin` is an option
+  (backend/README.md), not measured yet.
+
 ---
 
 ## 5. Changes
+
+### 2026-11-12: Transcription (spoken notes)
+
+Additive: no existing field changes.
+
+1. **New endpoint** `POST /api/v1/transcriptions`
+   ([3.9](#39-transcribe-a-recording)): form field `audio`, returns `text`,
+   `durationSeconds`, `language`, `engine`. Nothing is stored; the app
+   sends the checked text through the existing text import.
+2. **New error codes:** `413 AUDIO_TOO_LONG`, `422 NO_SPEECH`. Reused:
+   `FILE_MISSING`, `INVALID_REQUEST`, `FILE_TOO_LARGE`,
+   `UNSUPPORTED_FILE_TYPE`, `UNREADABLE`, `MODEL_UNAVAILABLE`.
+3. **Status** ([3.8](#38-status-health-check)): new field `speech`
+   (`ok`, `unavailable`, `off`).
+4. **App:** microphone permission (`NSMicrophoneUsageDescription` on iOS,
+   `RECORD_AUDIO` on Android), recording with the package `record`
+   (M4A/AAC, mono, 16 kHz), HTTP timeout at least 130 s, delete the local
+   recording afterwards.
 
 ### 2026-11-11: WebP upload, HEIC and photo orientation in the verification
 
