@@ -1,66 +1,66 @@
 import 'plain_date.dart';
 
-/// Hülle für einen Wert, der auch `null` sein darf.
+/// Wrapper for a value that may also be `null`.
 ///
-/// Damit unterscheidet ein PATCH drei Fälle:
-/// - Feld ist `null` (keine Hülle): Das Feld fehlt im JSON und bleibt
-///   unverändert.
-/// - `Wert(null)`: Im JSON steht `"field": null`, der Wert wird gelöscht.
-/// - `Wert(x)`: Im JSON steht `"field": x`.
-class Wert<T> {
-  const Wert(this.wert);
+/// This lets a PATCH tell three cases apart:
+/// - The field is `null` (no wrapper): the field is missing from the JSON
+///   and stays unchanged.
+/// - `Value(null)`: the JSON contains `"field": null`, the value is cleared.
+/// - `Value(x)`: the JSON contains `"field": x`.
+class Value<T> {
+  const Value(this.value);
 
-  final T wert;
+  final T value;
 }
 
-/// Änderung an einer Info. `id` ist Pflicht.
-class InfoAenderung {
-  const InfoAenderung(this.id, {this.wert, this.einheit});
+/// Change to a fact. `id` is required.
+class FactPatch {
+  const FactPatch(this.id, {this.value, this.unit});
 
   final String id;
 
-  /// Neuer Wert. `null` heißt: unverändert. (Ein Wert kann nicht gelöscht
-  /// werden, laut API ist er immer ein Text.)
-  final String? wert;
+  /// New value. `null` means unchanged. (A value cannot be cleared; according
+  /// to the API it is always a string.)
+  final String? value;
 
-  /// `null`: unverändert. `Wert(null)`: Einheit entfernen.
-  final Wert<String?>? einheit;
+  /// `null`: unchanged. `Value(null)`: remove the unit.
+  final Value<String?>? unit;
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    if (wert != null) 'value': wert,
-    if (einheit != null) 'unit': einheit?.wert,
+    if (value != null) 'value': value,
+    if (unit != null) 'unit': unit?.value,
   };
 }
 
-/// Body für `PATCH /api/v1/entries/{id}` (docs/API.md, Abschnitt 3.5).
-/// Er enthält nur die Felder, die sich ändern sollen.
-class EintragAenderung {
-  const EintragAenderung({
-    this.typ,
-    this.dokumentdatum,
-    this.quelle,
-    this.infos = const [],
+/// Body for `PATCH /api/v1/entries/{id}` (docs/API.md, section 3.5).
+/// It only contains the fields that should change.
+class EntryPatch {
+  const EntryPatch({
+    this.type,
+    this.documentDate,
+    this.issuer,
+    this.facts = const [],
   });
 
-  /// `null`: unverändert.
-  final String? typ;
+  /// `null`: unchanged.
+  final String? type;
 
-  /// `null`: unverändert. `Wert(null)`: Datum entfernen.
-  final Wert<Datum?>? dokumentdatum;
+  /// `null`: unchanged. `Value(null)`: remove the date.
+  final Value<PlainDate?>? documentDate;
 
-  /// `null`: unverändert. `Wert(null)`: Quelle entfernen.
-  final Wert<String?>? quelle;
+  /// `null`: unchanged. `Value(null)`: remove the issuer.
+  final Value<String?>? issuer;
 
-  final List<InfoAenderung> infos;
+  final List<FactPatch> facts;
 
-  bool get istLeer =>
-      typ == null && dokumentdatum == null && quelle == null && infos.isEmpty;
+  bool get isEmpty =>
+      type == null && documentDate == null && issuer == null && facts.isEmpty;
 
   Map<String, dynamic> toJson() => {
-    if (typ != null) 'type': typ,
-    if (dokumentdatum != null) 'documentDate': dokumentdatum?.wert?.iso,
-    if (quelle != null) 'issuer': quelle?.wert,
-    if (infos.isNotEmpty) 'facts': [for (final i in infos) i.toJson()],
+    if (type != null) 'type': type,
+    if (documentDate != null) 'documentDate': documentDate?.value?.iso,
+    if (issuer != null) 'issuer': issuer?.value,
+    if (facts.isNotEmpty) 'facts': [for (final f in facts) f.toJson()],
   };
 }

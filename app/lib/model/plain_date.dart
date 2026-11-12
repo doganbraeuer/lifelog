@@ -1,98 +1,101 @@
-/// Ein reines Kalenderdatum ohne Uhrzeit und ohne Zeitzone.
+/// A plain calendar date without time and without time zone.
 ///
-/// Wird für `dokumentdatum` verwendet. Ein Befund vom 14.10. soll immer am
-/// 14.10. stehen. Mit `DateTime` könnte sich das Datum je nach Zeitzone des
-/// Geräts um einen Tag verschieben, deshalb speichern wir nur Jahr, Monat
-/// und Tag.
-class Datum implements Comparable<Datum> {
-  const Datum._(this.jahr, this.monat, this.tag);
+/// Used for `documentDate`. A report from 14 October should always appear
+/// on 14 October. With `DateTime` the date could shift by one day depending
+/// on the device's time zone, so only year, month and day are stored.
+class PlainDate implements Comparable<PlainDate> {
+  const PlainDate._(this.year, this.month, this.day);
 
-  /// Erzeugt ein Datum und prüft, ob es im Kalender existiert.
-  /// `Datum(2026, 2, 30)` wirft einen [ArgumentError].
-  factory Datum(int jahr, int monat, int tag) {
-    if (!istGueltig(jahr, monat, tag)) {
-      throw ArgumentError('Kein gültiges Datum: $jahr-$monat-$tag');
+  /// Creates a date and checks that it exists in the calendar.
+  /// `PlainDate(2026, 2, 30)` throws an [ArgumentError].
+  factory PlainDate(int year, int month, int day) {
+    if (!isValid(year, month, day)) {
+      throw ArgumentError('Not a valid date: $year-$month-$day');
     }
-    return Datum._(jahr, monat, tag);
+    return PlainDate._(year, month, day);
   }
 
-  /// Übernimmt Jahr, Monat und Tag aus einem [DateTime], so wie sie dort
-  /// stehen, ohne Umrechnung in eine andere Zeitzone. Gedacht für den
-  /// DatePicker, der ein lokales `DateTime` liefert.
-  factory Datum.aus(DateTime zeit) => Datum(zeit.year, zeit.month, zeit.day);
+  /// Takes year, month and day from a [DateTime] as they are, without
+  /// converting to another time zone. Meant for the date picker, which
+  /// returns a local `DateTime`.
+  factory PlainDate.fromDateTime(DateTime time) =>
+      PlainDate(time.year, time.month, time.day);
 
-  final int jahr;
-  final int monat;
-  final int tag;
+  final int year;
+  final int month;
+  final int day;
 
-  /// Genau `JJJJ-MM-TT`, so wie in docs/API.md festgelegt.
+  /// Exactly `YYYY-MM-DD`, as defined in docs/API.md.
   static final format = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
-  /// Liest `JJJJ-MM-TT`. Gibt `null` zurück, wenn das Format nicht stimmt
-  /// oder das Datum im Kalender nicht existiert (z. B. `2026-02-30`).
-  static Datum? tryParse(String text) {
-    final treffer = format.firstMatch(text);
-    if (treffer == null) return null;
-    final jahr = int.parse(treffer.group(1)!);
-    final monat = int.parse(treffer.group(2)!);
-    final tag = int.parse(treffer.group(3)!);
-    if (!istGueltig(jahr, monat, tag)) return null;
-    return Datum._(jahr, monat, tag);
+  /// Reads `YYYY-MM-DD`. Returns `null` if the format is wrong or the date
+  /// does not exist in the calendar (e.g. `2026-02-30`).
+  static PlainDate? tryParse(String text) {
+    final match = format.firstMatch(text);
+    if (match == null) return null;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    if (!isValid(year, month, day)) return null;
+    return PlainDate._(year, month, day);
   }
 
-  /// Wie [tryParse], wirft aber eine [FormatException].
-  static Datum parse(String text) =>
+  /// Like [tryParse], but throws a [FormatException].
+  static PlainDate parse(String text) =>
       tryParse(text) ??
-      (throw FormatException('Kein gültiges Datum im Format JJJJ-MM-TT', text));
+      (throw FormatException(
+        'Not a valid date in the format YYYY-MM-DD',
+        text,
+      ));
 
-  static bool istGueltig(int jahr, int monat, int tag) {
-    if (jahr < 1 || jahr > 9999) return false;
-    if (monat < 1 || monat > 12) return false;
-    return tag >= 1 && tag <= tageImMonat(jahr, monat);
+  static bool isValid(int year, int month, int day) {
+    if (year < 1 || year > 9999) return false;
+    if (month < 1 || month > 12) return false;
+    return day >= 1 && day <= daysInMonth(year, month);
   }
 
-  static int tageImMonat(int jahr, int monat) {
-    const tage = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    if (monat == 2 && istSchaltjahr(jahr)) return 29;
-    return tage[monat - 1];
+  static int daysInMonth(int year, int month) {
+    const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month == 2 && isLeapYear(year)) return 29;
+    return days[month - 1];
   }
 
-  static bool istSchaltjahr(int jahr) =>
-      (jahr % 4 == 0 && jahr % 100 != 0) || jahr % 400 == 0;
+  static bool isLeapYear(int year) =>
+      (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 
-  /// Format für die API: `2026-10-14`.
+  /// Format for the API: `2026-10-14`.
   String get iso =>
-      '${_zweistellig(jahr, 4)}-${_zweistellig(monat, 2)}-'
-      '${_zweistellig(tag, 2)}';
+      '${_padded(year, 4)}-${_padded(month, 2)}-'
+      '${_padded(day, 2)}';
 
-  /// Format für die Anzeige: `14.10.2026`.
-  String get anzeige =>
-      '${_zweistellig(tag, 2)}.${_zweistellig(monat, 2)}.'
-      '${_zweistellig(jahr, 4)}';
+  /// Format for display: `14.10.2026`.
+  String get display =>
+      '${_padded(day, 2)}.${_padded(month, 2)}.'
+      '${_padded(year, 4)}';
 
-  /// Lokale Mitternacht dieses Tages. Nur für Widgets wie den DatePicker
-  /// gedacht, die ein `DateTime` verlangen. Zurück geht es mit [Datum.aus].
-  DateTime alsDateTime() => DateTime(jahr, monat, tag);
+  /// Local midnight of this day. Only meant for widgets like the date picker
+  /// that require a `DateTime`. [PlainDate.fromDateTime] converts back.
+  DateTime toDateTime() => DateTime(year, month, day);
 
-  static String _zweistellig(int zahl, int stellen) =>
-      zahl.toString().padLeft(stellen, '0');
+  static String _padded(int number, int digits) =>
+      number.toString().padLeft(digits, '0');
 
   @override
-  int compareTo(Datum other) {
-    if (jahr != other.jahr) return jahr.compareTo(other.jahr);
-    if (monat != other.monat) return monat.compareTo(other.monat);
-    return tag.compareTo(other.tag);
+  int compareTo(PlainDate other) {
+    if (year != other.year) return year.compareTo(other.year);
+    if (month != other.month) return month.compareTo(other.month);
+    return day.compareTo(other.day);
   }
 
   @override
   bool operator ==(Object other) =>
-      other is Datum &&
-      other.jahr == jahr &&
-      other.monat == monat &&
-      other.tag == tag;
+      other is PlainDate &&
+      other.year == year &&
+      other.month == month &&
+      other.day == day;
 
   @override
-  int get hashCode => Object.hash(jahr, monat, tag);
+  int get hashCode => Object.hash(year, month, day);
 
   @override
   String toString() => iso;

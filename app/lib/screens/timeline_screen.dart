@@ -21,14 +21,14 @@ class ZeitleisteScreen extends StatefulWidget {
   const ZeitleisteScreen({
     super.key,
     required this.api,
-    required this.modulId,
+    required this.moduleId,
     this.zumHochladen,
   });
 
   final ApiClient api;
 
   /// Nur Einträge mit diesem `modul` werden gezeigt.
-  final String modulId;
+  final String moduleId;
 
   /// Wechselt zur Seite „Hochladen“ (Knopf im leeren Zustand).
   final VoidCallback? zumHochladen;
@@ -38,11 +38,11 @@ class ZeitleisteScreen extends StatefulWidget {
 }
 
 class ZeitleisteScreenState extends State<ZeitleisteScreen> {
-  var _sortierung = Sortierung.documentDate;
-  var _richtung = Richtung.desc;
+  var _sortierung = Sort.documentDate;
+  var _richtung = SortOrder.desc;
 
-  List<EintragKurz>? _eintraege;
-  ApiFehler? _fehler;
+  List<EntrySummary>? _eintraege;
+  ApiException? _fehler;
   var _laedt = false;
 
   /// Zählt die Anfragen. Wechselt jemand schnell die Sortierung, kommen
@@ -64,18 +64,18 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
       _fehler = null;
     });
     try {
-      final eintraege = await widget.api.eintraege(
-        modul: widget.modulId,
-        sortierung: _sortierung,
-        richtung: _richtung,
+      final entries = await widget.api.listEntries(
+        module: widget.moduleId,
+        sort: _sortierung,
+        order: _richtung,
       );
       if (!mounted || nr != _anfrageNr) return;
       setState(() {
         // Das Backend liefert nur Einträge des Moduls (?modul=), sortiert.
-        _eintraege = eintraege;
+        _eintraege = entries;
         _laedt = false;
       });
-    } on ApiFehler catch (fehler) {
+    } on ApiException catch (fehler) {
       if (!mounted || nr != _anfrageNr) return;
       setState(() {
         _fehler = fehler;
@@ -84,25 +84,23 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     }
   }
 
-  void _sortierungWaehlen(Sortierung sortierung) {
-    if (sortierung == _sortierung) return;
-    _sortierung = sortierung;
+  void _sortierungWaehlen(Sort sort) {
+    if (sort == _sortierung) return;
+    _sortierung = sort;
     neuLaden();
   }
 
   void _richtungUmschalten() {
-    _richtung = _richtung == Richtung.desc
-        ? Richtung.asc
-        : Richtung.desc;
+    _richtung = _richtung == SortOrder.desc ? SortOrder.asc : SortOrder.desc;
     neuLaden();
   }
 
   /// Öffnet einen Eintrag. Öffentlich, damit der Upload nach dem Hochladen
   /// (oder bei einem Duplikat) direkt den Eintrag zeigen kann.
-  Future<void> eintragOeffnen(String eintragId) async {
+  Future<void> eintragOeffnen(String entryId) async {
     await oeffneSeite<void>(
       context,
-      EintragScreen(api: widget.api, eintragId: eintragId),
+      EintragScreen(api: widget.api, entryId: entryId),
     );
     // Nach einer Korrektur kann sich z. B. das Datum geändert haben.
     if (mounted) neuLaden();
@@ -110,26 +108,26 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final absteigend = _richtung == Richtung.desc;
+    final absteigend = _richtung == SortOrder.desc;
     return Scaffold(
       appBar: AppBar(
         leading: const BereicheKnopf(),
         title: const Text('Zeitleiste'),
         actions: [
-          MockHinweis(sichtbar: widget.api.istMock),
-          PopupMenuButton<Sortierung>(
+          MockHinweis(sichtbar: widget.api.isMock),
+          PopupMenuButton<Sort>(
             icon: const Icon(Icons.sort),
             tooltip: 'Sortieren nach',
             onSelected: _sortierungWaehlen,
             itemBuilder: (_) => [
               CheckedPopupMenuItem(
-                value: Sortierung.documentDate,
-                checked: _sortierung == Sortierung.documentDate,
+                value: Sort.documentDate,
+                checked: _sortierung == Sort.documentDate,
                 child: const Text('Nach Dokumentdatum'),
               ),
               CheckedPopupMenuItem(
-                value: Sortierung.importedAt,
-                checked: _sortierung == Sortierung.importedAt,
+                value: Sort.importedAt,
+                checked: _sortierung == Sort.importedAt,
                 child: const Text('Nach Importdatum'),
               ),
             ],
@@ -149,7 +147,7 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${_sortierung == Sortierung.documentDate ? 'Dokumentdatum' : 'Importdatum'}'
+                  '${_sortierung == Sort.documentDate ? 'Dokumentdatum' : 'Importdatum'}'
                   ' · ${absteigend ? 'neueste zuerst' : 'älteste zuerst'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -181,27 +179,27 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
         erneut: neuLaden,
       );
     }
-    final eintraege = _eintraege;
-    if (eintraege == null) {
+    final entries = _eintraege;
+    if (entries == null) {
       // Erstes Laden: Platzhalter in der Form der Zeitachse.
       return const ZeitachsenPlatzhalter(key: ValueKey('laedt'));
     }
     return RefreshIndicator(
-      key: ValueKey(eintraege.isEmpty ? 'leer' : 'liste'),
+      key: ValueKey(entries.isEmpty ? 'leer' : 'liste'),
       onRefresh: neuLaden,
-      child: eintraege.isEmpty
+      child: entries.isEmpty
           ? _LeereZeitleiste(
-              modulId: widget.modulId,
+              moduleId: widget.moduleId,
               zumHochladen: widget.zumHochladen,
             )
-          : _zeitachse(eintraege),
+          : _zeitachse(entries),
     );
   }
 
   /// Zeitachse: Monatsüberschriften, links eine durchgehende Linie mit
   /// einem Punkt pro Eintrag.
-  Widget _zeitachse(List<EintragKurz> eintraege) {
-    final gruppen = gruppiereZeitleiste(eintraege, _sortierung);
+  Widget _zeitachse(List<EntrySummary> entries) {
+    final gruppen = groupTimeline(entries, _sortierung);
     // Die Eintrag-Ansicht hängt am obersten Navigator; sie bekommt das
     // Farbschema des Moduls mit (wie bei oeffneSeite).
     final themes = InheritedTheme.capture(
@@ -213,30 +211,29 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
       final gruppe = gruppen[g];
       zeilen.add(
         _MonatsUeberschrift(
-          key: ValueKey('monat-${gruppe.titel}'),
-          titel: gruppe.titel,
+          key: ValueKey('monat-${gruppe.title}'),
+          title: gruppe.title,
           linieOben: g > 0,
         ),
       );
-      for (var i = 0; i < gruppe.eintraege.length; i++) {
-        final eintrag = gruppe.eintraege[i];
+      for (var i = 0; i < gruppe.entries.length; i++) {
+        final entry = gruppe.entries[i];
         final letzter =
-            g == gruppen.length - 1 && i == gruppe.eintraege.length - 1;
+            g == gruppen.length - 1 && i == gruppe.entries.length - 1;
         zeilen.add(
           // Key nach Eintrag: Nach Löschen oder Umsortieren bleibt jede
           // Zeile mit ihrem Eintrag verbunden (auch der Rücklauf des
           // Container Transform landet am richtigen Platz).
           ContainerTransform(
-            key: ValueKey('eintrag-${eintrag.id}'),
+            key: ValueKey('eintrag-${entry.id}'),
             geschlossen: (context, oeffnen) => _EintragZeile(
-              eintrag: eintrag,
-              zeigeImport: _sortierung == Sortierung.importedAt,
+              entry: entry,
+              zeigeImport: _sortierung == Sort.importedAt,
               linieUnten: !letzter,
               onTap: oeffnen,
             ),
-            offen: (_) => themes.wrap(
-              EintragScreen(api: widget.api, eintragId: eintrag.id),
-            ),
+            offen: (_) =>
+                themes.wrap(EintragScreen(api: widget.api, entryId: entry.id)),
             // Nach einer Korrektur oder dem Löschen neu laden.
             beimSchliessen: () {
               if (mounted) neuLaden();
@@ -257,9 +254,9 @@ const _achsenBreite = 64.0;
 
 /// Zeichnet die senkrechte Linie der Zeitachse in der linken Spalte.
 class _AchsenMaler extends CustomPainter {
-  _AchsenMaler({required this.farbe, required this.oben, required this.unten});
+  _AchsenMaler({required this.color, required this.oben, required this.unten});
 
-  final Color farbe;
+  final Color color;
 
   /// Linie von oben bis zur Mitte bzw. von der Mitte bis unten zeichnen.
   final bool oben;
@@ -270,7 +267,7 @@ class _AchsenMaler extends CustomPainter {
     final x = size.width / 2;
     final y = size.height / 2;
     final stift = Paint()
-      ..color = farbe
+      ..color = color
       ..strokeWidth = 2;
     if (oben) canvas.drawLine(Offset(x, 0), Offset(x, y), stift);
     if (unten) canvas.drawLine(Offset(x, y), Offset(x, size.height), stift);
@@ -278,17 +275,17 @@ class _AchsenMaler extends CustomPainter {
 
   @override
   bool shouldRepaint(_AchsenMaler alt) =>
-      alt.farbe != farbe || alt.oben != oben || alt.unten != unten;
+      alt.color != color || alt.oben != oben || alt.unten != unten;
 }
 
 class _MonatsUeberschrift extends StatelessWidget {
   const _MonatsUeberschrift({
     super.key,
-    required this.titel,
+    required this.title,
     required this.linieOben,
   });
 
-  final String titel;
+  final String title;
   final bool linieOben;
 
   @override
@@ -304,7 +301,7 @@ class _MonatsUeberschrift extends StatelessWidget {
           child: ExcludeSemantics(
             child: CustomPaint(
               painter: _AchsenMaler(
-                farbe: theme.colorScheme.outlineVariant,
+                color: theme.colorScheme.outlineVariant,
                 oben: linieOben,
                 unten: true,
               ),
@@ -327,7 +324,7 @@ class _MonatsUeberschrift extends StatelessWidget {
           child: Semantics(
             header: true,
             child: Text(
-              titel,
+              title,
               style: theme.textTheme.titleSmall?.copyWith(
                 color: theme.colorScheme.primary,
                 fontWeight: FontWeight.w600,
@@ -342,13 +339,13 @@ class _MonatsUeberschrift extends StatelessWidget {
 
 class _EintragZeile extends StatelessWidget {
   const _EintragZeile({
-    required this.eintrag,
+    required this.entry,
     required this.zeigeImport,
     required this.linieUnten,
     required this.onTap,
   });
 
-  final EintragKurz eintrag;
+  final EntrySummary entry;
 
   /// Bei Sortierung nach Importdatum wird es mit angezeigt, damit die
   /// Reihenfolge nachvollziehbar ist.
@@ -359,13 +356,13 @@ class _EintragZeile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final datum = eintrag.dokumentdatum;
-    final quelle = eintrag.quelle;
+    final datum = entry.documentDate;
+    final issuer = entry.issuer;
     final grau = theme.colorScheme.onSurfaceVariant;
-    final katalog = ModulKatalog.von(context);
+    final catalog = ModuleCatalog.of(context);
     // Sanfte Töne aus der Typfarbe; sie kennzeichnet nur den Typ.
     final punkt = ColorScheme.fromSeed(
-      seedColor: katalog.typFarbe(eintrag.modul, eintrag.typ),
+      seedColor: catalog.typeColor(entry.module, entry.type),
       brightness: theme.brightness,
     );
 
@@ -379,7 +376,7 @@ class _EintragZeile extends StatelessWidget {
           child: ExcludeSemantics(
             child: CustomPaint(
               painter: _AchsenMaler(
-                farbe: theme.colorScheme.outlineVariant,
+                color: theme.colorScheme.outlineVariant,
                 oben: true,
                 unten: linieUnten,
               ),
@@ -397,7 +394,7 @@ class _EintragZeile extends StatelessWidget {
                     ),
                   ),
                   child: Icon(
-                    katalog.typSymbol(eintrag.modul, eintrag.typ),
+                    catalog.typeIcon(entry.module, entry.type),
                     size: 18,
                     color: punkt.onPrimaryContainer,
                   ),
@@ -410,19 +407,19 @@ class _EintragZeile extends StatelessWidget {
           padding: const EdgeInsets.only(left: _achsenBreite - 8),
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 8, right: 16),
-            title: Text(katalog.typName(eintrag.modul, eintrag.typ)),
+            title: Text(catalog.typeName(entry.module, entry.type)),
             subtitle: Text(
               [
-                quelle ?? 'Quelle unbekannt',
+                issuer ?? 'Quelle unbekannt',
                 if (zeigeImport)
-                  'Importiert: ${formatZeitpunktLokal(eintrag.importdatum)}',
+                  'Importiert: ${formatZeitpunktLokal(entry.importedAt)}',
               ].join('\n'),
               maxLines: zeigeImport ? 3 : 2,
               overflow: TextOverflow.ellipsis,
             ),
             isThreeLine: zeigeImport,
             trailing: datum != null
-                ? Text(datum.anzeige)
+                ? Text(datum.display)
                 : Text(
                     'ohne Datum',
                     style: TextStyle(fontStyle: FontStyle.italic, color: grau),
@@ -437,17 +434,16 @@ class _EintragZeile extends StatelessWidget {
 
 /// Leerer Zustand: großes Symbol, Hinweis und Knopf zum Hochladen.
 class _LeereZeitleiste extends StatelessWidget {
-  const _LeereZeitleiste({required this.modulId, required this.zumHochladen});
+  const _LeereZeitleiste({required this.moduleId, required this.zumHochladen});
 
-  final String modulId;
+  final String moduleId;
   final VoidCallback? zumHochladen;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final symbol =
-        ModulKatalog.von(context).nachId(modulId)?.symbol ??
-        Icons.inbox_outlined;
+    final icon =
+        ModuleCatalog.of(context).byId(moduleId)?.icon ?? Icons.inbox_outlined;
     // ListView statt Column, damit Pull-to-Refresh auch hier geht.
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 64, 32, 32),
@@ -462,7 +458,7 @@ class _LeereZeitleiste extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                symbol,
+                icon,
                 size: 56,
                 color: theme.colorScheme.onPrimaryContainer,
               ),

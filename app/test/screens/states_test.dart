@@ -12,8 +12,8 @@ import '../helpers.dart';
 
 /// Mock mit spürbarer Wartezeit, damit Ladezustände sichtbar sind.
 MockApiClient langsamerMock() => MockApiClient(
-  verzoegerung: Durations.extralong4,
-  uploadVerzoegerung: Durations.extralong4 * 2,
+  delay: Durations.extralong4,
+  uploadDelay: Durations.extralong4 * 2,
 );
 
 void animationenAus(WidgetTester tester) {
@@ -75,7 +75,7 @@ void main() {
   });
 
   group('Frage', () {
-    Future<void> fragen(WidgetTester tester, MockApiClient mock) async {
+    Future<void> ask(WidgetTester tester, MockApiClient mock) async {
       grosserBildschirm(tester);
       await tester.pumpWidget(testApp(mock));
       await tester.pumpAndSettle();
@@ -95,7 +95,7 @@ void main() {
 
     testWidgets('Suche zeigt Platzhalter, kein Spinner', (tester) async {
       final semantik = tester.ensureSemantics();
-      await fragen(tester, langsamerMock());
+      await ask(tester, langsamerMock());
       await tester.pump(Durations.short4);
 
       expect(find.text('Suche in deinen Dokumenten …'), findsOneWidget);
@@ -115,14 +115,14 @@ void main() {
     });
 
     testWidgets('Antwort und Quellen blenden nacheinander ein', (tester) async {
-      await fragen(tester, schnellerMock());
+      await ask(tester, schnellerMock());
       await tester.pump();
 
       // Kurz nach dem Start: Die Antwort ist weiter als die Quellen.
       await tester.pump(Durations.short3);
-      final antwort = deckkraft(tester, 0);
+      final answer = deckkraft(tester, 0);
       final ersteQuelle = deckkraft(tester, 2);
-      expect(antwort, greaterThan(ersteQuelle));
+      expect(answer, greaterThan(ersteQuelle));
       // Der Text ist trotzdem schon vollständig da (kein Tipp-Effekt).
       expect(find.textContaining('[1]'), findsOneWidget);
 
@@ -135,7 +135,7 @@ void main() {
       tester,
     ) async {
       animationenAus(tester);
-      await fragen(tester, schnellerMock());
+      await ask(tester, schnellerMock());
       await tester.pump();
 
       expect(deckkraft(tester, 0), 1);
@@ -204,7 +204,7 @@ void main() {
       tester,
     ) async {
       grosserBildschirm(tester);
-      final auswahl = FakeDateiAuswahl()..pdf = testPdf('modellfehler.pdf');
+      final auswahl = FakeDateiAuswahl()..pdf = testPdf('modelerror.pdf');
       await tester.pumpWidget(testApp(schnellerMock(), auswahl: auswahl));
       await tester.pumpAndSettle();
       await zuGesundheit(tester);

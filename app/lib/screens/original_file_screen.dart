@@ -17,29 +17,29 @@ class OriginaldateiScreen extends StatefulWidget {
   const OriginaldateiScreen({
     super.key,
     required this.api,
-    required this.eintragId,
-    required this.dateiname,
+    required this.entryId,
+    required this.fileName,
     this.vorhanden,
-    this.pdfAnzeige = const PdfxAnzeige(),
+    this.pdfViewer = const PdfxViewer(),
   });
 
   final ApiClient api;
-  final String eintragId;
-  final String dateiname;
+  final String entryId;
+  final String fileName;
 
   /// Schon geladene Datei (z. B. das Vorschaubild), spart einen Download.
-  final DateiInhalt? vorhanden;
+  final FileContent? vorhanden;
 
   /// In Tests durch eine Fake-Anzeige ersetzt.
-  final PdfAnzeige pdfAnzeige;
+  final PdfViewer pdfViewer;
 
   @override
   State<OriginaldateiScreen> createState() => _OriginaldateiScreenState();
 }
 
 class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
-  late DateiInhalt? _datei = widget.vorhanden;
-  ApiFehler? _fehler;
+  late FileContent? _datei = widget.vorhanden;
+  ApiException? _fehler;
 
   @override
   void initState() {
@@ -50,9 +50,9 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
   Future<void> _laden() async {
     setState(() => _fehler = null);
     try {
-      final datei = await widget.api.datei(widget.eintragId);
-      if (mounted) setState(() => _datei = datei);
-    } on ApiFehler catch (fehler) {
+      final file = await widget.api.getFile(widget.entryId);
+      if (mounted) setState(() => _datei = file);
+    } on ApiException catch (fehler) {
       if (mounted) setState(() => _fehler = fehler);
     }
   }
@@ -61,8 +61,8 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.dateiname, overflow: TextOverflow.ellipsis),
-        actions: [MockHinweis(sichtbar: widget.api.istMock)],
+        title: Text(widget.fileName, overflow: TextOverflow.ellipsis),
+        actions: [MockHinweis(sichtbar: widget.api.isMock)],
       ),
       body: _inhalt(),
     );
@@ -71,18 +71,18 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
   Widget _inhalt() {
     final fehler = _fehler;
     if (fehler != null) return FehlerAnzeige(fehler: fehler, erneut: _laden);
-    final datei = _datei;
-    if (datei == null) return const Center(child: CircularProgressIndicator());
+    final file = _datei;
+    if (file == null) return const Center(child: CircularProgressIndicator());
 
-    if (datei.istPdf) return widget.pdfAnzeige.erstellen(datei.bytes);
-    if (datei.istText) return _TextAnsicht(bytes: datei.bytes);
-    if (datei.istBild) {
+    if (file.isPdf) return widget.pdfViewer.buildView(file.bytes);
+    if (file.isText) return _TextAnsicht(bytes: file.bytes);
+    if (file.isImage) {
       // Mit zwei Fingern zoomen und verschieben.
       return InteractiveViewer(
         maxScale: 8,
         child: Center(
           child: Image.memory(
-            datei.bytes,
+            file.bytes,
             fit: BoxFit.contain,
             errorBuilder: (_, _, _) => const Padding(
               padding: EdgeInsets.all(24),
@@ -99,7 +99,7 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'Dieser Dateityp (${datei.mimeTyp}) kann nicht angezeigt werden.',
+          'Dieser Dateityp (${file.mimeType}) kann nicht angezeigt werden.',
           textAlign: TextAlign.center,
         ),
       ),

@@ -34,60 +34,59 @@ Future<void> zuGesundheit(WidgetTester tester) async {
 /// die Standard-Module.
 LifelogApp testApp(
   ApiClient api, {
-  DateiAuswahl? auswahl,
-  ModulKatalog? katalog,
+  FileChooser? auswahl,
+  ModuleCatalog? catalog,
 }) => LifelogApp(
   api: api,
   dateiAuswahl: auswahl ?? FakeDateiAuswahl(),
-  katalog: katalog ?? ModulKatalog.standard(),
+  catalog: catalog ?? ModuleCatalog.defaults(),
 );
 
 /// Liefert vorgegebene Dateien statt Kamera und Dateiauswahl zu öffnen.
 /// `null` steht für „Nutzer bricht ab“.
-class FakeDateiAuswahl implements DateiAuswahl {
-  AusgewaehlteDatei? foto;
-  AusgewaehlteDatei? bild;
-  AusgewaehlteDatei? pdf;
-  AusgewaehlteDatei? verloren;
+class FakeDateiAuswahl implements FileChooser {
+  ChosenFile? foto;
+  ChosenFile? bild;
+  ChosenFile? pdf;
+  ChosenFile? verloren;
 
   @override
-  Future<AusgewaehlteDatei?> fotoAufnehmen() async => foto;
+  Future<ChosenFile?> takePhoto() async => foto;
 
   @override
-  Future<AusgewaehlteDatei?> bildAuswaehlen() async => bild;
+  Future<ChosenFile?> pickImage() async => bild;
 
   @override
-  Future<AusgewaehlteDatei?> pdfAuswaehlen() async => pdf;
+  Future<ChosenFile?> pickPdf() async => pdf;
 
   @override
-  Future<AusgewaehlteDatei?> verloreneDatei() async => verloren;
+  Future<ChosenFile?> retrieveLostFile() async => verloren;
 }
 
 /// Ein kleines „PDF“: Die Magic Bytes stimmen, der Rest ist beliebig.
-AusgewaehlteDatei testPdf(String name, [String inhalt = '']) =>
-    AusgewaehlteDatei(
-      bytes: Uint8List.fromList('%PDF-1.4 $name $inhalt'.codeUnits),
-      name: name,
-    );
+ChosenFile testPdf(String name, [String inhalt = '']) => ChosenFile(
+  bytes: Uint8List.fromList('%PDF-1.4 $name $inhalt'.codeUnits),
+  name: name,
+);
 
 /// Erwartet, dass ein Future mit einem [ApiFehler] mit diesem Code scheitert.
 Matcher wirftApiFehler(String code, {int? status}) => throwsA(
-  isA<ApiFehler>()
+  isA<ApiException>()
       .having((f) => f.code, 'code', code)
       .having((f) => f.httpStatus, 'httpStatus', status ?? anything),
 );
 
 /// Mock ohne künstliche Wartezeit und mit fester Uhr.
 MockApiClient schnellerMock({
-  bool mitBeispieldaten = true,
-  DateTime Function()? uhr,
-  ModulKatalog? katalog,
+  bool withSampleData = true,
+  DateTime Function()? clock,
+  ModuleCatalog? catalog,
 }) => MockApiClient(
-  mitBeispieldaten: mitBeispieldaten,
-  verzoegerung: Duration.zero,
-  uploadVerzoegerung: Duration.zero,
-  uhr: uhr ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
-  katalog: katalog,
+  withSampleData: withSampleData,
+  delay: Duration.zero,
+  uploadDelay: Duration.zero,
+  clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
+  catalog: catalog,
 );
 
 const laborId = '6727a1f3c2b4e5d6f7a8b9c0';

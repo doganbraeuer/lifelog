@@ -39,7 +39,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(EintragScreen), findsOneWidget);
-    expect((await mock.eintrag(laborId)).id, laborId);
+    expect((await mock.getEntry(laborId)).id, laborId);
   });
 
   testWidgets('Bestätigen löscht, zurück in der Zeitleiste ohne Eintrag', (
@@ -57,8 +57,8 @@ void main() {
     expect(find.text('Eintrag gelöscht.'), findsOneWidget);
     expect(find.text(labor), findsNothing);
     await expectLater(
-      mock.eintrag(laborId),
-      wirftApiFehler(FehlerCode.eintragNichtGefunden),
+      mock.getEntry(laborId),
+      wirftApiFehler(ErrorCode.entryNotFound),
     );
   });
 
@@ -67,7 +67,7 @@ void main() {
     await zumLaborbefund(tester, mock);
 
     await loeschenTippen(tester);
-    mock.simulierterFehler = true;
+    mock.simulateError = true;
     await tester.tap(loeschenBestaetigen());
     await tester.pumpAndSettle();
 
@@ -82,8 +82,8 @@ void main() {
     );
     expect(knopf.onPressed, isNotNull);
 
-    mock.simulierterFehler = false;
-    expect((await mock.eintrag(laborId)).id, laborId);
+    mock.simulateError = false;
+    expect((await mock.getEntry(laborId)).id, laborId);
   });
 
   testWidgets('aus einer Quelle gelöscht: zurück zur Frage, Zeitleiste neu', (

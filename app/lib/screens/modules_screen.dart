@@ -23,7 +23,7 @@ class BereicheScreen extends StatefulWidget {
   });
 
   final ApiClient api;
-  final DateiAuswahl dateiAuswahl;
+  final FileChooser dateiAuswahl;
 
   @override
   State<BereicheScreen> createState() => _BereicheScreenState();
@@ -59,19 +59,19 @@ class _BereicheScreenState extends State<BereicheScreen>
 
   /// Aktive Kachel: Container Transform von der Kachel zum Modul (auf iOS
   /// der normale Übergang). Inaktive Kachel: nur die Kachel.
-  Widget _kachel(ModulDefinition modul) {
-    if (!modul.aktiv) return _ModulKachel(modul: modul, oeffnen: null);
-    final theme = modulTheme(modul);
+  Widget _kachel(ModuleDefinition module) {
+    if (!module.active) return _ModulKachel(module: module, oeffnen: null);
+    final theme = modulTheme(module);
     return ContainerTransform(
       form: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       offenFarbe: theme.colorScheme.surface,
       geschlossen: (context, oeffnen) =>
-          _ModulKachel(modul: modul, oeffnen: oeffnen),
+          _ModulKachel(module: module, oeffnen: oeffnen),
       // Die Seite hängt am obersten Navigator: Farbschema mitgeben.
       offen: (_) => Theme(
         data: theme,
         child: ModulRahmen(
-          modul: modul,
+          module: module,
           api: widget.api,
           dateiAuswahl: widget.dateiAuswahl,
         ),
@@ -81,11 +81,11 @@ class _BereicheScreenState extends State<BereicheScreen>
 
   @override
   Widget build(BuildContext context) {
-    final module = ModulKatalog.von(context).module;
+    final modules = ModuleCatalog.of(context).modules;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lifelog'),
-        actions: [MockHinweis(sichtbar: widget.api.istMock)],
+        actions: [MockHinweis(sichtbar: widget.api.isMock)],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -98,7 +98,7 @@ class _BereicheScreenState extends State<BereicheScreen>
           crossAxisSpacing: 12,
           mainAxisExtent: 200,
         ),
-        itemCount: module.length,
+        itemCount: modules.length,
         itemBuilder: (context, i) {
           // Versetzt: Jede Kachel startet etwas später als die vorige.
           final start = (i * 0.12).clamp(0.0, 0.5);
@@ -111,14 +111,14 @@ class _BereicheScreenState extends State<BereicheScreen>
             ),
           );
           return FadeTransition(
-            key: ValueKey('einblenden-${module[i].id}'),
+            key: ValueKey('einblenden-${modules[i].id}'),
             opacity: verlauf,
             child: SlideTransition(
               position: Tween(
                 begin: const Offset(0, 0.08),
                 end: Offset.zero,
               ).animate(verlauf),
-              child: _kachel(module[i]),
+              child: _kachel(modules[i]),
             ),
           );
         },
@@ -128,9 +128,9 @@ class _BereicheScreenState extends State<BereicheScreen>
 }
 
 class _ModulKachel extends StatefulWidget {
-  const _ModulKachel({required this.modul, required this.oeffnen});
+  const _ModulKachel({required this.module, required this.oeffnen});
 
-  final ModulDefinition modul;
+  final ModuleDefinition module;
 
   /// `null` bei inaktiven Modulen: Die Kachel reagiert nicht.
   final VoidCallback? oeffnen;
@@ -145,31 +145,31 @@ class _ModulKachelState extends State<_ModulKachel> {
 
   @override
   Widget build(BuildContext context) {
-    final modul = widget.modul;
+    final module = widget.module;
     // Jede Kachel in den Farben ihres eigenen Moduls.
-    final farben = modulTheme(modul).colorScheme;
+    final farben = modulTheme(module).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final aktiv = modul.aktiv;
-    final vordergrund = aktiv
+    final active = module.active;
+    final vordergrund = active
         ? farben.onPrimaryContainer
         : farben.onSurfaceVariant.withValues(alpha: 0.6);
 
     return Semantics(
       button: true,
-      enabled: aktiv,
-      label: aktiv ? modul.name : '${modul.name}, bald verfügbar',
+      enabled: active,
+      label: active ? module.name : '${module.name}, bald verfügbar',
       excludeSemantics: true,
       child: AnimatedScale(
-        key: ValueKey('druck-${modul.id}'),
+        key: ValueKey('druck-${module.id}'),
         scale: _gedrueckt ? 0.97 : 1,
         duration: bewegungsDauer(context, Durations.short2),
         curve: Easing.standard,
         child: Card(
           clipBehavior: Clip.antiAlias,
-          color: aktiv ? null : farben.surfaceContainerHigh,
+          color: active ? null : farben.surfaceContainerHigh,
           child: Ink(
             // Aktiv: mehr Modulfarbe als leichter Verlauf.
-            decoration: aktiv
+            decoration: active
                 ? BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -183,7 +183,7 @@ class _ModulKachelState extends State<_ModulKachel> {
                 : null,
             child: InkWell(
               onTap: widget.oeffnen,
-              onHighlightChanged: aktiv
+              onHighlightChanged: active
                   ? (gedrueckt) => setState(() => _gedrueckt = gedrueckt)
                   : null,
               child: Padding(
@@ -195,35 +195,35 @@ class _ModulKachelState extends State<_ModulKachel> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: aktiv
+                        color: active
                             ? farben.primary
                             : farben.surfaceContainerHighest,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        modul.symbol,
+                        module.icon,
                         size: 28,
-                        color: aktiv ? farben.onPrimary : vordergrund,
+                        color: active ? farben.onPrimary : vordergrund,
                       ),
                     ),
                     const Spacer(),
                     Text(
-                      modul.name,
+                      module.name,
                       style: textTheme.titleMedium?.copyWith(
                         color: vordergrund,
-                        fontWeight: aktiv ? FontWeight.w600 : null,
+                        fontWeight: active ? FontWeight.w600 : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      modul.beschreibung,
+                      module.description,
                       style: textTheme.bodySmall?.copyWith(color: vordergrund),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (!aktiv) ...[
+                    if (!active) ...[
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(

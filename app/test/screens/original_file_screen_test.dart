@@ -8,9 +8,9 @@ import 'package:lifelog/screens/original_file_screen.dart';
 import '../helpers.dart';
 
 /// Statt pdfx: zeigt nur, wie viele Bytes ankamen und ob es ein PDF ist.
-class FakePdfAnzeige implements PdfAnzeige {
+class FakePdfAnzeige implements PdfViewer {
   @override
-  Widget erstellen(Uint8List bytes) => Text(
+  Widget buildView(Uint8List bytes) => Text(
     'PDF-Ansicht: ${bytes.length} Bytes, '
     '${String.fromCharCodes(bytes.take(5))}',
   );
@@ -19,16 +19,16 @@ class FakePdfAnzeige implements PdfAnzeige {
 Future<void> zeigen(
   WidgetTester tester,
   MockApiClient mock,
-  String eintragId,
-  String dateiname,
+  String entryId,
+  String fileName,
 ) async {
   await tester.pumpWidget(
     MaterialApp(
       home: OriginaldateiScreen(
         api: mock,
-        eintragId: eintragId,
-        dateiname: dateiname,
-        pdfAnzeige: FakePdfAnzeige(),
+        entryId: entryId,
+        fileName: fileName,
+        pdfViewer: FakePdfAnzeige(),
       ),
     ),
   );
@@ -38,11 +38,11 @@ Future<void> zeigen(
 void main() {
   testWidgets('PDF wird an die PDF-Anzeige übergeben', (tester) async {
     final mock = schnellerMock();
-    final groesse = (await mock.datei(laborId)).bytes.length;
+    final size = (await mock.getFile(laborId)).bytes.length;
     await zeigen(tester, mock, laborId, 'befund_oktober.pdf');
 
     expect(find.text('befund_oktober.pdf'), findsOneWidget);
-    expect(find.text('PDF-Ansicht: $groesse Bytes, %PDF-'), findsOneWidget);
+    expect(find.text('PDF-Ansicht: $size Bytes, %PDF-'), findsOneWidget);
   });
 
   testWidgets('Bild wird zoombar angezeigt', (tester) async {
@@ -56,12 +56,12 @@ void main() {
   testWidgets('Fehler beim Laden: Meldung und erneuter Versuch', (
     tester,
   ) async {
-    final mock = schnellerMock()..simulierterFehler = true;
+    final mock = schnellerMock()..simulateError = true;
     await zeigen(tester, mock, laborId, 'befund_oktober.pdf');
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
 
-    mock.simulierterFehler = false;
+    mock.simulateError = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
 

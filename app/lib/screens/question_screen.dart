@@ -10,7 +10,7 @@ import '../widgets/navigation.dart';
 import '../widgets/skeleton.dart';
 
 /// Höchstlänge einer Frage laut docs/API.md.
-const maxFrageLaenge = 500;
+const maxQuestionLength = 500;
 
 /// Eine Frage an die eigenen Dokumente stellen. Die Antwort kommt vom
 /// Backend und stützt sich nur auf die angezeigten Quellen. Die App zeigt
@@ -19,17 +19,17 @@ class FrageScreen extends StatefulWidget {
   const FrageScreen({
     super.key,
     required this.api,
-    required this.modulId,
+    required this.moduleId,
     required this.eintragOeffnen,
   });
 
   final ApiClient api;
 
   /// Modul, in dem gefragt wird (`modul` bei `POST /fragen`).
-  final String modulId;
+  final String moduleId;
 
   /// Öffnet den Eintrag einer Quelle. „Zurück“ führt wieder hierher.
-  final Future<void> Function(String eintragId) eintragOeffnen;
+  final Future<void> Function(String entryId) eintragOeffnen;
 
   @override
   State<FrageScreen> createState() => _FrageScreenState();
@@ -40,8 +40,8 @@ class _FrageScreenState extends State<FrageScreen> {
 
   /// Die zuletzt gestellte Frage; bleibt über der Antwort sichtbar.
   String? _gestellt;
-  FrageAntwort? _antwort;
-  ApiFehler? _fehler;
+  Answer? _antwort;
+  ApiException? _fehler;
   var _sucht = false;
 
   @override
@@ -59,8 +59,8 @@ class _FrageScreenState extends State<FrageScreen> {
 
   bool get _kannSenden => !_sucht && _feld.text.trim().isNotEmpty;
 
-  Future<void> _fragen([String? frage]) async {
-    final text = (frage ?? _feld.text).trim();
+  Future<void> _fragen([String? question]) async {
+    final text = (question ?? _feld.text).trim();
     if (text.isEmpty || _sucht) return;
     FocusScope.of(context).unfocus(); // Tastatur schließen
     setState(() {
@@ -70,10 +70,10 @@ class _FrageScreenState extends State<FrageScreen> {
       _sucht = true;
     });
     try {
-      final antwort = await widget.api.fragen(text, modul: widget.modulId);
+      final answer = await widget.api.ask(text, module: widget.moduleId);
       if (!mounted) return;
-      setState(() => _antwort = antwort);
-    } on ApiFehler catch (fehler) {
+      setState(() => _antwort = answer);
+    } on ApiException catch (fehler) {
       if (mounted) setState(() => _fehler = fehler);
     } finally {
       if (mounted) setState(() => _sucht = false);
@@ -86,7 +86,7 @@ class _FrageScreenState extends State<FrageScreen> {
       appBar: AppBar(
         leading: const BereicheKnopf(),
         title: const Text('Fragen'),
-        actions: [MockHinweis(sichtbar: widget.api.istMock)],
+        actions: [MockHinweis(sichtbar: widget.api.isMock)],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -100,7 +100,7 @@ class _FrageScreenState extends State<FrageScreen> {
       controller: _feld,
       minLines: 1,
       maxLines: 4,
-      maxLength: maxFrageLaenge,
+      maxLength: maxQuestionLength,
       textInputAction: TextInputAction.send,
       onSubmitted: (_) => _fragen(),
       decoration: InputDecoration(
@@ -130,7 +130,7 @@ class _FrageScreenState extends State<FrageScreen> {
 
     final theme = Theme.of(context);
     final fehler = _fehler;
-    final antwort = _antwort;
+    final answer = _antwort;
     return [
       Text('„$gestellt“', style: theme.textTheme.titleMedium),
       const SizedBox(height: 12),
@@ -154,7 +154,7 @@ class _FrageScreenState extends State<FrageScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  fehler.nachricht,
+                  fehler.message,
                   style: TextStyle(color: theme.colorScheme.onErrorContainer),
                 ),
                 Align(
@@ -170,20 +170,20 @@ class _FrageScreenState extends State<FrageScreen> {
         ),
       // Antwort und Quellen blenden nacheinander ein; der Text ist sofort
       // vollständig da (kein Tipp-Effekt). Neue Antwort, neuer Durchlauf.
-      if (antwort != null)
+      if (answer != null)
         GestaffeltEinblenden(
-          key: ObjectKey(antwort),
+          key: ObjectKey(answer),
           kinder: [
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: SelectableText(
-                  antwort.antwort,
+                  answer.answer,
                   style: theme.textTheme.bodyLarge,
                 ),
               ),
             ),
-            if (antwort.quellen.isNotEmpty)
+            if (answer.sources.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
                 child: Text(
@@ -193,10 +193,10 @@ class _FrageScreenState extends State<FrageScreen> {
                   ),
                 ),
               ),
-            for (final quelle in antwort.quellen)
+            for (final source in answer.sources)
               _QuellenKarte(
-                quelle: quelle,
-                oeffnen: () => widget.eintragOeffnen(quelle.eintragId),
+                source: source,
+                oeffnen: () => widget.eintragOeffnen(source.entryId),
               ),
           ],
         ),
@@ -206,19 +206,19 @@ class _FrageScreenState extends State<FrageScreen> {
 
 /// Eine Quelle: Nummer wie im Antworttext, Dokument und Auszug.
 class _QuellenKarte extends StatelessWidget {
-  const _QuellenKarte({required this.quelle, required this.oeffnen});
+  const _QuellenKarte({required this.source, required this.oeffnen});
 
-  final Quelle quelle;
+  final Source source;
   final VoidCallback oeffnen;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final katalog = ModulKatalog.von(context);
+    final catalog = ModuleCatalog.of(context);
     // Typname aus dem Modul der Quelle; ein typ ist nur damit eindeutig.
     final kopf = [
-      katalog.typName(quelle.modul, quelle.typ),
-      quelle.dokumentdatum?.anzeige ?? 'ohne Datum',
+      catalog.typeName(source.module, source.type),
+      source.documentDate?.display ?? 'ohne Datum',
     ].join(' · ');
     return Card(
       child: InkWell(
@@ -228,7 +228,7 @@ class _QuellenKarte extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(radius: 16, child: Text('${quelle.nr}')),
+              CircleAvatar(radius: 16, child: Text('${source.number}')),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -237,7 +237,7 @@ class _QuellenKarte extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          katalog.typSymbol(quelle.modul, quelle.typ),
+                          catalog.typeIcon(source.module, source.type),
                           size: 16,
                         ),
                         const SizedBox(width: 4),
@@ -247,12 +247,12 @@ class _QuellenKarte extends StatelessWidget {
                       ],
                     ),
                     Text(
-                      quelle.quelle ?? 'Quelle unbekannt',
+                      source.issuer ?? 'Quelle unbekannt',
                       style: theme.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '„${quelle.auszug}“',
+                      '„${source.excerpt}“',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontStyle: FontStyle.italic,
                       ),

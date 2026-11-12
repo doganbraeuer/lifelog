@@ -3,54 +3,54 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/model/entry.dart';
 
-Datei datei(String mimeTyp) => Datei(
+File getFile(String mimeType) => File(
   id: '6727a1f3c2b4e5d6f7a8b9c1',
-  dateiname: 'x',
-  mimeTyp: mimeTyp,
-  groesse: 1,
+  fileName: 'x',
+  mimeType: mimeType,
+  size: 1,
   sha256: '0' * 64,
 );
 
-DateiInhalt inhalt(String mimeTyp) =>
-    DateiInhalt(bytes: Uint8List(0), mimeTyp: mimeTyp);
+FileContent inhalt(String mimeType) =>
+    FileContent(bytes: Uint8List(0), mimeType: mimeType);
 
 void main() {
   test('medientyp ohne Parameter und klein geschrieben', () {
-    expect(medientyp('text/plain'), 'text/plain');
-    expect(medientyp('text/plain; charset=utf-8'), 'text/plain');
-    expect(medientyp(' Text/Plain ;charset=UTF-8'), 'text/plain');
-    expect(medientyp('application/pdf'), 'application/pdf');
+    expect(mediaType('text/plain'), 'text/plain');
+    expect(mediaType('text/plain; charset=utf-8'), 'text/plain');
+    expect(mediaType(' Text/Plain ;charset=UTF-8'), 'text/plain');
+    expect(mediaType('application/pdf'), 'application/pdf');
   });
 
   group('istText', () {
-    for (final mimeTyp in [
+    for (final mimeType in [
       'text/plain',
       'text/plain; charset=utf-8',
       'TEXT/PLAIN;charset=UTF-8',
     ]) {
-      test('ja: $mimeTyp', () {
-        expect(datei(mimeTyp).istText, isTrue);
-        expect(inhalt(mimeTyp).istText, isTrue);
+      test('ja: $mimeType', () {
+        expect(getFile(mimeType).isText, isTrue);
+        expect(inhalt(mimeType).isText, isTrue);
       });
     }
 
-    for (final mimeTyp in [
+    for (final mimeType in [
       'text/html',
       'text/plainx',
       'application/pdf',
       'image/png',
     ]) {
-      test('nein: $mimeTyp', () {
-        expect(datei(mimeTyp).istText, isFalse);
-        expect(inhalt(mimeTyp).istText, isFalse);
+      test('nein: $mimeType', () {
+        expect(getFile(mimeType).isText, isFalse);
+        expect(inhalt(mimeType).isText, isFalse);
       });
     }
   });
 
   test('PDF und Bild auch mit Parametern erkannt', () {
-    expect(datei('application/pdf; name=x').istPdf, isTrue);
-    expect(inhalt('IMAGE/JPEG').istBild, isTrue);
-    expect(datei('text/plain').istPdf, isFalse);
-    expect(datei('text/plain').istBild, isFalse);
+    expect(getFile('application/pdf; name=x').isPdf, isTrue);
+    expect(inhalt('IMAGE/JPEG').isImage, isTrue);
+    expect(getFile('text/plain').isPdf, isFalse);
+    expect(getFile('text/plain').isImage, isFalse);
   });
 }

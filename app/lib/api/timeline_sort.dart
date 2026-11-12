@@ -1,49 +1,48 @@
 import '../model/entry.dart';
 import 'api_client.dart';
 
-/// Sortiert Einträge nach den Regeln aus docs/API.md, Abschnitt 3.2.
+/// Sorts entries by the rules from docs/API.md, section 3.2.
 ///
-/// Die App selbst sortiert nie, das macht das Backend. Diese Funktion
-/// braucht nur der Mock, damit er sich genauso verhält wie das Backend.
-List<EintragKurz> sortiereZeitleiste(
-  Iterable<EintragKurz> eintraege,
-  Sortierung sortierung,
-  Richtung richtung,
+/// The app itself never sorts; the backend does. Only the mock needs this
+/// function, so that it behaves exactly like the backend.
+List<EntrySummary> sortTimeline(
+  Iterable<EntrySummary> entries,
+  Sort sort,
+  SortOrder order,
 ) {
-  final liste = eintraege.toList();
-  liste.sort((a, b) => vergleicheZeitleiste(a, b, sortierung, richtung));
-  return liste;
+  final list = entries.toList();
+  list.sort((a, b) => compareTimeline(a, b, sort, order));
+  return list;
 }
 
-/// Vergleich zweier Einträge:
-/// 1. Nach dem gewählten Feld in der gewählten Richtung.
-/// 2. Bei `sortierung=dokumentdatum` stehen Einträge ohne Datum immer am
-///    Ende, untereinander nach `importdatum` absteigend (bei Gleichstand
-///    `id` absteigend).
-/// 3. Bei gleichem Wert entscheidet `importdatum` in derselben Richtung,
-///    danach `id`.
-int vergleicheZeitleiste(
-  EintragKurz a,
-  EintragKurz b,
-  Sortierung sortierung,
-  Richtung richtung,
+/// Compares two entries:
+/// 1. By the chosen field in the chosen order.
+/// 2. With `sort=documentDate`, entries without a date are always at the
+///    end, among themselves by `importedAt` descending (on a tie by `id`
+///    descending).
+/// 3. For equal values `importedAt` decides in the same order, then `id`.
+int compareTimeline(
+  EntrySummary a,
+  EntrySummary b,
+  Sort sort,
+  SortOrder order,
 ) {
-  final faktor = richtung == Richtung.asc ? 1 : -1;
+  final factor = order == SortOrder.asc ? 1 : -1;
 
-  if (sortierung == Sortierung.documentDate) {
-    final datumA = a.dokumentdatum;
-    final datumB = b.dokumentdatum;
-    if (datumA == null && datumB == null) {
-      final nachImport = b.importdatum.compareTo(a.importdatum);
-      return nachImport != 0 ? nachImport : b.id.compareTo(a.id);
+  if (sort == Sort.documentDate) {
+    final dateA = a.documentDate;
+    final dateB = b.documentDate;
+    if (dateA == null && dateB == null) {
+      final byImport = b.importedAt.compareTo(a.importedAt);
+      return byImport != 0 ? byImport : b.id.compareTo(a.id);
     }
-    if (datumA == null) return 1;
-    if (datumB == null) return -1;
-    final nachDatum = datumA.compareTo(datumB);
-    if (nachDatum != 0) return faktor * nachDatum;
+    if (dateA == null) return 1;
+    if (dateB == null) return -1;
+    final byDate = dateA.compareTo(dateB);
+    if (byDate != 0) return factor * byDate;
   }
 
-  final nachImport = a.importdatum.compareTo(b.importdatum);
-  if (nachImport != 0) return faktor * nachImport;
-  return faktor * a.id.compareTo(b.id);
+  final byImport = a.importedAt.compareTo(b.importedAt);
+  if (byImport != 0) return factor * byImport;
+  return factor * a.id.compareTo(b.id);
 }

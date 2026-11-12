@@ -92,10 +92,8 @@ void main() {
       // Neuladen fällt mitten in die Rücklauf-Animation.
       (
         'Neuladen während des Schließens',
-        () => MockApiClient(
-          verzoegerung: Durations.short2,
-          uploadVerzoegerung: Duration.zero,
-        ),
+        () =>
+            MockApiClient(delay: Durations.short2, uploadDelay: Duration.zero),
       ),
     ]) {
       testWidgets('Löschen aus dem geöffneten Eintrag ($name): schließt ohne '
@@ -275,7 +273,7 @@ void main() {
       await tester.tap(find.byTooltip('Quelle korrigieren'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Quelle'), 'X');
-      mock.simulierterFehler = true;
+      mock.simulateError = true;
       await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
       await tester.pumpAndSettle();
 

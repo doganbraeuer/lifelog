@@ -43,51 +43,51 @@ Map<String, dynamic> beispiel() =>
 
 void main() {
   test('liest den vollständigen Eintrag', () {
-    final eintrag = Eintrag.fromJson(beispiel());
-    expect(eintrag.id, '6727a1f3c2b4e5d6f7a8b9c0');
-    expect(eintrag.modul, 'health');
-    expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
-    expect(eintrag.importdatum, DateTime.utc(2026, 11, 3, 18, 42, 7));
-    expect(eintrag.importdatum.isUtc, isTrue);
-    expect(eintrag.infos, hasLength(4));
-    expect(eintrag.infos[2].wert, '<0,5');
-    expect(eintrag.infos[3].einheit, isNull);
-    expect(eintrag.datei.istPdf, isTrue);
-    expect(eintrag.datei.groesse, 184320);
+    final entry = Entry.fromJson(beispiel());
+    expect(entry.id, '6727a1f3c2b4e5d6f7a8b9c0');
+    expect(entry.module, 'health');
+    expect(entry.documentDate, PlainDate(2026, 10, 14));
+    expect(entry.importedAt, DateTime.utc(2026, 11, 3, 18, 42, 7));
+    expect(entry.importedAt.isUtc, isTrue);
+    expect(entry.facts, hasLength(4));
+    expect(entry.facts[2].value, '<0,5');
+    expect(entry.facts[3].unit, isNull);
+    expect(entry.file.isPdf, isTrue);
+    expect(entry.file.size, 184320);
   });
 
   test('Korrekturen lassen sich pro Feld abfragen', () {
-    final eintrag = Eintrag.fromJson(beispiel());
-    expect(eintrag.korrektur('facts.f2.value')?.erkannt, '6,3');
-    expect(eintrag.korrektur('documentDate'), isNull);
-    expect(eintrag.infoKorrigiert('f2'), isTrue);
-    expect(eintrag.infoKorrigiert('f1'), isFalse);
+    final entry = Entry.fromJson(beispiel());
+    expect(entry.correctionFor('facts.f2.value')?.recognized, '6,3');
+    expect(entry.correctionFor('documentDate'), isNull);
+    expect(entry.isFactCorrected('f2'), isTrue);
+    expect(entry.isFactCorrected('f1'), isFalse);
   });
 
   test('null für dokumentdatum und quelle', () {
     final json = beispiel()
       ..['documentDate'] = null
       ..['issuer'] = null;
-    final kurz = EintragKurz.fromJson(json);
-    expect(kurz.dokumentdatum, isNull);
-    expect(kurz.quelle, isNull);
+    final kurz = EntrySummary.fromJson(json);
+    expect(kurz.documentDate, isNull);
+    expect(kurz.issuer, isNull);
   });
 
   test('falsche Daten werfen FormatException', () {
     expect(
-      () => Eintrag.fromJson(beispiel()..remove('id')),
+      () => Entry.fromJson(beispiel()..remove('id')),
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['documentDate'] = '14.10.2026'),
+      () => Entry.fromJson(beispiel()..['documentDate'] = '14.10.2026'),
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['facts'] = 'keine Liste'),
+      () => Entry.fromJson(beispiel()..['facts'] = 'keine Liste'),
       throwsFormatException,
     );
     expect(
-      () => Eintrag.fromJson(beispiel()..['importedAt'] = 'gestern'),
+      () => Entry.fromJson(beispiel()..['importedAt'] = 'gestern'),
       throwsFormatException,
     );
   });

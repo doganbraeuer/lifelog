@@ -66,7 +66,7 @@ void main() {
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // Quelle
     expect(find.text('21.10.2026'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'health'), hasLength(4));
+    expect(await mock.listEntries(module: 'health'), hasLength(4));
 
     await tester.tap(find.text('Originaldatei öffnen'));
     await tester.pumpAndSettle();
@@ -82,8 +82,8 @@ void main() {
 
   testWidgets('Ladeanzeige, Textfeld gesperrt', (tester) async {
     final mock = MockApiClient(
-      verzoegerung: Duration.zero,
-      uploadVerzoegerung: const Duration(seconds: 2),
+      delay: Duration.zero,
+      uploadDelay: const Duration(seconds: 2),
     );
     await zumTextfeld(tester, mock);
     await tester.enterText(textFeld(), text);
@@ -119,7 +119,7 @@ void main() {
     tester,
   ) async {
     final mock = schnellerMock();
-    final vorhanden = await mock.textImportieren(text, modul: 'health');
+    final vorhanden = await mock.importText(text, module: 'health');
     await zumTextfeld(tester, mock);
     await tester.enterText(textFeld(), text);
     await tester.pump();
@@ -134,7 +134,7 @@ void main() {
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
     expect(find.byType(EintragScreen), findsOneWidget);
-    expect(find.textContaining(vorhanden.datei.dateiname), findsWidgets);
+    expect(find.textContaining(vorhanden.file.fileName), findsWidgets);
   });
 
   testWidgets('Handygröße, Tastatur offen, langer Text: Knöpfe erreichbar', (
@@ -194,7 +194,7 @@ void main() {
     tester,
   ) async {
     await zumTextfeld(tester, schnellerMock());
-    await tester.enterText(textFeld(), 'Test modellfehler');
+    await tester.enterText(textFeld(), 'Test modelerror');
     await tester.pump();
     await tester.tap(importieren());
     await tester.pumpAndSettle();
@@ -206,7 +206,7 @@ void main() {
     );
     expect(
       tester.widget<TextField>(textFeld()).controller!.text,
-      'Test modellfehler',
+      'Test modelerror',
     );
   });
 }

@@ -10,59 +10,59 @@ void main() {
     test(
       'Standard: Reihenfolge wie im Beispiel aus docs/API.md, 3.2',
       () async {
-        final liste = await schnellerMock().eintraege(modul: 'health');
+        final liste = await schnellerMock().listEntries(module: 'health');
         expect(liste.map((e) => e.id), [laborId, arztbriefId, sonstigesId]);
-        expect(liste.last.dokumentdatum, isNull);
-        expect(liste.last.quelle, isNull);
+        expect(liste.last.documentDate, isNull);
+        expect(liste.last.issuer, isNull);
       },
     );
 
     test('importdatum aufsteigend', () async {
-      final liste = await schnellerMock().eintraege(
-        sortierung: Sortierung.importedAt,
-        richtung: Richtung.asc,
-        modul: 'health',
+      final liste = await schnellerMock().listEntries(
+        sort: Sort.importedAt,
+        order: SortOrder.asc,
+        module: 'health',
       );
       expect(liste.map((e) => e.id), [laborId, arztbriefId, sonstigesId]);
     });
 
     test('dokumentdatum aufsteigend: ohne Datum am Ende', () async {
-      final liste = await schnellerMock().eintraege(
-        richtung: Richtung.asc,
-        modul: 'health',
+      final liste = await schnellerMock().listEntries(
+        order: SortOrder.asc,
+        module: 'health',
       );
       expect(liste.map((e) => e.id), [arztbriefId, laborId, sonstigesId]);
     });
 
     test('ohne Parameter gelten die Standardwerte', () async {
-      final liste = await schnellerMock().eintraegeMitParametern({});
+      final liste = await schnellerMock().listEntriesWithParameters({});
       expect(liste.first.id, laborId);
     });
 
     test('unbekannte Sortierung: 400 INVALID_PARAMETER', () async {
       final mock = schnellerMock();
       await expectLater(
-        mock.eintraegeMitParametern({'sort': 'issuer'}),
-        wirftApiFehler(FehlerCode.ungueltigerParameter, status: 400),
+        mock.listEntriesWithParameters({'sort': 'issuer'}),
+        wirftApiFehler(ErrorCode.invalidParameter, status: 400),
       );
       try {
-        await mock.eintraegeMitParametern({'sort': 'issuer'});
-      } on ApiFehler catch (f) {
+        await mock.listEntriesWithParameters({'sort': 'issuer'});
+      } on ApiException catch (f) {
         expect(f.details, {'parameter': 'sort', 'value': 'issuer'});
       }
     });
 
     test('unbekannte Richtung: 400 INVALID_PARAMETER', () async {
       await expectLater(
-        schnellerMock().eintraegeMitParametern({'order': 'seitwaerts'}),
-        wirftApiFehler(FehlerCode.ungueltigerParameter, status: 400),
+        schnellerMock().listEntriesWithParameters({'order': 'seitwaerts'}),
+        wirftApiFehler(ErrorCode.invalidParameter, status: 400),
       );
     });
 
     test('ohne Einträge eine leere Liste', () async {
       expect(
-        await schnellerMock(mitBeispieldaten: false)
-            .eintraege(modul: 'health'),
+        await schnellerMock(withSampleData: false)
+            .listEntries(module: 'health'),
         isEmpty,
       );
     });
@@ -70,66 +70,66 @@ void main() {
 
   group('eintrag', () {
     test('liefert den vollständigen Laborbefund', () async {
-      final eintrag = await schnellerMock().eintrag(laborId);
-      expect(eintrag.typ, 'lab_report');
-      expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
-      expect(eintrag.infos, hasLength(4));
-      expect(eintrag.korrektur('facts.f2.value')?.erkannt, '6,3');
+      final entry = await schnellerMock().getEntry(laborId);
+      expect(entry.type, 'lab_report');
+      expect(entry.documentDate, PlainDate(2026, 10, 14));
+      expect(entry.facts, hasLength(4));
+      expect(entry.correctionFor('facts.f2.value')?.recognized, '6,3');
     });
 
     test('ungültige ID: 400 INVALID_ID', () async {
       await expectLater(
-        schnellerMock().eintrag('123'),
-        wirftApiFehler(FehlerCode.ungueltigeId, status: 400),
+        schnellerMock().getEntry('123'),
+        wirftApiFehler(ErrorCode.invalidId, status: 400),
       );
       await expectLater(
-        schnellerMock().eintrag('zzzzzzzzzzzzzzzzzzzzzzzz'),
-        wirftApiFehler(FehlerCode.ungueltigeId, status: 400),
+        schnellerMock().getEntry('zzzzzzzzzzzzzzzzzzzzzzzz'),
+        wirftApiFehler(ErrorCode.invalidId, status: 400),
       );
     });
 
     test('unbekannte ID: 404 ENTRY_NOT_FOUND', () async {
       await expectLater(
-        schnellerMock().eintrag('ffffffffffffffffffffffff'),
-        wirftApiFehler(FehlerCode.eintragNichtGefunden, status: 404),
+        schnellerMock().getEntry('ffffffffffffffffffffffff'),
+        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
       );
     });
   });
 
   group('file', () {
     test('Laborbefund ist ein PDF', () async {
-      final datei = await schnellerMock().datei(laborId);
-      expect(datei.mimeTyp, 'application/pdf');
-      expect(String.fromCharCodes(datei.bytes.take(5)), '%PDF-');
+      final file = await schnellerMock().getFile(laborId);
+      expect(file.mimeType, 'application/pdf');
+      expect(String.fromCharCodes(file.bytes.take(5)), '%PDF-');
       expect(
-        String.fromCharCodes(datei.bytes.skip(datei.bytes.length - 6)),
+        String.fromCharCodes(file.bytes.skip(file.bytes.length - 6)),
         '%%EOF\n',
       );
     });
 
     test('Arztbrief ist ein PNG', () async {
-      final datei = await schnellerMock().datei(arztbriefId);
-      expect(datei.mimeTyp, 'image/png');
-      expect(datei.bytes.take(4), [0x89, 0x50, 0x4E, 0x47]);
+      final file = await schnellerMock().getFile(arztbriefId);
+      expect(file.mimeType, 'image/png');
+      expect(file.bytes.take(4), [0x89, 0x50, 0x4E, 0x47]);
     });
 
     test('Fehler wie bei eintrag', () async {
       await expectLater(
-        schnellerMock().datei('123'),
-        wirftApiFehler(FehlerCode.ungueltigeId),
+        schnellerMock().getFile('123'),
+        wirftApiFehler(ErrorCode.invalidId),
       );
       await expectLater(
-        schnellerMock().datei('ffffffffffffffffffffffff'),
-        wirftApiFehler(FehlerCode.eintragNichtGefunden),
+        schnellerMock().getFile('ffffffffffffffffffffffff'),
+        wirftApiFehler(ErrorCode.entryNotFound),
       );
     });
   });
 
   test('simulierterFehler: 500 INTERNAL_ERROR', () async {
-    final mock = schnellerMock()..simulierterFehler = true;
+    final mock = schnellerMock()..simulateError = true;
     await expectLater(
-      mock.eintraege(modul: 'health'),
-      wirftApiFehler(FehlerCode.internerFehler, status: 500),
+      mock.listEntries(module: 'health'),
+      wirftApiFehler(ErrorCode.internalError, status: 500),
     );
   });
 }

@@ -8,7 +8,7 @@ import '../api/api_exception.dart';
 class FehlerAnzeige extends StatelessWidget {
   const FehlerAnzeige({super.key, required this.fehler, this.erneut});
 
-  final ApiFehler fehler;
+  final ApiException fehler;
 
   /// Wird beim Tippen auf „Erneut versuchen“ aufgerufen. Ohne Callback
   /// gibt es keinen Knopf.
@@ -16,7 +16,7 @@ class FehlerAnzeige extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final offline = fehler.code == FehlerCode.netzwerkFehler;
+    final offline = fehler.code == ErrorCode.networkError;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -29,7 +29,7 @@ class FehlerAnzeige extends StatelessWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 12),
-            Text(fehler.nachricht, textAlign: TextAlign.center),
+            Text(fehler.message, textAlign: TextAlign.center),
             if (erneut != null) ...[
               const SizedBox(height: 16),
               FilledButton.tonal(

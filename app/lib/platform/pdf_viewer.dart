@@ -2,39 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfx/pdfx.dart';
 
-/// Zeigt ein PDF an.
+/// Shows a PDF.
 ///
-/// pdfx nutzt die PDF-Funktionen von Android (`PdfRenderer`) und iOS
-/// (`CGPDF`). Die gibt es in Widget-Tests nicht, deshalb liegt die Anzeige
-/// hinter dieser Schnittstelle; Tests geben eine eigene an.
-abstract interface class PdfAnzeige {
-  Widget erstellen(Uint8List bytes);
+/// pdfx uses the PDF functions of Android (`PdfRenderer`) and iOS (`CGPDF`).
+/// They do not exist in widget tests, so the viewer sits behind this
+/// interface; tests pass their own.
+abstract interface class PdfViewer {
+  Widget buildView(Uint8List bytes);
 }
 
-/// Echte Anzeige mit pdfx: zoombar, Seiten untereinander.
-class PdfxAnzeige implements PdfAnzeige {
-  const PdfxAnzeige();
+/// Real viewer with pdfx: zoomable, pages below each other.
+class PdfxViewer implements PdfViewer {
+  const PdfxViewer();
 
   @override
-  Widget erstellen(Uint8List bytes) => _PdfxAnsicht(bytes: bytes);
+  Widget buildView(Uint8List bytes) => _PdfxView(bytes: bytes);
 }
 
-class _PdfxAnsicht extends StatefulWidget {
-  const _PdfxAnsicht({required this.bytes});
+class _PdfxView extends StatefulWidget {
+  const _PdfxView({required this.bytes});
 
   final Uint8List bytes;
 
   @override
-  State<_PdfxAnsicht> createState() => _PdfxAnsichtState();
+  State<_PdfxView> createState() => _PdfxViewState();
 }
 
-class _PdfxAnsichtState extends State<_PdfxAnsicht> {
-  // Der Controller lädt das Dokument direkt aus den Bytes, ohne Datei.
+class _PdfxViewState extends State<_PdfxView> {
+  // The controller loads the document straight from the bytes, without a
+  // file.
   late final _controller = PdfControllerPinch(
     document: PdfDocument.openData(widget.bytes),
   );
-  var _seite = 1;
-  var _seiten = 0;
+  var _page = 1;
+  var _pages = 0;
 
   @override
   void dispose() {
@@ -44,15 +45,15 @@ class _PdfxAnsichtState extends State<_PdfxAnsicht> {
 
   @override
   Widget build(BuildContext context) {
-    final farben = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
     return Stack(
       children: [
         PdfViewPinch(
           controller: _controller,
-          backgroundDecoration: BoxDecoration(color: farben.surfaceContainer),
-          onDocumentLoaded: (dokument) =>
-              setState(() => _seiten = dokument.pagesCount),
-          onPageChanged: (seite) => setState(() => _seite = seite),
+          backgroundDecoration: BoxDecoration(color: colors.surfaceContainer),
+          onDocumentLoaded: (document) =>
+              setState(() => _pages = document.pagesCount),
+          onPageChanged: (page) => setState(() => _page = page),
           builders: PdfViewPinchBuilders<DefaultBuilderOptions>(
             options: const DefaultBuilderOptions(),
             documentLoaderBuilder: (_) =>
@@ -71,7 +72,7 @@ class _PdfxAnsichtState extends State<_PdfxAnsicht> {
             ),
           ),
         ),
-        if (_seiten > 0)
+        if (_pages > 0)
           Positioned(
             bottom: 16,
             left: 0,
@@ -83,12 +84,12 @@ class _PdfxAnsichtState extends State<_PdfxAnsicht> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: farben.inverseSurface.withValues(alpha: 0.85),
+                  color: colors.inverseSurface.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  'Seite $_seite von $_seiten',
-                  style: TextStyle(color: farben.onInverseSurface),
+                  'Seite $_page von $_pages',
+                  style: TextStyle(color: colors.onInverseSurface),
                 ),
               ),
             ),

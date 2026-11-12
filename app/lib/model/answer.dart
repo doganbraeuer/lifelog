@@ -1,59 +1,60 @@
-import 'plain_date.dart';
 import 'json_helpers.dart';
+import 'plain_date.dart';
 
-/// Antwort auf `POST /api/v1/questions` (docs/API.md, Abschnitt 3.6).
-class FrageAntwort {
-  const FrageAntwort({
-    required this.antwort,
-    required this.gefunden,
-    required this.quellen,
+/// Response to `POST /api/v1/questions` (docs/API.md, section 3.6).
+class Answer {
+  const Answer({
+    required this.answer,
+    required this.found,
+    required this.sources,
   });
 
-  factory FrageAntwort.fromJson(Map<String, dynamic> json) => FrageAntwort(
-    antwort: text(json, 'answer'),
-    gefunden: wahrheitswert(json, 'found'),
-    quellen: liste(json, 'sources', Quelle.fromJson),
+  factory Answer.fromJson(Map<String, dynamic> json) => Answer(
+    answer: readString(json, 'answer'),
+    found: readBool(json, 'found'),
+    sources: readList(json, 'sources', Source.fromJson),
   );
 
-  /// Antworttext. Verweise wie `[1]` zeigen auf [Quelle.nr].
-  final String antwort;
+  /// Answer text. References like `[1]` point to [Source.number].
+  final String answer;
 
-  /// `false`, wenn kein passender Abschnitt gefunden wurde.
-  final bool gefunden;
-  final List<Quelle> quellen;
+  /// `false` if no matching chunk was found.
+  final bool found;
+  final List<Source> sources;
 }
 
-/// Ein Abschnitt, auf den sich die Antwort stützt.
-class Quelle {
-  const Quelle({
-    required this.nr,
-    required this.eintragId,
-    required this.modul,
-    required this.typ,
-    required this.quelle,
-    required this.dokumentdatum,
-    required this.auszug,
+/// A chunk the answer is based on.
+class Source {
+  const Source({
+    required this.number,
+    required this.entryId,
+    required this.module,
+    required this.type,
+    required this.issuer,
+    required this.documentDate,
+    required this.excerpt,
   });
 
-  factory Quelle.fromJson(Map<String, dynamic> json) => Quelle(
-    nr: ganzzahl(json, 'number'),
-    eintragId: text(json, 'entryId'),
-    modul: text(json, 'module'),
-    typ: text(json, 'type'),
-    quelle: textOderNull(json, 'issuer'),
-    dokumentdatum: datumOderNull(json, 'documentDate'),
-    auszug: text(json, 'excerpt'),
+  factory Source.fromJson(Map<String, dynamic> json) => Source(
+    number: readInt(json, 'number'),
+    entryId: readString(json, 'entryId'),
+    module: readString(json, 'module'),
+    type: readString(json, 'type'),
+    issuer: readStringOrNull(json, 'issuer'),
+    documentDate: readDateOrNull(json, 'documentDate'),
+    excerpt: readString(json, 'excerpt'),
   );
 
-  /// Passt zum Verweis `[nr]` im Antworttext. Nicht unbedingt lückenlos
-  /// (z. B. nur 1 und 3), weil nur zitierte Abschnitte geliefert werden.
-  final int nr;
-  final String eintragId;
+  /// Matches the reference `[number]` in the answer text. Not necessarily
+  /// without gaps (e.g. only 1 and 3), because only cited chunks are
+  /// returned.
+  final int number;
+  final String entryId;
 
-  /// Modul des Eintrags. Ein `typ` ist nur zusammen damit eindeutig.
-  final String modul;
-  final String typ;
-  final String? quelle;
-  final Datum? dokumentdatum;
-  final String auszug;
+  /// Module of the entry. A `type` is only unique together with it.
+  final String module;
+  final String type;
+  final String? issuer;
+  final PlainDate? documentDate;
+  final String excerpt;
 }

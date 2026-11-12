@@ -1,8 +1,8 @@
 import '../api/api_client.dart';
 import 'entry.dart';
 
-/// Deutsche Monatsnamen (ohne `intl`).
-const monatsnamen = [
+/// German month names for display (without `intl`).
+const monthNames = [
   'Januar',
   'Februar',
   'März',
@@ -17,58 +17,55 @@ const monatsnamen = [
   'Dezember',
 ];
 
-/// Titel der Gruppe für Einträge ohne Dokumentdatum.
-const ohneDatumTitel = 'Ohne Datum';
+/// Title of the group for entries without a document date.
+const noDateTitle = 'Ohne Datum';
 
-/// Ein Abschnitt der Zeitachse, z. B. „Oktober 2026“.
-class ZeitleistenGruppe {
-  const ZeitleistenGruppe(this.titel, this.eintraege);
+/// A section of the timeline axis, e.g. „Oktober 2026“.
+class TimelineGroup {
+  const TimelineGroup(this.title, this.entries);
 
-  final String titel;
-  final List<EintragKurz> eintraege;
+  final String title;
+  final List<EntrySummary> entries;
 }
 
-/// Teilt die Einträge in Monatsgruppen für die Zeitachse.
+/// Splits the entries into month groups for the timeline axis.
 ///
-/// - Die Reihenfolge des Backends bleibt erhalten; aufeinanderfolgende
-///   Einträge mit gleichem Monat bilden eine Gruppe.
-/// - Der Monat kommt aus dem gewählten Sortierfeld: beim Dokumentdatum aus
-///   dem reinen Datum (ohne Zeitzone), beim Importdatum aus der lokalen Zeit
-///   (wie es auch angezeigt wird).
-/// - Einträge ohne Dokumentdatum kommen in eine eigene Gruppe
-///   [ohneDatumTitel] am Ende.
-List<ZeitleistenGruppe> gruppiereZeitleiste(
-  List<EintragKurz> eintraege,
-  Sortierung sortierung,
-) {
-  final gruppen = <(String, List<EintragKurz>)>[];
-  final ohneDatum = <EintragKurz>[];
-  for (final eintrag in eintraege) {
-    final titel = _monatstitel(eintrag, sortierung);
-    if (titel == null) {
-      ohneDatum.add(eintrag);
-    } else if (gruppen.isNotEmpty && gruppen.last.$1 == titel) {
-      gruppen.last.$2.add(eintrag);
+/// - The order from the backend is kept; consecutive entries with the same
+///   month form a group.
+/// - The month comes from the chosen sort field: for the document date from
+///   the plain date (without time zone), for the import date from local
+///   time (as it is also displayed).
+/// - Entries without a document date go into their own group
+///   [noDateTitle] at the end.
+List<TimelineGroup> groupTimeline(List<EntrySummary> entries, Sort sort) {
+  final groups = <(String, List<EntrySummary>)>[];
+  final withoutDate = <EntrySummary>[];
+  for (final entry in entries) {
+    final title = _monthTitle(entry, sort);
+    if (title == null) {
+      withoutDate.add(entry);
+    } else if (groups.isNotEmpty && groups.last.$1 == title) {
+      groups.last.$2.add(entry);
     } else {
-      gruppen.add((titel, [eintrag]));
+      groups.add((title, [entry]));
     }
   }
   return [
-    for (final (titel, liste) in gruppen)
-      ZeitleistenGruppe(titel, List.unmodifiable(liste)),
-    if (ohneDatum.isNotEmpty)
-      ZeitleistenGruppe(ohneDatumTitel, List.unmodifiable(ohneDatum)),
+    for (final (title, list) in groups)
+      TimelineGroup(title, List.unmodifiable(list)),
+    if (withoutDate.isNotEmpty)
+      TimelineGroup(noDateTitle, List.unmodifiable(withoutDate)),
   ];
 }
 
-String? _monatstitel(EintragKurz eintrag, Sortierung sortierung) {
-  switch (sortierung) {
-    case Sortierung.documentDate:
-      final datum = eintrag.dokumentdatum;
-      if (datum == null) return null;
-      return '${monatsnamen[datum.monat - 1]} ${datum.jahr}';
-    case Sortierung.importedAt:
-      final lokal = eintrag.importdatum.toLocal();
-      return '${monatsnamen[lokal.month - 1]} ${lokal.year}';
+String? _monthTitle(EntrySummary entry, Sort sort) {
+  switch (sort) {
+    case Sort.documentDate:
+      final date = entry.documentDate;
+      if (date == null) return null;
+      return '${monthNames[date.month - 1]} ${date.year}';
+    case Sort.importedAt:
+      final local = entry.importedAt.toLocal();
+      return '${monthNames[local.month - 1]} ${local.year}';
   }
 }

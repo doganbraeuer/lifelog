@@ -4,10 +4,10 @@ import 'package:lifelog/model/plain_date.dart';
 void main() {
   group('Datum.tryParse', () {
     test('liest JJJJ-MM-TT', () {
-      final datum = Datum.tryParse('2026-10-14')!;
-      expect(datum.jahr, 2026);
-      expect(datum.monat, 10);
-      expect(datum.tag, 14);
+      final datum = PlainDate.tryParse('2026-10-14')!;
+      expect(datum.year, 2026);
+      expect(datum.month, 10);
+      expect(datum.day, 14);
     });
 
     test('lehnt falsche Formate ab', () {
@@ -21,7 +21,7 @@ void main() {
         '',
         '20261014',
       ]) {
-        expect(Datum.tryParse(text), isNull, reason: text);
+        expect(PlainDate.tryParse(text), isNull, reason: text);
       }
     });
 
@@ -36,29 +36,29 @@ void main() {
         '2026-10-00',
         '0000-01-01',
       ]) {
-        expect(Datum.tryParse(text), isNull, reason: text);
+        expect(PlainDate.tryParse(text), isNull, reason: text);
       }
     });
 
     test('akzeptiert Schalttage', () {
-      expect(Datum.tryParse('2024-02-29'), Datum(2024, 2, 29));
-      expect(Datum.tryParse('2000-02-29'), Datum(2000, 2, 29));
+      expect(PlainDate.tryParse('2024-02-29'), PlainDate(2024, 2, 29));
+      expect(PlainDate.tryParse('2000-02-29'), PlainDate(2000, 2, 29));
     });
   });
 
   test('Datum.parse wirft FormatException', () {
-    expect(() => Datum.parse('15.10.2026'), throwsFormatException);
+    expect(() => PlainDate.parse('15.10.2026'), throwsFormatException);
   });
 
   test('Konstruktor prüft das Datum', () {
-    expect(() => Datum(2026, 2, 30), throwsArgumentError);
+    expect(() => PlainDate(2026, 2, 30), throwsArgumentError);
   });
 
   test('iso und anzeige mit führenden Nullen', () {
-    final datum = Datum(2026, 3, 5);
+    final datum = PlainDate(2026, 3, 5);
     expect(datum.iso, '2026-03-05');
-    expect(datum.anzeige, '05.03.2026');
-    expect(Datum.parse(datum.iso), datum);
+    expect(datum.display, '05.03.2026');
+    expect(PlainDate.parse(datum.iso), datum);
   });
 
   group('kein Tagesversatz', () {
@@ -66,23 +66,32 @@ void main() {
       // Kurz vor Mitternacht UTC wäre es in Salzburg schon der nächste Tag.
       // Datum.aus rechnet nicht um, sondern nimmt Jahr, Monat und Tag.
       expect(
-        Datum.aus(DateTime.utc(2026, 10, 14, 23, 30)),
-        Datum(2026, 10, 14),
+        PlainDate.fromDateTime(DateTime.utc(2026, 10, 14, 23, 30)),
+        PlainDate(2026, 10, 14),
       );
-      expect(Datum.aus(DateTime(2026, 10, 14, 0, 5)), Datum(2026, 10, 14));
+      expect(
+        PlainDate.fromDateTime(DateTime(2026, 10, 14, 0, 5)),
+        PlainDate(2026, 10, 14),
+      );
     });
 
     test('Hin und zurück über alsDateTime bleibt derselbe Tag', () {
-      final datum = Datum(2026, 3, 29); // Tag der Sommerzeit-Umstellung
-      expect(Datum.aus(datum.alsDateTime()), datum);
+      final datum = PlainDate(2026, 3, 29); // Tag der Sommerzeit-Umstellung
+      expect(PlainDate.fromDateTime(datum.toDateTime()), datum);
     });
   });
 
   test('Vergleich und Gleichheit', () {
-    expect(Datum(2026, 9, 2).compareTo(Datum(2026, 10, 14)), lessThan(0));
-    expect(Datum(2026, 10, 14).compareTo(Datum(2026, 10, 14)), 0);
-    expect(Datum(2025, 12, 31).compareTo(Datum(2026, 1, 1)), lessThan(0));
-    expect(Datum(2026, 10, 14), Datum(2026, 10, 14));
-    expect(Datum(2026, 10, 14).hashCode, Datum(2026, 10, 14).hashCode);
+    expect(
+      PlainDate(2026, 9, 2).compareTo(PlainDate(2026, 10, 14)),
+      lessThan(0),
+    );
+    expect(PlainDate(2026, 10, 14).compareTo(PlainDate(2026, 10, 14)), 0);
+    expect(
+      PlainDate(2025, 12, 31).compareTo(PlainDate(2026, 1, 1)),
+      lessThan(0),
+    );
+    expect(PlainDate(2026, 10, 14), PlainDate(2026, 10, 14));
+    expect(PlainDate(2026, 10, 14).hashCode, PlainDate(2026, 10, 14).hashCode);
   });
 }

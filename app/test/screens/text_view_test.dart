@@ -19,12 +19,12 @@ Future<void> zeigeText(WidgetTester tester, List<int> bytes) async {
   await tester.pumpWidget(
     MaterialApp(
       home: OriginaldateiScreen(
-        api: schnellerMock()..simulierterFehler = true,
-        eintragId: laborId,
-        dateiname: 'text.txt',
-        vorhanden: DateiInhalt(
+        api: schnellerMock()..simulateError = true,
+        entryId: laborId,
+        fileName: 'text.txt',
+        vorhanden: FileContent(
           bytes: Uint8List.fromList(bytes),
-          mimeTyp: 'text/plain; charset=utf-8',
+          mimeType: 'text/plain; charset=utf-8',
         ),
       ),
     ),
@@ -89,7 +89,7 @@ void main() {
   testWidgets('Eintrag mit text.txt über den HttpApiClient', (tester) async {
     const id = '6727b000c2b4e5d6f7a8b9f0';
     const text = 'Testeintrag\nÜberweisung vom 21.10.2026';
-    final eintrag = {
+    final entry = {
       'id': id,
       'module': 'health',
       'type': 'other',
@@ -118,7 +118,7 @@ void main() {
           );
         }
         return http.Response.bytes(
-          utf8.encode(jsonEncode(eintrag)),
+          utf8.encode(jsonEncode(entry)),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -127,10 +127,10 @@ void main() {
 
     grosserBildschirm(tester);
     await tester.pumpWidget(
-      ModulKatalogScope(
-        katalog: ModulKatalog.standard(),
+      ModuleCatalogScope(
+        catalog: ModuleCatalog.defaults(),
         child: MaterialApp(
-          home: EintragScreen(api: api, eintragId: id),
+          home: EintragScreen(api: api, entryId: id),
         ),
       ),
     );

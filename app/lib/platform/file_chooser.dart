@@ -4,103 +4,94 @@ import 'package:image_picker/image_picker.dart';
 
 import '../api/api_client.dart';
 
-/// Eine vom Nutzer gewählte Datei.
-class AusgewaehlteDatei {
-  const AusgewaehlteDatei({required this.bytes, required this.name});
+/// A file chosen by the user.
+class ChosenFile {
+  const ChosenFile({required this.bytes, required this.name});
 
   final Uint8List bytes;
   final String name;
 }
 
-/// Die gewählte Datei ist größer als erlaubt. Wird geworfen, bevor die
-/// Datei eingelesen wird, wenn die Größe vorher bekannt ist.
-class DateiZuGross implements Exception {
-  const DateiZuGross(this.groesse);
+/// The chosen file is larger than allowed. Thrown before the file is read
+/// if its size is known in advance.
+class FileTooLargeException implements Exception {
+  const FileTooLargeException(this.size);
 
-  final int groesse;
+  final int size;
 }
 
-/// Kamera, Galerie und Dateiauswahl hinter einer Schnittstelle.
+/// Camera, gallery and file picker behind one interface.
 ///
-/// Die Plugins öffnen Fenster des Betriebssystems, die sich in Tests nicht
-/// bedienen lassen. Tests geben deshalb eine eigene Implementierung an.
+/// The plugins open windows of the operating system that cannot be used in
+/// tests. Tests therefore pass their own implementation.
 ///
-/// Alle Methoden geben `null` zurück, wenn der Nutzer abbricht.
-abstract interface class DateiAuswahl {
-  Future<AusgewaehlteDatei?> fotoAufnehmen();
+/// All methods return `null` if the user cancels.
+abstract interface class FileChooser {
+  Future<ChosenFile?> takePhoto();
 
-  Future<AusgewaehlteDatei?> bildAuswaehlen();
+  Future<ChosenFile?> pickImage();
 
-  Future<AusgewaehlteDatei?> pdfAuswaehlen();
+  Future<ChosenFile?> pickPdf();
 
-  /// Android kann die App beenden, während die Kamera-App offen ist (wenig
-  /// Speicher). Das Foto lässt sich nach dem Neustart hier abholen.
-  Future<AusgewaehlteDatei?> verloreneDatei();
+  /// Android can end the app while the camera app is open (low memory).
+  /// The photo can be retrieved here after the restart.
+  Future<ChosenFile?> retrieveLostFile();
 }
 
-/// Echte Auswahl über `image_picker` (Kamera, Galerie) und `file_picker`
+/// Real selection with `image_picker` (camera, gallery) and `file_picker`
 /// (PDF).
-class PluginDateiAuswahl implements DateiAuswahl {
-  PluginDateiAuswahl();
+class PluginFileChooser implements FileChooser {
+  PluginFileChooser();
 
-  /// Längste Seite eines Fotos in Pixeln. 3000 px halten auch kleine
-  /// Schrift lesbar und bleiben als JPEG deutlich unter 10 MB.
-  static const maxSeite = 3000.0;
+  /// Longest side of a photo in pixels. 3000 px keep even small print
+  /// readable and stay well below 10 MB as JPEG.
+  static const maxSide = 3000.0;
 
-  /// JPEG-Qualität (0–100).
-  static const jpegQualitaet = 85;
+  /// JPEG quality (0–100).
+  static const jpegQuality = 85;
 
-  final _bildAuswahl = ImagePicker();
-
-  @override
-  Future<AusgewaehlteDatei?> fotoAufnehmen() => _bild(ImageSource.camera);
+  final _imagePicker = ImagePicker();
 
   @override
-  Future<AusgewaehlteDatei?> bildAuswaehlen() => _bild(ImageSource.gallery);
+  Future<ChosenFile?> takePhoto() => _image(ImageSource.camera);
 
-  Future<AusgewaehlteDatei?> _bild(ImageSource quelle) async {
-    final datei = await _bildAuswahl.pickImage(
-      source: quelle,
-      maxWidth: maxSeite,
-      maxHeight: maxSeite,
-      imageQuality: jpegQualitaet,
-      // Ohne volle Metadaten braucht iOS keine Berechtigung für die ganze
-      // Fotomediathek; die Auswahl läuft über den System-Dialog.
+  @override
+  Future<ChosenFile?> pickImage() => _image(ImageSource.gallery);
+
+  Future<ChosenFile?> _image(ImageSource source) async {
+    final file = await _imagePicker.pickImage(
+      source: source,
+      maxWidth: maxSide,
+      maxHeight: maxSide,
+      imageQuality: jpegQuality,
+      // Without full metadata iOS needs no permission for the whole photo
+      // library; the selection runs through the system dialog.
       requestFullMetadata: false,
     );
-    if (datei == null) return null;
-    return AusgewaehlteDatei(
-      bytes: await datei.readAsBytes(),
-      name: datei.name,
-    );
+    if (file == null) return null;
+    return ChosenFile(bytes: await file.readAsBytes(), name: file.name);
   }
 
   @override
-  Future<AusgewaehlteDatei?> pdfAuswaehlen() async {
-    final datei = await FilePicker.pickFile(
+  Future<ChosenFile?> pickPdf() async {
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
     );
-    if (datei == null) return null;
-    final groesse = datei.lengthSync();
-    if (groesse != null && groesse > maxDateiGroesse) {
-      throw DateiZuGross(groesse);
+    if (file == null) return null;
+    final size = file.lengthSync();
+    if (size != null && size > maxFileSize) {
+      throw FileTooLargeException(size);
     }
-    return AusgewaehlteDatei(
-      bytes: await datei.readAsBytes(),
-      name: datei.name,
-    );
+    return ChosenFile(bytes: await file.readAsBytes(), name: file.name);
   }
 
   @override
-  Future<AusgewaehlteDatei?> verloreneDatei() async {
+  Future<ChosenFile?> retrieveLostFile() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
-    final antwort = await _bildAuswahl.retrieveLostData();
-    final datei = antwort.file;
-    if (antwort.isEmpty || datei == null) return null;
-    return AusgewaehlteDatei(
-      bytes: await datei.readAsBytes(),
-      name: datei.name,
-    );
+    final response = await _imagePicker.retrieveLostData();
+    final file = response.file;
+    if (response.isEmpty || file == null) return null;
+    return ChosenFile(bytes: await file.readAsBytes(), name: file.name);
   }
 }

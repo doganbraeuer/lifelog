@@ -55,10 +55,10 @@ void main() {
         });
       });
 
-      final liste = await api.eintraege(
-        sortierung: Sortierung.importedAt,
-        richtung: Richtung.asc,
-        modul: 'health',
+      final liste = await api.listEntries(
+        sort: Sort.importedAt,
+        order: SortOrder.asc,
+        module: 'health',
       );
 
       expect(anfrage.method, 'GET');
@@ -68,8 +68,8 @@ void main() {
         '?module=health&sort=importedAt&order=asc',
       );
       expect(liste, hasLength(2));
-      expect(liste.first.dokumentdatum, Datum(2026, 10, 14));
-      expect(liste.last.dokumentdatum, isNull);
+      expect(liste.first.documentDate, PlainDate(2026, 10, 14));
+      expect(liste.last.documentDate, isNull);
     });
 
     test('Schrägstrich am Ende der Basis-URL stört nicht', () async {
@@ -78,7 +78,7 @@ void main() {
         url = request.url;
         return jsonAntwort({'entries': [], 'count': 0});
       });
-      expect(await api.eintraege(modul: 'health'), isEmpty);
+      expect(await api.listEntries(module: 'health'), isEmpty);
       expect(url.path, '/api/v1/entries');
     });
   });
@@ -94,9 +94,9 @@ void main() {
           headers: {'content-type': 'application/json'},
         );
       });
-      final eintrag = await api.eintrag(laborId);
+      final entry = await api.getEntry(laborId);
       expect(url.toString(), '$basis/api/v1/entries/$laborId');
-      expect(eintrag.infos.first.name, 'Hämoglobin');
+      expect(entry.facts.first.name, 'Hämoglobin');
     });
 
     test('Fehler-JSON wird zu ApiFehler', () async {
@@ -110,12 +110,12 @@ void main() {
         }, 404),
       );
       try {
-        await api.eintrag('ffffffffffffffffffffffff');
+        await api.getEntry('ffffffffffffffffffffffff');
         fail('Fehler erwartet');
-      } on ApiFehler catch (f) {
+      } on ApiException catch (f) {
         expect(f.httpStatus, 404);
-        expect(f.code, FehlerCode.eintragNichtGefunden);
-        expect(f.nachricht, 'Diesen Eintrag gibt es nicht.');
+        expect(f.code, ErrorCode.entryNotFound);
+        expect(f.message, 'Diesen Eintrag gibt es nicht.');
       }
     });
 
@@ -130,13 +130,13 @@ void main() {
         }, 409),
       );
       try {
-        await api.hochladen(
+        await api.upload(
           Uint8List.fromList('%PDF-'.codeUnits),
           'a.pdf',
-          modul: 'health',
+          module: 'health',
         );
         fail('Fehler erwartet');
-      } on ApiFehler catch (f) {
+      } on ApiException catch (f) {
         expect(f.details['entryId'], laborId);
       }
     });
@@ -148,8 +148,8 @@ void main() {
           (_) async => http.Response('<html>Bad Gateway</html>', 502),
         );
         await expectLater(
-          api.eintrag(laborId),
-          wirftApiFehler(FehlerCode.unbekannteAntwort, status: 502),
+          api.getEntry(laborId),
+          wirftApiFehler(ErrorCode.unexpectedResponse, status: 502),
         );
       },
     );
@@ -157,16 +157,16 @@ void main() {
     test('Erfolg mit unpassendem JSON: UNEXPECTED_RESPONSE', () async {
       final api = client((_) async => jsonAntwort({'foo': 1}));
       await expectLater(
-        api.eintrag(laborId),
-        wirftApiFehler(FehlerCode.unbekannteAntwort, status: 200),
+        api.getEntry(laborId),
+        wirftApiFehler(ErrorCode.unexpectedResponse, status: 200),
       );
     });
 
     test('keine Verbindung: NETWORK_ERROR', () async {
       final api = client((_) async => throw http.ClientException('offline'));
       await expectLater(
-        api.eintrag(laborId),
-        wirftApiFehler(FehlerCode.netzwerkFehler),
+        api.getEntry(laborId),
+        wirftApiFehler(ErrorCode.networkError),
       );
     });
   });
@@ -181,11 +181,11 @@ void main() {
         headers: {'content-type': 'application/pdf; name=x'},
       );
     });
-    final datei = await api.datei(laborId);
+    final file = await api.getFile(laborId);
     expect(url.path, '/api/v1/entries/$laborId/file');
-    expect(datei.bytes, [1, 2, 3]);
-    expect(datei.mimeTyp, 'application/pdf');
-    expect(datei.istPdf, isTrue);
+    expect(file.bytes, [1, 2, 3]);
+    expect(file.mimeType, 'application/pdf');
+    expect(file.isPdf, isTrue);
   });
 
   test('hochladen schickt multipart mit Feld "file"', () async {
@@ -199,11 +199,7 @@ void main() {
       );
     });
     final bytes = Uint8List.fromList(utf8.encode('%PDF-1.4 Inhalt'));
-    final eintrag = await api.hochladen(
-      bytes,
-      'befund.pdf',
-      modul: 'health',
-    );
+    final entry = await api.upload(bytes, 'befund.pdf', module: 'health');
 
     expect(anfrage.method, 'POST');
     expect(anfrage.url.toString(), '$basis/api/v1/entries');
@@ -214,7 +210,7 @@ void main() {
     expect(body, contains('%pdf-1.4 inhalt'));
     expect(body, contains('name="module"\r\n\r\nhealth'));
     expect(body, isNot(contains('name="text"')));
-    expect(eintrag.id, laborId);
+    expect(entry.id, laborId);
   });
 
   test('textImportieren schickt multipart mit "text" und "module"', () async {
@@ -227,10 +223,7 @@ void main() {
         headers: {'content-type': 'application/json'},
       );
     });
-    await api.textImportieren(
-      'Überweisung vom 21.10.2026',
-      modul: 'health',
-    );
+    await api.importText('Überweisung vom 21.10.2026', module: 'health');
 
     expect(anfrage.method, 'POST');
     expect(anfrage.url.toString(), '$basis/api/v1/entries');
@@ -259,7 +252,7 @@ void main() {
         anfrage = request;
         return http.Response('', 204);
       });
-      await api.loeschen(laborId);
+      await api.deleteEntry(laborId);
 
       expect(anfrage.method, 'DELETE');
       expect(anfrage.url.path, '/api/v1/entries/$laborId');
@@ -275,20 +268,18 @@ void main() {
         }, 404),
       );
       await expectLater(
-        api.loeschen(laborId),
-        wirftApiFehler(FehlerCode.eintragNichtGefunden, status: 404),
+        api.deleteEntry(laborId),
+        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
       );
     });
   });
 
   test('Liste null statt [] passt nicht zum Vertrag', () async {
     // docs/API.md: Listen sind immer ein Array, nie null.
-    final api = client(
-      (_) async => jsonAntwort({'entries': null, 'count': 0}),
-    );
+    final api = client((_) async => jsonAntwort({'entries': null, 'count': 0}));
     await expectLater(
-      api.eintraege(modul: 'health'),
-      wirftApiFehler(FehlerCode.unbekannteAntwort, status: 200),
+      api.listEntries(module: 'health'),
+      wirftApiFehler(ErrorCode.unexpectedResponse, status: 200),
     );
   });
 
@@ -302,11 +293,11 @@ void main() {
         headers: {'content-type': 'application/json'},
       );
     });
-    await api.korrigieren(
+    await api.correct(
       laborId,
-      const EintragAenderung(
-        dokumentdatum: Wert(null),
-        infos: [InfoAenderung('f1', einheit: Wert(null))],
+      const EntryPatch(
+        documentDate: Value(null),
+        facts: [FactPatch('f1', unit: Value(null))],
       ),
     );
 
@@ -341,7 +332,7 @@ void main() {
         ],
       });
     });
-    final antwort = await api.fragen('Hämoglobin?', modul: 'health');
+    final answer = await api.ask('Hämoglobin?', module: 'health');
 
     expect(anfrage.method, 'POST');
     expect(anfrage.url.path, '/api/v1/questions');
@@ -349,13 +340,13 @@ void main() {
       'question': 'Hämoglobin?',
       'module': 'health',
     });
-    expect(antwort.gefunden, isTrue);
-    final quelle = antwort.quellen.single;
+    expect(answer.found, isTrue);
+    final source = answer.sources.single;
     // nr muss nicht bei 1 beginnen (nur zitierte Abschnitte, API.md 3.6).
-    expect(quelle.nr, 3);
-    expect(quelle.modul, 'health');
-    expect(quelle.auszug, startsWith('Hämoglobin'));
-    expect(quelle.dokumentdatum, Datum(2026, 10, 14));
+    expect(source.number, 3);
+    expect(source.module, 'health');
+    expect(source.excerpt, startsWith('Hämoglobin'));
+    expect(source.documentDate, PlainDate(2026, 10, 14));
   });
 
   test('Quelle ohne modul passt nicht zum Vertrag', () async {
@@ -376,8 +367,8 @@ void main() {
       }),
     );
     await expectLater(
-      api.fragen('x', modul: 'health'),
-      wirftApiFehler(FehlerCode.unbekannteAntwort),
+      api.ask('x', module: 'health'),
+      wirftApiFehler(ErrorCode.unexpectedResponse),
     );
   });
 }

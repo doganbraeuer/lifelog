@@ -2,13 +2,13 @@ import 'api_client.dart';
 import 'http_api_client.dart';
 import 'mock_api_client.dart';
 
-/// Wert von `--dart-define=API_BASE_URL=...` beim Bauen der App.
-/// Leer, wenn nichts angegeben wurde.
+/// Value of `--dart-define=API_BASE_URL=...` when building the app.
+/// Empty if nothing was given.
 const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
 
-/// Ohne `API_BASE_URL` nutzt die App den Mock, sonst das echte Backend.
-/// Der Parameter ist nur für Tests da.
-ApiClient erstelleApiClient({String baseUrl = apiBaseUrl}) {
+/// Without `API_BASE_URL` the app uses the mock, otherwise the real backend.
+/// The parameter only exists for tests.
+ApiClient createApiClient({String baseUrl = apiBaseUrl}) {
   final url = baseUrl.trim();
   return url.isEmpty ? MockApiClient() : HttpApiClient(baseUrl: url);
 }

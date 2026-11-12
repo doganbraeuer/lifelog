@@ -9,35 +9,35 @@ import 'test_catalog.dart';
 void main() {
   group('Mock prüft Typen gegen das Modul des Eintrags', () {
     test('Typ aus dem Katalog ist erlaubt', () async {
-      final mock = schnellerMock(katalog: testKatalog());
-      final eintrag = await mock.korrigieren(
+      final mock = schnellerMock(catalog: testKatalog());
+      final entry = await mock.correct(
         laborId,
-        const EintragAenderung(typ: 'impfpass'),
+        const EntryPatch(type: 'impfpass'),
       );
-      expect(eintrag.typ, 'impfpass');
+      expect(entry.type, 'impfpass');
     });
 
     test('Typ eines anderen Moduls: 400 INVALID_REQUEST', () async {
-      final mock = schnellerMock(katalog: testKatalog());
+      final mock = schnellerMock(catalog: testKatalog());
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'type': 'training'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {'type': 'training'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('mit Standard-Katalog ist „impfpass“ unbekannt', () async {
       await expectLater(
-        schnellerMock().korrigiereMitJson(laborId, {'type': 'impfpass'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        schnellerMock().correctWithJson(laborId, {'type': 'impfpass'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
   });
 
   testWidgets('Typ-Dialog zeigt die Typen aus dem Katalog', (tester) async {
-    final katalog = testKatalog();
+    final catalog = testKatalog();
     grosserBildschirm(tester);
     await tester.pumpWidget(
-      testApp(schnellerMock(katalog: katalog), katalog: katalog),
+      testApp(schnellerMock(catalog: catalog), catalog: catalog),
     );
     await tester.pumpAndSettle();
     await zuGesundheit(tester);

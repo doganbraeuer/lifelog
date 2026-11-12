@@ -1,77 +1,77 @@
-// Kleine Helfer zum sicheren Lesen von JSON.
+// Small helpers for reading JSON safely.
 //
-// Statt `json['id'] as String` (wirft bei falschem Typ einen TypeError)
-// prüfen diese Funktionen den Typ und werfen eine verständliche
-// FormatException. Der HttpApiClient fängt sie ab und meldet eine
-// unerwartete Antwort des Servers.
+// Instead of `json['id'] as String` (which throws a TypeError for a wrong
+// type), these functions check the type and throw an understandable
+// FormatException. The HttpApiClient catches it and reports an unexpected
+// response from the server.
 
 import 'plain_date.dart';
 
-Map<String, dynamic> objekt(Object? wert, String feld) {
-  if (wert is Map<String, dynamic>) return wert;
-  throw FormatException('"$feld" ist kein JSON-Objekt');
+Map<String, dynamic> asObject(Object? value, String field) {
+  if (value is Map<String, dynamic>) return value;
+  throw FormatException('"$field" is not a JSON object');
 }
 
-String text(Map<String, dynamic> json, String feld) {
-  final wert = json[feld];
-  if (wert is String) return wert;
-  throw FormatException('Feld "$feld" fehlt oder ist kein Text');
+String readString(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value is String) return value;
+  throw FormatException('Field "$field" is missing or not a string');
 }
 
-String? textOderNull(Map<String, dynamic> json, String feld) {
-  final wert = json[feld];
-  if (wert == null || wert is String) return wert as String?;
-  throw FormatException('Feld "$feld" ist weder Text noch null');
+String? readStringOrNull(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value == null || value is String) return value as String?;
+  throw FormatException('Field "$field" is neither a string nor null');
 }
 
-int ganzzahl(Map<String, dynamic> json, String feld) {
-  final wert = json[feld];
-  if (wert is int) return wert;
-  throw FormatException('Feld "$feld" fehlt oder ist keine ganze Zahl');
+int readInt(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value is int) return value;
+  throw FormatException('Field "$field" is missing or not an integer');
 }
 
-bool wahrheitswert(Map<String, dynamic> json, String feld) {
-  final wert = json[feld];
-  if (wert is bool) return wert;
-  throw FormatException('Feld "$feld" fehlt oder ist kein Boolean');
+bool readBool(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value is bool) return value;
+  throw FormatException('Field "$field" is missing or not a boolean');
 }
 
-List<T> liste<T>(
+List<T> readList<T>(
   Map<String, dynamic> json,
-  String feld,
-  T Function(Map<String, dynamic>) umwandeln,
+  String field,
+  T Function(Map<String, dynamic>) convert,
 ) {
-  final wert = json[feld];
-  if (wert is! List) {
-    throw FormatException('Feld "$feld" fehlt oder ist keine Liste');
+  final value = json[field];
+  if (value is! List) {
+    throw FormatException('Field "$field" is missing or not a list');
   }
-  return [for (final element in wert) umwandeln(objekt(element, feld))];
+  return [for (final element in value) convert(asObject(element, field))];
 }
 
-/// Liest einen Zeitpunkt im Format RFC 3339 (z. B. `2026-11-03T18:42:07Z`)
-/// und gibt ihn in UTC zurück.
-DateTime zeitstempel(Map<String, dynamic> json, String feld) {
-  final wert = DateTime.tryParse(text(json, feld));
-  if (wert == null) {
-    throw FormatException('Feld "$feld" ist kein gültiger Zeitpunkt');
+/// Reads a point in time in RFC 3339 format (e.g. `2026-11-03T18:42:07Z`)
+/// and returns it in UTC.
+DateTime readTimestamp(Map<String, dynamic> json, String field) {
+  final value = DateTime.tryParse(readString(json, field));
+  if (value == null) {
+    throw FormatException('Field "$field" is not a valid point in time');
   }
-  return wert.toUtc();
+  return value.toUtc();
 }
 
-/// Liest ein reines Datum `JJJJ-MM-TT` oder `null`.
-Datum? datumOderNull(Map<String, dynamic> json, String feld) {
-  final wert = textOderNull(json, feld);
-  if (wert == null) return null;
-  return Datum.tryParse(wert) ??
-      (throw FormatException('Feld "$feld" ist kein Datum JJJJ-MM-TT', wert));
+/// Reads a plain date `YYYY-MM-DD` or `null`.
+PlainDate? readDateOrNull(Map<String, dynamic> json, String field) {
+  final value = readStringOrNull(json, field);
+  if (value == null) return null;
+  return PlainDate.tryParse(value) ??
+      (throw FormatException('Field "$field" is not a date YYYY-MM-DD', value));
 }
 
-/// Schreibt einen Zeitpunkt als RFC 3339 in UTC ohne Millisekunden,
-/// z. B. `2026-11-03T18:42:07Z`, so wie das Backend ihn liefert.
-String formatZeitpunkt(DateTime zeit) {
-  final utc = zeit.toUtc();
-  String zwei(int n) => n.toString().padLeft(2, '0');
-  return '${utc.year.toString().padLeft(4, '0')}-${zwei(utc.month)}-'
-      '${zwei(utc.day)}T${zwei(utc.hour)}:${zwei(utc.minute)}:'
-      '${zwei(utc.second)}Z';
+/// Writes a point in time as RFC 3339 in UTC without milliseconds,
+/// e.g. `2026-11-03T18:42:07Z`, as the backend returns it.
+String formatTimestamp(DateTime time) {
+  final utc = time.toUtc();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${utc.year.toString().padLeft(4, '0')}-${two(utc.month)}-'
+      '${two(utc.day)}T${two(utc.hour)}:${two(utc.minute)}:'
+      '${two(utc.second)}Z';
 }

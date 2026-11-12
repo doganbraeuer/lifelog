@@ -57,8 +57,8 @@ void main() {
     tester,
   ) async {
     final mock = MockApiClient(
-      verzoegerung: Duration.zero,
-      uploadVerzoegerung: const Duration(seconds: 2),
+      delay: Duration.zero,
+      uploadDelay: const Duration(seconds: 2),
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('befund.pdf');
     await zumUpload(tester, mock, auswahl);
@@ -84,7 +84,7 @@ void main() {
     // ... und nach „Zurück“ steht er in der Zeitleiste.
     await zurueck(tester);
     expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'health'), hasLength(4));
+    expect(await mock.listEntries(module: 'health'), hasLength(4));
   });
 
   testWidgets('X auf der Vorschau verwirft die Datei', (tester) async {
@@ -101,17 +101,17 @@ void main() {
 
     expect(find.text('falsch.pdf'), findsNothing);
     expect(find.text('PDF auswählen'), findsOneWidget);
-    expect(await mock.eintraege(modul: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(3));
   });
 
   testWidgets('Duplikat: Hinweis und Sprung zum vorhandenen Eintrag', (
     tester,
   ) async {
     final mock = schnellerMock();
-    final vorhanden = await mock.hochladen(
+    final vorhanden = await mock.upload(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
-      modul: 'health',
+      module: 'health',
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
     await zumUpload(tester, mock, auswahl);
@@ -128,14 +128,14 @@ void main() {
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
     expect(find.text('Erkannte Angaben'), findsOneWidget);
-    expect(find.textContaining(vorhanden.datei.dateiname), findsWidgets);
+    expect(find.textContaining(vorhanden.file.fileName), findsWidgets);
   });
 
   testWidgets('über 10 MB: Meldung ohne Upload', (tester) async {
     final mock = schnellerMock();
-    final gross = Uint8List(maxDateiGroesse + 1)..setAll(0, '%PDF-'.codeUnits);
+    final gross = Uint8List(maxFileSize + 1)..setAll(0, '%PDF-'.codeUnits);
     final auswahl = FakeDateiAuswahl()
-      ..bild = AusgewaehlteDatei(bytes: gross, name: 'riesig.pdf');
+      ..bild = ChosenFile(bytes: gross, name: 'riesig.pdf');
     await zumUpload(tester, mock, auswahl);
 
     await tester.tap(find.text('Bild auswählen'));
@@ -143,7 +143,7 @@ void main() {
 
     expect(find.textContaining('größer als 10 MB'), findsOneWidget);
     expect(hochladenKnopf(), findsNothing);
-    expect(await mock.eintraege(modul: 'health'), hasLength(3));
+    expect(await mock.listEntries(module: 'health'), hasLength(3));
   });
 
   testWidgets('Größe schon bei der Auswahl bekannt (DateiZuGross)', (
@@ -160,7 +160,7 @@ void main() {
   testWidgets('wiederholbarer Fehler: Datei bleibt, „Erneut versuchen“', (
     tester,
   ) async {
-    final auswahl = FakeDateiAuswahl()..pdf = testPdf('modellfehler.pdf');
+    final auswahl = FakeDateiAuswahl()..pdf = testPdf('modelerror.pdf');
     await zumUpload(tester, schnellerMock(), auswahl);
 
     await tester.tap(find.text('PDF auswählen'));
@@ -169,7 +169,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('nicht erreichbar'), findsOneWidget);
-    expect(find.text('modellfehler.pdf'), findsOneWidget);
+    expect(find.text('modelerror.pdf'), findsOneWidget);
     expect(find.text('Erneut versuchen'), findsOneWidget);
   });
 
@@ -197,12 +197,12 @@ void main() {
 
 class _ZuGrosseAuswahl extends FakeDateiAuswahl {
   @override
-  Future<AusgewaehlteDatei?> pdfAuswaehlen() async =>
-      throw const DateiZuGross(20 * 1024 * 1024);
+  Future<ChosenFile?> pickPdf() async =>
+      throw const FileTooLargeException(20 * 1024 * 1024);
 }
 
 class _KeinZugriffAuswahl extends FakeDateiAuswahl {
   @override
-  Future<AusgewaehlteDatei?> fotoAufnehmen() async =>
+  Future<ChosenFile?> takePhoto() async =>
       throw PlatformException(code: 'camera_access_denied');
 }

@@ -120,10 +120,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.sort));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.widgetWithText(
-          CheckedPopupMenuItem<Sortierung>,
-          'Nach Importdatum',
-        ),
+        find.widgetWithText(CheckedPopupMenuItem<Sort>, 'Nach Importdatum'),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.arrow_downward));
@@ -141,24 +138,24 @@ void main() {
       // Genug Einträge, damit die Liste scrollt.
       final mock = schnellerMock();
       for (var i = 0; i < 20; i++) {
-        await mock.hochladen(
+        await mock.upload(
           Uint8List.fromList(utf8.encode('%PDF-1.4 Nr. $i')),
           'dokument_$i.pdf',
-          modul: 'health',
+          module: 'health',
         );
       }
       await starten(tester, mock);
 
-      Finder liste() => find
+      Finder readList() => find
           .descendant(
             of: find.byType(ZeitleisteScreen),
             matching: find.byType(Scrollable),
           )
           .first;
       double position() =>
-          tester.state<ScrollableState>(liste()).position.pixels;
+          tester.state<ScrollableState>(readList()).position.pixels;
 
-      await tester.drag(liste(), const Offset(0, -400));
+      await tester.drag(readList(), const Offset(0, -400));
       await tester.pumpAndSettle();
       final vorher = position();
       expect(vorher, greaterThan(0));
@@ -211,8 +208,8 @@ void main() {
   testWidgets('laufender Upload übersteht den Wechsel; danach Zeitleiste '
       'und neuer Eintrag', (tester) async {
     final mock = MockApiClient(
-      verzoegerung: Duration.zero,
-      uploadVerzoegerung: const Duration(seconds: 2),
+      delay: Duration.zero,
+      uploadDelay: const Duration(seconds: 2),
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('neu.pdf');
     grosserBildschirm(tester); // Eintrag-Ansicht ist länger als 600 px
@@ -254,10 +251,10 @@ void main() {
   testWidgets('Duplikat: „Vorhandenen Eintrag öffnen“ wechselt zur '
       'Zeitleiste', (tester) async {
     final mock = schnellerMock();
-    await mock.hochladen(
+    await mock.upload(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
-      modul: 'health',
+      module: 'health',
     );
     final auswahl = FakeDateiAuswahl()..pdf = testPdf('doppelt.pdf');
     await starten(tester, mock, auswahl: auswahl);

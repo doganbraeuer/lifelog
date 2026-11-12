@@ -4,11 +4,11 @@ import 'package:lifelog/module/module_definition.dart';
 import 'package:lifelog/module/module_catalog.dart';
 
 void main() {
-  final katalog = ModulKatalog.standard();
+  final catalog = ModuleCatalog.defaults();
 
   group('Standard-Module', () {
     test('IDs wie vorgesehen (noch abzustimmen), in dieser Reihenfolge', () {
-      expect(katalog.module.map((m) => m.id), [
+      expect(catalog.modules.map((m) => m.id), [
         'health',
         'nutrition',
         'recipes',
@@ -17,13 +17,13 @@ void main() {
     });
 
     test('nur Gesundheit ist aktiv', () {
-      expect(katalog.module.where((m) => m.aktiv).map((m) => m.id), [
+      expect(catalog.modules.where((m) => m.active).map((m) => m.id), [
         'health',
       ]);
     });
 
     test('Gesundheit hat genau die Typen aus docs/API.md', () {
-      expect(katalog.typen('health').map((t) => t.id), [
+      expect(catalog.types('health').map((t) => t.id), [
         'doctor_letter',
         'lab_report',
         'prescription',
@@ -32,86 +32,83 @@ void main() {
     });
 
     test('inaktive Module haben noch keine Typen', () {
-      for (final modul in katalog.module.where((m) => !m.aktiv)) {
-        expect(modul.typen, isEmpty, reason: modul.id);
+      for (final module in catalog.modules.where((m) => !m.active)) {
+        expect(module.types, isEmpty, reason: module.id);
       }
     });
 
     test('jedes Modul hat eine eigene Farbe', () {
-      final farben = katalog.module.map((m) => m.farbe.toARGB32()).toSet();
-      expect(farben, hasLength(katalog.module.length));
+      final farben = catalog.modules.map((m) => m.color.toARGB32()).toSet();
+      expect(farben, hasLength(catalog.modules.length));
     });
 
     test('Typ-IDs sind innerhalb jedes Moduls eindeutig', () {
-      for (final modul in katalog.module) {
-        final ids = modul.typen.map((t) => t.id).toList();
-        expect(ids.toSet(), hasLength(ids.length), reason: modul.id);
+      for (final module in catalog.modules) {
+        final ids = module.types.map((t) => t.id).toList();
+        expect(ids.toSet(), hasLength(ids.length), reason: module.id);
       }
     });
   });
 
   group('Nachschlagen', () {
     test('Modul nach ID', () {
-      expect(katalog.nachId('health')?.name, 'Gesundheit');
-      expect(katalog.nachId('nutrition')?.name, 'Ernährung');
-      expect(katalog.nachId('garten'), isNull);
+      expect(catalog.byId('health')?.name, 'Gesundheit');
+      expect(catalog.byId('nutrition')?.name, 'Ernährung');
+      expect(catalog.byId('garten'), isNull);
     });
 
     test('Typname und Symbol', () {
-      expect(katalog.typName('health', 'lab_report'), 'Laborbefund');
-      expect(
-        katalog.typSymbol('health', 'lab_report'),
-        Icons.science_outlined,
-      );
+      expect(catalog.typeName('health', 'lab_report'), 'Laborbefund');
+      expect(catalog.typeIcon('health', 'lab_report'), Icons.science_outlined);
     });
 
     test('unbekannter Typ oder unbekanntes Modul: ID und Ersatz-Symbol', () {
-      expect(katalog.typName('health', 'roentgenbild'), 'roentgenbild');
-      expect(katalog.typName('garten', 'lab_report'), 'lab_report');
+      expect(catalog.typeName('health', 'roentgenbild'), 'roentgenbild');
+      expect(catalog.typeName('garten', 'lab_report'), 'lab_report');
       expect(
-        katalog.typSymbol('garten', 'lab_report'),
-        ModulKatalog.unbekanntesSymbol,
+        catalog.typeIcon('garten', 'lab_report'),
+        ModuleCatalog.unknownIcon,
       );
-      expect(katalog.typen('garten'), isEmpty);
+      expect(catalog.types('garten'), isEmpty);
     });
 
     test('ein Typ gilt nur in seinem Modul', () {
       // „rezept“ ist in Gesundheit ein ärztliches Rezept; Sport kennt ihn
       // nicht, also gibt es dort nur den Rohwert.
-      expect(katalog.typName('health', 'prescription'), 'Rezept');
-      expect(katalog.nachId('sport')!.typ('prescription'), isNull);
+      expect(catalog.typeName('health', 'prescription'), 'Rezept');
+      expect(catalog.byId('sport')!.typeById('prescription'), isNull);
     });
   });
 
   test('doppelte Modul-IDs werden abgelehnt', () {
-    const modul = ModulDefinition(
+    const module = ModuleDefinition(
       id: 'doppelt',
       name: 'Doppelt',
-      beschreibung: '',
-      symbol: Icons.star,
-      farbe: Colors.red,
-      typen: [],
-      aktiv: true,
+      description: '',
+      icon: Icons.star,
+      color: Colors.red,
+      types: [],
+      active: true,
     );
-    expect(() => ModulKatalog([modul, modul]), throwsArgumentError);
+    expect(() => ModuleCatalog([module, module]), throwsArgumentError);
   });
 
   test('ein neues Modul ist nur ein neuer Eintrag', () {
-    final mitGarten = ModulKatalog([
-      ...standardModule,
-      const ModulDefinition(
+    final mitGarten = ModuleCatalog([
+      ...defaultModules,
+      const ModuleDefinition(
         id: 'garten',
         name: 'Garten',
-        beschreibung: 'Pflanzen und Ernten',
-        symbol: Icons.yard_outlined,
-        farbe: Colors.lime,
-        typen: [
-          TypDefinition(id: 'saatgut', name: 'Saatgut', symbol: Icons.grass),
+        description: 'Pflanzen und Ernten',
+        icon: Icons.yard_outlined,
+        color: Colors.lime,
+        types: [
+          TypeDefinition(id: 'saatgut', name: 'Saatgut', icon: Icons.grass),
         ],
-        aktiv: true,
+        active: true,
       ),
     ]);
-    expect(mitGarten.typName('garten', 'saatgut'), 'Saatgut');
-    expect(mitGarten.module, hasLength(5));
+    expect(mitGarten.typeName('garten', 'saatgut'), 'Saatgut');
+    expect(mitGarten.modules, hasLength(5));
   });
 }

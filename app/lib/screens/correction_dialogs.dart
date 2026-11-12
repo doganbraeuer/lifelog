@@ -19,30 +19,30 @@ import '../module/module_catalog.dart';
 /// [modulId] aus dem Modul-Katalog.
 Future<String?> zeigeTypDialog(
   BuildContext context, {
-  required String modulId,
+  required String moduleId,
   required String aktuell,
-  required Korrektur? korrektur,
+  required Correction? correction,
 }) => showDialog<String>(
   context: context,
   builder: (_) => _TypDialog(
-    modulId: modulId,
+    moduleId: moduleId,
     aktuell: aktuell,
-    erkannt: korrektur?.erkannt,
+    recognized: correction?.recognized,
   ),
 );
 
 class _TypDialog extends StatefulWidget {
   const _TypDialog({
-    required this.modulId,
+    required this.moduleId,
     required this.aktuell,
-    required this.erkannt,
+    required this.recognized,
   });
 
-  final String modulId;
+  final String moduleId;
   final String aktuell;
 
   /// Ursprünglich erkannter Typ, nur gesetzt, wenn der Typ korrigiert wurde.
-  final String? erkannt;
+  final String? recognized;
 
   @override
   State<_TypDialog> createState() => _TypDialogState();
@@ -53,29 +53,31 @@ class _TypDialogState extends State<_TypDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final katalog = ModulKatalog.von(context);
+    final catalog = ModuleCatalog.of(context);
     // Der aktuelle Typ bleibt wählbar, auch wenn das Modul ihn nicht (mehr)
     // kennt, z. B. bei Daten von einem neueren Backend.
-    final typen = {
-      for (final t in katalog.typen(widget.modulId)) t.id,
+    final types = {
+      for (final t in catalog.types(widget.moduleId)) t.id,
       widget.aktuell,
     };
-    String name(String typ) => katalog.typName(widget.modulId, typ);
+    String name(String type) => catalog.typeName(widget.moduleId, type);
     return AlertDialog(
       title: const Text('Typ korrigieren'),
       content: DropdownButtonFormField<String>(
         initialValue: _auswahl,
         decoration: const InputDecoration(labelText: 'Typ'),
         items: [
-          for (final typ in typen)
+          for (final type in types)
             DropdownMenuItem(
-              value: typ,
+              value: type,
               child: Text(
-                typ == widget.erkannt ? '${name(typ)} (erkannt)' : name(typ),
+                type == widget.recognized
+                    ? '${name(type)} (erkannt)'
+                    : name(type),
               ),
             ),
         ],
-        onChanged: (typ) => setState(() => _auswahl = typ ?? _auswahl),
+        onChanged: (type) => setState(() => _auswahl = type ?? _auswahl),
       ),
       actions: [
         TextButton(
@@ -97,15 +99,17 @@ class _TypDialogState extends State<_TypDialog> {
 
 /// Auswahl: Datum wählen, Datum entfernen oder erkanntes Datum
 /// wiederherstellen. `Wert(null)` heißt: kein Datum.
-Future<Wert<Datum?>?> zeigeDatumAuswahl(
+Future<Value<PlainDate?>?> zeigeDatumAuswahl(
   BuildContext context, {
-  required Datum? aktuell,
-  required Korrektur? korrektur,
+  required PlainDate? aktuell,
+  required Correction? correction,
 }) async {
-  final erkannt = korrektur == null
+  final recognized = correction == null
       ? null
-      : Wert(
-          korrektur.erkannt == null ? null : Datum.tryParse(korrektur.erkannt!),
+      : Value(
+          correction.recognized == null
+              ? null
+              : PlainDate.tryParse(correction.recognized!),
         );
 
   final aktion = await showModalBottomSheet<_DatumAktion>(
@@ -126,12 +130,12 @@ Future<Wert<Datum?>?> zeigeDatumAuswahl(
               title: const Text('Datum entfernen'),
               onTap: () => Navigator.pop(context, _DatumAktion.entfernen),
             ),
-          if (erkannt != null)
+          if (recognized != null)
             ListTile(
               leading: const Icon(Icons.undo),
               title: Text(
                 'Erkanntes Datum wiederherstellen: '
-                '${erkannt.wert?.anzeige ?? 'kein Datum'}',
+                '${recognized.value?.display ?? 'kein Datum'}',
               ),
               onTap: () =>
                   Navigator.pop(context, _DatumAktion.wiederherstellen),
@@ -144,9 +148,9 @@ Future<Wert<Datum?>?> zeigeDatumAuswahl(
 
   switch (aktion) {
     case _DatumAktion.entfernen:
-      return const Wert(null);
+      return const Value(null);
     case _DatumAktion.wiederherstellen:
-      return erkannt;
+      return recognized;
     case _DatumAktion.waehlen:
       final gewaehlt = await showDatePicker(
         context: context,
@@ -156,7 +160,7 @@ Future<Wert<Datum?>?> zeigeDatumAuswahl(
         helpText: 'Dokumentdatum wählen',
       );
       // Nur Jahr, Monat und Tag übernehmen, keine Zeitzone (siehe Datum).
-      return gewaehlt == null ? null : Wert(Datum.aus(gewaehlt));
+      return gewaehlt == null ? null : Value(PlainDate.fromDateTime(gewaehlt));
   }
 }
 
@@ -172,8 +176,8 @@ final spaetestesDatum = DateTime(2100, 12, 31);
 /// außerhalb von `firstDate` bis `lastDate` liegt. Genau ein falsch
 /// erkanntes Jahr (z. B. 1026 statt 2026) will man aber korrigieren.
 /// Liegt das Datum außerhalb, startet die Auswahl deshalb bei [heute].
-DateTime startdatumFuerAuswahl(Datum? aktuell, DateTime heute) {
-  final datum = aktuell?.alsDateTime();
+DateTime startdatumFuerAuswahl(PlainDate? aktuell, DateTime heute) {
+  final datum = aktuell?.toDateTime();
   if (datum == null ||
       datum.isBefore(fruehestesDatum) ||
       datum.isAfter(spaetestesDatum)) {
@@ -187,20 +191,20 @@ DateTime startdatumFuerAuswahl(Datum? aktuell, DateTime heute) {
 // ---------------------------------------------------------------------------
 
 /// Quelle bearbeiten. Ein leeres Feld entfernt die Quelle (`Wert(null)`).
-Future<Wert<String?>?> zeigeQuelleDialog(
+Future<Value<String?>?> zeigeQuelleDialog(
   BuildContext context, {
   required String? aktuell,
-  required Korrektur? korrektur,
-}) => showDialog<Wert<String?>>(
+  required Correction? correction,
+}) => showDialog<Value<String?>>(
   context: context,
-  builder: (_) => _QuelleDialog(aktuell: aktuell, korrektur: korrektur),
+  builder: (_) => _QuelleDialog(aktuell: aktuell, correction: correction),
 );
 
 class _QuelleDialog extends StatefulWidget {
-  const _QuelleDialog({required this.aktuell, required this.korrektur});
+  const _QuelleDialog({required this.aktuell, required this.correction});
 
   final String? aktuell;
-  final Korrektur? korrektur;
+  final Correction? correction;
 
   @override
   State<_QuelleDialog> createState() => _QuelleDialogState();
@@ -217,7 +221,7 @@ class _QuelleDialogState extends State<_QuelleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final korrektur = widget.korrektur;
+    final correction = widget.correction;
     return AlertDialog(
       title: const Text('Quelle korrigieren'),
       content: Column(
@@ -229,10 +233,10 @@ class _QuelleDialogState extends State<_QuelleDialog> {
             label: 'Quelle',
             hilfe: 'Leer lassen, um die Quelle zu entfernen.',
           ),
-          if (korrektur != null)
+          if (correction != null)
             _ErkanntUebernehmen(
-              erkannt: korrektur.erkannt,
-              uebernehmen: () => _feld.text = korrektur.erkannt ?? '',
+              recognized: correction.recognized,
+              uebernehmen: () => _feld.text = correction.recognized ?? '',
             ),
         ],
       ),
@@ -244,7 +248,7 @@ class _QuelleDialogState extends State<_QuelleDialog> {
         FilledButton(
           onPressed: () {
             final text = _feld.text.trim();
-            Navigator.pop(context, Wert(text.isEmpty ? null : text));
+            Navigator.pop(context, Value(text.isEmpty ? null : text));
           },
           child: const Text('Speichern'),
         ),
@@ -259,15 +263,15 @@ class _QuelleDialogState extends State<_QuelleDialog> {
 
 /// Wert und Einheit einer Info bearbeiten. Gibt nur die Felder zurück, die
 /// sich geändert haben, oder `null`, wenn sich nichts geändert hat.
-Future<InfoAenderung?> zeigeInfoDialog(
+Future<FactPatch?> zeigeInfoDialog(
   BuildContext context, {
-  required Info info,
-  required Korrektur? wertKorrektur,
-  required Korrektur? einheitKorrektur,
-}) => showDialog<InfoAenderung>(
+  required Fact fact,
+  required Correction? wertKorrektur,
+  required Correction? einheitKorrektur,
+}) => showDialog<FactPatch>(
   context: context,
   builder: (_) => _InfoDialog(
-    info: info,
+    fact: fact,
     wertKorrektur: wertKorrektur,
     einheitKorrektur: einheitKorrektur,
   ),
@@ -275,22 +279,22 @@ Future<InfoAenderung?> zeigeInfoDialog(
 
 class _InfoDialog extends StatefulWidget {
   const _InfoDialog({
-    required this.info,
+    required this.fact,
     required this.wertKorrektur,
     required this.einheitKorrektur,
   });
 
-  final Info info;
-  final Korrektur? wertKorrektur;
-  final Korrektur? einheitKorrektur;
+  final Fact fact;
+  final Correction? wertKorrektur;
+  final Correction? einheitKorrektur;
 
   @override
   State<_InfoDialog> createState() => _InfoDialogState();
 }
 
 class _InfoDialogState extends State<_InfoDialog> {
-  late final _wert = TextEditingController(text: widget.info.wert);
-  late final _einheit = TextEditingController(text: widget.info.einheit ?? '');
+  late final _wert = TextEditingController(text: widget.fact.value);
+  late final _einheit = TextEditingController(text: widget.fact.unit ?? '');
   String? _wertFehler;
 
   @override
@@ -301,23 +305,23 @@ class _InfoDialogState extends State<_InfoDialog> {
   }
 
   void _speichern() {
-    final wert = _wert.text.trim();
-    if (wert.isEmpty) {
+    final value = _wert.text.trim();
+    if (value.isEmpty) {
       setState(() => _wertFehler = 'Der Wert darf nicht leer sein.');
       return;
     }
     final einheitText = _einheit.text.trim();
-    final einheit = einheitText.isEmpty ? null : einheitText;
+    final unit = einheitText.isEmpty ? null : einheitText;
 
-    final wertGeaendert = wert != widget.info.wert;
-    final einheitGeaendert = einheit != widget.info.einheit;
+    final wertGeaendert = value != widget.fact.value;
+    final einheitGeaendert = unit != widget.fact.unit;
     Navigator.pop(
       context,
       wertGeaendert || einheitGeaendert
-          ? InfoAenderung(
-              widget.info.id,
-              wert: wertGeaendert ? wert : null,
-              einheit: einheitGeaendert ? Wert(einheit) : null,
+          ? FactPatch(
+              widget.fact.id,
+              value: wertGeaendert ? value : null,
+              unit: einheitGeaendert ? Value(unit) : null,
             )
           : null,
     );
@@ -328,7 +332,7 @@ class _InfoDialogState extends State<_InfoDialog> {
     final wertKorrektur = widget.wertKorrektur;
     final einheitKorrektur = widget.einheitKorrektur;
     return AlertDialog(
-      title: Text('${widget.info.name} korrigieren'),
+      title: Text('${widget.fact.name} korrigieren'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -342,8 +346,8 @@ class _InfoDialogState extends State<_InfoDialog> {
             ),
             if (wertKorrektur != null)
               _ErkanntUebernehmen(
-                erkannt: wertKorrektur.erkannt,
-                uebernehmen: () => _wert.text = wertKorrektur.erkannt ?? '',
+                recognized: wertKorrektur.recognized,
+                uebernehmen: () => _wert.text = wertKorrektur.recognized ?? '',
               ),
             const SizedBox(height: 16),
             _TextFeld(
@@ -353,9 +357,9 @@ class _InfoDialogState extends State<_InfoDialog> {
             ),
             if (einheitKorrektur != null)
               _ErkanntUebernehmen(
-                erkannt: einheitKorrektur.erkannt,
+                recognized: einheitKorrektur.recognized,
                 uebernehmen: () =>
-                    _einheit.text = einheitKorrektur.erkannt ?? '',
+                    _einheit.text = einheitKorrektur.recognized ?? '',
               ),
           ],
         ),
@@ -411,9 +415,12 @@ class _TextFeld extends StatelessWidget {
 
 /// Knopf, der den ursprünglich erkannten Wert ins Feld übernimmt.
 class _ErkanntUebernehmen extends StatelessWidget {
-  const _ErkanntUebernehmen({required this.erkannt, required this.uebernehmen});
+  const _ErkanntUebernehmen({
+    required this.recognized,
+    required this.uebernehmen,
+  });
 
-  final String? erkannt;
+  final String? recognized;
   final VoidCallback uebernehmen;
 
   @override
@@ -421,7 +428,7 @@ class _ErkanntUebernehmen extends StatelessWidget {
     return TextButton.icon(
       onPressed: uebernehmen,
       icon: const Icon(Icons.undo, size: 18),
-      label: Text('Erkannten Wert übernehmen: ${erkannt ?? 'leer'}'),
+      label: Text('Erkannten Wert übernehmen: ${recognized ?? 'leer'}'),
     );
   }
 }

@@ -9,27 +9,30 @@ import 'package:lifelog/screens/timeline_screen.dart';
 import '../helpers.dart';
 
 /// Primärfarbe, die aus einer Grundfarbe entsteht (so wie im Modul-Theme).
-Color primaerAus(Color farbe) => ColorScheme.fromSeed(seedColor: farbe).primary;
+Color primaerAus(Color color) => ColorScheme.fromSeed(seedColor: color).primary;
 
 /// Primärfarbe, die an der Stelle des gefundenen Widgets gilt.
 Color primaerBei(WidgetTester tester, Finder finder) =>
     Theme.of(tester.element(finder)).colorScheme.primary;
 
 /// Kopie eines Moduls mit anderer Farbe bzw. anderem Aktiv-Status.
-ModulDefinition abgewandelt(ModulDefinition m, {Color? farbe, bool? aktiv}) =>
-    ModulDefinition(
-      id: m.id,
-      name: m.name,
-      beschreibung: m.beschreibung,
-      symbol: m.symbol,
-      farbe: farbe ?? m.farbe,
-      typen: m.typen,
-      aktiv: aktiv ?? m.aktiv,
-    );
+ModuleDefinition abgewandelt(
+  ModuleDefinition m, {
+  Color? color,
+  bool? active,
+}) => ModuleDefinition(
+  id: m.id,
+  name: m.name,
+  description: m.description,
+  icon: m.icon,
+  color: color ?? m.color,
+  types: m.types,
+  active: active ?? m.active,
+);
 
-Future<void> starten(WidgetTester tester, {ModulKatalog? katalog}) async {
+Future<void> starten(WidgetTester tester, {ModuleCatalog? catalog}) async {
   grosserBildschirm(tester);
-  await tester.pumpWidget(testApp(schnellerMock(), katalog: katalog));
+  await tester.pumpWidget(testApp(schnellerMock(), catalog: catalog));
   await tester.pumpAndSettle();
 }
 
@@ -140,10 +143,10 @@ void main() {
     });
 
     testWidgets('Farbe kommt aus dem Katalog', (tester) async {
-      final lila = ModulKatalog([
-        abgewandelt(standardModule.first, farbe: Colors.purple),
+      final lila = ModuleCatalog([
+        abgewandelt(defaultModules.first, color: Colors.purple),
       ]);
-      await starten(tester, katalog: lila);
+      await starten(tester, catalog: lila);
       await zuGesundheit(tester);
 
       expect(
@@ -181,17 +184,17 @@ void main() {
       await starten(tester);
 
       // Aktive Kacheln: Verlauf aus den Containerfarben des Moduls.
-      for (final modul in standardModule.where((m) => m.aktiv)) {
+      for (final module in defaultModules.where((m) => m.active)) {
         final ink = tester.widget<Ink>(
-          find.ancestor(of: find.text(modul.name), matching: find.byType(Ink)),
+          find.ancestor(of: find.text(module.name), matching: find.byType(Ink)),
         );
         final verlauf =
             (ink.decoration! as BoxDecoration).gradient! as LinearGradient;
-        final farben = ColorScheme.fromSeed(seedColor: modul.farbe);
+        final farben = ColorScheme.fromSeed(seedColor: module.color);
         expect(verlauf.colors, [
           farben.primaryContainer,
           farben.secondaryContainer,
-        ], reason: modul.id);
+        ], reason: module.id);
       }
     });
   });
@@ -200,11 +203,11 @@ void main() {
     tester,
   ) async {
     // Sport ist hier aktiv; alle Mock-Einträge gehören zu Gesundheit.
-    final katalog = ModulKatalog([
-      standardModule.first,
-      abgewandelt(standardModule.last, aktiv: true),
+    final catalog = ModuleCatalog([
+      defaultModules.first,
+      abgewandelt(defaultModules.last, active: true),
     ]);
-    await starten(tester, katalog: katalog);
+    await starten(tester, catalog: catalog);
 
     await tester.tap(find.text('Sport'));
     await tester.pumpAndSettle();

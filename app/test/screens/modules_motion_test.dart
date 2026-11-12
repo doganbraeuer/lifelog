@@ -3,13 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers.dart';
 
-double deckkraft(WidgetTester tester, String modulId) => tester
-    .widget<FadeTransition>(find.byKey(ValueKey('einblenden-$modulId')))
+double deckkraft(WidgetTester tester, String moduleId) => tester
+    .widget<FadeTransition>(find.byKey(ValueKey('einblenden-$moduleId')))
     .opacity
     .value;
 
-double skalierung(WidgetTester tester, String modulId) =>
-    tester.widget<AnimatedScale>(find.byKey(ValueKey('druck-$modulId'))).scale;
+double skalierung(WidgetTester tester, String moduleId) =>
+    tester.widget<AnimatedScale>(find.byKey(ValueKey('druck-$moduleId'))).scale;
 
 void main() {
   testWidgets('Kacheln blenden beim Start ein', (tester) async {

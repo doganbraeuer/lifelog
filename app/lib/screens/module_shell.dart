@@ -21,14 +21,14 @@ import 'timeline_screen.dart';
 class ModulRahmen extends StatefulWidget {
   const ModulRahmen({
     super.key,
-    required this.modul,
+    required this.module,
     required this.api,
     required this.dateiAuswahl,
   });
 
-  final ModulDefinition modul;
+  final ModuleDefinition module;
   final ApiClient api;
-  final DateiAuswahl dateiAuswahl;
+  final FileChooser dateiAuswahl;
 
   @override
   State<ModulRahmen> createState() => _ModulRahmenState();
@@ -89,22 +89,22 @@ class _ModulRahmenState extends State<ModulRahmen> {
 
   /// Wechselt zur Zeitleiste und öffnet dort den Eintrag. So führt „Zurück“
   /// aus dem Eintrag in die (neu geladene) Zeitleiste.
-  void _eintragOeffnen(String eintragId) {
+  void _eintragOeffnen(String entryId) {
     _zeigeSeite(0, haptik: false);
-    _zeitleiste.currentState?.eintragOeffnen(eintragId);
+    _zeitleiste.currentState?.eintragOeffnen(entryId);
   }
 
-  void _hochgeladen(Eintrag eintrag) {
+  void _hochgeladen(Entry entry) {
     _zeitleiste.currentState?.neuLaden();
-    _eintragOeffnen(eintrag.id);
+    _eintragOeffnen(entry.id);
   }
 
   /// Öffnet einen Eintrag über dem aktuellen Bereich, ohne zur Zeitleiste
   /// zu wechseln. So führt „Zurück“ z. B. wieder zur Antwort auf die Frage.
-  Future<void> _eintragDarueberOeffnen(String eintragId) async {
+  Future<void> _eintragDarueberOeffnen(String entryId) async {
     await oeffneSeite<void>(
       context,
-      EintragScreen(api: widget.api, eintragId: eintragId),
+      EintragScreen(api: widget.api, entryId: entryId),
     );
     // Falls dort etwas korrigiert wurde.
     _zeitleiste.currentState?.neuLaden();
@@ -122,7 +122,7 @@ class _ModulRahmenState extends State<ModulRahmen> {
             child: ZeitleisteScreen(
               key: _zeitleiste,
               api: widget.api,
-              modulId: widget.modul.id,
+              moduleId: widget.module.id,
               zumHochladen: () => _zeigeSeite(1),
             ),
           ),
@@ -130,7 +130,7 @@ class _ModulRahmenState extends State<ModulRahmen> {
             child: UploadScreen(
               api: widget.api,
               dateiAuswahl: widget.dateiAuswahl,
-              modulId: widget.modul.id,
+              moduleId: widget.module.id,
               hochgeladen: _hochgeladen,
               eintragOeffnen: _eintragOeffnen,
             ),
@@ -138,7 +138,7 @@ class _ModulRahmenState extends State<ModulRahmen> {
           _AmLeben(
             child: FrageScreen(
               api: widget.api,
-              modulId: widget.modul.id,
+              moduleId: widget.module.id,
               eintragOeffnen: _eintragDarueberOeffnen,
             ),
           ),

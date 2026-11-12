@@ -13,13 +13,13 @@ const arzt = 'Dr. Erika Beispiel, Allgemeinmedizin';
 Future<void> zumEintrag(
   WidgetTester tester,
   MockApiClient mock,
-  String quelle,
+  String issuer,
 ) async {
   grosserBildschirm(tester);
   await tester.pumpWidget(testApp(mock));
   await tester.pumpAndSettle();
   await zuGesundheit(tester);
-  await tester.tap(find.textContaining(quelle));
+  await tester.tap(find.textContaining(issuer));
   await tester.pumpAndSettle();
 }
 
@@ -67,7 +67,7 @@ void main() {
       expect(find.text('15,0 g/dl'), findsOneWidget);
       expect(find.text('Wert korrigiert, erkannt: 14,2'), findsOneWidget);
       expect(find.text('Korrektur gespeichert.'), findsOneWidget);
-      expect((await mock.eintrag(laborId)).infos.first.wert, '15,0');
+      expect((await mock.getEntry(laborId)).facts.first.value, '15,0');
     });
 
     testWidgets('auf erkannten Wert zurücksetzen entfernt den Hinweis', (
@@ -145,7 +145,10 @@ void main() {
 
       expect(find.text('15.10.2026'), findsOneWidget);
       expect(find.text('korrigiert, erkannt: 14.10.2026'), findsOneWidget);
-      expect((await mock.eintrag(laborId)).dokumentdatum, Datum(2026, 10, 15));
+      expect(
+        (await mock.getEntry(laborId)).documentDate,
+        PlainDate(2026, 10, 15),
+      );
     });
 
     testWidgets('falsch erkanntes Jahr 1026: Auswahl startet heute', (
@@ -153,9 +156,9 @@ void main() {
     ) async {
       // Ausgangslage: Das Datum liegt außerhalb von 1900–2100.
       final mock = schnellerMock();
-      await mock.korrigieren(
+      await mock.correct(
         laborId,
-        EintragAenderung(dokumentdatum: Wert(Datum(1026, 10, 14))),
+        EntryPatch(documentDate: Value(PlainDate(1026, 10, 14))),
       );
       await zumEintrag(tester, mock, labor);
       expect(find.text('14.10.1026'), findsOneWidget);
@@ -170,9 +173,9 @@ void main() {
       await tippen(tester, find.text('OK'));
 
       final heute = DateTime.now();
-      final neu = Datum(heute.year, heute.month, 15);
-      expect(find.text(neu.anzeige), findsOneWidget);
-      expect((await mock.eintrag(laborId)).dokumentdatum, neu);
+      final neu = PlainDate(heute.year, heute.month, 15);
+      expect(find.text(neu.display), findsOneWidget);
+      expect((await mock.getEntry(laborId)).documentDate, neu);
     });
 
     testWidgets('Zeitleiste zeigt die Korrektur nach „Zurück“', (tester) async {
@@ -241,7 +244,7 @@ void main() {
 
     await tippen(tester, find.byTooltip('Hämoglobin korrigieren'));
     await tester.enterText(textFeld('Wert'), '99');
-    mock.simulierterFehler = true;
+    mock.simulateError = true;
     await tippen(tester, speichern());
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);

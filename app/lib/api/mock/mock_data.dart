@@ -1,8 +1,8 @@
-// Beispieldaten für den Mock. Alle Daten sind synthetisch.
+// Sample data for the mock. All data is synthetic.
 //
-// Die drei Einträge stammen aus docs/API.md (Abschnitt 2 und 3.2). Für
-// Arztbrief und "other" nennt die API nur die Kurzform, Volltext und
-// Infos sind hier ergänzt.
+// The three entries come from docs/API.md (sections 2 and 3.2). For the
+// doctor letter and "other" the API only gives the short form; full text
+// and facts are added here.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -11,19 +11,19 @@ import 'package:crypto/crypto.dart';
 
 import 'mock_files.dart';
 
-/// Ein Eintrag als JSON (wie vom Backend) plus die Bytes der Originaldatei.
-class MockEintrag {
-  MockEintrag(this.json, this.bytes);
+/// An entry as JSON (as from the backend) plus the bytes of the original file.
+class MockEntry {
+  MockEntry(this.json, this.bytes);
 
   final Map<String, dynamic> json;
   final Uint8List bytes;
 }
 
-List<MockEintrag> beispieldaten() {
-  // Laborbefund genau wie in docs/API.md, Abschnitt 2. Die Metadaten der
-  // Datei (Größe, SHA-256) stammen ebenfalls aus der API-Beschreibung; die
-  // Datei selbst ist ein kleines Ersatz-PDF mit dem Volltext.
-  const laborVolltext =
+List<MockEntry> sampleData() {
+  // Lab report exactly as in docs/API.md, section 2. The file metadata
+  // (size, SHA-256) also comes from the API description; the file itself is
+  // a small substitute PDF with the full text.
+  const labReportText =
       'Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\n'
       'Laborbefund vom 14.10.2026\n'
       'Patient: Max Mustermann, geb. 01.01.1990\n\n'
@@ -31,14 +31,14 @@ List<MockEintrag> beispieldaten() {
       'Leukozyten 6,8 G/l (Ref. 4,0-10,0)\n'
       'CRP <0,5 mg/dl (Ref. <0,5)\n'
       'Befundart: Blutbild klein';
-  final laborbefund = <String, dynamic>{
+  final labReport = <String, dynamic>{
     'id': '6727a1f3c2b4e5d6f7a8b9c0',
     'module': 'health',
     'type': 'lab_report',
     'documentDate': '2026-10-14',
     'importedAt': '2026-11-03T18:42:07Z',
     'issuer': 'Labor Muster GmbH, Salzburg',
-    'fullText': laborVolltext,
+    'fullText': labReportText,
     'facts': [
       {'id': 'f1', 'name': 'Hämoglobin', 'value': '14,2', 'unit': 'g/dl'},
       {'id': 'f2', 'name': 'Leukozyten', 'value': '6,8', 'unit': 'G/l'},
@@ -63,8 +63,8 @@ List<MockEintrag> beispieldaten() {
     ],
   };
 
-  final arztbriefBild = erzeugeMockPng();
-  final arztbrief = <String, dynamic>{
+  final doctorLetterImage = createMockPng();
+  final doctorLetter = <String, dynamic>{
     'id': '6727a20bc2b4e5d6f7a8b9d4',
     'module': 'health',
     'type': 'doctor_letter',
@@ -90,17 +90,17 @@ List<MockEintrag> beispieldaten() {
       {'id': 'f3', 'name': 'Puls', 'value': '72', 'unit': '/min'},
       {'id': 'f4', 'name': 'Körpergewicht', 'value': '78', 'unit': 'kg'},
     ],
-    'file': _dateiJson(
+    'file': _fileJson(
       '6727a20bc2b4e5d6f7a8b9d5',
       'arztbrief_september.png',
       'image/png',
-      arztbriefBild,
+      doctorLetterImage,
     ),
     'corrections': <dynamic>[],
   };
 
-  final sonstigesBild = erzeugeMockPng(breite: 200, hoehe: 260);
-  final sonstiges = <String, dynamic>{
+  final otherImage = createMockPng(width: 200, height: 260);
+  final other = <String, dynamic>{
     'id': '6727a2a9c2b4e5d6f7a8b9e7',
     'module': 'health',
     'type': 'other',
@@ -116,39 +116,39 @@ List<MockEintrag> beispieldaten() {
       {'id': 'f1', 'name': 'Impfung', 'value': 'Tetanus/Diphtherie'},
       {'id': 'f2', 'name': 'Chargennummer', 'value': 'AB1234'},
     ],
-    'file': _dateiJson(
+    'file': _fileJson(
       '6727a2a9c2b4e5d6f7a8b9e8',
       'scan_impfpass.png',
       'image/png',
-      sonstigesBild,
+      otherImage,
     ),
     'corrections': <dynamic>[],
   };
 
   return [
-    MockEintrag(
-      _tiefeKopie(laborbefund),
-      erzeugeMockPdf(['(Mock-Datei)', '', ...laborVolltext.split('\n')]),
+    MockEntry(
+      _deepCopy(labReport),
+      createMockPdf(['(Mock-Datei)', '', ...labReportText.split('\n')]),
     ),
-    MockEintrag(_tiefeKopie(arztbrief), arztbriefBild),
-    MockEintrag(_tiefeKopie(sonstiges), sonstigesBild),
+    MockEntry(_deepCopy(doctorLetter), doctorLetterImage),
+    MockEntry(_deepCopy(other), otherImage),
   ];
 }
 
-Map<String, dynamic> _dateiJson(
+Map<String, dynamic> _fileJson(
   String id,
-  String dateiname,
-  String mimeTyp,
+  String fileName,
+  String mimeType,
   Uint8List bytes,
 ) => {
   'id': id,
-  'fileName': dateiname,
-  'mimeType': mimeTyp,
+  'fileName': fileName,
+  'mimeType': mimeType,
   'size': bytes.length,
   'sha256': sha256.convert(bytes).toString(),
 };
 
-/// Wandelt die Literale in veränderbare `Map<String, dynamic>` um, wie sie
-/// auch `jsonDecode` liefert. Der Mock ändert die Daten später (PATCH).
-Map<String, dynamic> _tiefeKopie(Map<String, dynamic> json) =>
+/// Turns the literals into mutable `Map<String, dynamic>`, as returned by
+/// `jsonDecode`. The mock changes the data later (PATCH).
+Map<String, dynamic> _deepCopy(Map<String, dynamic> json) =>
     jsonDecode(jsonEncode(json)) as Map<String, dynamic>;

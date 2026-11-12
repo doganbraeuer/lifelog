@@ -5,37 +5,37 @@ import 'package:lifelog/module/module_catalog.dart';
 /// Gesundheit wie im Standard, aber mit dem zusätzlichen Typ „impfpass“.
 /// Dazu Sport mit dem Typ „training“. Damit lässt sich prüfen, dass die
 /// Typen wirklich aus dem Katalog kommen und nur im eigenen Modul gelten.
-ModulKatalog testKatalog() {
-  final gesundheit = standardModule.first;
-  return ModulKatalog([
-    ModulDefinition(
+ModuleCatalog testKatalog() {
+  final gesundheit = defaultModules.first;
+  return ModuleCatalog([
+    ModuleDefinition(
       id: gesundheit.id,
       name: gesundheit.name,
-      beschreibung: gesundheit.beschreibung,
-      symbol: gesundheit.symbol,
-      farbe: gesundheit.farbe,
-      aktiv: true,
-      typen: [
-        ...gesundheit.typen,
-        const TypDefinition(
+      description: gesundheit.description,
+      icon: gesundheit.icon,
+      color: gesundheit.color,
+      active: true,
+      types: [
+        ...gesundheit.types,
+        const TypeDefinition(
           id: 'impfpass',
           name: 'Impfpass',
-          symbol: Icons.vaccines_outlined,
+          icon: Icons.vaccines_outlined,
         ),
       ],
     ),
-    const ModulDefinition(
+    const ModuleDefinition(
       id: 'sport',
       name: 'Sport',
-      beschreibung: '',
-      symbol: Icons.directions_run,
-      farbe: Colors.blue,
-      aktiv: false,
-      typen: [
-        TypDefinition(
+      description: '',
+      icon: Icons.directions_run,
+      color: Colors.blue,
+      active: false,
+      types: [
+        TypeDefinition(
           id: 'training',
           name: 'Training',
-          symbol: Icons.fitness_center,
+          icon: Icons.fitness_center,
         ),
       ],
     ),

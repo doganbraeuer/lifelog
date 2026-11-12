@@ -1,66 +1,67 @@
 import 'package:flutter/widgets.dart';
 
-/// Ein erlaubter Dokumenttyp innerhalb eines Moduls.
-class TypDefinition {
-  const TypDefinition({
+/// An allowed document type within a module.
+class TypeDefinition {
+  const TypeDefinition({
     required this.id,
     required this.name,
-    required this.symbol,
-    this.farbe,
+    required this.icon,
+    this.color,
   });
 
-  /// Wert von `typ` in der API, z. B. `laborbefund`.
+  /// Value of `type` in the API, e.g. `lab_report`.
   final String id;
 
-  /// Anzeigename, z. B. „Laborbefund“.
+  /// Display name, e.g. „Laborbefund“.
   final String name;
-  final IconData symbol;
+  final IconData icon;
 
-  /// Farbe des Punkts in der Zeitachse. Sie kennzeichnet nur den Typ,
-  /// nie einen Wert. Fehlt sie, gilt die Farbe des Moduls.
-  final Color? farbe;
+  /// Color of the dot on the timeline axis. It only marks the type, never a
+  /// value. If it is missing, the module's color applies.
+  final Color? color;
 }
 
-/// Ein Bereich von Lifelog, z. B. Gesundheit oder Sport.
+/// An area of Lifelog, e.g. health or sport.
 ///
-/// Alle Module nutzen dieselben Screens; sie unterscheiden sich nur durch
-/// diese Angaben. Ein neues Modul ist deshalb nur ein neuer Eintrag in
-/// `standardModule` (modul_katalog.dart).
+/// All modules use the same screens; they only differ in these settings.
+/// A new module is therefore just a new item in `defaultModules`
+/// (module_catalog.dart).
 ///
-/// Später sollen die Module vom Backend kommen. Ein Symbol lässt sich nicht
-/// als `IconData` übertragen; das Backend würde dann einen Schlüssel wie
-/// `"herz"` schicken, den die App auf ein Symbol abbildet.
-class ModulDefinition {
-  const ModulDefinition({
+/// Later the modules are meant to come from the backend. An icon cannot be
+/// sent as `IconData`; the backend would then send a key like `"heart"`
+/// that the app maps to an icon.
+class ModuleDefinition {
+  const ModuleDefinition({
     required this.id,
     required this.name,
-    required this.beschreibung,
-    required this.symbol,
-    required this.farbe,
-    required this.typen,
-    required this.aktiv,
+    required this.description,
+    required this.icon,
+    required this.color,
+    required this.types,
+    required this.active,
   });
 
-  /// Wert von `modul` in der API, z. B. `gesundheit`.
+  /// Value of `module` in the API, e.g. `health`.
   final String id;
 
-  /// Anzeigename, z. B. „Gesundheit“.
+  /// Display name, e.g. „Gesundheit“.
   final String name;
 
-  /// Kurzer Text auf der Kachel im Screen „Bereiche“.
-  final String beschreibung;
-  final IconData symbol;
+  /// Short text on the tile in the „Bereiche“ screen.
+  final String description;
+  final IconData icon;
 
-  /// Grundfarbe; daraus entsteht das Farbschema des Moduls.
-  final Color farbe;
+  /// Base color; the module's color scheme is derived from it.
+  final Color color;
 
-  /// Erlaubte Dokumenttypen. Ein `typ` gilt immer nur innerhalb seines
-  /// Moduls (docs/API.md, Weitere Module).
-  final List<TypDefinition> typen;
+  /// Allowed document types. A `type` only ever applies within its module
+  /// (docs/API.md, further modules).
+  final List<TypeDefinition> types;
 
-  /// `false`: wird als „Bald verfügbar“ angezeigt und ist nicht nutzbar.
-  final bool aktiv;
+  /// `false`: shown as „Bald verfügbar“ and not usable.
+  final bool active;
 
-  /// Der Typ mit dieser ID oder `null`, wenn das Modul ihn nicht kennt.
-  TypDefinition? typ(String id) => typen.where((t) => t.id == id).firstOrNull;
+  /// The type with this ID, or `null` if the module does not know it.
+  TypeDefinition? typeById(String id) =>
+      types.where((t) => t.id == id).firstOrNull;
 }

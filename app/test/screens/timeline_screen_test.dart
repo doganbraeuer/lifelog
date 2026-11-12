@@ -53,7 +53,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.sort));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.widgetWithText(CheckedPopupMenuItem<Sortierung>, 'Nach Importdatum'),
+      find.widgetWithText(CheckedPopupMenuItem<Sort>, 'Nach Importdatum'),
     );
     await tester.pumpAndSettle();
 
@@ -65,7 +65,7 @@ void main() {
   });
 
   testWidgets('Fehler anzeigen und erneut versuchen', (tester) async {
-    final mock = schnellerMock()..simulierterFehler = true;
+    final mock = schnellerMock()..simulateError = true;
     await tester.pumpWidget(testApp(mock));
     await tester.pumpAndSettle();
     await zuGesundheit(tester);
@@ -73,7 +73,7 @@ void main() {
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
     expect(find.text(labor), findsNothing);
 
-    mock.simulierterFehler = false;
+    mock.simulateError = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
 
@@ -81,7 +81,7 @@ void main() {
   });
 
   testWidgets('leere Zeitleiste', (tester) async {
-    await tester.pumpWidget(testApp(schnellerMock(mitBeispieldaten: false)));
+    await tester.pumpWidget(testApp(schnellerMock(withSampleData: false)));
     await tester.pumpAndSettle();
     await zuGesundheit(tester);
 

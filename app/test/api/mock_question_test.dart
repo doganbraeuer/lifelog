@@ -8,69 +8,69 @@ import '../helpers.dart';
 
 void main() {
   test('Frage mit Treffer: Antwort mit [1] und Quelle', () async {
-    final antwort = await schnellerMock().fragen(
+    final answer = await schnellerMock().ask(
       'Welchen Hämoglobinwert hatte ich im Oktober?',
-      modul: 'health',
+      module: 'health',
     );
 
-    expect(antwort.gefunden, isTrue);
-    expect(antwort.antwort, contains('[1]'));
-    expect(antwort.quellen, hasLength(1));
-    final quelle = antwort.quellen.single;
-    expect(quelle.nr, 1);
-    expect(quelle.eintragId, laborId);
-    expect(quelle.typ, 'lab_report');
-    expect(quelle.quelle, 'Labor Muster GmbH, Salzburg');
-    expect(quelle.dokumentdatum, Datum(2026, 10, 14));
-    expect(quelle.auszug, 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)');
+    expect(answer.found, isTrue);
+    expect(answer.answer, contains('[1]'));
+    expect(answer.sources, hasLength(1));
+    final source = answer.sources.single;
+    expect(source.number, 1);
+    expect(source.entryId, laborId);
+    expect(source.type, 'lab_report');
+    expect(source.issuer, 'Labor Muster GmbH, Salzburg');
+    expect(source.documentDate, PlainDate(2026, 10, 14));
+    expect(source.excerpt, 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)');
   });
 
   test('Quellen zeigen korrigierte Werte', () async {
     final mock = schnellerMock();
-    await mock.korrigieren(
+    await mock.correct(
       laborId,
-      EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 15))),
+      EntryPatch(documentDate: Value(PlainDate(2026, 10, 15))),
     );
-    final antwort = await mock.fragen('Hämoglobin', modul: 'health');
-    expect(antwort.quellen.single.dokumentdatum, Datum(2026, 10, 15));
+    final answer = await mock.ask('Hämoglobin', module: 'health');
+    expect(answer.sources.single.documentDate, PlainDate(2026, 10, 15));
   });
 
   test('ohne Treffer: fester Satz, keine Quellen', () async {
-    final antwort = await schnellerMock().fragen(
+    final answer = await schnellerMock().ask(
       'Wie war das Wetter in Paris?',
-      modul: 'health',
+      module: 'health',
     );
-    expect(antwort.gefunden, isFalse);
-    expect(antwort.antwort, 'Dazu finde ich nichts in deinen Dokumenten.');
-    expect(antwort.antwort, keinTrefferAntwort);
-    expect(antwort.quellen, isEmpty);
+    expect(answer.found, isFalse);
+    expect(answer.answer, 'Dazu finde ich nichts in deinen Dokumenten.');
+    expect(answer.answer, notFoundAnswer);
+    expect(answer.sources, isEmpty);
   });
 
   test('leere Frage: 400 QUESTION_MISSING', () async {
-    for (final frage in ['', '   ', '\n\t']) {
+    for (final question in ['', '   ', '\n\t']) {
       await expectLater(
-        schnellerMock().fragen(frage, modul: 'health'),
-        wirftApiFehler(FehlerCode.frageFehlt, status: 400),
+        schnellerMock().ask(question, module: 'health'),
+        wirftApiFehler(ErrorCode.questionMissing, status: 400),
       );
     }
   });
 
-  test('über 500 Zeichen: 400 QUESTION_TOO_LONG, genau 500 ist erlaubt', () async {
-    await expectLater(
-      schnellerMock().fragen('a' * 501, modul: 'health'),
-      wirftApiFehler(FehlerCode.frageZuLang, status: 400),
-    );
-    final antwort = await schnellerMock().fragen(
-      'a' * 500,
-      modul: 'health',
-    );
-    expect(antwort.gefunden, isFalse);
-  });
+  test(
+    'über 500 Zeichen: 400 QUESTION_TOO_LONG, genau 500 ist erlaubt',
+    () async {
+      await expectLater(
+        schnellerMock().ask('a' * 501, module: 'health'),
+        wirftApiFehler(ErrorCode.questionTooLong, status: 400),
+      );
+      final answer = await schnellerMock().ask('a' * 500, module: 'health');
+      expect(answer.found, isFalse);
+    },
+  );
 
-  test('"modellfehler": 503 MODEL_UNAVAILABLE', () async {
+  test('"modelerror": 503 MODEL_UNAVAILABLE', () async {
     await expectLater(
-      schnellerMock().fragen('Test modellfehler', modul: 'health'),
-      wirftApiFehler(FehlerCode.modellNichtErreichbar, status: 503),
+      schnellerMock().ask('Test modelerror', module: 'health'),
+      wirftApiFehler(ErrorCode.modelUnavailable, status: 503),
     );
   });
 }

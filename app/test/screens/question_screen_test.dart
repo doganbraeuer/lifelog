@@ -21,8 +21,8 @@ Future<void> zuFragen(WidgetTester tester, MockApiClient mock) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> fragen(WidgetTester tester, String frage) async {
-  await tester.enterText(find.byType(TextField), frage);
+Future<void> ask(WidgetTester tester, String question) async {
+  await tester.enterText(find.byType(TextField), question);
   await tester.pump();
   await tester.tap(find.byTooltip('Frage senden'));
   await tester.pumpAndSettle();
@@ -61,7 +61,7 @@ void main() {
 
   testWidgets('Antwort mit Quelle, Tippen öffnet den Eintrag', (tester) async {
     await zuFragen(tester, schnellerMock());
-    await fragen(tester, treffer);
+    await ask(tester, treffer);
 
     expect(find.text('„$treffer“'), findsOneWidget);
     expect(find.textContaining('[1]'), findsOneWidget);
@@ -87,7 +87,7 @@ void main() {
     tester,
   ) async {
     await zuFragen(tester, schnellerMock());
-    await fragen(tester, 'Wie war das Wetter in Paris?');
+    await ask(tester, 'Wie war das Wetter in Paris?');
 
     expect(
       find.text('Dazu finde ich nichts in deinen Dokumenten.'),
@@ -98,8 +98,8 @@ void main() {
 
   testWidgets('Ladeanzeige während der Suche', (tester) async {
     final mock = MockApiClient(
-      verzoegerung: const Duration(seconds: 1),
-      uploadVerzoegerung: Duration.zero,
+      delay: const Duration(seconds: 1),
+      uploadDelay: Duration.zero,
     );
     await zuFragen(tester, mock);
     await tester.enterText(find.byType(TextField), treffer);
@@ -119,12 +119,12 @@ void main() {
   testWidgets('Fehler: Meldung und erneuter Versuch', (tester) async {
     final mock = schnellerMock();
     await zuFragen(tester, mock);
-    mock.simulierterFehler = true;
-    await fragen(tester, treffer);
+    mock.simulateError = true;
+    await ask(tester, treffer);
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
 
-    mock.simulierterFehler = false;
+    mock.simulateError = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
 
@@ -134,15 +134,15 @@ void main() {
 
   testWidgets('Modell nicht erreichbar: Meldung des Backends', (tester) async {
     await zuFragen(tester, schnellerMock());
-    await fragen(tester, 'Test modellfehler');
+    await ask(tester, 'Test modelerror');
 
     expect(find.textContaining('nicht erreichbar'), findsOneWidget);
   });
 
   testWidgets('neue Frage ersetzt die alte Antwort', (tester) async {
     await zuFragen(tester, schnellerMock());
-    await fragen(tester, treffer);
-    await fragen(tester, 'Wie war das Wetter in Paris?');
+    await ask(tester, treffer);
+    await ask(tester, 'Wie war das Wetter in Paris?');
 
     expect(find.text('Quellen'), findsNothing);
     expect(find.text('„$treffer“'), findsNothing);

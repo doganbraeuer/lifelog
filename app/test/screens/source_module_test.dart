@@ -45,12 +45,12 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ModulKatalogScope(
-        katalog: testKatalog(),
+      ModuleCatalogScope(
+        catalog: testKatalog(),
         child: MaterialApp(
           home: FrageScreen(
             api: api,
-            modulId: 'health',
+            moduleId: 'health',
             eintragOeffnen: (_) async {},
           ),
         ),

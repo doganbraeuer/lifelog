@@ -4,70 +4,72 @@ import '../model/answer.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
 
-/// Sortierfeld der Zeitleiste. Die Namen entsprechen den Werten des
-/// Query-Parameters `sortierung`.
-enum Sortierung { documentDate, importedAt }
+/// Sort field of the timeline. The names are the values of the query
+/// parameter `sort`.
+enum Sort { documentDate, importedAt }
 
-/// Sortierrichtung. Die Namen entsprechen den Werten von `richtung`.
-enum Richtung { desc, asc }
+/// Sort order. The names are the values of `order`.
+enum SortOrder { desc, asc }
 
-/// Maximale Upload-Größe laut docs/API.md: 10 MB.
-const maxDateiGroesse = 10 * 1024 * 1024;
+/// Maximum upload size according to docs/API.md: 10 MB.
+const maxFileSize = 10 * 1024 * 1024;
 
-/// Maximale Länge eines Text-Imports laut docs/API.md (3.1), in Zeichen.
-const maxTextLaenge = 100000;
+/// Maximum length of a text import according to docs/API.md (3.1), in
+/// characters.
+const maxTextLength = 100000;
 
-/// Alle Aufrufe ans Backend laufen über diese Schnittstelle.
+/// Every call to the backend goes through this interface.
 ///
-/// Es gibt zwei Implementierungen: [MockApiClient] mit Beispieldaten und
-/// [HttpApiClient] für das echte Backend. Welche verwendet wird, entscheidet
-/// `erstelleApiClient()` anhand von `--dart-define=API_BASE_URL`.
+/// There are two implementations: [MockApiClient] with sample data and
+/// [HttpApiClient] for the real backend. `createApiClient()` picks one based
+/// on `--dart-define=API_BASE_URL`.
 ///
-/// Jeder Fehler wird als [ApiFehler] geworfen.
+/// Every error is thrown as an [ApiException].
 ///
-/// Das Modul (`modul`, z. B. `gesundheit`) ist laut API optional mit dem
-/// Standard `gesundheit`. Die App gibt es trotzdem immer ausdrücklich an,
-/// damit kein Bereich versehentlich in Gesundheit landet.
+/// According to the API the module (`module`, e.g. `health`) is optional
+/// and defaults to `health`. The app still always passes it explicitly, so
+/// that no area ends up in health by accident.
 abstract interface class ApiClient {
-  /// `true` für den Mock. Die App zeigt dann einen Hinweis an.
-  bool get istMock;
+  /// `true` for the mock. The app then shows a notice.
+  bool get isMock;
 
-  /// `GET /entries`: alle Einträge eines Moduls in der Kurzform, vom
-  /// Backend sortiert.
-  Future<List<EintragKurz>> eintraege({
-    required String modul,
-    Sortierung sortierung = Sortierung.documentDate,
-    Richtung richtung = Richtung.desc,
+  /// `GET /entries`: all entries of a module in the short form, sorted by
+  /// the backend.
+  Future<List<EntrySummary>> listEntries({
+    required String module,
+    Sort sort = Sort.documentDate,
+    SortOrder order = SortOrder.desc,
   });
 
-  /// `GET /entries/{id}`: ein vollständiger Eintrag.
-  Future<Eintrag> eintrag(String id);
+  /// `GET /entries/{id}`: one full entry.
+  Future<Entry> getEntry(String id);
 
-  /// `GET /entries/{id}/file`: die Originaldatei.
-  Future<DateiInhalt> datei(String id);
+  /// `GET /entries/{id}/file`: the original file.
+  Future<FileContent> getFile(String id);
 
-  /// `POST /entries` mit Feld `datei`: Datei hochladen und auslesen lassen.
-  Future<Eintrag> hochladen(
+  /// `POST /entries` with the field `file`: upload a file and have it
+  /// extracted.
+  Future<Entry> upload(
     Uint8List bytes,
-    String dateiname, {
-    required String modul,
+    String fileName, {
+    required String module,
   });
 
-  /// `POST /entries` mit Feld `text`: Dokumentinhalt als Text importieren.
-  /// Das Backend speichert ihn als Originaldatei `text.txt`.
-  Future<Eintrag> textImportieren(String text, {required String modul});
+  /// `POST /entries` with the field `text`: import document content as
+  /// text. The backend stores it as the original file `text.txt`.
+  Future<Entry> importText(String text, {required String module});
 
-  /// `PATCH /entries/{id}`: erkannte Werte korrigieren.
-  Future<Eintrag> korrigieren(String id, EintragAenderung aenderung);
+  /// `PATCH /entries/{id}`: correct recognized values.
+  Future<Entry> correct(String id, EntryPatch patch);
 
-  /// `DELETE /entries/{id}`: Eintrag mit Originaldatei und Abschnitten
-  /// löschen.
-  Future<void> loeschen(String id);
+  /// `DELETE /entries/{id}`: delete an entry with its original file and
+  /// chunks.
+  Future<void> deleteEntry(String id);
 
-  /// `POST /questions`: Frage stellen, Antwort mit Quellenangabe. Gesucht wird
-  /// nur in Dokumenten des Moduls.
-  Future<FrageAntwort> fragen(String frage, {required String modul});
+  /// `POST /questions`: ask a question, answer with sources. Only documents
+  /// of the module are searched.
+  Future<Answer> ask(String question, {required String module});
 
-  /// Gibt Ressourcen frei (z. B. die HTTP-Verbindung).
-  void schliessen();
+  /// Releases resources (e.g. the HTTP connection).
+  void close();
 }

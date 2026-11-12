@@ -1,183 +1,183 @@
 import 'dart:typed_data';
 
-import 'plain_date.dart';
 import 'json_helpers.dart';
+import 'plain_date.dart';
 
-/// Kurzform eines Eintrags für die Zeitleiste (docs/API.md, Abschnitt 2).
-class EintragKurz {
-  const EintragKurz({
+/// Short form of an entry for the timeline (docs/API.md, section 2).
+class EntrySummary {
+  const EntrySummary({
     required this.id,
-    required this.modul,
-    required this.typ,
-    required this.dokumentdatum,
-    required this.importdatum,
-    required this.quelle,
+    required this.module,
+    required this.type,
+    required this.documentDate,
+    required this.importedAt,
+    required this.issuer,
   });
 
-  factory EintragKurz.fromJson(Map<String, dynamic> json) => EintragKurz(
-    id: text(json, 'id'),
-    modul: text(json, 'module'),
-    typ: text(json, 'type'),
-    dokumentdatum: datumOderNull(json, 'documentDate'),
-    importdatum: zeitstempel(json, 'importedAt'),
-    quelle: textOderNull(json, 'issuer'),
+  factory EntrySummary.fromJson(Map<String, dynamic> json) => EntrySummary(
+    id: readString(json, 'id'),
+    module: readString(json, 'module'),
+    type: readString(json, 'type'),
+    documentDate: readDateOrNull(json, 'documentDate'),
+    importedAt: readTimestamp(json, 'importedAt'),
+    issuer: readStringOrNull(json, 'issuer'),
   );
 
   final String id;
-  final String modul;
-  final String typ;
+  final String module;
+  final String type;
 
-  /// `null`, wenn das Vision-LLM kein Datum erkannt hat.
-  final Datum? dokumentdatum;
+  /// `null` if the vision LLM recognized no date.
+  final PlainDate? documentDate;
 
-  /// Zeitpunkt des Uploads in UTC.
-  final DateTime importdatum;
+  /// Time of the upload in UTC.
+  final DateTime importedAt;
 
-  /// Ausstellende Stelle, `null` wenn nicht erkannt.
-  final String? quelle;
+  /// Issuing body, `null` if not recognized.
+  final String? issuer;
 }
 
-/// Vollständiger Eintrag mit Volltext, Infos, Datei und Korrekturen.
-class Eintrag extends EintragKurz {
-  const Eintrag({
+/// Full entry with full text, facts, file and corrections.
+class Entry extends EntrySummary {
+  const Entry({
     required super.id,
-    required super.modul,
-    required super.typ,
-    required super.dokumentdatum,
-    required super.importdatum,
-    required super.quelle,
-    required this.volltext,
-    required this.infos,
-    required this.datei,
-    required this.korrekturen,
+    required super.module,
+    required super.type,
+    required super.documentDate,
+    required super.importedAt,
+    required super.issuer,
+    required this.fullText,
+    required this.facts,
+    required this.file,
+    required this.corrections,
   });
 
-  factory Eintrag.fromJson(Map<String, dynamic> json) {
-    final kurz = EintragKurz.fromJson(json);
-    return Eintrag(
-      id: kurz.id,
-      modul: kurz.modul,
-      typ: kurz.typ,
-      dokumentdatum: kurz.dokumentdatum,
-      importdatum: kurz.importdatum,
-      quelle: kurz.quelle,
-      volltext: text(json, 'fullText'),
-      infos: liste(json, 'facts', Info.fromJson),
-      datei: Datei.fromJson(objekt(json['file'], 'file')),
-      korrekturen: liste(json, 'corrections', Korrektur.fromJson),
+  factory Entry.fromJson(Map<String, dynamic> json) {
+    final summary = EntrySummary.fromJson(json);
+    return Entry(
+      id: summary.id,
+      module: summary.module,
+      type: summary.type,
+      documentDate: summary.documentDate,
+      importedAt: summary.importedAt,
+      issuer: summary.issuer,
+      fullText: readString(json, 'fullText'),
+      facts: readList(json, 'facts', Fact.fromJson),
+      file: File.fromJson(asObject(json['file'], 'file')),
+      corrections: readList(json, 'corrections', Correction.fromJson),
     );
   }
 
-  final String volltext;
-  final List<Info> infos;
-  final Datei datei;
-  final List<Korrektur> korrekturen;
+  final String fullText;
+  final List<Fact> facts;
+  final File file;
+  final List<Correction> corrections;
 
-  /// Die Korrektur zu einem Feldpfad wie `dokumentdatum` oder
-  /// `facts.f2.value`, oder `null`, wenn das Feld nicht korrigiert wurde.
-  Korrektur? korrektur(String feld) =>
-      korrekturen.where((k) => k.feld == feld).firstOrNull;
+  /// The correction for a field path like `documentDate` or
+  /// `facts.f2.value`, or `null` if the field was not corrected.
+  Correction? correctionFor(String field) =>
+      corrections.where((c) => c.field == field).firstOrNull;
 
-  /// Regel 4 aus docs/API.md: Eine Info gilt als korrigiert, wenn ein
-  /// `feld` in `korrekturen` mit `infos.<id>.` beginnt.
-  bool infoKorrigiert(String infoId) =>
-      korrekturen.any((k) => k.feld.startsWith('facts.$infoId.'));
+  /// Rule 4 from docs/API.md: a fact counts as corrected if a `field` in
+  /// `corrections` starts with `facts.<id>.`.
+  bool isFactCorrected(String factId) =>
+      corrections.any((c) => c.field.startsWith('facts.$factId.'));
 }
 
-/// Eine extrahierte Angabe, z. B. Hämoglobin 14,2 g/dl.
-class Info {
-  const Info({
+/// An extracted fact, e.g. Hämoglobin 14,2 g/dl.
+class Fact {
+  const Fact({
     required this.id,
     required this.name,
-    required this.wert,
-    this.einheit,
+    required this.value,
+    this.unit,
   });
 
-  factory Info.fromJson(Map<String, dynamic> json) => Info(
-    id: text(json, 'id'),
-    name: text(json, 'name'),
-    wert: text(json, 'value'),
-    einheit: textOderNull(json, 'unit'),
+  factory Fact.fromJson(Map<String, dynamic> json) => Fact(
+    id: readString(json, 'id'),
+    name: readString(json, 'name'),
+    value: readString(json, 'value'),
+    unit: readStringOrNull(json, 'unit'),
   );
 
   final String id;
   final String name;
 
-  /// Immer ein Text, genau wie auf dem Dokument (`"14,2"`, `"<0,5"`).
-  final String wert;
-  final String? einheit;
+  /// Always a string, exactly as on the document (`"14,2"`, `"<0,5"`).
+  final String value;
+  final String? unit;
 }
 
-/// Referenz auf die Originaldatei.
-class Datei {
-  const Datei({
+/// Reference to the original file.
+class File {
+  const File({
     required this.id,
-    required this.dateiname,
-    required this.mimeTyp,
-    required this.groesse,
+    required this.fileName,
+    required this.mimeType,
+    required this.size,
     required this.sha256,
   });
 
-  factory Datei.fromJson(Map<String, dynamic> json) => Datei(
-    id: text(json, 'id'),
-    dateiname: text(json, 'fileName'),
-    mimeTyp: text(json, 'mimeType'),
-    groesse: ganzzahl(json, 'size'),
-    sha256: text(json, 'sha256'),
+  factory File.fromJson(Map<String, dynamic> json) => File(
+    id: readString(json, 'id'),
+    fileName: readString(json, 'fileName'),
+    mimeType: readString(json, 'mimeType'),
+    size: readInt(json, 'size'),
+    sha256: readString(json, 'sha256'),
   );
 
   final String id;
-  final String dateiname;
-  final String mimeTyp;
+  final String fileName;
+  final String mimeType;
 
-  /// Größe in Bytes.
-  final int groesse;
+  /// Size in bytes.
+  final int size;
   final String sha256;
 
-  bool get istPdf => medientyp(mimeTyp) == 'application/pdf';
-  bool get istBild => medientyp(mimeTyp).startsWith('image/');
+  bool get isPdf => mediaType(mimeType) == 'application/pdf';
+  bool get isImage => mediaType(mimeType).startsWith('image/');
 
-  /// Text, z. B. `text.txt` aus einem Text-Import (`text/plain`, auch mit
+  /// Text, e.g. `text.txt` from a text import (`text/plain`, also with
   /// `; charset=utf-8`).
-  bool get istText => medientyp(mimeTyp) == 'text/plain';
+  bool get isText => mediaType(mimeType) == 'text/plain';
 }
 
-/// Der reine Medientyp ohne Parameter, klein geschrieben:
+/// The bare media type without parameters, in lower case:
 /// `Text/Plain; charset=UTF-8` → `text/plain`.
-String medientyp(String mimeTyp) =>
-    mimeTyp.split(';').first.trim().toLowerCase();
+String mediaType(String mimeType) =>
+    mimeType.split(';').first.trim().toLowerCase();
 
-/// Eine Korrektur: ursprünglich erkannter und aktueller Wert.
-class Korrektur {
-  const Korrektur({
-    required this.feld,
-    required this.erkannt,
-    required this.korrigiert,
-    required this.zeitpunkt,
+/// A correction: originally recognized and current value.
+class Correction {
+  const Correction({
+    required this.field,
+    required this.recognized,
+    required this.corrected,
+    required this.correctedAt,
   });
 
-  factory Korrektur.fromJson(Map<String, dynamic> json) => Korrektur(
-    feld: text(json, 'field'),
-    erkannt: textOderNull(json, 'recognized'),
-    korrigiert: textOderNull(json, 'corrected'),
-    zeitpunkt: zeitstempel(json, 'correctedAt'),
+  factory Correction.fromJson(Map<String, dynamic> json) => Correction(
+    field: readString(json, 'field'),
+    recognized: readStringOrNull(json, 'recognized'),
+    corrected: readStringOrNull(json, 'corrected'),
+    correctedAt: readTimestamp(json, 'correctedAt'),
   );
 
-  /// Pfad wie `typ`, `dokumentdatum`, `quelle`, `facts.f2.value`.
-  final String feld;
-  final String? erkannt;
-  final String? korrigiert;
-  final DateTime zeitpunkt;
+  /// Path like `type`, `documentDate`, `issuer`, `facts.f2.value`.
+  final String field;
+  final String? recognized;
+  final String? corrected;
+  final DateTime correctedAt;
 }
 
-/// Inhalt der Originaldatei, wie ihn `GET /entries/{id}/file` liefert.
-class DateiInhalt {
-  const DateiInhalt({required this.bytes, required this.mimeTyp});
+/// Content of the original file as returned by `GET /entries/{id}/file`.
+class FileContent {
+  const FileContent({required this.bytes, required this.mimeType});
 
   final Uint8List bytes;
-  final String mimeTyp;
+  final String mimeType;
 
-  bool get istPdf => medientyp(mimeTyp) == 'application/pdf';
-  bool get istBild => medientyp(mimeTyp).startsWith('image/');
-  bool get istText => medientyp(mimeTyp) == 'text/plain';
+  bool get isPdf => mediaType(mimeType) == 'application/pdf';
+  bool get isImage => mediaType(mimeType).startsWith('image/');
+  bool get isText => mediaType(mimeType) == 'text/plain';
 }

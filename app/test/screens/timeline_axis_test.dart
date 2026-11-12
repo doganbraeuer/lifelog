@@ -54,7 +54,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.sort));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.widgetWithText(CheckedPopupMenuItem<Sortierung>, 'Nach Importdatum'),
+      find.widgetWithText(CheckedPopupMenuItem<Sort>, 'Nach Importdatum'),
     );
     await tester.pumpAndSettle();
 
@@ -78,7 +78,7 @@ void main() {
   });
 
   testWidgets('leerer Zustand: Knopf führt zu Hochladen', (tester) async {
-    await zurZeitleiste(tester, schnellerMock(mitBeispieldaten: false));
+    await zurZeitleiste(tester, schnellerMock(withSampleData: false));
 
     expect(find.text('Noch keine Dokumente.'), findsOneWidget);
     await tester.tap(find.text('Dokument hochladen'));
@@ -113,10 +113,10 @@ void main() {
         'nach Importdatum', (tester) async {
       handy(tester);
       final mock = schnellerMock();
-      await mock.textImportieren(
+      await mock.importText(
         '${'Sehr lange Bezeichnung einer ausstellenden Stelle ' * 4}\n'
         'Befund vom 21.10.2026',
-        modul: 'health',
+        module: 'health',
       );
       await tester.pumpWidget(testApp(mock));
       await tester.pumpAndSettle();
@@ -127,10 +127,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.sort));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.widgetWithText(
-          CheckedPopupMenuItem<Sortierung>,
-          'Nach Importdatum',
-        ),
+        find.widgetWithText(CheckedPopupMenuItem<Sort>, 'Nach Importdatum'),
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -138,7 +135,7 @@ void main() {
 
     testWidgets('leerer Zustand: nichts läuft über', (tester) async {
       handy(tester);
-      await tester.pumpWidget(testApp(schnellerMock(mitBeispieldaten: false)));
+      await tester.pumpWidget(testApp(schnellerMock(withSampleData: false)));
       await tester.pumpAndSettle();
       await zuGesundheit(tester);
 

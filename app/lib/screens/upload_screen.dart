@@ -28,30 +28,30 @@ class UploadScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.dateiAuswahl,
-    required this.modulId,
+    required this.moduleId,
     required this.hochgeladen,
     required this.eintragOeffnen,
   });
 
   final ApiClient api;
-  final DateiAuswahl dateiAuswahl;
+  final FileChooser dateiAuswahl;
 
   /// Modul, in das hochgeladen wird (Feld `modul` beim Upload).
-  final String modulId;
+  final String moduleId;
 
   /// Nach erfolgreichem Upload mit dem neuen Eintrag.
-  final void Function(Eintrag eintrag) hochgeladen;
+  final void Function(Entry entry) hochgeladen;
 
   /// Öffnet einen vorhandenen Eintrag (bei einem Duplikat).
-  final void Function(String eintragId) eintragOeffnen;
+  final void Function(String entryId) eintragOeffnen;
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
 
 class _UploadScreenState extends State<UploadScreen> {
-  AusgewaehlteDatei? _datei;
-  ApiFehler? _fehler;
+  ChosenFile? _datei;
+  ApiException? _fehler;
   var _laedtHoch = false;
 
   /// `true`, solange das Textfeld für den Text-Import offen ist.
@@ -66,11 +66,11 @@ class _UploadScreenState extends State<UploadScreen> {
 
   /// Bei diesen Fehlern lohnt ein zweiter Versuch mit derselben Datei.
   static const _wiederholbar = {
-    FehlerCode.netzwerkFehler,
-    FehlerCode.internerFehler,
-    FehlerCode.auslesenFehlgeschlagen,
-    FehlerCode.modellNichtErreichbar,
-    FehlerCode.unbekannteAntwort,
+    ErrorCode.networkError,
+    ErrorCode.internalError,
+    ErrorCode.extractionFailed,
+    ErrorCode.modelUnavailable,
+    ErrorCode.unexpectedResponse,
   };
 
   @override
@@ -83,25 +83,25 @@ class _UploadScreenState extends State<UploadScreen> {
 
   Future<void> _verloreneDateiAbholen() async {
     try {
-      final datei = await widget.dateiAuswahl.verloreneDatei();
-      if (datei != null && mounted) _uebernehmen(datei);
+      final file = await widget.dateiAuswahl.retrieveLostFile();
+      if (file != null && mounted) _uebernehmen(file);
     } on PlatformException {
       // Nichts wiederherzustellen; kein Grund für eine Meldung.
     }
   }
 
-  Future<void> _waehlen(Future<AusgewaehlteDatei?> Function() auswahl) async {
+  Future<void> _waehlen(Future<ChosenFile?> Function() auswahl) async {
     try {
-      final datei = await auswahl();
-      if (datei != null && mounted) _uebernehmen(datei);
-    } on DateiZuGross {
+      final file = await auswahl();
+      if (file != null && mounted) _uebernehmen(file);
+    } on FileTooLargeException {
       _zeigeLokalenFehler();
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
-        _fehler = ApiFehler(
+        _fehler = ApiException(
           code: 'AUSWAHL_FEHLGESCHLAGEN',
-          nachricht: e.code.contains('access_denied')
+          message: e.code.contains('access_denied')
               ? 'Kein Zugriff auf Kamera oder Fotos. Bitte in den '
                     'Einstellungen des Geräts erlauben.'
               : 'Die Auswahl hat nicht geklappt. Bitte noch einmal versuchen.',
@@ -110,15 +110,15 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  void _uebernehmen(AusgewaehlteDatei datei) {
+  void _uebernehmen(ChosenFile file) {
     // Größe schon hier prüfen, damit nichts Unnötiges hochgeladen wird.
     // Das Backend prüft trotzdem und meldet ggf. 413.
-    if (datei.bytes.length > maxDateiGroesse) {
+    if (file.bytes.length > maxFileSize) {
       _zeigeLokalenFehler();
       return;
     }
     setState(() {
-      _datei = datei;
+      _datei = file;
       _fehler = null;
     });
   }
@@ -127,26 +127,26 @@ class _UploadScreenState extends State<UploadScreen> {
     if (!mounted) return;
     setState(() {
       _datei = null;
-      _fehler = const ApiFehler(
-        code: FehlerCode.dateiZuGross,
-        nachricht:
+      _fehler = const ApiException(
+        code: ErrorCode.fileTooLarge,
+        message:
             'Die Datei ist größer als 10 MB. Bitte eine kleinere Datei wählen.',
       );
     });
   }
 
   Future<void> _hochladen() async {
-    final datei = _datei;
-    if (datei == null) return;
+    final file = _datei;
+    if (file == null) return;
     setState(() {
       _laedtHoch = true;
       _fehler = null;
     });
     try {
-      final eintrag = await widget.api.hochladen(
-        datei.bytes,
-        datei.name,
-        modul: widget.modulId,
+      final entry = await widget.api.upload(
+        file.bytes,
+        file.name,
+        module: widget.moduleId,
       );
       if (!mounted) return;
       setState(() {
@@ -156,8 +156,8 @@ class _UploadScreenState extends State<UploadScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Dokument gespeichert.')));
       HapticFeedback.lightImpact(); // Erfolg spürbar machen
-      widget.hochgeladen(eintrag);
-    } on ApiFehler catch (fehler) {
+      widget.hochgeladen(entry);
+    } on ApiException catch (fehler) {
       if (!mounted) return;
       setState(() {
         _laedtHoch = false;
@@ -198,10 +198,7 @@ class _UploadScreenState extends State<UploadScreen> {
       _fehler = null;
     });
     try {
-      final eintrag = await widget.api.textImportieren(
-        text,
-        modul: widget.modulId,
-      );
+      final entry = await widget.api.importText(text, module: widget.moduleId);
       if (!mounted) return;
       setState(() {
         _laedtHoch = false;
@@ -211,8 +208,8 @@ class _UploadScreenState extends State<UploadScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Text gespeichert.')));
       HapticFeedback.lightImpact(); // Erfolg spürbar machen
-      widget.hochgeladen(eintrag);
-    } on ApiFehler catch (fehler) {
+      widget.hochgeladen(entry);
+    } on ApiException catch (fehler) {
       if (!mounted) return;
       // Der Text bleibt bei jedem Fehler stehen, damit man ihn ändern
       // (z. B. kürzen) oder erneut senden kann.
@@ -229,7 +226,7 @@ class _UploadScreenState extends State<UploadScreen> {
       appBar: AppBar(
         leading: const BereicheKnopf(),
         title: const Text('Hochladen'),
-        actions: [MockHinweis(sichtbar: widget.api.istMock)],
+        actions: [MockHinweis(sichtbar: widget.api.isMock)],
       ),
       body: Column(
         children: [
@@ -262,9 +259,9 @@ class _UploadScreenState extends State<UploadScreen> {
                 // Weicher Wechsel zwischen Auswahl, Vorschau und Textfeld.
                 Uebergang(
                   child: switch ((_datei, _textModus)) {
-                    (final datei?, _) => KeyedSubtree(
+                    (final file?, _) => KeyedSubtree(
                       key: const ValueKey('vorschau'),
-                      child: _vorschau(datei),
+                      child: _vorschau(file),
                     ),
                     (null, true) => KeyedSubtree(
                       key: const ValueKey('text'),
@@ -339,19 +336,19 @@ class _UploadScreenState extends State<UploadScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: () => _waehlen(auswahl.fotoAufnehmen),
+          onPressed: () => _waehlen(auswahl.takePhoto),
           icon: const Icon(Icons.photo_camera_outlined),
           label: const Text('Foto aufnehmen'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () => _waehlen(auswahl.bildAuswaehlen),
+          onPressed: () => _waehlen(auswahl.pickImage),
           icon: const Icon(Icons.photo_library_outlined),
           label: const Text('Bild auswählen'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () => _waehlen(auswahl.pdfAuswaehlen),
+          onPressed: () => _waehlen(auswahl.pickPdf),
           icon: const Icon(Icons.picture_as_pdf_outlined),
           label: const Text('PDF auswählen'),
         ),
@@ -382,7 +379,7 @@ class _UploadScreenState extends State<UploadScreen> {
           enabled: !_laedtHoch,
           minLines: 6,
           maxLines: 14,
-          maxLength: maxTextLaenge,
+          maxLength: maxTextLength,
           keyboardType: TextInputType.multiline,
           decoration: const InputDecoration(
             labelText: 'Dokumentinhalt',
@@ -404,9 +401,9 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  Widget _vorschau(AusgewaehlteDatei datei) {
-    final mimeTyp = erkenneMimeTyp(datei.bytes);
-    final istBild = mimeTyp != null && mimeTyp.startsWith('image/');
+  Widget _vorschau(ChosenFile file) {
+    final mimeType = detectMimeType(file.bytes);
+    final isImage = mimeType != null && mimeType.startsWith('image/');
     final wiederholen = _fehler != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -418,9 +415,9 @@ class _UploadScreenState extends State<UploadScreen> {
             children: [
               Column(
                 children: [
-                  if (istBild)
+                  if (isImage)
                     Image.memory(
-                      datei.bytes,
+                      file.bytes,
                       height: 260,
                       fit: BoxFit.contain,
                       // HEIC kann Android evtl. nicht anzeigen; dann ein Symbol.
@@ -430,8 +427,8 @@ class _UploadScreenState extends State<UploadScreen> {
                   else
                     const _DateiSymbol(Icons.picture_as_pdf_outlined),
                   ListTile(
-                    title: Text(datei.name),
-                    subtitle: Text(formatGroesse(datei.bytes.length)),
+                    title: Text(file.name),
+                    subtitle: Text(formatGroesse(file.bytes.length)),
                   ),
                 ],
               ),
@@ -529,13 +526,13 @@ class _Hinweis extends StatelessWidget {
 class _FehlerKarte extends StatelessWidget {
   const _FehlerKarte({required this.fehler, required this.eintragOeffnen});
 
-  final ApiFehler fehler;
-  final void Function(String eintragId) eintragOeffnen;
+  final ApiException fehler;
+  final void Function(String entryId) eintragOeffnen;
 
   @override
   Widget build(BuildContext context) {
     final farben = Theme.of(context).colorScheme;
-    final vorhandeneId = fehler.code == FehlerCode.duplikat
+    final vorhandeneId = fehler.code == ErrorCode.duplicate
         ? fehler.details['entryId']
         : null;
     return Card(
@@ -551,7 +548,7 @@ class _FehlerKarte extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    fehler.nachricht,
+                    fehler.message,
                     style: TextStyle(color: farben.onErrorContainer),
                   ),
                 ),

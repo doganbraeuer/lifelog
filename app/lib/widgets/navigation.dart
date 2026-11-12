@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../module/module_definition.dart';
 
 /// Farbschema eines Moduls, erzeugt aus seiner Grundfarbe.
-ThemeData modulTheme(ModulDefinition modul) =>
-    ThemeData(colorSchemeSeed: modul.farbe);
+ThemeData modulTheme(ModuleDefinition module) =>
+    ThemeData(colorSchemeSeed: module.color);
 
 /// Öffnet [seite] mit `Navigator.push` und gibt ihr das Farbschema der
 /// aufrufenden Stelle mit.

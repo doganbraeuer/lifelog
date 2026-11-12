@@ -10,230 +10,226 @@ void main() {
   late MockApiClient mock;
   final jetzt = DateTime.utc(2026, 11, 4, 9, 30, 0);
 
-  setUp(() => mock = schnellerMock(uhr: () => jetzt));
+  setUp(() => mock = schnellerMock(clock: () => jetzt));
 
   group('Korrekturregeln aus docs/API.md, Abschnitt 2', () {
     test(
       'Regel 1 und 2: aktueller Wert im Feld, erkannt bleibt das Original',
       () async {
         // Ausgangslage: i2 wurde schon von 6,3 auf 6,8 korrigiert.
-        final eintrag = await mock.korrigieren(
+        final entry = await mock.correct(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('f2', wert: '7,0')]),
+          const EntryPatch(facts: [FactPatch('f2', value: '7,0')]),
         );
 
-        expect(eintrag.infos[1].wert, '7,0');
-        final korrekturen = eintrag.korrekturen.where(
-          (k) => k.feld == 'facts.f2.value',
+        expect(entry.facts[1].value, '7,0');
+        final corrections = entry.corrections.where(
+          (k) => k.field == 'facts.f2.value',
         );
-        expect(korrekturen, hasLength(1));
-        expect(korrekturen.single.erkannt, '6,3');
-        expect(korrekturen.single.korrigiert, '7,0');
-        expect(korrekturen.single.zeitpunkt, jetzt);
+        expect(corrections, hasLength(1));
+        expect(corrections.single.recognized, '6,3');
+        expect(corrections.single.corrected, '7,0');
+        expect(corrections.single.correctedAt, jetzt);
       },
     );
 
     test(
       'Regel 3: zurück auf den erkannten Wert entfernt die Korrektur',
       () async {
-        final eintrag = await mock.korrigieren(
+        final entry = await mock.correct(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('f2', wert: '6,3')]),
+          const EntryPatch(facts: [FactPatch('f2', value: '6,3')]),
         );
 
-        expect(eintrag.infos[1].wert, '6,3');
-        expect(eintrag.korrektur('facts.f2.value'), isNull);
-        expect(eintrag.infoKorrigiert('f2'), isFalse);
+        expect(entry.facts[1].value, '6,3');
+        expect(entry.correctionFor('facts.f2.value'), isNull);
+        expect(entry.isFactCorrected('f2'), isFalse);
       },
     );
 
     test('unveränderter Wert erzeugt keine Korrektur', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         laborId,
-        const EintragAenderung(infos: [InfoAenderung('f1', wert: '14,2')]),
+        const EntryPatch(facts: [FactPatch('f1', value: '14,2')]),
       );
 
-      expect(eintrag.korrektur('facts.f1.value'), isNull);
+      expect(entry.correctionFor('facts.f1.value'), isNull);
       // Die bestehende Korrektur bleibt unverändert.
       expect(
-        eintrag.korrektur('facts.f2.value')?.zeitpunkt,
+        entry.correctionFor('facts.f2.value')?.correctedAt,
         DateTime.utc(2026, 11, 3, 19, 5, 31),
       );
     });
 
     test('Beispiel aus 3.5: dokumentdatum und i2 in einer Anfrage', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         laborId,
-        EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 15))),
+        EntryPatch(documentDate: Value(PlainDate(2026, 10, 15))),
       );
-      expect(eintrag.dokumentdatum, Datum(2026, 10, 15));
-      final korrektur = eintrag.korrektur('documentDate')!;
-      expect(korrektur.erkannt, '2026-10-14');
-      expect(korrektur.korrigiert, '2026-10-15');
+      expect(entry.documentDate, PlainDate(2026, 10, 15));
+      final correction = entry.correctionFor('documentDate')!;
+      expect(correction.recognized, '2026-10-14');
+      expect(correction.corrected, '2026-10-15');
     });
 
     test('Datum löschen und wiederherstellen', () async {
-      var eintrag = await mock.korrigieren(
+      var entry = await mock.correct(
         laborId,
-        const EintragAenderung(dokumentdatum: Wert(null)),
+        const EntryPatch(documentDate: Value(null)),
       );
-      expect(eintrag.dokumentdatum, isNull);
-      expect(eintrag.korrektur('documentDate')?.erkannt, '2026-10-14');
-      expect(eintrag.korrektur('documentDate')?.korrigiert, isNull);
+      expect(entry.documentDate, isNull);
+      expect(entry.correctionFor('documentDate')?.recognized, '2026-10-14');
+      expect(entry.correctionFor('documentDate')?.corrected, isNull);
 
       // Ein Eintrag ohne Datum steht jetzt am Ende der Zeitleiste.
-      final liste = await mock.eintraege(modul: 'health');
+      final liste = await mock.listEntries(module: 'health');
       expect(liste.last.id, laborId);
 
-      eintrag = await mock.korrigieren(
+      entry = await mock.correct(
         laborId,
-        EintragAenderung(dokumentdatum: Wert(Datum(2026, 10, 14))),
+        EntryPatch(documentDate: Value(PlainDate(2026, 10, 14))),
       );
-      expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
-      expect(eintrag.korrektur('documentDate'), isNull);
+      expect(entry.documentDate, PlainDate(2026, 10, 14));
+      expect(entry.correctionFor('documentDate'), isNull);
     });
 
     test('Einheit entfernen', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         laborId,
-        const EintragAenderung(
-          infos: [InfoAenderung('f1', einheit: Wert(null))],
-        ),
+        const EntryPatch(facts: [FactPatch('f1', unit: Value(null))]),
       );
-      expect(eintrag.infos[0].einheit, isNull);
-      expect(eintrag.infos[0].wert, '14,2');
-      final korrektur = eintrag.korrektur('facts.f1.unit')!;
-      expect(korrektur.erkannt, 'g/dl');
-      expect(korrektur.korrigiert, isNull);
+      expect(entry.facts[0].unit, isNull);
+      expect(entry.facts[0].value, '14,2');
+      final correction = entry.correctionFor('facts.f1.unit')!;
+      expect(correction.recognized, 'g/dl');
+      expect(correction.corrected, isNull);
     });
 
     test('Einheit ergänzen, wo keine erkannt wurde', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         laborId,
-        const EintragAenderung(
-          infos: [InfoAenderung('f4', einheit: Wert('Typ'))],
-        ),
+        const EntryPatch(facts: [FactPatch('f4', unit: Value('Typ'))]),
       );
-      expect(eintrag.infos[3].einheit, 'Typ');
-      expect(eintrag.korrektur('facts.f4.unit')?.erkannt, isNull);
+      expect(entry.facts[3].unit, 'Typ');
+      expect(entry.correctionFor('facts.f4.unit')?.recognized, isNull);
     });
 
     test('typ und quelle', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         laborId,
-        const EintragAenderung(typ: 'doctor_letter', quelle: Wert('Labor X')),
+        const EntryPatch(type: 'doctor_letter', issuer: Value('Labor X')),
       );
-      expect(eintrag.typ, 'doctor_letter');
-      expect(eintrag.quelle, 'Labor X');
-      expect(eintrag.korrektur('type')?.erkannt, 'lab_report');
+      expect(entry.type, 'doctor_letter');
+      expect(entry.issuer, 'Labor X');
+      expect(entry.correctionFor('type')?.recognized, 'lab_report');
       expect(
-        eintrag.korrektur('issuer')?.erkannt,
+        entry.correctionFor('issuer')?.recognized,
         'Labor Muster GmbH, Salzburg',
       );
     });
 
     test('Quelle ergänzen, wo keine erkannt wurde', () async {
-      final eintrag = await mock.korrigieren(
+      final entry = await mock.correct(
         sonstigesId,
-        const EintragAenderung(quelle: Wert('Impfstelle')),
+        const EntryPatch(issuer: Value('Impfstelle')),
       );
-      expect(eintrag.quelle, 'Impfstelle');
-      expect(eintrag.korrektur('issuer')?.erkannt, isNull);
+      expect(entry.issuer, 'Impfstelle');
+      expect(entry.correctionFor('issuer')?.recognized, isNull);
     });
   });
 
   group('Fehlerfälle', () {
     test('leerer Body', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('Datum im falschen Format oder nicht im Kalender', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'documentDate': '15.10.2026'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {'documentDate': '15.10.2026'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'documentDate': '2026-02-30'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {'documentDate': '2026-02-30'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('unbekannter typ', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'type': 'kochrezept'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {'type': 'kochrezept'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('nicht korrigierbare Felder', () async {
-      for (final feld in ['fullText', 'module', 'importedAt', 'file']) {
+      for (final field in ['fullText', 'module', 'importedAt', 'file']) {
         await expectLater(
-          mock.korrigiereMitJson(laborId, {feld: 'x'}),
-          wirftApiFehler(FehlerCode.feldNichtKorrigierbar, status: 400),
-          reason: feld,
+          mock.correctWithJson(laborId, {field: 'x'}),
+          wirftApiFehler(ErrorCode.fieldNotCorrectable, status: 400),
+          reason: field,
         );
       }
     });
 
     test('unbekanntes Feld', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {'farbe': 'rot'}),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        mock.correctWithJson(laborId, {'farbe': 'rot'}),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('Info ohne id', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {
+        mock.correctWithJson(laborId, {
           'facts': [
             {'value': '1'},
           ],
         }),
-        wirftApiFehler(FehlerCode.ungueltigeAnfrage, status: 400),
+        wirftApiFehler(ErrorCode.invalidRequest, status: 400),
       );
     });
 
     test('unbekannte Info: 404 FACT_NOT_FOUND mit infoId', () async {
       try {
-        await mock.korrigieren(
+        await mock.correct(
           laborId,
-          const EintragAenderung(infos: [InfoAenderung('f9', wert: '1')]),
+          const EntryPatch(facts: [FactPatch('f9', value: '1')]),
         );
         fail('Fehler erwartet');
-      } on ApiFehler catch (f) {
+      } on ApiException catch (f) {
         expect(f.httpStatus, 404);
-        expect(f.code, FehlerCode.infoNichtGefunden);
+        expect(f.code, ErrorCode.factNotFound);
         expect(f.details['factId'], 'f9');
       }
     });
 
     test('ist ein Teil ungültig, ändert sich gar nichts', () async {
       await expectLater(
-        mock.korrigiereMitJson(laborId, {
+        mock.correctWithJson(laborId, {
           'documentDate': '2026-10-20',
           'facts': [
             {'id': 'f9', 'value': '1'},
           ],
         }),
-        wirftApiFehler(FehlerCode.infoNichtGefunden),
+        wirftApiFehler(ErrorCode.factNotFound),
       );
-      final eintrag = await mock.eintrag(laborId);
-      expect(eintrag.dokumentdatum, Datum(2026, 10, 14));
-      expect(eintrag.korrekturen, hasLength(1));
+      final entry = await mock.getEntry(laborId);
+      expect(entry.documentDate, PlainDate(2026, 10, 14));
+      expect(entry.corrections, hasLength(1));
     });
 
     test('ungültige und unbekannte Eintrag-ID', () async {
-      const aenderung = EintragAenderung(typ: 'prescription');
+      const aenderung = EntryPatch(type: 'prescription');
       await expectLater(
-        mock.korrigieren('123', aenderung),
-        wirftApiFehler(FehlerCode.ungueltigeId, status: 400),
+        mock.correct('123', aenderung),
+        wirftApiFehler(ErrorCode.invalidId, status: 400),
       );
       await expectLater(
-        mock.korrigieren('ffffffffffffffffffffffff', aenderung),
-        wirftApiFehler(FehlerCode.eintragNichtGefunden, status: 404),
+        mock.correct('ffffffffffffffffffffffff', aenderung),
+        wirftApiFehler(ErrorCode.entryNotFound, status: 404),
       );
     });
   });

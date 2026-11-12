@@ -2,145 +2,145 @@ import 'package:flutter/material.dart';
 
 import 'module_definition.dart';
 
-/// Die Module von Lifelog. Ein neues Modul ist ein neuer Eintrag hier.
+/// The modules of Lifelog. A new module is a new item here.
 ///
-/// Die IDs sind Werte von `modul` in der API. Festgelegt ist bisher nur
-/// `gesundheit` (docs/API.md); `ernaehrung`, `rezepte` und `sport` sind
-/// noch mit Dogan bzw. dem Backend abzustimmen. Inaktive Module haben noch
-/// keine Typen; die werden erst festgelegt, wenn das Modul gebaut wird.
-const standardModule = <ModulDefinition>[
-  ModulDefinition(
+/// The IDs are values of `module` in the API. So far only `health` is fixed
+/// (docs/API.md); `nutrition`, `recipes` and `sport` still need to be agreed
+/// with Dogan and the backend. Inactive modules have no types yet; they are
+/// only defined once the module is built.
+const defaultModules = <ModuleDefinition>[
+  ModuleDefinition(
     id: 'health',
     name: 'Gesundheit',
-    beschreibung: 'Befunde, Arztbriefe, Laborwerte',
-    symbol: Icons.monitor_heart_outlined,
-    farbe: Colors.teal,
-    aktiv: true,
-    // Genau die Typen aus docs/API.md, Abschnitt 2.
-    // Farben der Punkte in der Zeitachse, angelehnt an die Kugeln im
-    // App-Icon (orange, blau). Rezept bekommt Violett statt Rot: Rot wirkt
-    // in einer Gesundheits-Zeitleiste wie eine Warnung. Die Farben
-    // kennzeichnen nur den Typ, nie einen Wert.
-    typen: [
-      TypDefinition(
+    description: 'Befunde, Arztbriefe, Laborwerte',
+    icon: Icons.monitor_heart_outlined,
+    color: Colors.teal,
+    active: true,
+    // Exactly the types from docs/API.md, section 2.
+    // Colors of the dots on the timeline axis, based on the balls in the
+    // app icon (orange, blue). Prescription gets violet instead of red: red
+    // looks like a warning in a health timeline. The colors only mark the
+    // type, never a value.
+    types: [
+      TypeDefinition(
         id: 'doctor_letter',
         name: 'Arztbrief',
-        symbol: Icons.description_outlined,
-        farbe: Color(0xFFF5A623), // Orange wie im Icon
+        icon: Icons.description_outlined,
+        color: Color(0xFFF5A623), // orange as in the icon
       ),
-      TypDefinition(
+      TypeDefinition(
         id: 'lab_report',
         name: 'Laborbefund',
-        symbol: Icons.science_outlined,
-        farbe: Color(0xFF2F80ED), // Blau wie im Icon
+        icon: Icons.science_outlined,
+        color: Color(0xFF2F80ED), // blue as in the icon
       ),
-      TypDefinition(
+      TypeDefinition(
         id: 'prescription',
         name: 'Rezept',
-        symbol: Icons.medication_outlined,
-        farbe: Color(0xFF7E57C2), // Violett
+        icon: Icons.medication_outlined,
+        color: Color(0xFF7E57C2), // violet
       ),
-      TypDefinition(
+      TypeDefinition(
         id: 'other',
         name: 'Sonstiges',
-        symbol: Icons.insert_drive_file_outlined,
-        // keine eigene Farbe: Modulfarbe (Teal)
+        icon: Icons.insert_drive_file_outlined,
+        // no color of its own: module color (teal)
       ),
     ],
   ),
-  ModulDefinition(
+  ModuleDefinition(
     id: 'nutrition',
     name: 'Ernährung',
-    beschreibung: 'Mahlzeiten und Nährwerte',
-    symbol: Icons.eco_outlined,
-    farbe: Color(0xFF8DC63F), // helles Apfelgrün, klar anders als Teal
-    aktiv: false,
-    typen: [],
+    description: 'Mahlzeiten und Nährwerte',
+    icon: Icons.eco_outlined,
+    color: Color(0xFF8DC63F), // light apple green, clearly unlike teal
+    active: false,
+    types: [],
   ),
-  ModulDefinition(
+  ModuleDefinition(
     id: 'recipes',
     name: 'Rezepte',
-    beschreibung: 'Kochrezepte sammeln',
-    symbol: Icons.menu_book_outlined,
-    farbe: Colors.orange,
-    aktiv: false,
-    typen: [],
+    description: 'Kochrezepte sammeln',
+    icon: Icons.menu_book_outlined,
+    color: Colors.orange,
+    active: false,
+    types: [],
   ),
-  ModulDefinition(
+  ModuleDefinition(
     id: 'sport',
     name: 'Sport',
-    beschreibung: 'Training und Wettkämpfe',
-    symbol: Icons.directions_run,
-    farbe: Colors.blue,
-    aktiv: false,
-    typen: [],
+    description: 'Training und Wettkämpfe',
+    icon: Icons.directions_run,
+    color: Colors.blue,
+    active: false,
+    types: [],
   ),
 ];
 
-/// Die Liste der Module mit Funktionen zum Nachschlagen.
+/// The list of modules with lookup functions.
 ///
-/// Heute kommt die Liste aus [standardModule]. Später kann sie vom Backend
-/// geladen werden; dann wird nur die Stelle ausgetauscht, die den Katalog
-/// erzeugt.
-class ModulKatalog {
-  ModulKatalog(List<ModulDefinition> module)
-    : module = List.unmodifiable(module) {
-    final ids = module.map((m) => m.id).toSet();
-    if (ids.length != module.length) {
-      throw ArgumentError('Modul-IDs müssen eindeutig sein.');
+/// Today the list comes from [defaultModules]. Later it can be loaded from
+/// the backend; then only the place that creates the catalog changes.
+class ModuleCatalog {
+  ModuleCatalog(List<ModuleDefinition> modules)
+    : modules = List.unmodifiable(modules) {
+    final ids = modules.map((m) => m.id).toSet();
+    if (ids.length != modules.length) {
+      throw ArgumentError('Module IDs must be unique.');
     }
   }
 
-  factory ModulKatalog.standard() => ModulKatalog(standardModule);
+  factory ModuleCatalog.defaults() => ModuleCatalog(defaultModules);
 
-  final List<ModulDefinition> module;
+  final List<ModuleDefinition> modules;
 
-  /// Symbol für unbekannte Typen.
-  static const unbekanntesSymbol = Icons.insert_drive_file_outlined;
+  /// Icon for unknown types.
+  static const unknownIcon = Icons.insert_drive_file_outlined;
 
-  /// Der Katalog aus dem nächsten [ModulKatalogScope] oberhalb.
-  static ModulKatalog von(BuildContext context) {
+  /// The catalog from the nearest [ModuleCatalogScope] above.
+  static ModuleCatalog of(BuildContext context) {
     final scope = context
-        .dependOnInheritedWidgetOfExactType<ModulKatalogScope>();
-    assert(scope != null, 'Kein ModulKatalogScope oberhalb von $context');
-    return scope!.katalog;
+        .dependOnInheritedWidgetOfExactType<ModuleCatalogScope>();
+    assert(scope != null, 'No ModuleCatalogScope above $context');
+    return scope!.catalog;
   }
 
-  ModulDefinition? nachId(String id) =>
-      module.where((m) => m.id == id).firstOrNull;
+  ModuleDefinition? byId(String id) =>
+      modules.where((m) => m.id == id).firstOrNull;
 
-  /// Erlaubte Typen eines Moduls; leer, wenn das Modul unbekannt ist.
-  List<TypDefinition> typen(String modulId) => nachId(modulId)?.typen ?? [];
+  /// Allowed types of a module; empty if the module is unknown.
+  List<TypeDefinition> types(String moduleId) => byId(moduleId)?.types ?? [];
 
-  /// Anzeigename eines Typs. Unbekannte Typen (z. B. aus einem neueren
-  /// Backend) werden unverändert angezeigt.
-  String typName(String modulId, String typId) =>
-      nachId(modulId)?.typ(typId)?.name ?? typId;
+  /// Display name of a type. Unknown types (e.g. from a newer backend) are
+  /// shown unchanged.
+  String typeName(String moduleId, String typeId) =>
+      byId(moduleId)?.typeById(typeId)?.name ?? typeId;
 
-  IconData typSymbol(String modulId, String typId) =>
-      nachId(modulId)?.typ(typId)?.symbol ?? unbekanntesSymbol;
+  IconData typeIcon(String moduleId, String typeId) =>
+      byId(moduleId)?.typeById(typeId)?.icon ?? unknownIcon;
 
-  /// Farbe eines Typs: eigene Typfarbe, sonst Modulfarbe, sonst neutral.
-  Color typFarbe(String modulId, String typId) {
-    final modul = nachId(modulId);
-    return modul?.typ(typId)?.farbe ?? modul?.farbe ?? Colors.blueGrey;
+  /// Color of a type: its own type color, otherwise the module color,
+  /// otherwise neutral.
+  Color typeColor(String moduleId, String typeId) {
+    final module = byId(moduleId);
+    return module?.typeById(typeId)?.color ?? module?.color ?? Colors.blueGrey;
   }
 }
 
-/// Stellt den [ModulKatalog] allen Seiten und Dialogen bereit.
+/// Provides the [ModuleCatalog] to all pages and dialogs.
 ///
-/// Liegt oberhalb der `MaterialApp`, damit auch Seiten, die mit
-/// `Navigator.push` geöffnet werden, ihn finden.
-class ModulKatalogScope extends InheritedWidget {
-  const ModulKatalogScope({
+/// Sits above the `MaterialApp`, so that pages opened with `Navigator.push`
+/// find it too.
+class ModuleCatalogScope extends InheritedWidget {
+  const ModuleCatalogScope({
     super.key,
-    required this.katalog,
+    required this.catalog,
     required super.child,
   });
 
-  final ModulKatalog katalog;
+  final ModuleCatalog catalog;
 
   @override
-  bool updateShouldNotify(ModulKatalogScope oldWidget) =>
-      katalog != oldWidget.katalog;
+  bool updateShouldNotify(ModuleCatalogScope oldWidget) =>
+      catalog != oldWidget.catalog;
 }

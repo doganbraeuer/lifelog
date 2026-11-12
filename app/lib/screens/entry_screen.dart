@@ -19,23 +19,23 @@ import 'original_file_screen.dart';
 /// Jede Korrektur ist ein eigener PATCH. Angezeigt wird danach immer die
 /// Antwort des Backends; die App rechnet nichts selbst nach.
 class EintragScreen extends StatefulWidget {
-  const EintragScreen({super.key, required this.api, required this.eintragId});
+  const EintragScreen({super.key, required this.api, required this.entryId});
 
   final ApiClient api;
-  final String eintragId;
+  final String entryId;
 
   @override
   State<EintragScreen> createState() => _EintragScreenState();
 }
 
 class _EintragScreenState extends State<EintragScreen> {
-  Eintrag? _eintrag;
-  ApiFehler? _fehler;
+  Entry? _eintrag;
+  ApiException? _fehler;
   var _speichert = false;
 
   /// Originaldatei (nur bei Bildern geladen). Wird einmal angelegt, damit
   /// das Bild nicht bei jeder Korrektur neu geladen wird.
-  Future<DateiInhalt>? _bild;
+  Future<FileContent>? _bild;
 
   @override
   void initState() {
@@ -46,13 +46,13 @@ class _EintragScreenState extends State<EintragScreen> {
   Future<void> _laden() async {
     setState(() => _fehler = null);
     try {
-      final eintrag = await widget.api.eintrag(widget.eintragId);
+      final entry = await widget.api.getEntry(widget.entryId);
       if (!mounted) return;
       setState(() {
-        _eintrag = eintrag;
-        if (eintrag.datei.istBild) _bild = widget.api.datei(eintrag.id);
+        _eintrag = entry;
+        if (entry.file.isImage) _bild = widget.api.getFile(entry.id);
       });
-    } on ApiFehler catch (fehler) {
+    } on ApiException catch (fehler) {
       if (mounted) setState(() => _fehler = fehler);
     }
   }
@@ -61,80 +61,80 @@ class _EintragScreenState extends State<EintragScreen> {
   // Korrigieren
   // -------------------------------------------------------------------------
 
-  Future<void> _speichern(EintragAenderung aenderung) async {
-    if (aenderung.istLeer) return;
+  Future<void> _speichern(EntryPatch aenderung) async {
+    if (aenderung.isEmpty) return;
     setState(() => _speichert = true);
-    final nachricht = ScaffoldMessenger.of(context);
+    final message = ScaffoldMessenger.of(context);
     try {
-      final eintrag = await widget.api.korrigieren(widget.eintragId, aenderung);
+      final entry = await widget.api.correct(widget.entryId, aenderung);
       if (!mounted) return;
-      setState(() => _eintrag = eintrag);
+      setState(() => _eintrag = entry);
       HapticFeedback.lightImpact(); // Erfolg spürbar machen
-      nachricht.showSnackBar(
+      message.showSnackBar(
         const SnackBar(content: Text('Korrektur gespeichert.')),
       );
-    } on ApiFehler catch (fehler) {
+    } on ApiException catch (fehler) {
       // Der alte Stand bleibt angezeigt; das Backend hat nichts geändert.
-      nachricht.showSnackBar(SnackBar(content: Text(fehler.nachricht)));
+      message.showSnackBar(SnackBar(content: Text(fehler.message)));
     } finally {
       if (mounted) setState(() => _speichert = false);
     }
   }
 
-  Future<void> _typKorrigieren(Eintrag eintrag) async {
-    final typ = await zeigeTypDialog(
+  Future<void> _typKorrigieren(Entry entry) async {
+    final type = await zeigeTypDialog(
       context,
       // Erlaubt sind die Typen des Moduls, zu dem der Eintrag gehört.
-      modulId: eintrag.modul,
-      aktuell: eintrag.typ,
-      korrektur: eintrag.korrektur('type'),
+      moduleId: entry.module,
+      aktuell: entry.type,
+      correction: entry.correctionFor('type'),
     );
-    if (typ != null && typ != eintrag.typ) {
-      await _speichern(EintragAenderung(typ: typ));
+    if (type != null && type != entry.type) {
+      await _speichern(EntryPatch(type: type));
     }
   }
 
-  Future<void> _datumKorrigieren(Eintrag eintrag) async {
+  Future<void> _datumKorrigieren(Entry entry) async {
     final datum = await zeigeDatumAuswahl(
       context,
-      aktuell: eintrag.dokumentdatum,
-      korrektur: eintrag.korrektur('documentDate'),
+      aktuell: entry.documentDate,
+      correction: entry.correctionFor('documentDate'),
     );
-    if (datum != null && datum.wert != eintrag.dokumentdatum) {
-      await _speichern(EintragAenderung(dokumentdatum: datum));
+    if (datum != null && datum.value != entry.documentDate) {
+      await _speichern(EntryPatch(documentDate: datum));
     }
   }
 
-  Future<void> _quelleKorrigieren(Eintrag eintrag) async {
-    final quelle = await zeigeQuelleDialog(
+  Future<void> _quelleKorrigieren(Entry entry) async {
+    final issuer = await zeigeQuelleDialog(
       context,
-      aktuell: eintrag.quelle,
-      korrektur: eintrag.korrektur('issuer'),
+      aktuell: entry.issuer,
+      correction: entry.correctionFor('issuer'),
     );
-    if (quelle != null && quelle.wert != eintrag.quelle) {
-      await _speichern(EintragAenderung(quelle: quelle));
+    if (issuer != null && issuer.value != entry.issuer) {
+      await _speichern(EntryPatch(issuer: issuer));
     }
   }
 
-  Future<void> _infoKorrigieren(Eintrag eintrag, Info info) async {
+  Future<void> _infoKorrigieren(Entry entry, Fact fact) async {
     final aenderung = await zeigeInfoDialog(
       context,
-      info: info,
-      wertKorrektur: eintrag.korrektur('facts.${info.id}.value'),
-      einheitKorrektur: eintrag.korrektur('facts.${info.id}.unit'),
+      fact: fact,
+      wertKorrektur: entry.correctionFor('facts.${fact.id}.value'),
+      einheitKorrektur: entry.correctionFor('facts.${fact.id}.unit'),
     );
     if (aenderung != null) {
-      await _speichern(EintragAenderung(infos: [aenderung]));
+      await _speichern(EntryPatch(facts: [aenderung]));
     }
   }
 
-  void _originalOeffnen(Eintrag eintrag, DateiInhalt? vorhanden) {
+  void _originalOeffnen(Entry entry, FileContent? vorhanden) {
     oeffneSeite<void>(
       context,
       OriginaldateiScreen(
         api: widget.api,
-        eintragId: eintrag.id,
-        dateiname: eintrag.datei.dateiname,
+        entryId: entry.id,
+        fileName: entry.file.fileName,
         vorhanden: vorhanden,
       ),
     );
@@ -177,18 +177,16 @@ class _EintragScreenState extends State<EintragScreen> {
     if (bestaetigt != true || !mounted) return;
 
     final navigator = Navigator.of(context);
-    final nachricht = ScaffoldMessenger.of(context);
+    final message = ScaffoldMessenger.of(context);
     setState(() => _speichert = true);
     try {
-      await widget.api.loeschen(widget.eintragId);
+      await widget.api.deleteEntry(widget.entryId);
       navigator.pop();
       HapticFeedback.lightImpact();
-      nachricht.showSnackBar(
-        const SnackBar(content: Text('Eintrag gelöscht.')),
-      );
-    } on ApiFehler catch (fehler) {
+      message.showSnackBar(const SnackBar(content: Text('Eintrag gelöscht.')));
+    } on ApiException catch (fehler) {
       // Nichts gelöscht (bzw. der Eintrag ist noch sichtbar): Ansicht bleibt.
-      nachricht.showSnackBar(SnackBar(content: Text(fehler.nachricht)));
+      message.showSnackBar(SnackBar(content: Text(fehler.message)));
       if (mounted) setState(() => _speichert = false);
     }
   }
@@ -199,20 +197,20 @@ class _EintragScreenState extends State<EintragScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final eintrag = _eintrag;
+    final entry = _eintrag;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          eintrag == null
+          entry == null
               ? 'Eintrag'
-              : ModulKatalog.von(context).typName(eintrag.modul, eintrag.typ),
+              : ModuleCatalog.of(context).typeName(entry.module, entry.type),
         ),
         actions: [
-          MockHinweis(sichtbar: widget.api.istMock),
+          MockHinweis(sichtbar: widget.api.isMock),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Eintrag löschen',
-            onPressed: eintrag == null || _speichert ? null : _loeschen,
+            onPressed: entry == null || _speichert ? null : _loeschen,
           ),
         ],
         bottom: PreferredSize(
@@ -230,8 +228,8 @@ class _EintragScreenState extends State<EintragScreen> {
   Widget _inhalt(BuildContext context) {
     final fehler = _fehler;
     if (fehler != null) return FehlerAnzeige(fehler: fehler, erneut: _laden);
-    final eintrag = _eintrag;
-    if (eintrag == null) {
+    final entry = _eintrag;
+    if (entry == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -240,69 +238,69 @@ class _EintragScreenState extends State<EintragScreen> {
         _speichert ? null : aktion;
 
     // Typnamen kommen aus dem Modul, zu dem der Eintrag gehört.
-    final katalog = ModulKatalog.von(context);
-    String typName(String typ) => katalog.typName(eintrag.modul, typ);
+    final catalog = ModuleCatalog.of(context);
+    String typeName(String type) => catalog.typeName(entry.module, type);
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         _Originaldatei(
-          datei: eintrag.datei,
+          file: entry.file,
           bild: _bild,
-          oeffnen: (vorhanden) => _originalOeffnen(eintrag, vorhanden),
+          oeffnen: (vorhanden) => _originalOeffnen(entry, vorhanden),
         ),
         const _Abschnitt('Angaben'),
         _FeldZeile(
           label: 'Typ',
-          wert: typName(eintrag.typ),
-          korrektur: _hinweis(eintrag.korrektur('type'), typName),
-          bearbeiten: bearbeiten(() => _typKorrigieren(eintrag)),
+          value: typeName(entry.type),
+          correction: _hinweis(entry.correctionFor('type'), typeName),
+          bearbeiten: bearbeiten(() => _typKorrigieren(entry)),
         ),
         _FeldZeile(
           label: 'Dokumentdatum',
-          wert: eintrag.dokumentdatum?.anzeige ?? 'nicht erkannt',
-          korrektur: _hinweis(
-            eintrag.korrektur('documentDate'),
-            (iso) => Datum.tryParse(iso)?.anzeige ?? iso,
+          value: entry.documentDate?.display ?? 'nicht erkannt',
+          correction: _hinweis(
+            entry.correctionFor('documentDate'),
+            (iso) => PlainDate.tryParse(iso)?.display ?? iso,
           ),
-          bearbeiten: bearbeiten(() => _datumKorrigieren(eintrag)),
+          bearbeiten: bearbeiten(() => _datumKorrigieren(entry)),
         ),
         _FeldZeile(
           label: 'Quelle',
-          wert: eintrag.quelle ?? 'nicht erkannt',
-          korrektur: _hinweis(eintrag.korrektur('issuer')),
-          bearbeiten: bearbeiten(() => _quelleKorrigieren(eintrag)),
+          value: entry.issuer ?? 'nicht erkannt',
+          correction: _hinweis(entry.correctionFor('issuer')),
+          bearbeiten: bearbeiten(() => _quelleKorrigieren(entry)),
         ),
         _FeldZeile(
           label: 'Importiert',
-          wert: formatZeitpunktLokal(eintrag.importdatum),
+          value: formatZeitpunktLokal(entry.importedAt),
           korrigierbar: false,
         ),
         const _Abschnitt('Erkannte Angaben'),
-        if (eintrag.infos.isEmpty)
+        if (entry.facts.isEmpty)
           const ListTile(title: Text('Keine Angaben erkannt.')),
-        for (final info in eintrag.infos)
+        for (final fact in entry.facts)
           _FeldZeile(
-            label: info.name,
-            wert: [info.wert, ?info.einheit].join(' '),
-            korrektur: [
+            label: fact.name,
+            value: [fact.value, ?fact.unit].join(' '),
+            correction: [
               ?_hinweis(
-                eintrag.korrektur('facts.${info.id}.value'),
+                entry.correctionFor('facts.${fact.id}.value'),
                 null,
                 'Wert',
               ),
               ?_hinweis(
-                eintrag.korrektur('facts.${info.id}.unit'),
+                entry.correctionFor('facts.${fact.id}.unit'),
                 null,
                 'Einheit',
               ),
             ].join('\n').nullWennLeer,
-            bearbeiten: bearbeiten(() => _infoKorrigieren(eintrag, info)),
+            bearbeiten: bearbeiten(() => _infoKorrigieren(entry, fact)),
           ),
         const _Abschnitt('Volltext'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: SelectableText(eintrag.volltext),
+          child: SelectableText(entry.fullText),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -318,15 +316,15 @@ class _EintragScreenState extends State<EintragScreen> {
   /// Text für korrigierte Felder, z. B. „korrigiert, erkannt: 6,3“.
   /// [anzeige] wandelt den erkannten Rohwert für die Anzeige um.
   String? _hinweis(
-    Korrektur? korrektur, [
-    String Function(String)? anzeige,
+    Correction? correction, [
+    String Function(String)? display,
     String? feldname,
   ]) {
-    if (korrektur == null) return null;
-    final erkannt = korrektur.erkannt;
-    final text = erkannt == null
+    if (correction == null) return null;
+    final recognized = correction.recognized;
+    final text = recognized == null
         ? 'nichts'
-        : (anzeige == null ? erkannt : anzeige(erkannt));
+        : (display == null ? recognized : display(recognized));
     final praefix = feldname == null ? '' : '$feldname ';
     return '${praefix}korrigiert, erkannt: $text';
   }
@@ -338,16 +336,16 @@ extension on String {
 
 /// Überschrift eines Abschnitts.
 class _Abschnitt extends StatelessWidget {
-  const _Abschnitt(this.titel);
+  const _Abschnitt(this.title);
 
-  final String titel;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
       child: Text(
-        titel,
+        title,
         style: Theme.of(context).textTheme.titleSmall
             ?.copyWith(color: Theme.of(context).colorScheme.primary),
       ),
@@ -359,17 +357,17 @@ class _Abschnitt extends StatelessWidget {
 class _FeldZeile extends StatelessWidget {
   const _FeldZeile({
     required this.label,
-    required this.wert,
-    this.korrektur,
+    required this.value,
+    this.correction,
     this.bearbeiten,
     this.korrigierbar = true,
   });
 
   final String label;
-  final String wert;
+  final String value;
 
   /// Hinweis wie „korrigiert, erkannt: 6,3“, sonst `null`.
-  final String? korrektur;
+  final String? correction;
 
   /// `null` sperrt den Stift (z. B. während gespeichert wird).
   final VoidCallback? bearbeiten;
@@ -380,7 +378,7 @@ class _FeldZeile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final korrektur = this.korrektur;
+    final correction = this.correction;
     return ListTile(
       title: Text(
         label,
@@ -391,8 +389,8 @@ class _FeldZeile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(wert, style: theme.textTheme.bodyLarge),
-          if (korrektur != null)
+          Text(value, style: theme.textTheme.bodyLarge),
+          if (correction != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Row(
@@ -406,7 +404,7 @@ class _FeldZeile extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      korrektur,
+                      correction,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.tertiary,
                       ),
@@ -432,23 +430,23 @@ class _FeldZeile extends StatelessWidget {
 /// der Knopf zum Öffnen; ein Tipp auf das Vorschaubild öffnet ebenfalls.
 class _Originaldatei extends StatelessWidget {
   const _Originaldatei({
-    required this.datei,
+    required this.file,
     required this.bild,
     required this.oeffnen,
   });
 
-  final Datei datei;
-  final Future<DateiInhalt>? bild;
+  final File file;
+  final Future<FileContent>? bild;
 
   /// Öffnet die Datei; [vorhanden] ist das schon geladene Bild, falls da.
-  final void Function(DateiInhalt? vorhanden) oeffnen;
+  final void Function(FileContent? vorhanden) oeffnen;
 
   @override
   Widget build(BuildContext context) {
     final bild = this.bild;
-    final (symbol, art) = datei.istPdf
+    final (icon, art) = file.isPdf
         ? (Icons.picture_as_pdf_outlined, 'PDF')
-        : datei.istText
+        : file.isText
         ? (Icons.article_outlined, 'Text')
         : (Icons.image_outlined, 'Bild');
     return Card(
@@ -457,7 +455,7 @@ class _Originaldatei extends StatelessWidget {
       child: Column(
         children: [
           if (bild != null)
-            FutureBuilder<DateiInhalt>(
+            FutureBuilder<FileContent>(
               future: bild,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -488,9 +486,9 @@ class _Originaldatei extends StatelessWidget {
               },
             ),
           ListTile(
-            leading: Icon(symbol),
-            title: Text(datei.dateiname),
-            subtitle: Text('${formatGroesse(datei.groesse)} · $art'),
+            leading: Icon(icon),
+            title: Text(file.fileName),
+            subtitle: Text('${formatGroesse(file.size)} · $art'),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

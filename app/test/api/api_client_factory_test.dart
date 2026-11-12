@@ -5,15 +5,15 @@ import 'package:lifelog/api/mock_api_client.dart';
 
 void main() {
   test('ohne API_BASE_URL: Mock', () {
-    expect(erstelleApiClient(baseUrl: ''), isA<MockApiClient>());
-    expect(erstelleApiClient(baseUrl: '   '), isA<MockApiClient>());
+    expect(createApiClient(baseUrl: ''), isA<MockApiClient>());
+    expect(createApiClient(baseUrl: '   '), isA<MockApiClient>());
   });
 
   test('mit API_BASE_URL: HTTP', () {
-    final api = erstelleApiClient(baseUrl: 'http://10.0.2.2:8080');
+    final api = createApiClient(baseUrl: 'http://10.0.2.2:8080');
     expect(api, isA<HttpApiClient>());
-    expect(api.istMock, isFalse);
-    api.schliessen();
+    expect(api.isMock, isFalse);
+    api.close();
   });
 
   test('in den Tests ist API_BASE_URL nicht gesetzt', () {
