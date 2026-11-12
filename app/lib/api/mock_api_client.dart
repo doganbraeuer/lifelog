@@ -916,11 +916,13 @@ class MockApiClient implements ApiClient {
   // ---------------------------------------------------------------------
 
   /// Fixed sample text instead of a speech recognition. German on purpose:
-  /// it stands for what a user says.
+  /// it stands for what a user says. It has numbers with units, so that
+  /// their marks in the app can be seen (`widgets/quantity_highlight.dart`).
   static const sampleTranscript =
       'Notiz vom 12.11.2026 nach dem Arzttermin. Kniegelenk rechts, '
       'leichter Erguss. Ibuprofen 400 Milligramm dreimal täglich für eine '
-      'Woche.';
+      'Woche. TSH 2,5 Milliunits pro Liter, Blutdruck 130/85 mmHg, '
+      'Temperatur 37,6 Grad.';
 
   @override
   Future<Transcript> transcribe(Uint8List bytes, String fileName) async {

@@ -12,6 +12,7 @@ import '../widgets/motion.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
+import '../widgets/quantity_highlight.dart';
 import '../widgets/scan_animation.dart';
 import 'voice_note_view.dart';
 
@@ -63,14 +64,17 @@ class _UploadScreenState extends State<UploadScreen> {
 
   /// `true` while the text field for the text import is open.
   var _textMode = false;
-  final _text = TextEditingController();
+  final _text = QuantityHighlightController();
 
   /// `true` while recording or transcribing a spoken note.
   var _voiceMode = false;
 
   /// `true` if the text in the field comes from a spoken note: it is
-  /// unchecked machine output, so the page asks to check it.
-  var _textFromSpeech = false;
+  /// unchecked machine output, so the page asks to check it and marks
+  /// numbers and units in it. Kept in the controller, so that the marks
+  /// and this flag can never disagree.
+  bool get _textFromSpeech => _text.highlightQuantities;
+  set _textFromSpeech(bool value) => _text.highlightQuantities = value;
 
   /// Field `speech` from `/status`; `null` while it is loading. A failed
   /// request counts as `unavailable`.
@@ -654,13 +658,15 @@ class _Notice extends StatelessWidget {
 }
 
 /// Above a text that comes from a spoken note: it is unchecked machine
-/// output (docs/API.md 3.9), so ask to check it before saving.
+/// output (docs/API.md 3.9), so ask to check it before saving. The card has
+/// the color of the marks in the field ([QuantityHighlightController]).
 class _TranscriptNotice extends StatelessWidget {
   const _TranscriptNotice();
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final style = TextStyle(color: colors.onTertiaryContainer);
     return Card(
       color: colors.tertiaryContainer,
       child: Padding(
@@ -670,10 +676,21 @@ class _TranscriptNotice extends StatelessWidget {
             Icon(Icons.mic_none, color: colors.onTertiaryContainer),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                'Erkannter Text aus deiner Sprachnotiz. Bitte prüfen und bei '
-                'Bedarf korrigieren, bevor du speicherst.',
-                style: TextStyle(color: colors.onTertiaryContainer),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Erkannter Text aus deiner Sprachnotiz. Bitte prüfen und '
+                    'bei Bedarf korrigieren, bevor du speicherst.',
+                    style: style,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Zahlen und Einheiten sind markiert. Bitte besonders '
+                    'genau prüfen.',
+                    style: style.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
             ),
           ],

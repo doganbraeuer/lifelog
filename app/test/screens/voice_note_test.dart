@@ -58,6 +58,26 @@ Future<void> stopAndTranscribe(WidgetTester tester) async {
 bool enabled(WidgetTester tester, Finder button) =>
     tester.widget<ButtonStyleButton>(button).onPressed != null;
 
+const quantityHint =
+    'Zahlen und Einheiten sind markiert. Bitte besonders genau prüfen.';
+
+/// The marked parts of the text field, as the field draws them.
+List<String> markedInField(WidgetTester tester) {
+  final editable = tester.state<EditableTextState>(
+    find.descendant(of: textField(), matching: find.byType(EditableText)),
+  );
+  final marked = <String>[];
+  editable.renderEditable.text!.visitChildren((span) {
+    if (span is TextSpan &&
+        span.text != null &&
+        span.style?.backgroundColor != null) {
+      marked.add(span.text!);
+    }
+    return true;
+  });
+  return marked;
+}
+
 /// Mock whose `/status` cannot be reached.
 class _StatusFailsMock extends MockApiClient {
   _StatusFailsMock()
@@ -380,11 +400,58 @@ void main() {
     expect(voiceButton(), findsOneWidget);
     expect(await mock.listEntries(module: 'health'), hasLength(3));
 
-    // „Text eingeben“ afterwards is the normal text import again.
+    // „Text eingeben“ afterwards is the normal text import again: no
+    // notice, no marks.
     await tester.tap(find.text('Text eingeben'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Erkannter Text'), findsNothing);
+    expect(find.text(quantityHint), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Importieren'), findsOneWidget);
+    await tester.enterText(textField(), 'Ibuprofen 400 Milligramm');
+    await tester.pump();
+    expect(markedInField(tester), isEmpty);
+  });
+
+  testWidgets('recognized text: numbers and units are marked, new ones too', (
+    tester,
+  ) async {
+    await goToUpload(tester, fastMock(), FakeVoiceRecorder());
+
+    await startRecording(tester);
+    await stopAndTranscribe(tester);
+
+    expect(find.text(quantityHint), findsOneWidget);
+    expect(markedInField(tester), [
+      '12.11.2026',
+      '400 Milligramm',
+      '2,5 Milliunits pro Liter',
+      '130/85 mmHg',
+      '37,6 Grad',
+    ]);
+
+    // Marks follow the editing: a corrected unit, an added number.
+    await tester.enterText(
+      textField(),
+      MockApiClient.sampleTranscript
+          .replaceFirst('Milliunits', 'mU')
+          .replaceFirst('Grad.', 'Grad. Kontrolle in 14 Tagen.'),
+    );
+    await tester.pump();
+    expect(markedInField(tester), contains('2,5 mU pro Liter'));
+    expect(markedInField(tester), contains('14 Tagen'));
+    expect(find.text(quantityHint), findsOneWidget);
+  });
+
+  testWidgets('the text import of typed text marks nothing', (tester) async {
+    await goToUpload(tester, fastMock(), FakeVoiceRecorder());
+
+    await tester.tap(find.text('Text eingeben'));
+    await tester.pumpAndSettle();
+    await tester.enterText(textField(), 'Ibuprofen 400 Milligramm');
+    await tester.pump();
+
+    expect(markedInField(tester), isEmpty);
+    expect(find.text(quantityHint), findsNothing);
   });
 
   testWidgets('leaving the module while recording deletes the recording', (
