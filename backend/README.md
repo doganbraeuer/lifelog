@@ -165,6 +165,14 @@ starts, `/status` says `"speech": "unavailable"` and transcriptions answer
 LIFELOG_LIVE=1 go test ./internal/speech/whisper -run Live -v   # silence against the running whisper-server
 ```
 
+Measure recognition, speed and silence on known sentences (results and
+evaluation in `docs/speech/README.md`):
+
+```sh
+go run ./cmd/speechcheck                                       # synthetic voice and generated audio
+go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech   # plus own recordings 01.m4a … 10.m4a
+```
+
 ## Vector index
 
 Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
@@ -270,6 +278,7 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
 | `cmd/models` | List available Gemini models |
 | `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
+| `cmd/speechcheck` | Measure the transcription on the sentences in `demo/speech/` (key terms, speed, silence) |
 | `scripts/whisper-server.sh`, `.ps1` | Download and verify the Whisper models, start whisper-server |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
 | `internal/config` | Read and check environment variables, mask secrets |

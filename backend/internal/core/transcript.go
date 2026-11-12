@@ -1,6 +1,7 @@
 package core
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -137,6 +138,27 @@ func WordErrorRate(reference, hypothesis string) float64 {
 		prev, cur = cur, prev
 	}
 	return float64(prev[len(hyp)]) / float64(len(ref))
+}
+
+// TextContains reports whether the words of term appear in text one after
+// another, each word normalized (normalizeWord: case, punctuation at the
+// edges, decimal comma). "TSH 1.8" is found in "TSH 1,8 mU/l.", but "64"
+// is not found in "164". Unlike the verification, word boundaries count:
+// "kein Erguss" is not found in "keiner Guss", and "1 0 1" not in "101".
+// OCR splits and joins words by mistake, speech recognition writes words;
+// a different boundary is a different text. For the measurement
+// (cmd/speechcheck).
+func TextContains(text, term string) bool {
+	t, w := words(term), words(text)
+	if len(t) == 0 {
+		return false
+	}
+	for i := 0; i+len(t) <= len(w); i++ {
+		if slices.Equal(w[i:i+len(t)], t) {
+			return true
+		}
+	}
+	return false
 }
 
 // words splits into normalized words and drops empty ones (a lone "-").

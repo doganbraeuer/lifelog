@@ -63,6 +63,35 @@ func TestCleanTranscript(t *testing.T) {
 	}
 }
 
+func TestTextContains(t *testing.T) {
+	text := "Rezept vom 18. Mai 2026: Musterol 400 mg, 1-0-1. Puls 164, TSH 1,8 mU/l. 101 Stück, keiner Guss, 20mg."
+	tests := []struct {
+		term string
+		want bool
+	}{
+		{"Musterol", true},
+		{"musterol", true},
+		{"400 mg", true},
+		{"18. Mai 2026", true}, // across punctuation at the edges
+		{"1-0-1", true},
+		{"TSH 1.8", true}, // decimal comma = point
+		{"mU/l", true},
+		{"64", false},          // not inside 164
+		{"Mai 20", false},      // a word must match completely
+		{"1 0 1", false},       // word boundaries count …
+		{"kein Erguss", false}, // … in both directions
+		{"20 mg", false},
+		{"Ibuprofen", false},
+		{"", false},
+		{" . ", false},
+	}
+	for _, tt := range tests {
+		if got := TextContains(text, tt.term); got != tt.want {
+			t.Errorf("TextContains(%q) = %v, want %v", tt.term, got, tt.want)
+		}
+	}
+}
+
 func TestWordErrorRate(t *testing.T) {
 	tests := []struct {
 		name     string

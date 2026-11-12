@@ -73,6 +73,15 @@ from the iOS app: the image picker re-encodes the image, so they differ from
 the `_photo.png` originals. The script uploads them so that a refilled
 database contains exactly the same files as the baseline.
 
+`speech/` contains eight sentences for the speech recognition measurement
+(`backend/cmd/speechcheck`, results in `docs/speech/`): the reference texts
+`01.txt` … `08.txt` and the same sentences spoken by the macOS voice "Anna"
+(`NN_anna.m4a`, AAC/M4A, mono, 16 kHz, no metadata; made by
+`speech/make-voice.sh`). Recordings of a real voice are **not** added here:
+a voice is personal and this repository is public. Dogan's voice memos of
+the same sentences are in `~/Projekte/lifelog-demo/speech/` (01–08 read
+aloud, 09 silence, 10 sentence 03 with background noise).
+
 ## Live upload in the app
 
 After `demo/upload.sh`, the prescription and the eye test are already in the
