@@ -7,9 +7,25 @@ import '../helpers.dart';
 
 void main() {
   group('entries', () {
-    test('default: order as in the example from docs/API.md, 3.2', () async {
+    test('default: newest document date first, without date last', () async {
       final list = await fastMock().listEntries(module: 'health');
-      expect(list.map((e) => e.id), [labReportId, doctorLetterId, otherId]);
+      expect(list.map((e) => e.id), [
+        noteId, // 2026-11-05
+        labReportId, // 2026-10-14
+        doctorLetterId, // 2026-09-02
+        prescriptionId, // 2026-08-20
+        xRayId, // 2026-07-15
+        oldLabId, // 2026-06-03
+        otherId, // no date
+      ]);
+      // The three entries from the example in docs/API.md, 3.2 keep their
+      // order.
+      expect(
+        list
+            .map((e) => e.id)
+            .where((id) => {labReportId, doctorLetterId, otherId}.contains(id)),
+        [labReportId, doctorLetterId, otherId],
+      );
       expect(list.last.documentDate, isNull);
       expect(list.last.issuer, isNull);
     });
@@ -20,7 +36,15 @@ void main() {
         order: SortOrder.asc,
         module: 'health',
       );
-      expect(list.map((e) => e.id), [labReportId, doctorLetterId, otherId]);
+      expect(list.map((e) => e.id), [
+        oldLabId,
+        labReportId,
+        doctorLetterId,
+        otherId,
+        xRayId,
+        prescriptionId,
+        noteId,
+      ]);
     });
 
     test('documentDate ascending: without date at the end', () async {
@@ -28,12 +52,20 @@ void main() {
         order: SortOrder.asc,
         module: 'health',
       );
-      expect(list.map((e) => e.id), [doctorLetterId, labReportId, otherId]);
+      expect(list.map((e) => e.id), [
+        oldLabId,
+        xRayId,
+        prescriptionId,
+        doctorLetterId,
+        labReportId,
+        noteId,
+        otherId,
+      ]);
     });
 
     test('without parameters the defaults apply', () async {
       final list = await fastMock().listEntriesWithParameters({});
-      expect(list.first.id, labReportId);
+      expect(list.first.id, noteId);
     });
 
     test('unknown sort: 400 INVALID_PARAMETER', () async {

@@ -7,31 +7,48 @@ import 'dart:io' show zlib;
 import 'dart:typed_data';
 
 /// A one-page PDF with the given lines of text (font Helvetica).
-Uint8List createMockPdf(List<String> lines) {
-  final content = StringBuffer('BT\n/F1 11 Tf\n15 TL\n56 790 Td\n');
-  for (final line in lines) {
-    content.write('(${_pdfText(line)}) Tj T*\n');
-  }
-  content.write('ET');
-  final stream = _latin1(content.toString());
+Uint8List createMockPdf(List<String> lines) => createMockPdfPages([lines]);
 
+/// A PDF with one page per list of lines (font Helvetica 11 pt, 15 pt line
+/// spacing, starting at the top left). The mock verification estimates its
+/// rectangles from this layout.
+Uint8List createMockPdfPages(List<List<String>> pages) {
+  // Objects: 1 catalog, 2 page tree, 3 font, then per page the page and
+  // its content stream.
+  int pageObject(int index) => 4 + 2 * index;
   final objects = <List<int>>[
     _latin1('<< /Type /Catalog /Pages 2 0 R >>'),
-    _latin1('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
     _latin1(
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
-      '/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+      '<< /Type /Pages /Kids '
+      '[${[for (var i = 0; i < pages.length; i++) '${pageObject(i)} 0 R'].join(' ')}] '
+      '/Count ${pages.length} >>',
     ),
     _latin1(
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica '
       '/Encoding /WinAnsiEncoding >>',
     ),
-    [
-      ..._latin1('<< /Length ${stream.length} >>\nstream\n'),
-      ...stream,
-      ..._latin1('\nendstream'),
-    ],
   ];
+  for (var i = 0; i < pages.length; i++) {
+    final content = StringBuffer('BT\n/F1 11 Tf\n15 TL\n56 790 Td\n');
+    for (final line in pages[i]) {
+      content.write('(${_pdfText(line)}) Tj T*\n');
+    }
+    content.write('ET');
+    final stream = _latin1(content.toString());
+    objects
+      ..add(
+        _latin1(
+          '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+          '/Resources << /Font << /F1 3 0 R >> >> '
+          '/Contents ${pageObject(i) + 1} 0 R >>',
+        ),
+      )
+      ..add([
+        ..._latin1('<< /Length ${stream.length} >>\nstream\n'),
+        ...stream,
+        ..._latin1('\nendstream'),
+      ]);
+  }
 
   // A PDF ends with a table ("xref") that gives the byte position of every
   // object in the file. That is why the positions are recorded.

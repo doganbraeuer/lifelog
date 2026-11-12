@@ -11,11 +11,13 @@ import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
+import '../model/verification.dart';
 import '../module/module_catalog.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
 import 'mock/mock_data.dart';
+import 'mock/mock_verification.dart';
 import 'timeline_sort.dart';
 
 /// Answer without a hit, literally from docs/API.md.
@@ -28,6 +30,11 @@ const notFoundAnswer = 'Dazu finde ich nichts in deinen Dokumenten.';
 /// Internally the mock stores every entry as a JSON map, exactly as the
 /// backend would return it. It checks corrections against the JSON body,
 /// so that errors like a wrong date format can be reproduced too.
+///
+/// `verification` comes from a simplified second reader
+/// (mock/mock_verification.dart): uploads and text imports are checked
+/// against what the mock "reads", and every correction checks the entry
+/// again, as the backend does.
 ///
 /// Errors for trying out by hand:
 /// - An upload with `unreadable`, `extractionerror` or `modelerror` in
@@ -54,6 +61,7 @@ class MockApiClient implements ApiClient {
         final id = e.json['id'] as String;
         _entries[id] = e.json;
         _files[id] = e.bytes;
+        if (e.original case final original?) _originals[id] = original;
       }
     }
   }
@@ -80,6 +88,10 @@ class MockApiClient implements ApiClient {
   final ModuleCatalog _catalog;
   final _entries = <String, Map<String, dynamic>>{};
   final _files = <String, Uint8List>{};
+
+  /// What the second reader saw at upload, like the backend's collection
+  /// `ocr`. Missing for entries that are `unchecked`.
+  final _originals = <String, MockOriginal>{};
   final _random = Random();
   var _counter = 0;
 
@@ -451,6 +463,16 @@ class MockApiClient implements ApiClient {
     required String hash,
   }) {
     final id = _newId();
+    // The mock "reads" its own full text: a text layer for a PDF, OCR for
+    // an image, the entered text for a text import.
+    final original = mediaType(mimeType) == 'text/plain'
+        ? MockOriginal.text(fullText)
+        : MockOriginal.page(
+            mediaType(mimeType) == 'application/pdf'
+                ? VerificationSource.pdfText
+                : VerificationSource.ocr,
+            fullText.split('\n'),
+          );
     final json = <String, dynamic>{
       'id': id,
       'module': module,
@@ -471,8 +493,14 @@ class MockApiClient implements ApiClient {
       },
       'corrections': <dynamic>[],
     };
+    json['verification'] = checkEntry(
+      json,
+      original,
+      checkedAt: json['importedAt'] as String,
+    );
     _entries[id] = json;
     _files[id] = Uint8List.fromList(bytes);
+    _originals[id] = original;
     return Entry.fromJson(json);
   }
 
@@ -487,6 +515,7 @@ class MockApiClient implements ApiClient {
     // The mock has no chunks; file and entry disappear.
     // Afterwards the hash is free, the same file can be uploaded again.
     _files.remove(json['id']);
+    _originals.remove(json['id']);
     _entries.remove(json['id']);
   }
 
@@ -529,8 +558,16 @@ class MockApiClient implements ApiClient {
 
     // 2. and 3. Write the values and maintain `corrections`.
     final timestamp = formatTimestamp(_clock());
+    var changed = false;
     for (final (field, newValue) in changes) {
-      _set(json, field, newValue, timestamp);
+      if (_set(json, field, newValue, timestamp)) changed = true;
+    }
+
+    // 4. If a value changed, check again against the stored original (no
+    // new OCR run). An unchecked entry stays unchecked.
+    final original = _originals[json['id']];
+    if (changed && original != null) {
+      json['verification'] = checkEntry(json, original, checkedAt: timestamp);
     }
     return Entry.fromJson(json);
   }
@@ -697,14 +734,16 @@ class MockApiClient implements ApiClient {
   /// - A field whose value does not change creates no correction.
   /// - At most one correction per field; `recognized` stays the original.
   /// - Back to the recognized value: the correction is removed.
-  void _set(
+  ///
+  /// Returns whether the value changed.
+  bool _set(
     Map<String, dynamic> json,
     String field,
     String? newValue,
     String correctedAt,
   ) {
     final old = _read(json, field);
-    if (old == newValue) return;
+    if (old == newValue) return false;
 
     final corrections = json['corrections'] as List;
     final index = corrections.indexWhere((k) => (k as Map)['field'] == field);
@@ -729,6 +768,7 @@ class MockApiClient implements ApiClient {
         'correctedAt': correctedAt,
       });
     }
+    return true;
   }
 
   String? _read(Map<String, dynamic> json, String field) {

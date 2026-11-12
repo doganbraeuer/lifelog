@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mime_type.dart';
@@ -27,7 +28,10 @@ void main() {
     expect(entry.file.size, bytes.length);
     expect(entry.file.sha256, sha256.convert(bytes).toString());
 
-    expect(await mock.listEntries(module: 'health'), hasLength(4));
+    expect(
+      await mock.listEntries(module: 'health'),
+      hasLength(sampleCount + 1),
+    );
     expect((await mock.getFile(entry.id)).bytes, bytes);
   });
 
@@ -46,7 +50,10 @@ void main() {
       expect(f.code, ErrorCode.duplicate);
       expect(f.details['entryId'], firstEntry.id);
     }
-    expect(await mock.listEntries(module: 'health'), hasLength(4));
+    expect(
+      await mock.listEntries(module: 'health'),
+      hasLength(sampleCount + 1),
+    );
   });
 
   test('empty file: 400 FILE_MISSING', () async {
@@ -97,7 +104,10 @@ void main() {
           mock.upload(pdf(name), name, module: 'health'),
           throwsApiException(code, status: status),
         );
-        expect(await mock.listEntries(module: 'health'), hasLength(3));
+        expect(
+          await mock.listEntries(module: 'health'),
+          hasLength(sampleCount),
+        );
       });
     }
   });

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/screens/entry_screen.dart';
 import 'package:lifelog/screens/original_file_screen.dart';
@@ -66,7 +67,10 @@ void main() {
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // issuer
     expect(find.text('21.10.2026'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);
-    expect(await mock.listEntries(module: 'health'), hasLength(4));
+    expect(
+      await mock.listEntries(module: 'health'),
+      hasLength(sampleCount + 1),
+    );
 
     await tester.tap(find.text('Originaldatei öffnen'));
     await tester.pumpAndSettle();

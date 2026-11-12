@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
 
 import '../helpers.dart';
@@ -16,6 +17,7 @@ const unknown = 'Quelle unbekannt';
 
 void main() {
   testWidgets('shows the entries in the order of the backend', (tester) async {
+    useLargeScreen(tester);
     await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
     await openHealth(tester);
@@ -33,6 +35,7 @@ void main() {
   testWidgets('toggle the order: without date stays at the end', (
     tester,
   ) async {
+    useLargeScreen(tester);
     await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
     await openHealth(tester);
@@ -46,6 +49,7 @@ void main() {
   });
 
   testWidgets('sort by import date', (tester) async {
+    useLargeScreen(tester);
     await tester.pumpWidget(testApp(fastMock()));
     await tester.pumpAndSettle();
     await openHealth(tester);
@@ -61,7 +65,7 @@ void main() {
     // Import: other 19:01, doctor letter 18:50, lab report 18:42 (UTC).
     expect(topOf(tester, unknown), lessThan(topOf(tester, doctorIssuer)));
     expect(topOf(tester, doctorIssuer), lessThan(topOf(tester, labIssuer)));
-    expect(find.textContaining('Importiert:'), findsNWidgets(3));
+    expect(find.textContaining('Importiert:'), findsNWidgets(sampleCount));
   });
 
   testWidgets('show an error and retry', (tester) async {
