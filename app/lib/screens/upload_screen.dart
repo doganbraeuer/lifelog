@@ -5,12 +5,16 @@ import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/mime_type.dart';
 import '../model/entry.dart';
+import '../model/server_status.dart';
 import '../platform/file_chooser.dart';
+import '../platform/voice_recorder.dart';
 import '../widgets/motion.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
+import '../widgets/quantity_highlight.dart';
 import '../widgets/scan_animation.dart';
+import 'voice_note_view.dart';
 
 /// Privacy notice, always at the top of the screen.
 const cloudNotice =
@@ -28,6 +32,7 @@ class UploadScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.fileChooser,
+    required this.voiceRecorder,
     required this.moduleId,
     required this.uploaded,
     required this.openEntry,
@@ -35,6 +40,9 @@ class UploadScreen extends StatefulWidget {
 
   final ApiClient api;
   final FileChooser fileChooser;
+
+  /// Microphone for spoken notes.
+  final VoiceRecorder voiceRecorder;
 
   /// Module to upload into (field `module` of the upload).
   final String moduleId;
@@ -56,7 +64,21 @@ class _UploadScreenState extends State<UploadScreen> {
 
   /// `true` while the text field for the text import is open.
   var _textMode = false;
-  final _text = TextEditingController();
+  final _text = QuantityHighlightController();
+
+  /// `true` while recording or transcribing a spoken note.
+  var _voiceMode = false;
+
+  /// `true` if the text in the field comes from a spoken note: it is
+  /// unchecked machine output, so the page asks to check it and marks
+  /// numbers and units in it. Kept in the controller, so that the marks
+  /// and this flag can never disagree.
+  bool get _textFromSpeech => _text.highlightQuantities;
+  set _textFromSpeech(bool value) => _text.highlightQuantities = value;
+
+  /// Field `speech` from `/status`; `null` while it is loading. A failed
+  /// request counts as `unavailable`.
+  SpeechStatus? _speech;
 
   @override
   void dispose() {
@@ -77,8 +99,25 @@ class _UploadScreenState extends State<UploadScreen> {
   void initState() {
     super.initState();
     _retrieveLostFile();
+    _loadSpeechStatus();
     // So that „Importieren“ becomes enabled or disabled while typing.
     _text.addListener(() => setState(() {}));
+  }
+
+  /// Asks `/status` whether spoken notes work right now (docs/API.md 3.8).
+  Future<void> _loadSpeechStatus() async {
+    SpeechStatus speech;
+    try {
+      speech = (await widget.api.getStatus()).speech;
+    } on ApiException {
+      speech = SpeechStatus.unavailable;
+    }
+    if (mounted) setState(() => _speech = speech);
+  }
+
+  void _checkSpeechAgain() {
+    setState(() => _speech = null);
+    _loadSpeechStatus();
   }
 
   Future<void> _retrieveLostFile() async {
@@ -180,11 +219,13 @@ class _UploadScreenState extends State<UploadScreen> {
 
   void _openText() => setState(() {
     _textMode = true;
+    _textFromSpeech = false;
     _error = null;
   });
 
   void _cancelText() => setState(() {
     _textMode = false;
+    _textFromSpeech = false;
     _text.clear();
     _error = null;
   });
@@ -205,6 +246,7 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() {
         _uploading = false;
         _textMode = false;
+        _textFromSpeech = false;
         _text.clear();
       });
       ScaffoldMessenger.of(context)
@@ -221,6 +263,45 @@ class _UploadScreenState extends State<UploadScreen> {
       });
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Spoken note (docs/API.md 3.9)
+  // -------------------------------------------------------------------------
+
+  /// Asks for the microphone, then opens the recording view.
+  Future<void> _openVoice() async {
+    setState(() => _error = null);
+    final allowed = await widget.voiceRecorder.requestPermission();
+    if (!mounted) return;
+    setState(() {
+      if (allowed) {
+        _voiceMode = true;
+      } else {
+        _error = const ApiException(
+          code: ErrorCode.recordingFailed,
+          message:
+              'Kein Zugriff auf das Mikrofon. Bitte in den Einstellungen '
+              'des Geräts erlauben.',
+        );
+      }
+    });
+  }
+
+  /// The backend recognized text: show it in the text field for checking.
+  /// It is only saved when the user confirms („Speichern“).
+  void _showTranscript(String text) {
+    _text.text = text;
+    setState(() {
+      _voiceMode = false;
+      _textMode = true;
+      _textFromSpeech = true;
+      _error = null;
+    });
+  }
+
+  void _closeVoice() => setState(() => _voiceMode = false);
+
+  void _showVoiceError(ApiException? error) => setState(() => _error = error);
 
   @override
   Widget build(BuildContext context) {
@@ -258,18 +339,29 @@ class _UploadScreenState extends State<UploadScreen> {
                     },
                   ),
                 ),
-                // Soft switch between choice, preview and text field.
+                // Soft switch between choice, preview, text field and
+                // recording.
                 FadeThroughSwitcher(
-                  child: switch ((_file, _textMode)) {
-                    (final file?, _) => KeyedSubtree(
+                  child: switch ((_file, _textMode, _voiceMode)) {
+                    (final file?, _, _) => KeyedSubtree(
                       key: const ValueKey('preview'),
                       child: _preview(file),
                     ),
-                    (null, true) => KeyedSubtree(
+                    (null, _, true) => KeyedSubtree(
+                      key: const ValueKey('voice'),
+                      child: VoiceNoteView(
+                        api: widget.api,
+                        recorder: widget.voiceRecorder,
+                        onTranscribed: _showTranscript,
+                        onClosed: _closeVoice,
+                        onError: _showVoiceError,
+                      ),
+                    ),
+                    (null, true, false) => KeyedSubtree(
                       key: const ValueKey('text'),
                       child: _textInput(),
                     ),
-                    (null, false) => KeyedSubtree(
+                    (null, false, false) => KeyedSubtree(
                       key: const ValueKey('choose'),
                       child: _chooserButtons(),
                     ),
@@ -317,7 +409,11 @@ class _UploadScreenState extends State<UploadScreen> {
                   onPressed: _text.text.trim().isEmpty ? null : _importText,
                   icon: Icon(retry ? Icons.refresh : Icons.cloud_upload),
                   label: Text(
-                    retry ? 'Erneut versuchen' : 'Importieren',
+                    retry
+                        ? 'Erneut versuchen'
+                        : _textFromSpeech
+                        ? 'Speichern'
+                        : 'Importieren',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -358,14 +454,53 @@ class _UploadScreenState extends State<UploadScreen> {
           icon: const Icon(Icons.notes),
           label: const Text('Text eingeben'),
         ),
+        // Switched off on the server: no button at all. Otherwise only
+        // usable when /status says the speech recognition answers.
+        if (_speech != SpeechStatus.off) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _speech == SpeechStatus.ok ? _openVoice : null,
+            icon: const Icon(Icons.mic_none),
+            label: const Text('Sprachnotiz'),
+          ),
+        ],
+        if (_speech == SpeechStatus.unavailable) _speechUnavailable(),
         const SizedBox(height: 12),
         Text(
-          'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB '
-          'oder Text bis 100 000 Zeichen.',
+          // Only promise spoken notes when they work right now.
+          _speech == SpeechStatus.ok
+              ? 'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB, '
+                    'Text bis 100 000 Zeichen oder eine Sprachnotiz bis '
+                    '5 Minuten.'
+              : 'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB '
+                    'oder Text bis 100 000 Zeichen.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
+    );
+  }
+
+  Widget _speechUnavailable() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Sprachnotizen sind gerade nicht verfügbar.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _checkSpeechAgain,
+            child: const Text('Erneut prüfen'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -374,6 +509,10 @@ class _UploadScreenState extends State<UploadScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_textFromSpeech) ...[
+          const _TranscriptNotice(),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: _text,
           enabled: !_uploading,
@@ -509,6 +648,49 @@ class _Notice extends StatelessWidget {
               child: Text(
                 cloudNotice,
                 style: TextStyle(color: colors.onSecondaryContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Above a text that comes from a spoken note: it is unchecked machine
+/// output (docs/API.md 3.9), so ask to check it before saving. The card has
+/// the color of the marks in the field ([QuantityHighlightController]).
+class _TranscriptNotice extends StatelessWidget {
+  const _TranscriptNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final style = TextStyle(color: colors.onTertiaryContainer);
+    return Card(
+      color: colors.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.mic_none, color: colors.onTertiaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Erkannter Text aus deiner Sprachnotiz. Bitte prüfen und '
+                    'bei Bedarf korrigieren, bevor du speicherst.',
+                    style: style,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Zahlen und Einheiten sind markiert. Bitte besonders '
+                    'genau prüfen.',
+                    style: style.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
             ),
           ],

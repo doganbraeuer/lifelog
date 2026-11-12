@@ -9,6 +9,8 @@ import '../model/answer.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
+import '../model/server_status.dart';
+import '../model/transcript.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
@@ -30,6 +32,10 @@ class HttpApiClient implements ApiClient {
   /// Upload: the backend needs up to about 60 s, the API asks for at least
   /// 90 s.
   static const uploadTimeout = Duration(seconds: 90);
+
+  /// Transcription: the backend has a time limit of about 120 s, the API
+  /// asks for at least 130 s (3.9).
+  static const transcriptionTimeout = Duration(seconds: 130);
 
   final String _base;
   final http.Client _client;
@@ -167,6 +173,39 @@ class HttpApiClient implements ApiClient {
     return _read(response, Answer.fromJson);
   }
 
+  @override
+  Future<Transcript> transcribe(Uint8List bytes, String fileName) async {
+    final request = http.MultipartRequest('POST', _uri('/transcriptions'))
+      ..headers['Accept'] = 'application/json'
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'audio',
+          bytes,
+          filename: fileName,
+          contentType: MediaType.parse(
+            detectAudioType(bytes) ?? 'application/octet-stream',
+          ),
+        ),
+      );
+    final response = await _send(
+      () async => http.Response.fromStream(await _client.send(request)),
+      transcriptionTimeout,
+    );
+    return _read(response, Transcript.fromJson);
+  }
+
+  @override
+  Future<ServerStatus> getStatus() async {
+    // 503 (database unreachable) comes with the normal status body, not in
+    // the error format (3.8). It still tells whether speech works.
+    final response = await _send(
+      () => _client.get(_uri('/status'), headers: _jsonHeaders),
+      defaultTimeout,
+      alsoAccept: const {503},
+    );
+    return _read(response, ServerStatus.fromJson);
+  }
+
   // ---------------------------------------------------------------------
 
   Uri _uri(String path) => Uri.parse('$_base$path');
@@ -178,11 +217,13 @@ class HttpApiClient implements ApiClient {
       : url;
 
   /// Runs the request and turns network and HTTP errors into an
-  /// [ApiException]. Only returns responses with status 2xx.
+  /// [ApiException]. Only returns responses with status 2xx, or with a
+  /// status from [alsoAccept].
   Future<http.Response> _send(
     Future<http.Response> Function() request,
-    Duration timeout,
-  ) async {
+    Duration timeout, {
+    Set<int> alsoAccept = const {},
+  }) async {
     final http.Response response;
     try {
       response = await request().timeout(timeout);
@@ -201,7 +242,8 @@ class HttpApiClient implements ApiClient {
             'Bitte prüfe die Internetverbindung.',
       );
     }
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+    if ((response.statusCode >= 200 && response.statusCode < 300) ||
+        alsoAccept.contains(response.statusCode)) {
       return response;
     }
     throw _errorFrom(response);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/main.dart';
 import 'package:lifelog/module/module_catalog.dart';
 import 'package:lifelog/platform/file_chooser.dart';
+import 'package:lifelog/platform/voice_recorder.dart';
 
 /// Tall test screen, so that long lists are built completely
 /// (a ListView only builds what is visible).
@@ -35,12 +37,73 @@ Future<void> openHealth(WidgetTester tester) async {
 LifelogApp testApp(
   ApiClient api, {
   FileChooser? chooser,
+  VoiceRecorder? recorder,
   ModuleCatalog? catalog,
 }) => LifelogApp(
   api: api,
   fileChooser: chooser ?? FakeFileChooser(),
+  voiceRecorder: recorder ?? FakeVoiceRecorder(),
   catalog: catalog ?? ModuleCatalog.defaults(),
 );
+
+/// Records nothing; it pretends a file exists between [start] and
+/// [discard], so tests can check that the recording gets deleted.
+class FakeVoiceRecorder implements VoiceRecorder {
+  /// What [requestPermission] answers.
+  bool permission = true;
+
+  /// If `true`, [start] fails like a broken microphone.
+  bool failStart = false;
+
+  /// File name of the recording; mock triggers such as `nospeech` go here.
+  String fileName = 'note_1.m4a';
+
+  /// `true` while a recording file would be on the phone.
+  bool hasFile = false;
+
+  /// `true` between [start] and [stop].
+  bool recording = false;
+
+  var permissionRequests = 0;
+  var starts = 0;
+  var discards = 0;
+
+  final _stoppedBySystem = StreamController<void>.broadcast();
+
+  /// Simulates a phone call that pauses the recording.
+  void stopBySystem() => _stoppedBySystem.add(null);
+
+  @override
+  Stream<void> get stoppedBySystem => _stoppedBySystem.stream;
+
+  @override
+  Future<bool> requestPermission() async {
+    permissionRequests++;
+    return permission;
+  }
+
+  @override
+  Future<void> start() async {
+    if (failStart) throw const RecorderException('no microphone');
+    starts++;
+    hasFile = true;
+    recording = true;
+  }
+
+  @override
+  Future<Recording> stop() async {
+    if (!hasFile) throw const RecorderException('no recording');
+    recording = false;
+    return Recording(bytes: testM4a('ton'), fileName: fileName);
+  }
+
+  @override
+  Future<void> discard() async {
+    discards++;
+    hasFile = false;
+    recording = false;
+  }
+}
 
 /// Returns given files instead of opening the camera and file picker.
 /// `null` stands for "the user cancels".
@@ -69,6 +132,13 @@ ChosenFile testPdf(String name, [String content = '']) => ChosenFile(
   name: name,
 );
 
+/// A small "M4A recording": an MP4 box `ftyp` with the brand `M4A `, as the
+/// package record writes it, then arbitrary bytes.
+Uint8List testM4a([String content = '']) => Uint8List.fromList([
+  0, 0, 0, 0x18, ...'ftypM4A '.codeUnits, 0, 0, 0, 0, ...'isom'.codeUnits, //
+  ...'mp42'.codeUnits, ...content.codeUnits,
+]);
+
 /// Expects a future to fail with an [ApiException] with this code.
 Matcher throwsApiException(String code, {int? status}) => throwsA(
   isA<ApiException>()
@@ -85,6 +155,7 @@ MockApiClient fastMock({
   withSampleData: withSampleData,
   delay: Duration.zero,
   uploadDelay: Duration.zero,
+  transcriptionDelay: Duration.zero,
   clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
   catalog: catalog,
 );

@@ -5,6 +5,7 @@ import 'api/api_client.dart';
 import 'api/api_client_factory.dart';
 import 'module/module_catalog.dart';
 import 'platform/file_chooser.dart';
+import 'platform/voice_recorder.dart';
 import 'screens/modules_screen.dart';
 
 void main() {
@@ -12,6 +13,7 @@ void main() {
     LifelogApp(
       api: createApiClient(),
       fileChooser: PluginFileChooser(),
+      voiceRecorder: PluginVoiceRecorder(),
       catalog: ModuleCatalog.defaults(),
     ),
   );
@@ -22,6 +24,7 @@ class LifelogApp extends StatelessWidget {
     super.key,
     required this.api,
     required this.fileChooser,
+    required this.voiceRecorder,
     required this.catalog,
   });
 
@@ -30,6 +33,9 @@ class LifelogApp extends StatelessWidget {
 
   /// Camera, gallery and PDF picker. A fake in tests.
   final FileChooser fileChooser;
+
+  /// Microphone for spoken notes. A fake in tests.
+  final VoiceRecorder voiceRecorder;
 
   /// The modules with their types. Tests may pass their own catalog.
   final ModuleCatalog catalog;
@@ -50,7 +56,11 @@ class LifelogApp extends StatelessWidget {
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         supportedLocales: const [Locale('de')],
         locale: const Locale('de'),
-        home: ModulesScreen(api: api, fileChooser: fileChooser),
+        home: ModulesScreen(
+          api: api,
+          fileChooser: fileChooser,
+          voiceRecorder: voiceRecorder,
+        ),
       ),
     );
   }

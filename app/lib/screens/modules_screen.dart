@@ -4,6 +4,7 @@ import '../api/api_client.dart';
 import '../module/module_definition.dart';
 import '../module/module_catalog.dart';
 import '../platform/file_chooser.dart';
+import '../platform/voice_recorder.dart';
 import '../widgets/motion.dart';
 import '../widgets/container_transform.dart';
 import '../widgets/mock_banner.dart';
@@ -20,10 +21,12 @@ class ModulesScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.fileChooser,
+    required this.voiceRecorder,
   });
 
   final ApiClient api;
   final FileChooser fileChooser;
+  final VoiceRecorder voiceRecorder;
 
   @override
   State<ModulesScreen> createState() => _ModulesScreenState();
@@ -74,6 +77,7 @@ class _ModulesScreenState extends State<ModulesScreen>
           module: module,
           api: widget.api,
           fileChooser: widget.fileChooser,
+          voiceRecorder: widget.voiceRecorder,
         ),
       ),
     );

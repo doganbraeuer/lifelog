@@ -2,6 +2,10 @@
     <!-- Für den Zugriff auf das Backend. Debug-Builds bekommen die Permission
          automatisch, ein Release-Build braucht diesen Eintrag. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Microphone for spoken notes (package record). The plugin declares it
+         too; it is listed here so the app's own manifest shows it. The app
+         asks for it at runtime before the first recording. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Bewusst KEINE CAMERA-Permission: image_picker nutzt die Kamera-App über
          einen Intent. Wäre CAMERA deklariert, müsste die App sie zur Laufzeit
          anfragen, sonst stürzt der Kamera-Aufruf ab. -->

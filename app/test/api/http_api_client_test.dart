@@ -9,6 +9,7 @@ import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/http_api_client.dart';
 import 'package:lifelog/model/plain_date.dart';
 import 'package:lifelog/model/entry_patch.dart';
+import 'package:lifelog/model/server_status.dart';
 
 import '../helpers.dart';
 import '../model/entry_test.dart' show sampleJson;
@@ -372,5 +373,180 @@ void main() {
       api.ask('x', module: 'health'),
       throwsApiException(ErrorCode.unexpectedResponse),
     );
+  });
+
+  group('transcribe', () {
+    test('sends multipart with the field "audio" and reads the text', () async {
+      late http.Request captured;
+      final api = client((request) async {
+        captured = request;
+        return jsonResponse({
+          'text': 'Kniegelenk rechts, leichter Erguss.',
+          'durationSeconds': 21.4,
+          'language': 'de',
+          'engine': 'whisper.cpp large-v3-turbo',
+        });
+      });
+      final transcript = await api.transcribe(testM4a('ton'), 'note_1.m4a');
+
+      expect(captured.method, 'POST');
+      expect(captured.url.toString(), '$testBase/api/v1/transcriptions');
+      expect(
+        captured.headers['content-type'],
+        startsWith('multipart/form-data'),
+      );
+      final body = latin1.decode(captured.bodyBytes).toLowerCase();
+      expect(body, contains('name="audio"; filename="note_1.m4a"'));
+      expect(body, contains('content-type: audio/mp4'));
+      expect(body, contains('ftypm4a '));
+      expect(body, isNot(contains('name="module"')));
+      expect(transcript.text, 'Kniegelenk rechts, leichter Erguss.');
+      expect(transcript.durationSeconds, 21.4);
+      expect(transcript.language, 'de');
+      expect(transcript.engine, 'whisper.cpp large-v3-turbo');
+    });
+
+    test('a whole number as durationSeconds is fine', () async {
+      final api = client(
+        (_) async => jsonResponse({
+          'text': 'Hallo.',
+          'durationSeconds': 3,
+          'language': 'de',
+          'engine': 'x',
+        }),
+      );
+      expect((await api.transcribe(testM4a(), 'a.m4a')).durationSeconds, 3.0);
+    });
+
+    test('empty text does not match the contract', () async {
+      final api = client(
+        (_) async => jsonResponse({
+          'text': ' ',
+          'durationSeconds': 1.0,
+          'language': 'de',
+          'engine': 'x',
+        }),
+      );
+      await expectLater(
+        api.transcribe(testM4a(), 'a.m4a'),
+        throwsApiException(ErrorCode.unexpectedResponse, status: 200),
+      );
+    });
+
+    test('NO_SPEECH: German message from the backend', () async {
+      final api = client(
+        (_) async => jsonResponse({
+          'error': {
+            'code': 'NO_SPEECH',
+            'message': 'In der Aufnahme ist keine Sprache zu hören.',
+          },
+        }, 422),
+      );
+      await expectLater(
+        api.transcribe(testM4a(), 'a.m4a'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ErrorCode.noSpeech)
+              .having((e) => e.httpStatus, 'httpStatus', 422)
+              .having(
+                (e) => e.message,
+                'message',
+                'In der Aufnahme ist keine Sprache zu hören.',
+              ),
+        ),
+      );
+    });
+
+    test('AUDIO_TOO_LONG with details.maxSeconds', () async {
+      final api = client(
+        (_) async => jsonResponse({
+          'error': {
+            'code': 'AUDIO_TOO_LONG',
+            'message':
+                'Die Aufnahme ist länger als 5 Minuten. Bitte kürzer '
+                'sprechen oder aufteilen.',
+            'details': {'maxSeconds': 300},
+          },
+        }, 413),
+      );
+      await expectLater(
+        api.transcribe(testM4a(), 'a.m4a'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', ErrorCode.audioTooLong)
+              .having((e) => e.details['maxSeconds'], 'maxSeconds', 300)
+              .having((e) => e.message, 'message', contains('5 Minuten')),
+        ),
+      );
+    });
+
+    test('timeout of at least 130 s (API 3.9)', () {
+      expect(
+        HttpApiClient.transcriptionTimeout,
+        greaterThanOrEqualTo(const Duration(seconds: 130)),
+      );
+    });
+  });
+
+  group('getStatus', () {
+    test('200 with speech ok', () async {
+      late http.Request captured;
+      final api = client((request) async {
+        captured = request;
+        return jsonResponse({'status': 'ok', 'database': 'ok', 'speech': 'ok'});
+      });
+      final status = await api.getStatus();
+
+      expect(captured.method, 'GET');
+      expect(captured.url.toString(), '$testBase/api/v1/status');
+      expect(status.status, 'ok');
+      expect(status.database, 'ok');
+      expect(status.speech, SpeechStatus.ok);
+      expect(status.speechAvailable, isTrue);
+    });
+
+    test('503 has the status body, not the error format', () async {
+      final api = client(
+        (_) async => jsonResponse({
+          'status': 'error',
+          'database': 'unreachable',
+          'speech': 'ok',
+        }, 503),
+      );
+      final status = await api.getStatus();
+      expect(status.status, 'error');
+      expect(status.database, 'unreachable');
+      expect(status.speech, SpeechStatus.ok);
+    });
+
+    for (final (json, expected) in [
+      ('unavailable', SpeechStatus.unavailable),
+      ('off', SpeechStatus.off),
+    ]) {
+      test('speech $json', () async {
+        final api = client(
+          (_) async =>
+              jsonResponse({'status': 'ok', 'database': 'ok', 'speech': json}),
+        );
+        final status = await api.getStatus();
+        expect(status.speech, expected);
+        expect(status.speechAvailable, isFalse);
+      });
+    }
+
+    test('without speech (older backend): unavailable', () async {
+      final api = client(
+        (_) async => jsonResponse({'status': 'ok', 'database': 'ok'}),
+      );
+      expect((await api.getStatus()).speech, SpeechStatus.unavailable);
+    });
+
+    test('other status codes stay errors', () async {
+      final api = client((_) async => http.Response('nope', 500));
+      await expectLater(
+        api.getStatus(),
+        throwsApiException(ErrorCode.unexpectedResponse, status: 500),
+      );
+    });
   });
 }

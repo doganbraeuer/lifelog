@@ -313,14 +313,79 @@ then is it saved as a [text import](#4-text-import).
 
 ### Where
 
-> **TODO (Dylan):** where the microphone is (tab, button) and what the
-> screens for recording, waiting and editing are called.
+Tab „Hochladen“ → „Sprachnotiz“ (microphone icon), below „Text eingeben“.
+There are no extra screens: below the cloud notice, the tab changes from the
+buttons to the recording, then to the waiting view, then to the text field
+„Dokumentinhalt“ for checking.
+
+The button follows `GET /status` (field `speech`), asked when the tab opens:
+
+- `ok`: the button works, and the hint below the buttons ends with „… oder
+  eine Sprachnotiz bis 5 Minuten.“
+- `unavailable`, or `/status` cannot be reached: the button is greyed out,
+  below it „Sprachnotizen sind gerade nicht verfügbar.“ and „Erneut prüfen“.
+- `off`: no button.
+
+<img src="features/voice-note-button.png" width="260" alt="Tab „Hochladen“ with the button „Sprachnotiz“ below „Text eingeben“">
 
 ### How to use
 
-> **TODO (Dylan):** the steps in the app: start and stop recording, waiting
-> (up to 2 minutes), checking and editing the text, saving, and what
-> happens with „keine Sprache“ and other errors.
+1. Tap „Sprachnotiz“. The first time, the phone asks for the microphone
+   (Android: „Lifelog erlauben, Audioaufnahmen zu machen?“). If access is
+   denied, a card says „Kein Zugriff auf das Mikrofon. Bitte in den
+   Einstellungen des Geräts erlauben.“
+2. The recording starts at once: a pulsing microphone, the running time and
+   „Aufnahme läuft · höchstens 5 Minuten“. Speak the note.
+3. Tap „Stopp“. „Abbrechen“ throws the recording away and goes back to the
+   buttons. The recording also stops by itself at 4:58, just under the
+   limit, and when the phone interrupts it (a call) or the app goes to the
+   background; it then goes on as after „Stopp“.
+4. Wait: „Die Sprachnotiz wird in Text umgewandelt. Das kann bis zu zwei
+   Minuten dauern.“
+5. Check the text. It is in the field „Dokumentinhalt“, below the card
+   „Erkannter Text aus deiner Sprachnotiz. Bitte prüfen und bei Bedarf
+   korrigieren, bevor du speicherst.“ and „Zahlen und Einheiten sind
+   markiert. Bitte besonders genau prüfen.“ Every number and the word right
+   after it are marked (bold on a light background), e.g. „400 Milligramm“,
+   „2,5 Milliunits pro Liter“, „130/85 mmHg“, because a real but wrong
+   unit („mL pro Liter“) is the mistake no check catches. Function words
+   such as „nach“, „bis“ or „und“ are not taken as units („12.11.2026 nach
+   …“ marks only the date).
+   The marks follow the editing: a number typed in is marked at once. Text
+   typed with „Text eingeben“ is not marked.
+6. Correct what is wrong, then tap „Speichern“. From here on it is a
+   [text import](#4-text-import): „Text gespeichert.“, then the new entry
+   opens. The same text a second time gives „Diesen Text hast du schon
+   importiert.“ with „Vorhandenen Eintrag öffnen“. „Abbrechen“ throws the
+   text away; nothing is saved.
+
+<img src="features/voice-note-recording.png" width="260" alt="Recording: pulsing microphone, running time 0:06, buttons „Stopp“ and „Abbrechen“"> <img src="features/voice-note-check.png" width="260" alt="Recognized text in the field „Dokumentinhalt“ with marked numbers and units, button „Speichern“">
+
+**Errors.** A card shows the message from the backend.
+
+- No speech (`NO_SPEECH`: silence, only noise, or too short): „In der
+  Aufnahme ist keine Sprache zu hören.“ The recording is deleted and the
+  buttons come back; record again.
+- Too long, too large, unreadable or an unknown format
+  (`AUDIO_TOO_LONG`, `FILE_TOO_LARGE`, `UNREADABLE`,
+  `UNSUPPORTED_FILE_TYPE`): the backend's message, e.g. „Die Aufnahme ist
+  länger als 5 Minuten. Bitte kürzer sprechen oder aufteilen.“ The
+  recording is deleted, as a second try would fail the same way.
+- Temporary errors (no connection, server error, speech recognition not
+  reachable, unexpected answer): the message plus „Erneut versuchen“, which
+  sends the same recording again without speaking again, and „Verwerfen“.
+- The phone cannot start or save the recording (`RECORDING_FAILED`): „Die
+  Aufnahme konnte nicht gestartet werden. Bitte noch einmal versuchen.“ or
+  „Die Aufnahme konnte nicht gespeichert werden. Bitte noch einmal
+  aufnehmen.“
+
+**The recording on the phone** lies in the app's temporary folder only as
+long as it is needed: it is deleted as soon as the text has arrived, after
+an error a retry cannot fix, on „Abbrechen“ and „Verwerfen“, when the module
+is closed, and before each new recording.
+
+In mock mode the text is always the same sample with numbers and units,
+after about 3 seconds; what was said is not evaluated.
 
 ### Behind the scenes
 

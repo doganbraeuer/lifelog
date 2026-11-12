@@ -32,6 +32,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Lifelog braucht die Kamera, um Dokumente zu fotografieren.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lifelog braucht das Mikrofon, um Sprachnotizen aufzunehmen.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Lifelog braucht Zugriff auf deine Fotos, um ein Dokument auszuwählen.</string>
 	<key>UIApplicationSceneManifest</key>
