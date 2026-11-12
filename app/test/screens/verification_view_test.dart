@@ -34,6 +34,7 @@ Verification checked({
   int corrected = 0,
   int total = 6,
   VerificationSource source = VerificationSource.pdfText,
+  int? matchPercent,
 }) => Verification(
   status: VerificationStatus.checked,
   reason: null,
@@ -43,7 +44,7 @@ Verification checked({
   confirmed: confirmed,
   corrected: corrected,
   total: total,
-  matchPercent: null,
+  matchPercent: matchPercent,
   fields: const [],
 );
 
@@ -82,6 +83,35 @@ void main() {
       expect(
         verificationTitle(unchecked(VerificationReason.noText)),
         'Nicht geprüft',
+      );
+    });
+
+    test('summary with matchPercent from the backend', () {
+      expect(
+        verificationTitle(checked(matchPercent: 83)),
+        '5 von 6 Werten im Original gefunden (83 %)',
+      );
+      expect(
+        verificationTitle(checked(confirmed: 6, matchPercent: 100)),
+        '6 von 6 Werten im Original gefunden (100 %)',
+      );
+      expect(
+        verificationTitle(checked(confirmed: 0, total: 1, matchPercent: 0)),
+        '0 von 1 Wert im Original gefunden (0 %)',
+      );
+      // The app shows the backend's number and does not compute its own.
+      expect(
+        verificationTitle(checked(confirmed: 2, total: 3, matchPercent: 66)),
+        '2 von 3 Werten im Original gefunden (66 %)',
+      );
+      // matchPercent null (e.g. total 0): only the sentence.
+      expect(
+        verificationTitle(checked(confirmed: 0, total: 0)),
+        'Keine Werte zum Prüfen',
+      );
+      expect(
+        verificationTitle(checked()),
+        '5 von 6 Werten im Original gefunden',
       );
     });
 
@@ -162,7 +192,10 @@ void main() {
       tester,
     ) async {
       await openEntryNamed(tester, fastMock(), labIssuer);
-      expect(find.text('5 von 6 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('5 von 6 Werten im Original gefunden (83 %)'),
+        findsOneWidget,
+      );
       expect(
         find.text('Abgleich mit der Textebene des PDF · 1 Wert korrigiert'),
         findsOneWidget,
@@ -171,19 +204,28 @@ void main() {
 
     testWidgets('photo, text import and mixed PDF', (tester) async {
       await openEntryNamed(tester, fastMock(), 'Dr. Erika Beispiel');
-      expect(find.text('5 von 6 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('5 von 6 Werten im Original gefunden (83 %)'),
+        findsOneWidget,
+      );
       expect(find.text('Abgleich per Texterkennung im Foto'), findsOneWidget);
       await tapBack(tester);
 
       await tester.tap(find.textContaining('Blutdruckmessung zu Hause'));
       await tester.pumpAndSettle();
-      expect(find.text('4 von 5 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('4 von 5 Werten im Original gefunden (80 %)'),
+        findsOneWidget,
+      );
       expect(find.text('Abgleich mit dem eingegebenen Text'), findsOneWidget);
       await tapBack(tester);
 
       await tester.tap(find.textContaining('Dr. Jonas Muster'));
       await tester.pumpAndSettle();
-      expect(find.text('5 von 6 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('5 von 6 Werten im Original gefunden (83 %)'),
+        findsOneWidget,
+      );
       expect(
         find.text(
           'Abgleich mit Textebene und Texterkennung im PDF · 1 Wert korrigiert',
@@ -250,7 +292,10 @@ void main() {
         find.widgetWithText(FilledButton, 'Speichern'),
       );
 
-      expect(find.text('4 von 6 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('4 von 6 Werten im Original gefunden (67 %)'),
+        findsOneWidget,
+      );
       expect(
         find.text('Abgleich mit der Textebene des PDF · 2 Werte korrigiert'),
         findsOneWidget,
@@ -347,7 +392,10 @@ void main() {
       // 6,3 is not in the PDF: Leukozyten and CRP are not found.
       expect(notFoundLines(), findsNWidgets(2));
       expect(foundMarks(), findsNWidgets(4));
-      expect(find.text('4 von 6 Werten im Original gefunden'), findsOneWidget);
+      expect(
+        find.text('4 von 6 Werten im Original gefunden (67 %)'),
+        findsOneWidget,
+      );
     });
   });
 }

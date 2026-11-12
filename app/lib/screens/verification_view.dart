@@ -20,13 +20,19 @@ const notFoundLabel = 'Nicht im Original gefunden';
 /// Tooltip of the info button.
 const explanationTooltip = 'Was bedeutet die Prüfung?';
 
-/// Headline of the summary, e.g. „5 von 6 Werten im Original gefunden“.
+/// Headline of the summary, e.g. „5 von 6 Werten im Original gefunden
+/// (83 %)“. The percentage is `matchPercent` from the backend, not computed
+/// here; without it (`null`) only the sentence is shown.
 String verificationTitle(Verification verification) {
   if (!verification.isChecked) return 'Nicht geprüft';
   final total = verification.total;
   if (total == 0) return 'Keine Werte zum Prüfen';
   final values = total == 1 ? 'Wert' : 'Werten';
-  return '${verification.confirmed} von $total $values im Original gefunden';
+  final sentence =
+      '${verification.confirmed} von $total $values im Original gefunden';
+  final percent = verification.matchPercent;
+  // A no-break space, so „83“ and „%“ never end up on different lines.
+  return percent == null ? sentence : '$sentence ($percent %)';
 }
 
 /// Second line of the summary: what was compared against (plus the number
