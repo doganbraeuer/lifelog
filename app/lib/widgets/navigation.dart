@@ -2,27 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../module/module_definition.dart';
 
-/// Farbschema eines Moduls, erzeugt aus seiner Grundfarbe.
-ThemeData modulTheme(ModuleDefinition module) =>
+/// Color scheme of a module, derived from its base color.
+ThemeData moduleTheme(ModuleDefinition module) =>
     ThemeData(colorSchemeSeed: module.color);
 
-/// Öffnet [seite] mit `Navigator.push` und gibt ihr das Farbschema der
-/// aufrufenden Stelle mit.
+/// Opens [page] with `Navigator.push` and passes the color scheme of the
+/// caller along.
 ///
-/// Warum nötig: Neue Seiten hängen am obersten Navigator der App, also
-/// außerhalb des Modul-Rahmens, und bekämen sonst das Grundschema der App.
-/// Dialoge und die Datumsauswahl machen das von sich aus richtig.
-Future<T?> oeffneSeite<T>(BuildContext context, Widget seite) {
+/// Why this is needed: new pages hang on the app's top-level navigator,
+/// outside the module shell, and would otherwise get the app's base scheme.
+/// Dialogs and the date picker get this right on their own.
+Future<T?> openPage<T>(BuildContext context, Widget page) {
   final navigator = Navigator.of(context);
   final themes = InheritedTheme.capture(from: context, to: navigator.context);
   return navigator.push(
-    MaterialPageRoute<T>(builder: (_) => themes.wrap(seite)),
+    MaterialPageRoute<T>(builder: (_) => themes.wrap(page)),
   );
 }
 
-/// Knopf links in der AppBar eines Moduls: zurück zum Screen „Bereiche“.
-class BereicheKnopf extends StatelessWidget {
-  const BereicheKnopf({super.key});
+/// Button on the left in a module's app bar: back to the „Bereiche“ screen.
+class ModulesButton extends StatelessWidget {
+  const ModulesButton({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -48,10 +48,10 @@ void main() {
       ModuleCatalogScope(
         catalog: testKatalog(),
         child: MaterialApp(
-          home: FrageScreen(
+          home: QuestionScreen(
             api: api,
             moduleId: 'health',
-            eintragOeffnen: (_) async {},
+            openEntry: (_) async {},
           ),
         ),
       ),

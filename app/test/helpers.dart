@@ -38,7 +38,7 @@ LifelogApp testApp(
   ModuleCatalog? catalog,
 }) => LifelogApp(
   api: api,
-  dateiAuswahl: auswahl ?? FakeDateiAuswahl(),
+  fileChooser: auswahl ?? FakeDateiAuswahl(),
   catalog: catalog ?? ModuleCatalog.defaults(),
 );
 

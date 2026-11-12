@@ -24,7 +24,7 @@ Future<void> zeigen(
 ) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: OriginaldateiScreen(
+      home: OriginalFileScreen(
         api: mock,
         entryId: entryId,
         fileName: fileName,

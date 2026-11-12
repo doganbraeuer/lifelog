@@ -3,62 +3,63 @@ import 'package:flutter/material.dart';
 
 import 'motion.dart';
 
-/// Container Transform (Material Motion): Die angetippte Fläche wächst zur
-/// neuen Seite und schrumpft beim Schließen zurück.
+/// Container transform (Material motion): the tapped surface grows into the
+/// new page and shrinks back when it closes.
 ///
-/// Auf iOS gibt es stattdessen den normalen Übergang: Die Route von
-/// `OpenContainer` hat keine Wisch-zurück-Geste, und die soll dort bleiben.
-/// Mit „Animationen entfernen“ dauert der Übergang 0.
+/// On iOS there is the normal transition instead: the route of
+/// `OpenContainer` has no swipe-back gesture, and that should stay there.
+/// With „Animationen entfernen“ (remove animations) the transition takes 0.
 class ContainerTransform extends StatelessWidget {
   const ContainerTransform({
     super.key,
-    required this.geschlossen,
-    required this.offen,
-    this.beimSchliessen,
-    this.form = const RoundedRectangleBorder(),
-    this.offenFarbe,
+    required this.closedBuilder,
+    required this.openBuilder,
+    this.onClosed,
+    this.shape = const RoundedRectangleBorder(),
+    this.openColor,
   });
 
-  /// Die Fläche im geschlossenen Zustand; [oeffnen] öffnet die Seite.
-  final Widget Function(BuildContext context, VoidCallback oeffnen) geschlossen;
+  /// The surface in the closed state; `onOpen` opens the page.
+  final Widget Function(BuildContext context, VoidCallback onOpen)
+  closedBuilder;
 
-  /// Die geöffnete Seite. Sie hängt am obersten Navigator, muss also ihr
-  /// Farbschema selbst mitbringen (z. B. mit `InheritedTheme.capture`).
-  final WidgetBuilder offen;
+  /// The opened page. It hangs on the top-level navigator, so it has to bring
+  /// its own color scheme (e.g. with `InheritedTheme.capture`).
+  final WidgetBuilder openBuilder;
 
-  /// Nach dem Schließen (bei `OpenContainer` zu Beginn der Rücklauf-
-  /// Animation, auf iOS nach dem Zurückgehen).
-  final VoidCallback? beimSchliessen;
+  /// After closing (with `OpenContainer` at the start of the reverse
+  /// animation, on iOS after going back).
+  final VoidCallback? onClosed;
 
-  /// Form der geschlossenen Fläche, z. B. abgerundet wie eine Karte.
-  final ShapeBorder form;
+  /// Shape of the closed surface, e.g. rounded like a card.
+  final ShapeBorder shape;
 
-  /// Hintergrund der geöffneten Seite während des Übergangs.
-  final Color? offenFarbe;
+  /// Background of the opened page during the transition.
+  final Color? openColor;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (theme.platform == TargetPlatform.iOS) {
-      return geschlossen(context, () async {
+      return closedBuilder(context, () async {
         await Navigator.of(context)
-            .push(MaterialPageRoute<void>(builder: offen));
-        beimSchliessen?.call();
+            .push(MaterialPageRoute<void>(builder: openBuilder));
+        onClosed?.call();
       });
     }
     return OpenContainer<void>(
-      // Antippen übernimmt die Fläche selbst (InkWell, Semantik bleibt).
+      // The surface handles taps itself (InkWell, semantics stay).
       tappable: false,
       closedElevation: 0,
       openElevation: 0,
       closedColor: Colors.transparent,
-      openColor: offenFarbe ?? theme.colorScheme.surface,
-      closedShape: form,
+      openColor: openColor ?? theme.colorScheme.surface,
+      closedShape: shape,
       transitionType: ContainerTransitionType.fadeThrough,
-      transitionDuration: bewegungsDauer(context, Durations.medium4),
-      onClosed: (_) => beimSchliessen?.call(),
-      closedBuilder: geschlossen,
-      openBuilder: (context, _) => offen(context),
+      transitionDuration: motionDuration(context, Durations.medium4),
+      onClosed: (_) => onClosed?.call(),
+      closedBuilder: closedBuilder,
+      openBuilder: (context, _) => openBuilder(context),
     );
   }
 }

@@ -61,7 +61,7 @@ void main() {
     await tester.tap(importieren());
     await tester.pumpAndSettle();
 
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.text('Text gespeichert.'), findsOneWidget);
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // Quelle
     expect(find.text('21.10.2026'), findsOneWidget);
@@ -70,13 +70,13 @@ void main() {
 
     await tester.tap(find.text('Originaldatei öffnen'));
     await tester.pumpAndSettle();
-    expect(find.byType(OriginaldateiScreen), findsOneWidget);
+    expect(find.byType(OriginalFileScreen), findsOneWidget);
     expect(find.textContaining('zur Physiotherapie'), findsWidgets);
 
     // Zurück bis in die Zeitleiste; dort steht der neue Eintrag.
     await zurueck(tester);
     await zurueck(tester);
-    expect(find.byType(ZeitleisteScreen), findsOneWidget);
+    expect(find.byType(TimelineScreen), findsOneWidget);
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget);
   });
 
@@ -96,7 +96,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
   });
 
   testWidgets('Abbrechen schließt das Feld und verwirft den Text', (
@@ -119,7 +119,7 @@ void main() {
     tester,
   ) async {
     final mock = schnellerMock();
-    final vorhanden = await mock.importText(text, module: 'health');
+    final preloaded = await mock.importText(text, module: 'health');
     await zumTextfeld(tester, mock);
     await tester.enterText(textFeld(), text);
     await tester.pump();
@@ -133,8 +133,8 @@ void main() {
 
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
-    expect(find.byType(EintragScreen), findsOneWidget);
-    expect(find.textContaining(vorhanden.file.fileName), findsWidgets);
+    expect(find.byType(EntryScreen), findsOneWidget);
+    expect(find.textContaining(preloaded.file.fileName), findsWidgets);
   });
 
   testWidgets('Handygröße, Tastatur offen, langer Text: Knöpfe erreichbar', (
@@ -187,7 +187,7 @@ void main() {
     // Und der Knopf tut, was er soll.
     await tester.tap(importieren());
     await tester.pumpAndSettle();
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
   });
 
   testWidgets('wiederholbarer Fehler: „Erneut versuchen“, Text bleibt', (

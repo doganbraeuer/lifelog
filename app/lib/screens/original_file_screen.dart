@@ -10,16 +10,16 @@ import '../platform/pdf_viewer.dart';
 import '../widgets/error_view.dart';
 import '../widgets/mock_banner.dart';
 
-/// Zeigt die Originaldatei eines Eintrags: Bilder zoombar, PDFs mit pdfx.
+/// Shows the original file of an entry: images zoomable, PDFs with pdfx.
 ///
-/// So lässt sich prüfen, ob das Vision-LLM richtig gelesen hat.
-class OriginaldateiScreen extends StatefulWidget {
-  const OriginaldateiScreen({
+/// This makes it possible to check whether the vision LLM read correctly.
+class OriginalFileScreen extends StatefulWidget {
+  const OriginalFileScreen({
     super.key,
     required this.api,
     required this.entryId,
     required this.fileName,
-    this.vorhanden,
+    this.preloaded,
     this.pdfViewer = const PdfxViewer(),
   });
 
@@ -27,33 +27,33 @@ class OriginaldateiScreen extends StatefulWidget {
   final String entryId;
   final String fileName;
 
-  /// Schon geladene Datei (z. B. das Vorschaubild), spart einen Download.
-  final FileContent? vorhanden;
+  /// File that is already loaded (e.g. the preview image), saves a download.
+  final FileContent? preloaded;
 
-  /// In Tests durch eine Fake-Anzeige ersetzt.
+  /// Replaced by a fake viewer in tests.
   final PdfViewer pdfViewer;
 
   @override
-  State<OriginaldateiScreen> createState() => _OriginaldateiScreenState();
+  State<OriginalFileScreen> createState() => _OriginalFileScreenState();
 }
 
-class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
-  late FileContent? _datei = widget.vorhanden;
-  ApiException? _fehler;
+class _OriginalFileScreenState extends State<OriginalFileScreen> {
+  late FileContent? _file = widget.preloaded;
+  ApiException? _error;
 
   @override
   void initState() {
     super.initState();
-    if (_datei == null) _laden();
+    if (_file == null) _load();
   }
 
-  Future<void> _laden() async {
-    setState(() => _fehler = null);
+  Future<void> _load() async {
+    setState(() => _error = null);
     try {
       final file = await widget.api.getFile(widget.entryId);
-      if (mounted) setState(() => _datei = file);
-    } on ApiException catch (fehler) {
-      if (mounted) setState(() => _fehler = fehler);
+      if (mounted) setState(() => _file = file);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
     }
   }
 
@@ -62,22 +62,22 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.fileName, overflow: TextOverflow.ellipsis),
-        actions: [MockHinweis(sichtbar: widget.api.isMock)],
+        actions: [MockBanner(visible: widget.api.isMock)],
       ),
-      body: _inhalt(),
+      body: _content(),
     );
   }
 
-  Widget _inhalt() {
-    final fehler = _fehler;
-    if (fehler != null) return FehlerAnzeige(fehler: fehler, erneut: _laden);
-    final file = _datei;
+  Widget _content() {
+    final error = _error;
+    if (error != null) return ErrorView(error: error, onRetry: _load);
+    final file = _file;
     if (file == null) return const Center(child: CircularProgressIndicator());
 
     if (file.isPdf) return widget.pdfViewer.buildView(file.bytes);
-    if (file.isText) return _TextAnsicht(bytes: file.bytes);
+    if (file.isText) return _TextView(bytes: file.bytes);
     if (file.isImage) {
-      // Mit zwei Fingern zoomen und verschieben.
+      // Zoom and pan with two fingers.
       return InteractiveViewer(
         maxScale: 8,
         child: Center(
@@ -107,23 +107,23 @@ class _OriginaldateiScreenState extends State<OriginaldateiScreen> {
   }
 }
 
-/// Zeigt eine Textdatei: UTF-8, markierbar und scrollbar.
-class _TextAnsicht extends StatelessWidget {
-  const _TextAnsicht({required this.bytes});
+/// Shows a text file: UTF-8, selectable and scrollable.
+class _TextView extends StatelessWidget {
+  const _TextView({required this.bytes});
 
   final Uint8List bytes;
 
-  /// Dekodiert UTF-8. Ungültige Bytes werden zu „�“ statt zu einer
-  /// Exception, damit eine kaputte Datei die Ansicht nicht abstürzen lässt.
-  /// Ein BOM am Anfang (von manchen Windows-Editoren) wird entfernt.
-  static String dekodieren(Uint8List bytes) {
+  /// Decodes UTF-8. Invalid bytes become „�“ instead of an exception, so
+  /// that a broken file does not crash the view.
+  /// A BOM at the start (from some Windows editors) is removed.
+  static String decoded(Uint8List bytes) {
     final text = utf8.decode(bytes, allowMalformed: true);
     return text.startsWith('﻿') ? text.substring(1) : text;
   }
 
   @override
   Widget build(BuildContext context) {
-    final text = dekodieren(bytes);
+    final text = decoded(bytes);
     if (text.trim().isEmpty) {
       return const Center(child: Text('Die Textdatei ist leer.'));
     }

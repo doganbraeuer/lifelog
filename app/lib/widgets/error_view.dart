@@ -2,21 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../api/api_exception.dart';
 
-/// Zeigt einen [ApiFehler] mit seiner Nachricht und einem Knopf zum
-/// erneuten Versuchen. Die Nachricht kommt vom Backend (oder vom Client)
-/// und ist laut API für die Anzeige gedacht.
-class FehlerAnzeige extends StatelessWidget {
-  const FehlerAnzeige({super.key, required this.fehler, this.erneut});
+/// Shows an [ApiException] with its message and a button to try again.
+/// The message comes from the backend (or from the client) and according
+/// to the API is meant for display.
+class ErrorView extends StatelessWidget {
+  const ErrorView({super.key, required this.error, this.onRetry});
 
-  final ApiException fehler;
+  final ApiException error;
 
-  /// Wird beim Tippen auf „Erneut versuchen“ aufgerufen. Ohne Callback
-  /// gibt es keinen Knopf.
-  final VoidCallback? erneut;
+  /// Called when „Erneut versuchen“ (try again) is tapped. Without a
+  /// callback there is no button.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final offline = fehler.code == ErrorCode.networkError;
+    final offline = error.code == ErrorCode.networkError;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -29,11 +29,11 @@ class FehlerAnzeige extends StatelessWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 12),
-            Text(fehler.message, textAlign: TextAlign.center),
-            if (erneut != null) ...[
+            Text(error.message, textAlign: TextAlign.center),
+            if (onRetry != null) ...[
               const SizedBox(height: 16),
               FilledButton.tonal(
-                onPressed: erneut,
+                onPressed: onRetry,
                 child: const Text('Erneut versuchen'),
               ),
             ],

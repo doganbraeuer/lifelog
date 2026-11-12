@@ -1,8 +1,8 @@
-// Dialoge zum Korrigieren einzelner Felder eines Eintrags.
+// Dialogs for correcting single fields of an entry.
 //
-// Jeder Dialog gibt `null` zurück, wenn der Nutzer abbricht. Sonst gibt er
-// den neuen Wert zurück; ob sich wirklich etwas geändert hat, prüft der
-// Eintrag-Screen vor dem Speichern.
+// Every dialog returns `null` if the user cancels. Otherwise it returns
+// the new value; the entry screen checks before saving whether anything
+// really changed.
 
 import 'package:flutter/material.dart';
 
@@ -12,59 +12,59 @@ import '../model/entry_patch.dart';
 import '../module/module_catalog.dart';
 
 // ---------------------------------------------------------------------------
-// Typ
+// Type
 // ---------------------------------------------------------------------------
 
-/// Typ über ein Dropdown wählen. Zur Auswahl stehen die Typen des Moduls
-/// [modulId] aus dem Modul-Katalog.
-Future<String?> zeigeTypDialog(
+/// Choose the type from a dropdown. The choices are the types of the
+/// module [moduleId] from the module catalog.
+Future<String?> showTypeDialog(
   BuildContext context, {
   required String moduleId,
-  required String aktuell,
+  required String current,
   required Correction? correction,
 }) => showDialog<String>(
   context: context,
-  builder: (_) => _TypDialog(
+  builder: (_) => _TypeDialog(
     moduleId: moduleId,
-    aktuell: aktuell,
+    current: current,
     recognized: correction?.recognized,
   ),
 );
 
-class _TypDialog extends StatefulWidget {
-  const _TypDialog({
+class _TypeDialog extends StatefulWidget {
+  const _TypeDialog({
     required this.moduleId,
-    required this.aktuell,
+    required this.current,
     required this.recognized,
   });
 
   final String moduleId;
-  final String aktuell;
+  final String current;
 
-  /// Ursprünglich erkannter Typ, nur gesetzt, wenn der Typ korrigiert wurde.
+  /// Originally recognized type, only set if the type was corrected.
   final String? recognized;
 
   @override
-  State<_TypDialog> createState() => _TypDialogState();
+  State<_TypeDialog> createState() => _TypeDialogState();
 }
 
-class _TypDialogState extends State<_TypDialog> {
-  late String _auswahl = widget.aktuell;
+class _TypeDialogState extends State<_TypeDialog> {
+  late String _selection = widget.current;
 
   @override
   Widget build(BuildContext context) {
     final catalog = ModuleCatalog.of(context);
-    // Der aktuelle Typ bleibt wählbar, auch wenn das Modul ihn nicht (mehr)
-    // kennt, z. B. bei Daten von einem neueren Backend.
+    // The current type stays selectable even if the module does not know it
+    // (any more), e.g. for data from a newer backend.
     final types = {
       for (final t in catalog.types(widget.moduleId)) t.id,
-      widget.aktuell,
+      widget.current,
     };
     String name(String type) => catalog.typeName(widget.moduleId, type);
     return AlertDialog(
       title: const Text('Typ korrigieren'),
       content: DropdownButtonFormField<String>(
-        initialValue: _auswahl,
+        initialValue: _selection,
         decoration: const InputDecoration(labelText: 'Typ'),
         items: [
           for (final type in types)
@@ -77,7 +77,7 @@ class _TypDialogState extends State<_TypDialog> {
               ),
             ),
         ],
-        onChanged: (type) => setState(() => _auswahl = type ?? _auswahl),
+        onChanged: (type) => setState(() => _selection = type ?? _selection),
       ),
       actions: [
         TextButton(
@@ -85,7 +85,7 @@ class _TypDialogState extends State<_TypDialog> {
           child: const Text('Abbrechen'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _auswahl),
+          onPressed: () => Navigator.pop(context, _selection),
           child: const Text('Speichern'),
         ),
       ],
@@ -94,14 +94,14 @@ class _TypDialogState extends State<_TypDialog> {
 }
 
 // ---------------------------------------------------------------------------
-// Dokumentdatum
+// Document date
 // ---------------------------------------------------------------------------
 
-/// Auswahl: Datum wählen, Datum entfernen oder erkanntes Datum
-/// wiederherstellen. `Wert(null)` heißt: kein Datum.
-Future<Value<PlainDate?>?> zeigeDatumAuswahl(
+/// Choice: pick a date, remove the date or restore the recognized date.
+/// `Value(null)` means: no date.
+Future<Value<PlainDate?>?> showDocumentDateDialog(
   BuildContext context, {
-  required PlainDate? aktuell,
+  required PlainDate? current,
   required Correction? correction,
 }) async {
   final recognized = correction == null
@@ -112,7 +112,7 @@ Future<Value<PlainDate?>?> zeigeDatumAuswahl(
               : PlainDate.tryParse(correction.recognized!),
         );
 
-  final aktion = await showModalBottomSheet<_DatumAktion>(
+  final action = await showModalBottomSheet<_DateAction>(
     context: context,
     showDragHandle: true,
     builder: (context) => SafeArea(
@@ -122,13 +122,13 @@ Future<Value<PlainDate?>?> zeigeDatumAuswahl(
           ListTile(
             leading: const Icon(Icons.calendar_month_outlined),
             title: const Text('Datum wählen'),
-            onTap: () => Navigator.pop(context, _DatumAktion.waehlen),
+            onTap: () => Navigator.pop(context, _DateAction.pick),
           ),
-          if (aktuell != null)
+          if (current != null)
             ListTile(
               leading: const Icon(Icons.event_busy_outlined),
               title: const Text('Datum entfernen'),
-              onTap: () => Navigator.pop(context, _DatumAktion.entfernen),
+              onTap: () => Navigator.pop(context, _DateAction.remove),
             ),
           if (recognized != null)
             ListTile(
@@ -137,85 +137,84 @@ Future<Value<PlainDate?>?> zeigeDatumAuswahl(
                 'Erkanntes Datum wiederherstellen: '
                 '${recognized.value?.display ?? 'kein Datum'}',
               ),
-              onTap: () =>
-                  Navigator.pop(context, _DatumAktion.wiederherstellen),
+              onTap: () => Navigator.pop(context, _DateAction.restore),
             ),
         ],
       ),
     ),
   );
-  if (aktion == null || !context.mounted) return null;
+  if (action == null || !context.mounted) return null;
 
-  switch (aktion) {
-    case _DatumAktion.entfernen:
+  switch (action) {
+    case _DateAction.remove:
       return const Value(null);
-    case _DatumAktion.wiederherstellen:
+    case _DateAction.restore:
       return recognized;
-    case _DatumAktion.waehlen:
-      final gewaehlt = await showDatePicker(
+    case _DateAction.pick:
+      final chosen = await showDatePicker(
         context: context,
-        initialDate: startdatumFuerAuswahl(aktuell, DateTime.now()),
-        firstDate: fruehestesDatum,
-        lastDate: spaetestesDatum,
+        initialDate: initialPickerDate(current, DateTime.now()),
+        firstDate: firstPickerDate,
+        lastDate: lastPickerDate,
         helpText: 'Dokumentdatum wählen',
       );
-      // Nur Jahr, Monat und Tag übernehmen, keine Zeitzone (siehe Datum).
-      return gewaehlt == null ? null : Value(PlainDate.fromDateTime(gewaehlt));
+      // Only take year, month and day, no time zone (see PlainDate).
+      return chosen == null ? null : Value(PlainDate.fromDateTime(chosen));
   }
 }
 
-enum _DatumAktion { waehlen, entfernen, wiederherstellen }
+enum _DateAction { pick, remove, restore }
 
-/// Bereich der Datumsauswahl.
-final fruehestesDatum = DateTime(1900);
-final spaetestesDatum = DateTime(2100, 12, 31);
+/// Range of the date picker.
+final firstPickerDate = DateTime(1900);
+final lastPickerDate = DateTime(2100, 12, 31);
 
-/// Startdatum der Datumsauswahl: das aktuelle Dokumentdatum, sonst heute.
+/// Initial date of the date picker: the current document date, else today.
 ///
-/// `showDatePicker` bricht mit einer Assertion ab, wenn `initialDate`
-/// außerhalb von `firstDate` bis `lastDate` liegt. Genau ein falsch
-/// erkanntes Jahr (z. B. 1026 statt 2026) will man aber korrigieren.
-/// Liegt das Datum außerhalb, startet die Auswahl deshalb bei [heute].
-DateTime startdatumFuerAuswahl(PlainDate? aktuell, DateTime heute) {
-  final datum = aktuell?.toDateTime();
-  if (datum == null ||
-      datum.isBefore(fruehestesDatum) ||
-      datum.isAfter(spaetestesDatum)) {
-    return heute;
+/// `showDatePicker` fails with an assertion if `initialDate` lies outside
+/// `firstDate` to `lastDate`. But a wrongly recognized year (e.g. 1026
+/// instead of 2026) is exactly what one wants to correct.
+/// If the date lies outside, the picker therefore starts at [today].
+DateTime initialPickerDate(PlainDate? current, DateTime today) {
+  final date = current?.toDateTime();
+  if (date == null ||
+      date.isBefore(firstPickerDate) ||
+      date.isAfter(lastPickerDate)) {
+    return today;
   }
-  return datum;
+  return date;
 }
 
 // ---------------------------------------------------------------------------
-// Quelle
+// Issuer
 // ---------------------------------------------------------------------------
 
-/// Quelle bearbeiten. Ein leeres Feld entfernt die Quelle (`Wert(null)`).
-Future<Value<String?>?> zeigeQuelleDialog(
+/// Edit the issuer. An empty field removes the issuer (`Value(null)`).
+Future<Value<String?>?> showIssuerDialog(
   BuildContext context, {
-  required String? aktuell,
+  required String? current,
   required Correction? correction,
 }) => showDialog<Value<String?>>(
   context: context,
-  builder: (_) => _QuelleDialog(aktuell: aktuell, correction: correction),
+  builder: (_) => _IssuerDialog(current: current, correction: correction),
 );
 
-class _QuelleDialog extends StatefulWidget {
-  const _QuelleDialog({required this.aktuell, required this.correction});
+class _IssuerDialog extends StatefulWidget {
+  const _IssuerDialog({required this.current, required this.correction});
 
-  final String? aktuell;
+  final String? current;
   final Correction? correction;
 
   @override
-  State<_QuelleDialog> createState() => _QuelleDialogState();
+  State<_IssuerDialog> createState() => _IssuerDialogState();
 }
 
-class _QuelleDialogState extends State<_QuelleDialog> {
-  late final _feld = TextEditingController(text: widget.aktuell ?? '');
+class _IssuerDialogState extends State<_IssuerDialog> {
+  late final _field = TextEditingController(text: widget.current ?? '');
 
   @override
   void dispose() {
-    _feld.dispose();
+    _field.dispose();
     super.dispose();
   }
 
@@ -228,15 +227,15 @@ class _QuelleDialogState extends State<_QuelleDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _TextFeld(
-            controller: _feld,
+          _DialogTextField(
+            controller: _field,
             label: 'Quelle',
-            hilfe: 'Leer lassen, um die Quelle zu entfernen.',
+            help: 'Leer lassen, um die Quelle zu entfernen.',
           ),
           if (correction != null)
-            _ErkanntUebernehmen(
+            _UseRecognized(
               recognized: correction.recognized,
-              uebernehmen: () => _feld.text = correction.recognized ?? '',
+              accept: () => _field.text = correction.recognized ?? '',
             ),
         ],
       ),
@@ -247,7 +246,7 @@ class _QuelleDialogState extends State<_QuelleDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final text = _feld.text.trim();
+            final text = _field.text.trim();
             Navigator.pop(context, Value(text.isEmpty ? null : text));
           },
           child: const Text('Speichern'),
@@ -258,70 +257,70 @@ class _QuelleDialogState extends State<_QuelleDialog> {
 }
 
 // ---------------------------------------------------------------------------
-// Info (Wert und Einheit)
+// Fact (value and unit)
 // ---------------------------------------------------------------------------
 
-/// Wert und Einheit einer Info bearbeiten. Gibt nur die Felder zurück, die
-/// sich geändert haben, oder `null`, wenn sich nichts geändert hat.
-Future<FactPatch?> zeigeInfoDialog(
+/// Edit the value and unit of a fact. Returns only the fields that changed,
+/// or `null` if nothing changed.
+Future<FactPatch?> showFactDialog(
   BuildContext context, {
   required Fact fact,
-  required Correction? wertKorrektur,
-  required Correction? einheitKorrektur,
+  required Correction? valueCorrection,
+  required Correction? unitCorrection,
 }) => showDialog<FactPatch>(
   context: context,
-  builder: (_) => _InfoDialog(
+  builder: (_) => _FactDialog(
     fact: fact,
-    wertKorrektur: wertKorrektur,
-    einheitKorrektur: einheitKorrektur,
+    valueCorrection: valueCorrection,
+    unitCorrection: unitCorrection,
   ),
 );
 
-class _InfoDialog extends StatefulWidget {
-  const _InfoDialog({
+class _FactDialog extends StatefulWidget {
+  const _FactDialog({
     required this.fact,
-    required this.wertKorrektur,
-    required this.einheitKorrektur,
+    required this.valueCorrection,
+    required this.unitCorrection,
   });
 
   final Fact fact;
-  final Correction? wertKorrektur;
-  final Correction? einheitKorrektur;
+  final Correction? valueCorrection;
+  final Correction? unitCorrection;
 
   @override
-  State<_InfoDialog> createState() => _InfoDialogState();
+  State<_FactDialog> createState() => _FactDialogState();
 }
 
-class _InfoDialogState extends State<_InfoDialog> {
-  late final _wert = TextEditingController(text: widget.fact.value);
-  late final _einheit = TextEditingController(text: widget.fact.unit ?? '');
-  String? _wertFehler;
+class _FactDialogState extends State<_FactDialog> {
+  late final _value = TextEditingController(text: widget.fact.value);
+  late final _unit = TextEditingController(text: widget.fact.unit ?? '');
+  String? _valueError;
 
   @override
   void dispose() {
-    _wert.dispose();
-    _einheit.dispose();
+    _value.dispose();
+    _unit.dispose();
     super.dispose();
   }
 
-  void _speichern() {
-    final value = _wert.text.trim();
+  void _save() {
+    final value = _value.text.trim();
     if (value.isEmpty) {
-      setState(() => _wertFehler = 'Der Wert darf nicht leer sein.');
+      setState(() => _valueError = 'Der Wert darf nicht leer sein.');
       return;
     }
-    final einheitText = _einheit.text.trim();
-    final unit = einheitText.isEmpty ? null : einheitText;
+    final unitText = _unit.text.trim();
+    final unit = unitText.isEmpty ? null : unitText;
 
-    final wertGeaendert = value != widget.fact.value;
-    final einheitGeaendert = unit != widget.fact.unit;
+    final valueChanged = value != widget.fact.value;
+    final unitChanged = unit != widget.fact.unit;
     Navigator.pop(
       context,
-      wertGeaendert || einheitGeaendert
+      valueChanged || unitChanged
           ? FactPatch(
               widget.fact.id,
-              value: wertGeaendert ? value : null,
-              unit: einheitGeaendert ? Value(unit) : null,
+              value: valueChanged ? value : null,
+              unit: unitChanged ? Value(unit) : null,
             )
           : null,
     );
@@ -329,8 +328,8 @@ class _InfoDialogState extends State<_InfoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final wertKorrektur = widget.wertKorrektur;
-    final einheitKorrektur = widget.einheitKorrektur;
+    final valueCorrection = widget.valueCorrection;
+    final unitCorrection = widget.unitCorrection;
     return AlertDialog(
       title: Text('${widget.fact.name} korrigieren'),
       content: SingleChildScrollView(
@@ -338,28 +337,27 @@ class _InfoDialogState extends State<_InfoDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _TextFeld(
-              controller: _wert,
+            _DialogTextField(
+              controller: _value,
               label: 'Wert',
-              fehler: _wertFehler,
-              hilfe: 'Genau wie auf dem Dokument, z. B. „<0,5“.',
+              error: _valueError,
+              help: 'Genau wie auf dem Dokument, z. B. „<0,5“.',
             ),
-            if (wertKorrektur != null)
-              _ErkanntUebernehmen(
-                recognized: wertKorrektur.recognized,
-                uebernehmen: () => _wert.text = wertKorrektur.recognized ?? '',
+            if (valueCorrection != null)
+              _UseRecognized(
+                recognized: valueCorrection.recognized,
+                accept: () => _value.text = valueCorrection.recognized ?? '',
               ),
             const SizedBox(height: 16),
-            _TextFeld(
-              controller: _einheit,
+            _DialogTextField(
+              controller: _unit,
               label: 'Einheit',
-              hilfe: 'Leer lassen, wenn es keine Einheit gibt.',
+              help: 'Leer lassen, wenn es keine Einheit gibt.',
             ),
-            if (einheitKorrektur != null)
-              _ErkanntUebernehmen(
-                recognized: einheitKorrektur.recognized,
-                uebernehmen: () =>
-                    _einheit.text = einheitKorrektur.recognized ?? '',
+            if (unitCorrection != null)
+              _UseRecognized(
+                recognized: unitCorrection.recognized,
+                accept: () => _unit.text = unitCorrection.recognized ?? '',
               ),
           ],
         ),
@@ -369,29 +367,29 @@ class _InfoDialogState extends State<_InfoDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Abbrechen'),
         ),
-        FilledButton(onPressed: _speichern, child: const Text('Speichern')),
+        FilledButton(onPressed: _save, child: const Text('Speichern')),
       ],
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Bausteine
+// Building blocks
 // ---------------------------------------------------------------------------
 
-/// Textfeld mit Knopf zum Leeren.
-class _TextFeld extends StatelessWidget {
-  const _TextFeld({
+/// Text field with a button to clear it.
+class _DialogTextField extends StatelessWidget {
+  const _DialogTextField({
     required this.controller,
     required this.label,
-    this.hilfe,
-    this.fehler,
+    this.help,
+    this.error,
   });
 
   final TextEditingController controller;
   final String label;
-  final String? hilfe;
-  final String? fehler;
+  final String? help;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -400,9 +398,9 @@ class _TextFeld extends StatelessWidget {
       autofocus: false,
       decoration: InputDecoration(
         labelText: label,
-        helperText: hilfe,
+        helperText: help,
         helperMaxLines: 2,
-        errorText: fehler,
+        errorText: error,
         suffixIcon: IconButton(
           icon: const Icon(Icons.clear),
           tooltip: '$label leeren',
@@ -413,20 +411,17 @@ class _TextFeld extends StatelessWidget {
   }
 }
 
-/// Knopf, der den ursprünglich erkannten Wert ins Feld übernimmt.
-class _ErkanntUebernehmen extends StatelessWidget {
-  const _ErkanntUebernehmen({
-    required this.recognized,
-    required this.uebernehmen,
-  });
+/// Button that puts the originally recognized value into the field.
+class _UseRecognized extends StatelessWidget {
+  const _UseRecognized({required this.recognized, required this.accept});
 
   final String? recognized;
-  final VoidCallback uebernehmen;
+  final VoidCallback accept;
 
   @override
   Widget build(BuildContext context) {
     return TextButton.icon(
-      onPressed: uebernehmen,
+      onPressed: accept,
       icon: const Icon(Icons.undo, size: 18),
       label: Text('Erkannten Wert übernehmen: ${recognized ?? 'leer'}'),
     );

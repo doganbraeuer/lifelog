@@ -48,7 +48,7 @@ void main() {
       }
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
       // Bereiche selbst lädt nichts und zeigt keine Zeitleiste.
-      expect(find.byType(ZeitleisteScreen), findsNothing);
+      expect(find.byType(TimelineScreen), findsNothing);
     });
 
     testWidgets('inaktive Kachel reagiert nicht', (tester) async {
@@ -57,7 +57,7 @@ void main() {
       await tester.tap(find.text('Ernährung'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(ZeitleisteScreen), findsNothing);
+      expect(find.byType(TimelineScreen), findsNothing);
       expect(find.text('Lifelog'), findsOneWidget);
     });
 
@@ -86,13 +86,13 @@ void main() {
       await starten(tester);
       await zuGesundheit(tester);
 
-      expect(find.byType(ZeitleisteScreen), findsOneWidget);
+      expect(find.byType(TimelineScreen), findsOneWidget);
       expect(find.text('Labor Muster GmbH, Salzburg'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Bereiche'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(ZeitleisteScreen), findsNothing);
+      expect(find.byType(TimelineScreen), findsNothing);
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
     });
 
@@ -125,7 +125,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(find.byType(ZeitleisteScreen), findsNothing);
+      expect(find.byType(TimelineScreen), findsNothing);
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
     });
   });
@@ -136,7 +136,7 @@ void main() {
       final bereiche = primaerBei(tester, find.text('Lifelog'));
 
       await zuGesundheit(tester);
-      final zeitleiste = primaerBei(tester, find.byType(ZeitleisteScreen));
+      final zeitleiste = primaerBei(tester, find.byType(TimelineScreen));
 
       expect(zeitleiste, primaerAus(Colors.teal));
       expect(bereiche, isNot(zeitleiste));
@@ -150,7 +150,7 @@ void main() {
       await zuGesundheit(tester);
 
       expect(
-        primaerBei(tester, find.byType(ZeitleisteScreen)),
+        primaerBei(tester, find.byType(TimelineScreen)),
         primaerAus(Colors.purple),
       );
     });
@@ -165,7 +165,7 @@ void main() {
       // Eintrag-Ansicht (über Navigator.push geöffnet)
       await tester.tap(find.text('Dr. Erika Beispiel, Allgemeinmedizin'));
       await tester.pumpAndSettle();
-      expect(primaerBei(tester, find.byType(EintragScreen)), teal);
+      expect(primaerBei(tester, find.byType(EntryScreen)), teal);
 
       // Dialog
       await tester.tap(find.byTooltip('Quelle korrigieren'));
@@ -177,7 +177,7 @@ void main() {
       // Originaldatei (aus der Eintrag-Ansicht geöffnet)
       await tester.tap(find.text('Originaldatei öffnen'));
       await tester.pumpAndSettle();
-      expect(primaerBei(tester, find.byType(OriginaldateiScreen)), teal);
+      expect(primaerBei(tester, find.byType(OriginalFileScreen)), teal);
     });
 
     testWidgets('Kacheln zeigen die Farbe ihres Moduls', (tester) async {
@@ -211,7 +211,7 @@ void main() {
 
     await tester.tap(find.text('Sport'));
     await tester.pumpAndSettle();
-    expect(find.byType(ZeitleisteScreen), findsOneWidget);
+    expect(find.byType(TimelineScreen), findsOneWidget);
     expect(find.textContaining('Noch keine Dokumente'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Bereiche'));

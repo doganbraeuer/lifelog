@@ -12,141 +12,141 @@ import 'question_screen.dart';
 import 'upload_screen.dart';
 import 'timeline_screen.dart';
 
-/// Rahmen eines Moduls mit der Navigationsleiste unten (Zeitleiste,
-/// Hochladen, Fragen). Alle Module nutzen diesen Rahmen; das Farbschema
-/// setzt der Screen „Bereiche“ beim Öffnen.
+/// Shell of a module with the navigation bar at the bottom (timeline,
+/// upload, questions). All modules use this shell; the „Bereiche“ screen
+/// sets the color scheme when opening it.
 ///
-/// Die drei Seiten liegen in einer `PageView` (Wischen oder Navigationsleiste)
-/// und bleiben dabei am Leben, damit ihr Zustand erhalten bleibt.
-class ModulRahmen extends StatefulWidget {
-  const ModulRahmen({
+/// The three pages sit in a `PageView` (swipe or navigation bar) and stay
+/// alive, so that their state is kept.
+class ModuleShell extends StatefulWidget {
+  const ModuleShell({
     super.key,
     required this.module,
     required this.api,
-    required this.dateiAuswahl,
+    required this.fileChooser,
   });
 
   final ModuleDefinition module;
   final ApiClient api;
-  final FileChooser dateiAuswahl;
+  final FileChooser fileChooser;
 
   @override
-  State<ModulRahmen> createState() => _ModulRahmenState();
+  State<ModuleShell> createState() => _ModuleShellState();
 }
 
-class _ModulRahmenState extends State<ModulRahmen> {
-  /// Seite, die in der Navigationsleiste markiert ist.
+class _ModuleShellState extends State<ModuleShell> {
+  /// Page that is selected in the navigation bar.
   var _index = 0;
 
-  final _seiten = PageController();
+  final _pages = PageController();
 
-  /// Ziel, solange nach einem Tipp in der Navigationsleiste animiert wird.
-  /// Beim Sprung von Seite 0 zu 2 meldet die PageView unterwegs auch
-  /// Seite 1; ohne diese Sperre würde die Leiste kurz „Hochladen“ zeigen.
-  int? _animiertZu;
+  /// Target while animating after a tap in the navigation bar. When jumping
+  /// from page 0 to 2 the PageView also reports page 1 on the way; without
+  /// this lock the bar would briefly show „Hochladen“.
+  int? _animatingTo;
 
-  /// Zugriff auf die Zeitleiste, um sie neu zu laden und Einträge zu öffnen.
-  /// Funktioniert auch, wenn gerade eine andere Seite sichtbar ist, weil
-  /// alle Seiten am Leben bleiben (siehe [_AmLeben]).
-  final _zeitleiste = GlobalKey<ZeitleisteScreenState>();
+  /// Access to the timeline, to reload it and to open entries. Works even
+  /// when another page is visible right now, because all pages stay alive
+  /// (see [_KeepAlivePage]).
+  final _timeline = GlobalKey<TimelineScreenState>();
 
   @override
   void dispose() {
-    _seiten.dispose();
+    _pages.dispose();
     super.dispose();
   }
 
-  /// Tipp in der Navigationsleiste: Leiste sofort umstellen, Seite animiert
-  /// hinterher. [haptik]: kurzes Tippgefühl, nur wenn der Nutzer selbst
-  /// wechselt (nicht beim automatischen Wechsel nach einem Upload).
-  Future<void> _zeigeSeite(int index, {bool haptik = true}) async {
-    if (index == _index && _animiertZu == null) return;
-    if (haptik && index != _index) HapticFeedback.selectionClick();
+  /// Tap in the navigation bar: switch the bar at once, the page animates
+  /// after it. [haptics]: short tap feedback, only when the user switches
+  /// themselves (not on the automatic switch after an upload).
+  Future<void> _showPage(int index, {bool haptics = true}) async {
+    if (index == _index && _animatingTo == null) return;
+    if (haptics && index != _index) HapticFeedback.selectionClick();
     setState(() => _index = index);
-    if (bewegungAus(context)) {
-      // Ohne Animation direkt springen (Dauer 0 ist beim Scrollen nicht
-      // erlaubt).
-      _seiten.jumpToPage(index);
+    if (motionDisabled(context)) {
+      // Jump directly without animation (a duration of 0 is not allowed when
+      // scrolling).
+      _pages.jumpToPage(index);
       return;
     }
-    _animiertZu = index;
-    await _seiten.animateToPage(
+    _animatingTo = index;
+    await _pages.animateToPage(
       index,
       duration: Durations.medium2,
       curve: Easing.emphasizedDecelerate,
     );
-    if (_animiertZu == index) _animiertZu = null;
+    if (_animatingTo == index) _animatingTo = null;
   }
 
-  /// Seitenwechsel durch Wischen (oder am Ende einer Animation).
-  void _seiteGewechselt(int index) {
-    if (_animiertZu != null && index != _animiertZu) return;
+  /// Page change by swiping (or at the end of an animation).
+  void _pageChanged(int index) {
+    if (_animatingTo != null && index != _animatingTo) return;
     if (index != _index) {
       HapticFeedback.selectionClick();
       setState(() => _index = index);
     }
   }
 
-  /// Wechselt zur Zeitleiste und öffnet dort den Eintrag. So führt „Zurück“
-  /// aus dem Eintrag in die (neu geladene) Zeitleiste.
-  void _eintragOeffnen(String entryId) {
-    _zeigeSeite(0, haptik: false);
-    _zeitleiste.currentState?.eintragOeffnen(entryId);
+  /// Switches to the timeline and opens the entry there. That way „Zurück“
+  /// (back) leads from the entry into the (reloaded) timeline.
+  void _openEntry(String entryId) {
+    _showPage(0, haptics: false);
+    _timeline.currentState?.openEntry(entryId);
   }
 
-  void _hochgeladen(Entry entry) {
-    _zeitleiste.currentState?.neuLaden();
-    _eintragOeffnen(entry.id);
+  void _uploaded(Entry entry) {
+    _timeline.currentState?.reload();
+    _openEntry(entry.id);
   }
 
-  /// Öffnet einen Eintrag über dem aktuellen Bereich, ohne zur Zeitleiste
-  /// zu wechseln. So führt „Zurück“ z. B. wieder zur Antwort auf die Frage.
-  Future<void> _eintragDarueberOeffnen(String entryId) async {
-    await oeffneSeite<void>(
+  /// Opens an entry on top of the current page without switching to the
+  /// timeline. That way „Zurück“ leads back e.g. to the answer to a question.
+  Future<void> _openEntryOnTop(String entryId) async {
+    await openPage<void>(
       context,
-      EintragScreen(api: widget.api, entryId: entryId),
+      EntryScreen(api: widget.api, entryId: entryId),
     );
-    // Falls dort etwas korrigiert wurde.
-    _zeitleiste.currentState?.neuLaden();
+    // In case something was corrected there.
+    _timeline.currentState?.reload();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Wischen nach links/rechts wechselt die Seite.
+      // Swiping left or right changes the page.
       body: PageView(
-        controller: _seiten,
-        onPageChanged: _seiteGewechselt,
+        controller: _pages,
+        onPageChanged: _pageChanged,
         children: [
-          _AmLeben(
-            child: ZeitleisteScreen(
-              key: _zeitleiste,
+          _KeepAlivePage(
+            child: TimelineScreen(
+              key: _timeline,
               api: widget.api,
               moduleId: widget.module.id,
-              zumHochladen: () => _zeigeSeite(1),
+              onUpload: () => _showPage(1),
             ),
           ),
-          _AmLeben(
+          _KeepAlivePage(
             child: UploadScreen(
               api: widget.api,
-              dateiAuswahl: widget.dateiAuswahl,
+              fileChooser: widget.fileChooser,
               moduleId: widget.module.id,
-              hochgeladen: _hochgeladen,
-              eintragOeffnen: _eintragOeffnen,
+              uploaded: _uploaded,
+              openEntry: _openEntry,
             ),
           ),
-          _AmLeben(
-            child: FrageScreen(
+          _KeepAlivePage(
+            child: QuestionScreen(
               api: widget.api,
               moduleId: widget.module.id,
-              eintragOeffnen: _eintragDarueberOeffnen,
+              openEntry: _openEntryOnTop,
             ),
           ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: _zeigeSeite,
+        onDestinationSelected: _showPage,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.timeline_outlined),
@@ -169,27 +169,28 @@ class _ModulRahmenState extends State<ModulRahmen> {
   }
 }
 
-/// Hält eine Seite der PageView am Leben, auch wenn sie nicht sichtbar ist.
+/// Keeps a page of the PageView alive, even when it is not visible.
 ///
-/// Ohne das würde die PageView unsichtbare Seiten abbauen: Sortierung,
-/// Scroll-Position, gewählte Datei, laufender Upload und letzte Antwort
-/// gingen verloren, und `_zeitleiste.currentState` wäre `null`.
-class _AmLeben extends StatefulWidget {
-  const _AmLeben({required this.child});
+/// Without it the PageView would dispose of invisible pages: sorting,
+/// scroll position, chosen file, running upload and last answer would be
+/// lost, and `_timeline.currentState` would be `null`.
+class _KeepAlivePage extends StatefulWidget {
+  const _KeepAlivePage({required this.child});
 
   final Widget child;
 
   @override
-  State<_AmLeben> createState() => _AmLebenState();
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
 }
 
-class _AmLebenState extends State<_AmLeben> with AutomaticKeepAliveClientMixin {
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Pflicht beim Mixin: meldet „am Leben halten“.
+    super.build(context); // Required by the mixin: reports "keep alive".
     return widget.child;
   }
 }

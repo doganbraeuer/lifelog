@@ -8,29 +8,26 @@ void main() {
 
     test('nimmt das aktuelle Dokumentdatum', () {
       expect(
-        startdatumFuerAuswahl(PlainDate(2026, 10, 14), heute),
+        initialPickerDate(PlainDate(2026, 10, 14), heute),
         DateTime(2026, 10, 14),
       );
     });
 
     test('ohne Datum: heute', () {
-      expect(startdatumFuerAuswahl(null, heute), heute);
+      expect(initialPickerDate(null, heute), heute);
     });
 
     test('außerhalb des Bereichs (falsch erkanntes Jahr): heute', () {
-      expect(startdatumFuerAuswahl(PlainDate(1026, 10, 14), heute), heute);
-      expect(startdatumFuerAuswahl(PlainDate(1899, 12, 31), heute), heute);
-      expect(startdatumFuerAuswahl(PlainDate(2101, 1, 1), heute), heute);
-      expect(startdatumFuerAuswahl(PlainDate(3026, 10, 14), heute), heute);
+      expect(initialPickerDate(PlainDate(1026, 10, 14), heute), heute);
+      expect(initialPickerDate(PlainDate(1899, 12, 31), heute), heute);
+      expect(initialPickerDate(PlainDate(2101, 1, 1), heute), heute);
+      expect(initialPickerDate(PlainDate(3026, 10, 14), heute), heute);
     });
 
     test('Grenzen gehören noch dazu', () {
+      expect(initialPickerDate(PlainDate(1900, 1, 1), heute), DateTime(1900));
       expect(
-        startdatumFuerAuswahl(PlainDate(1900, 1, 1), heute),
-        DateTime(1900),
-      );
-      expect(
-        startdatumFuerAuswahl(PlainDate(2100, 12, 31), heute),
+        initialPickerDate(PlainDate(2100, 12, 31), heute),
         DateTime(2100, 12, 31),
       );
     });

@@ -20,9 +20,9 @@ int markiert(WidgetTester tester) =>
 /// zählen für die Finder nicht.
 int sichtbar(WidgetTester tester) {
   final seiten = [
-    find.byType(ZeitleisteScreen),
+    find.byType(TimelineScreen),
     find.byType(UploadScreen),
-    find.byType(FrageScreen),
+    find.byType(QuestionScreen),
   ];
   final treffer = [
     for (var i = 0; i < seiten.length; i++)
@@ -148,7 +148,7 @@ void main() {
 
       Finder readList() => find
           .descendant(
-            of: find.byType(ZeitleisteScreen),
+            of: find.byType(TimelineScreen),
             matching: find.byType(Scrollable),
           )
           .first;
@@ -239,7 +239,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Der Rahmen hat über _zeitleiste.currentState den Eintrag geöffnet ...
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.text('Blutdruck'), findsOneWidget);
 
     // ... und ist zur Zeitleiste gewechselt, die neu geladen ist.
@@ -267,7 +267,7 @@ void main() {
 
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
 
     await zurueck(tester);
     expect((sichtbar(tester), markiert(tester)), (0, 0));

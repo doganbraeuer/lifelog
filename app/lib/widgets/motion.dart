@@ -1,135 +1,135 @@
-// Gemeinsame Bausteine für Bewegung in der App.
+// Shared building blocks for motion in the app.
 //
-// Regeln:
-// - Zeiten und Kurven kommen nur aus den Material-Konstanten `Durations`
-//   und `Easing` (bzw. `Curves.easeInOutCubicEmphasized`), keine eigenen
-//   Werte.
-// - Hat das Gerät „Animationen entfernen“ eingeschaltet
-//   (MediaQuery.disableAnimations), entfällt jede eigene Animation: Inhalte
-//   stehen sofort und statisch da.
+// Rules:
+// - Durations and curves only come from the Material constants `Durations`
+//   and `Easing` (or `Curves.easeInOutCubicEmphasized`), no values of our
+//   own.
+// - If the device has „Animationen entfernen“ (remove animations) turned on
+//   (MediaQuery.disableAnimations), every animation of our own is dropped:
+//   content is there at once and static.
 
 import 'package:flutter/material.dart';
 
-/// `true`, wenn das Gerät keine Animationen möchte (Bedienungshilfen).
-bool bewegungAus(BuildContext context) =>
+/// `true` if the device wants no animations (accessibility settings).
+bool motionDisabled(BuildContext context) =>
     MediaQuery.disableAnimationsOf(context);
 
-/// [dauer], oder `Duration.zero`, wenn Animationen aus sind.
-Duration bewegungsDauer(BuildContext context, Duration dauer) =>
-    bewegungAus(context) ? Duration.zero : dauer;
+/// [duration], or `Duration.zero` if animations are off.
+Duration motionDuration(BuildContext context, Duration duration) =>
+    motionDisabled(context) ? Duration.zero : duration;
 
-/// Weicher Wechsel zwischen Zuständen im Stil von „Fade Through“: Das Alte
-/// blendet schnell aus, das Neue blendet ein und wächst leicht von 92 %
-/// auf 100 %. Das Kind braucht einen eigenen `Key` pro Zustand, sonst gibt
-/// es keinen Wechsel.
-class Uebergang extends StatelessWidget {
-  const Uebergang({super.key, required this.child});
+/// Soft switch between states in the style of "fade through": the old one
+/// fades out quickly, the new one fades in and grows slightly from 92 % to
+/// 100 %. The child needs its own `Key` per state, otherwise there is no
+/// switch.
+class FadeThroughSwitcher extends StatelessWidget {
+  const FadeThroughSwitcher({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
-      duration: bewegungsDauer(context, Durations.medium2),
-      reverseDuration: bewegungsDauer(context, Durations.short2),
+      duration: motionDuration(context, Durations.medium2),
+      reverseDuration: motionDuration(context, Durations.short2),
       switchInCurve: Easing.emphasizedDecelerate,
       switchOutCurve: Easing.emphasizedAccelerate,
-      transitionBuilder: (kind, verlauf) => FadeTransition(
-        opacity: verlauf,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
         child: ScaleTransition(
-          scale: Tween(begin: 0.92, end: 1.0).animate(verlauf),
-          child: kind,
+          scale: Tween(begin: 0.92, end: 1.0).animate(animation),
+          child: child,
         ),
       ),
-      // Oben ausrichten statt zentrieren: Inhalte springen nicht.
-      layoutBuilder: (aktuell, vorige) => Stack(
+      // Align to the top instead of centering: content does not jump.
+      layoutBuilder: (current, previous) => Stack(
         alignment: Alignment.topCenter,
-        children: [...vorige, ?aktuell],
+        children: [...previous, ?current],
       ),
       child: child,
     );
   }
 }
 
-/// Blendet Kinder nacheinander ein (je [Durations.short2] versetzt), mit
-/// einer kleinen Bewegung nach oben. Der Inhalt ist sofort vollständig da,
-/// nur seine Sichtbarkeit wird weich; es gibt keinen Tipp-Effekt.
+/// Fades children in one after another (each offset by [Durations.short2]),
+/// with a small upward movement. The content is complete at once, only its
+/// visibility becomes soft; there is no typewriter effect.
 ///
-/// Ein neuer `key` startet die Animation neu (z. B. pro Antwort).
-class GestaffeltEinblenden extends StatefulWidget {
-  const GestaffeltEinblenden({super.key, required this.kinder});
+/// A new `key` restarts the animation (e.g. per answer).
+class StaggeredFadeIn extends StatefulWidget {
+  const StaggeredFadeIn({super.key, required this.children});
 
-  final List<Widget> kinder;
+  final List<Widget> children;
 
   @override
-  State<GestaffeltEinblenden> createState() => _GestaffeltEinblendenState();
+  State<StaggeredFadeIn> createState() => _StaggeredFadeInState();
 }
 
-class _GestaffeltEinblendenState extends State<GestaffeltEinblenden>
+class _StaggeredFadeInState extends State<StaggeredFadeIn>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _verlauf;
-  var _gestartet = false;
+  late final AnimationController _controller;
+  var _started = false;
 
-  /// Abstand zwischen zwei Kindern und Dauer pro Kind.
-  static const _abstand = Durations.short2;
-  static const _dauerProKind = Durations.medium2;
+  /// Offset between two children and duration per child.
+  static const _spacing = Durations.short2;
+  static const _durationPerChild = Durations.medium2;
 
-  Duration get _gesamt =>
-      _dauerProKind + _abstand * (widget.kinder.length - 1).clamp(0, 99);
+  Duration get _total =>
+      _durationPerChild + _spacing * (widget.children.length - 1).clamp(0, 99);
 
   @override
   void initState() {
     super.initState();
-    _verlauf = AnimationController(vsync: this, duration: _gesamt);
+    _controller = AnimationController(vsync: this, duration: _total);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_gestartet) return;
-    _gestartet = true;
-    if (bewegungAus(context)) {
-      _verlauf.value = 1;
+    if (_started) return;
+    _started = true;
+    if (motionDisabled(context)) {
+      _controller.value = 1;
     } else {
-      _verlauf.forward();
+      _controller.forward();
     }
   }
 
   @override
   void dispose() {
-    _verlauf.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final gesamt = _gesamt.inMicroseconds;
+    final total = _total.inMicroseconds;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < widget.kinder.length; i++)
+        for (var i = 0; i < widget.children.length; i++)
           Builder(
             builder: (context) {
-              final start = (_abstand * i).inMicroseconds / gesamt;
-              final ende =
-                  (_abstand * i + _dauerProKind).inMicroseconds / gesamt;
-              final kurve = CurvedAnimation(
-                parent: _verlauf,
+              final start = (_spacing * i).inMicroseconds / total;
+              final end =
+                  (_spacing * i + _durationPerChild).inMicroseconds / total;
+              final curve = CurvedAnimation(
+                parent: _controller,
                 curve: Interval(
                   start.clamp(0.0, 1.0),
-                  ende.clamp(0.0, 1.0),
+                  end.clamp(0.0, 1.0),
                   curve: Easing.emphasizedDecelerate,
                 ),
               );
               return FadeTransition(
-                key: ValueKey('gestaffelt-$i'),
-                opacity: kurve,
+                key: ValueKey('staggered-$i'),
+                opacity: curve,
                 child: SlideTransition(
                   position: Tween(
                     begin: const Offset(0, 0.06),
                     end: Offset.zero,
-                  ).animate(kurve),
-                  child: widget.kinder[i],
+                  ).animate(curve),
+                  child: widget.children[i],
                 ),
               );
             },

@@ -12,50 +12,50 @@ import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import '../widgets/scan_animation.dart';
 
-/// Hinweis zum Datenschutz, steht immer oben im Screen.
-const cloudHinweis =
+/// Privacy notice, always at the top of the screen.
+const cloudNotice =
     'Dokumente werden zur Auswertung an einen Cloud-Dienst gesendet. '
     'Bitte nur Testdokumente verwenden.';
 
-/// Foto aufnehmen, Bild oder PDF wählen und hochladen, oder den
-/// Dokumentinhalt als Text eingeben.
+/// Take a photo, choose an image or PDF and upload it, or enter the
+/// document content as text.
 ///
-/// Ablauf: Datei wählen → Vorschau prüfen → „Hochladen“. Die Vorschau
-/// verhindert, dass versehentlich die falsche Datei in die Cloud geht.
-/// Beim Text: eingeben bzw. einfügen → „Importieren“.
+/// Flow: choose a file → check the preview → „Hochladen“. The preview
+/// prevents the wrong file from going to the cloud by accident.
+/// For text: type or paste → „Importieren“.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({
     super.key,
     required this.api,
-    required this.dateiAuswahl,
+    required this.fileChooser,
     required this.moduleId,
-    required this.hochgeladen,
-    required this.eintragOeffnen,
+    required this.uploaded,
+    required this.openEntry,
   });
 
   final ApiClient api;
-  final FileChooser dateiAuswahl;
+  final FileChooser fileChooser;
 
-  /// Modul, in das hochgeladen wird (Feld `modul` beim Upload).
+  /// Module to upload into (field `module` of the upload).
   final String moduleId;
 
-  /// Nach erfolgreichem Upload mit dem neuen Eintrag.
-  final void Function(Entry entry) hochgeladen;
+  /// Called with the new entry after a successful upload.
+  final void Function(Entry entry) uploaded;
 
-  /// Öffnet einen vorhandenen Eintrag (bei einem Duplikat).
-  final void Function(String entryId) eintragOeffnen;
+  /// Opens an existing entry (for a duplicate).
+  final void Function(String entryId) openEntry;
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
 
 class _UploadScreenState extends State<UploadScreen> {
-  ChosenFile? _datei;
-  ApiException? _fehler;
-  var _laedtHoch = false;
+  ChosenFile? _file;
+  ApiException? _error;
+  var _uploading = false;
 
-  /// `true`, solange das Textfeld für den Text-Import offen ist.
-  var _textModus = false;
+  /// `true` while the text field for the text import is open.
+  var _textMode = false;
   final _text = TextEditingController();
 
   @override
@@ -64,8 +64,8 @@ class _UploadScreenState extends State<UploadScreen> {
     super.dispose();
   }
 
-  /// Bei diesen Fehlern lohnt ein zweiter Versuch mit derselben Datei.
-  static const _wiederholbar = {
+  /// For these errors a second attempt with the same file is worthwhile.
+  static const _retryable = {
     ErrorCode.networkError,
     ErrorCode.internalError,
     ErrorCode.extractionFailed,
@@ -76,31 +76,31 @@ class _UploadScreenState extends State<UploadScreen> {
   @override
   void initState() {
     super.initState();
-    _verloreneDateiAbholen();
-    // Damit „Importieren“ beim Tippen aktiv bzw. inaktiv wird.
+    _retrieveLostFile();
+    // So that „Importieren“ becomes enabled or disabled while typing.
     _text.addListener(() => setState(() {}));
   }
 
-  Future<void> _verloreneDateiAbholen() async {
+  Future<void> _retrieveLostFile() async {
     try {
-      final file = await widget.dateiAuswahl.retrieveLostFile();
-      if (file != null && mounted) _uebernehmen(file);
+      final file = await widget.fileChooser.retrieveLostFile();
+      if (file != null && mounted) _accept(file);
     } on PlatformException {
-      // Nichts wiederherzustellen; kein Grund für eine Meldung.
+      // Nothing to restore; no reason for a message.
     }
   }
 
-  Future<void> _waehlen(Future<ChosenFile?> Function() auswahl) async {
+  Future<void> _choose(Future<ChosenFile?> Function() chooser) async {
     try {
-      final file = await auswahl();
-      if (file != null && mounted) _uebernehmen(file);
+      final file = await chooser();
+      if (file != null && mounted) _accept(file);
     } on FileTooLargeException {
-      _zeigeLokalenFehler();
+      _showLocalError();
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
-        _fehler = ApiException(
-          code: 'AUSWAHL_FEHLGESCHLAGEN',
+        _error = ApiException(
+          code: 'PICK_FAILED',
           message: e.code.contains('access_denied')
               ? 'Kein Zugriff auf Kamera oder Fotos. Bitte in den '
                     'Einstellungen des Geräts erlauben.'
@@ -110,24 +110,24 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  void _uebernehmen(ChosenFile file) {
-    // Größe schon hier prüfen, damit nichts Unnötiges hochgeladen wird.
-    // Das Backend prüft trotzdem und meldet ggf. 413.
+  void _accept(ChosenFile file) {
+    // Check the size here already, so that nothing is uploaded needlessly.
+    // The backend still checks and reports 413 if needed.
     if (file.bytes.length > maxFileSize) {
-      _zeigeLokalenFehler();
+      _showLocalError();
       return;
     }
     setState(() {
-      _datei = file;
-      _fehler = null;
+      _file = file;
+      _error = null;
     });
   }
 
-  void _zeigeLokalenFehler() {
+  void _showLocalError() {
     if (!mounted) return;
     setState(() {
-      _datei = null;
-      _fehler = const ApiException(
+      _file = null;
+      _error = const ApiException(
         code: ErrorCode.fileTooLarge,
         message:
             'Die Datei ist größer als 10 MB. Bitte eine kleinere Datei wählen.',
@@ -135,12 +135,12 @@ class _UploadScreenState extends State<UploadScreen> {
     });
   }
 
-  Future<void> _hochladen() async {
-    final file = _datei;
+  Future<void> _upload() async {
+    final file = _file;
     if (file == null) return;
     setState(() {
-      _laedtHoch = true;
-      _fehler = null;
+      _uploading = true;
+      _error = null;
     });
     try {
       final entry = await widget.api.upload(
@@ -150,72 +150,72 @@ class _UploadScreenState extends State<UploadScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _laedtHoch = false;
-        _datei = null;
+        _uploading = false;
+        _file = null;
       });
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Dokument gespeichert.')));
-      HapticFeedback.lightImpact(); // Erfolg spürbar machen
-      widget.hochgeladen(entry);
-    } on ApiException catch (fehler) {
+      HapticFeedback.lightImpact(); // Make success noticeable
+      widget.uploaded(entry);
+    } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _laedtHoch = false;
-        _fehler = fehler;
-        // Ohne Aussicht auf Erfolg die Datei verwerfen, damit direkt eine
-        // andere gewählt werden kann.
-        if (!_wiederholbar.contains(fehler.code)) _datei = null;
+        _uploading = false;
+        _error = error;
+        // Without a chance of success discard the file, so that another one can
+        // be chosen right away.
+        if (!_retryable.contains(error.code)) _file = null;
       });
     }
   }
 
-  void _verwerfen() => setState(() {
-    _datei = null;
-    _fehler = null;
+  void _discard() => setState(() {
+    _file = null;
+    _error = null;
   });
 
   // -------------------------------------------------------------------------
-  // Text-Import
+  // Text import
   // -------------------------------------------------------------------------
 
-  void _textOeffnen() => setState(() {
-    _textModus = true;
-    _fehler = null;
+  void _openText() => setState(() {
+    _textMode = true;
+    _error = null;
   });
 
-  void _textAbbrechen() => setState(() {
-    _textModus = false;
+  void _cancelText() => setState(() {
+    _textMode = false;
     _text.clear();
-    _fehler = null;
+    _error = null;
   });
 
-  Future<void> _textImportieren() async {
+  Future<void> _importText() async {
     final text = _text.text;
     if (text.trim().isEmpty) return;
-    FocusScope.of(context).unfocus(); // Tastatur schließen
+    FocusScope.of(context).unfocus(); // Close the keyboard
     setState(() {
-      _laedtHoch = true;
-      _fehler = null;
+      _uploading = true;
+      _error = null;
     });
     try {
       final entry = await widget.api.importText(text, module: widget.moduleId);
       if (!mounted) return;
       setState(() {
-        _laedtHoch = false;
-        _textModus = false;
+        _uploading = false;
+        _textMode = false;
         _text.clear();
       });
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Text gespeichert.')));
-      HapticFeedback.lightImpact(); // Erfolg spürbar machen
-      widget.hochgeladen(entry);
-    } on ApiException catch (fehler) {
+      HapticFeedback.lightImpact(); // Make success noticeable
+      widget.uploaded(entry);
+    } on ApiException catch (error) {
       if (!mounted) return;
-      // Der Text bleibt bei jedem Fehler stehen, damit man ihn ändern
-      // (z. B. kürzen) oder erneut senden kann.
+      // The text stays after every error, so that it can be changed
+      // (e.g. shortened) or sent again.
       setState(() {
-        _laedtHoch = false;
-        _fehler = fehler;
+        _uploading = false;
+        _error = error;
       });
     }
   }
@@ -224,9 +224,9 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const BereicheKnopf(),
+        leading: const ModulesButton(),
         title: const Text('Hochladen'),
-        actions: [MockHinweis(sichtbar: widget.api.isMock)],
+        actions: [MockBanner(visible: widget.api.isMock)],
       ),
       body: Column(
         children: [
@@ -234,73 +234,73 @@ class _UploadScreenState extends State<UploadScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const _Hinweis(),
+                const _Notice(),
                 const SizedBox(height: 16),
-                // Fehlerkarte erscheint und verschwindet weich; die Höhe
-                // gleitet mit, statt dass der Inhalt darunter springt.
+                // The error card appears and disappears softly; the height
+                // glides along instead of the content below jumping.
                 AnimatedSize(
-                  duration: bewegungsDauer(context, Durations.medium2),
+                  duration: motionDuration(context, Durations.medium2),
                   curve: Easing.emphasizedDecelerate,
                   alignment: Alignment.topCenter,
-                  child: Uebergang(
-                    child: switch (_fehler) {
-                      final fehler? => Padding(
-                        key: ObjectKey(fehler),
+                  child: FadeThroughSwitcher(
+                    child: switch (_error) {
+                      final error? => Padding(
+                        key: ObjectKey(error),
                         padding: const EdgeInsets.only(bottom: 16),
-                        child: _FehlerKarte(
-                          fehler: fehler,
-                          eintragOeffnen: widget.eintragOeffnen,
+                        child: _ErrorCard(
+                          error: error,
+                          openEntry: widget.openEntry,
                         ),
                       ),
                       null => const SizedBox.shrink(key: ValueKey('ok')),
                     },
                   ),
                 ),
-                // Weicher Wechsel zwischen Auswahl, Vorschau und Textfeld.
-                Uebergang(
-                  child: switch ((_datei, _textModus)) {
+                // Soft switch between choice, preview and text field.
+                FadeThroughSwitcher(
+                  child: switch ((_file, _textMode)) {
                     (final file?, _) => KeyedSubtree(
-                      key: const ValueKey('vorschau'),
-                      child: _vorschau(file),
+                      key: const ValueKey('preview'),
+                      child: _preview(file),
                     ),
                     (null, true) => KeyedSubtree(
                       key: const ValueKey('text'),
-                      child: _texteingabe(),
+                      child: _textInput(),
                     ),
                     (null, false) => KeyedSubtree(
-                      key: const ValueKey('auswahl'),
-                      child: _auswahlKnoepfe(),
+                      key: const ValueKey('choose'),
+                      child: _chooserButtons(),
                     ),
                   },
                 ),
               ],
             ),
           ),
-          // Feste Leiste unter der Liste: Sie scrollt nicht mit und sitzt
-          // bei offener Tastatur direkt darüber (der Rahmen verkleinert den
-          // Screen). So bleiben die Knöpfe auch bei langem Text erreichbar.
-          if (_textModus && _datei == null && !_laedtHoch) _textAktionen(),
+          // Fixed bar below the list: it does not scroll and sits right above
+          // the open keyboard (the shell shrinks the screen). That way the
+          // buttons stay reachable even with long text.
+          if (_textMode && _file == null && !_uploading) _textActions(),
         ],
       ),
     );
   }
 
-  Widget _textAktionen() {
-    final fehler = _fehler;
-    final wiederholen = fehler != null && _wiederholbar.contains(fehler.code);
+  Widget _textActions() {
+    final error = _error;
+    final retry = error != null && _retryable.contains(error.code);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainer,
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          // Beide Knöpfe teilen sich die Breite; zu lange Beschriftungen
-          // werden gekürzt statt überzulaufen (schmale Handys, große Schrift).
+          // Both buttons share the width; labels that are too long are
+          // shortened instead of overflowing (narrow phones, large text).
           child: Row(
             children: [
               Expanded(
                 child: TextButton(
-                  onPressed: _textAbbrechen,
+                  onPressed: _cancelText,
                   child: const Text(
                     'Abbrechen',
                     maxLines: 1,
@@ -312,12 +312,10 @@ class _UploadScreenState extends State<UploadScreen> {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: _text.text.trim().isEmpty
-                      ? null
-                      : _textImportieren,
-                  icon: Icon(wiederholen ? Icons.refresh : Icons.cloud_upload),
+                  onPressed: _text.text.trim().isEmpty ? null : _importText,
+                  icon: Icon(retry ? Icons.refresh : Icons.cloud_upload),
                   label: Text(
-                    wiederholen ? 'Erneut versuchen' : 'Importieren',
+                    retry ? 'Erneut versuchen' : 'Importieren',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -330,31 +328,31 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  Widget _auswahlKnoepfe() {
-    final auswahl = widget.dateiAuswahl;
+  Widget _chooserButtons() {
+    final chooser = widget.fileChooser;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: () => _waehlen(auswahl.takePhoto),
+          onPressed: () => _choose(chooser.takePhoto),
           icon: const Icon(Icons.photo_camera_outlined),
           label: const Text('Foto aufnehmen'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () => _waehlen(auswahl.pickImage),
+          onPressed: () => _choose(chooser.pickImage),
           icon: const Icon(Icons.photo_library_outlined),
           label: const Text('Bild auswählen'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () => _waehlen(auswahl.pickPdf),
+          onPressed: () => _choose(chooser.pickPdf),
           icon: const Icon(Icons.picture_as_pdf_outlined),
           label: const Text('PDF auswählen'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: _textOeffnen,
+          onPressed: _openText,
           icon: const Icon(Icons.notes),
           label: const Text('Text eingeben'),
         ),
@@ -369,14 +367,14 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  /// Textfeld; die Knöpfe stehen in der festen Leiste ([_textAktionen]).
-  Widget _texteingabe() {
+  /// Text field; the buttons are in the fixed bar ([_textActions]).
+  Widget _textInput() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: _text,
-          enabled: !_laedtHoch,
+          enabled: !_uploading,
           minLines: 6,
           maxLines: 14,
           maxLength: maxTextLength,
@@ -388,29 +386,29 @@ class _UploadScreenState extends State<UploadScreen> {
             border: OutlineInputBorder(),
           ),
         ),
-        Uebergang(
-          child: _laedtHoch
+        FadeThroughSwitcher(
+          child: _uploading
               ? const Padding(
-                  key: ValueKey('laedt'),
+                  key: ValueKey('loading'),
                   padding: EdgeInsets.only(top: 16),
-                  child: _Auswertung(),
+                  child: _Processing(),
                 )
-              : const SizedBox.shrink(key: ValueKey('bereit')),
+              : const SizedBox.shrink(key: ValueKey('ready')),
         ),
       ],
     );
   }
 
-  Widget _vorschau(ChosenFile file) {
+  Widget _preview(ChosenFile file) {
     final mimeType = detectMimeType(file.bytes);
     final isImage = mimeType != null && mimeType.startsWith('image/');
-    final wiederholen = _fehler != null;
+    final retry = _error != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Card(
           clipBehavior: Clip.antiAlias,
-          // Stack legt das X-Symbol über die Vorschau, oben rechts.
+          // The stack puts the X icon over the preview, top right.
           child: Stack(
             children: [
               Column(
@@ -420,26 +418,25 @@ class _UploadScreenState extends State<UploadScreen> {
                       file.bytes,
                       height: 260,
                       fit: BoxFit.contain,
-                      // HEIC kann Android evtl. nicht anzeigen; dann ein Symbol.
-                      errorBuilder: (_, _, _) =>
-                          const _DateiSymbol(Icons.image),
+                      // Android may not be able to show HEIC; then an icon.
+                      errorBuilder: (_, _, _) => const _FileIcon(Icons.image),
                     )
                   else
-                    const _DateiSymbol(Icons.picture_as_pdf_outlined),
+                    const _FileIcon(Icons.picture_as_pdf_outlined),
                   ListTile(
                     title: Text(file.name),
-                    subtitle: Text(formatGroesse(file.bytes.length)),
+                    subtitle: Text(formatSize(file.bytes.length)),
                   ),
                 ],
               ),
-              // Während des Uploads ausgeblendet: Die Datei ist dann schon
-              // unterwegs und soll nicht mitten im Vorgang verschwinden.
-              if (!_laedtHoch)
+              // Hidden during the upload: the file is already on its way then
+              // and should not disappear in the middle of the process.
+              if (!_uploading)
                 Positioned(
                   top: 4,
                   right: 4,
                   child: IconButton.filledTonal(
-                    onPressed: _verwerfen,
+                    onPressed: _discard,
                     icon: const Icon(Icons.close),
                     tooltip: 'Datei verwerfen',
                   ),
@@ -448,25 +445,21 @@ class _UploadScreenState extends State<UploadScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Uebergang(
-          child: _laedtHoch
-              ? const _Auswertung(key: ValueKey('laedt'))
+        FadeThroughSwitcher(
+          child: _uploading
+              ? const _Processing(key: ValueKey('loading'))
               : Column(
-                  key: const ValueKey('knoepfe'),
+                  key: const ValueKey('buttons'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     FilledButton.icon(
-                      onPressed: _hochladen,
-                      icon: Icon(
-                        wiederholen ? Icons.refresh : Icons.cloud_upload,
-                      ),
-                      label: Text(
-                        wiederholen ? 'Erneut versuchen' : 'Hochladen',
-                      ),
+                      onPressed: _upload,
+                      icon: Icon(retry ? Icons.refresh : Icons.cloud_upload),
+                      label: Text(retry ? 'Erneut versuchen' : 'Hochladen'),
                     ),
                     const SizedBox(height: 8),
                     TextButton(
-                      onPressed: _verwerfen,
+                      onPressed: _discard,
                       child: const Text('Andere Datei wählen'),
                     ),
                   ],
@@ -477,10 +470,10 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 }
 
-/// Anzeige, solange das Backend auswertet (bis zu einer Minute): ruhige
-/// Scan-Animation ohne erfundenen Fortschritt.
-class _Auswertung extends StatelessWidget {
-  const _Auswertung({super.key});
+/// Shown while the backend processes (up to a minute): a calm scan
+/// animation without made-up progress.
+class _Processing extends StatelessWidget {
+  const _Processing({super.key});
 
   @override
   Widget build(BuildContext context) => const Column(
@@ -496,24 +489,24 @@ class _Auswertung extends StatelessWidget {
   );
 }
 
-class _Hinweis extends StatelessWidget {
-  const _Hinweis();
+class _Notice extends StatelessWidget {
+  const _Notice();
 
   @override
   Widget build(BuildContext context) {
-    final farben = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
     return Card(
-      color: farben.secondaryContainer,
+      color: colors.secondaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.info_outline, color: farben.onSecondaryContainer),
+            Icon(Icons.info_outline, color: colors.onSecondaryContainer),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                cloudHinweis,
-                style: TextStyle(color: farben.onSecondaryContainer),
+                cloudNotice,
+                style: TextStyle(color: colors.onSecondaryContainer),
               ),
             ),
           ],
@@ -523,20 +516,20 @@ class _Hinweis extends StatelessWidget {
   }
 }
 
-class _FehlerKarte extends StatelessWidget {
-  const _FehlerKarte({required this.fehler, required this.eintragOeffnen});
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.error, required this.openEntry});
 
-  final ApiException fehler;
-  final void Function(String entryId) eintragOeffnen;
+  final ApiException error;
+  final void Function(String entryId) openEntry;
 
   @override
   Widget build(BuildContext context) {
-    final farben = Theme.of(context).colorScheme;
-    final vorhandeneId = fehler.code == ErrorCode.duplicate
-        ? fehler.details['entryId']
+    final colors = Theme.of(context).colorScheme;
+    final existingId = error.code == ErrorCode.duplicate
+        ? error.details['entryId']
         : null;
     return Card(
-      color: farben.errorContainer,
+      color: colors.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -544,21 +537,21 @@ class _FehlerKarte extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.error_outline, color: farben.onErrorContainer),
+                Icon(Icons.error_outline, color: colors.onErrorContainer),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    fehler.message,
-                    style: TextStyle(color: farben.onErrorContainer),
+                    error.message,
+                    style: TextStyle(color: colors.onErrorContainer),
                   ),
                 ),
               ],
             ),
-            if (vorhandeneId is String)
+            if (existingId is String)
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () => eintragOeffnen(vorhandeneId),
+                  onPressed: () => openEntry(existingId),
                   child: const Text('Vorhandenen Eintrag öffnen'),
                 ),
               ),
@@ -569,8 +562,8 @@ class _FehlerKarte extends StatelessWidget {
   }
 }
 
-class _DateiSymbol extends StatelessWidget {
-  const _DateiSymbol(this.icon);
+class _FileIcon extends StatelessWidget {
+  const _FileIcon(this.icon);
 
   final IconData icon;
 

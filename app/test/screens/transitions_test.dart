@@ -66,7 +66,7 @@ void main() {
       await zuGesundheit(tester);
       expect(
         find.descendant(
-          of: find.byType(ZeitleisteScreen),
+          of: find.byType(TimelineScreen),
           matching: find.byType(OpenContainer<void>),
         ),
         findsNWidgets(3),
@@ -79,10 +79,10 @@ void main() {
       await zurZeitleiste(tester, schnellerMock());
       await tester.tap(find.text(labor));
       await tester.pumpAndSettle();
-      expect(find.byType(EintragScreen), findsOneWidget);
+      expect(find.byType(EntryScreen), findsOneWidget);
 
       await zurueck(tester);
-      expect(find.byType(EintragScreen), findsNothing);
+      expect(find.byType(EntryScreen), findsNothing);
       expect(find.text(labor), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -108,8 +108,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
-        expect(find.byType(EintragScreen), findsNothing);
-        expect(find.byType(ZeitleisteScreen), findsOneWidget);
+        expect(find.byType(EntryScreen), findsNothing);
+        expect(find.byType(TimelineScreen), findsOneWidget);
         expect(find.text(labor), findsNothing);
         expect(find.text('Oktober 2026'), findsNothing); // Gruppe leer
         expect(find.text(arzt), findsOneWidget);
@@ -159,7 +159,7 @@ void main() {
       await tester.tap(find.text(labor));
       await tester.pump();
       await tester.pump();
-      expect(find.byType(EintragScreen), findsOneWidget);
+      expect(find.byType(EntryScreen), findsOneWidget);
       await tester.pumpAndSettle();
     });
   });
@@ -171,20 +171,20 @@ void main() {
     try {
       await zurZeitleiste(tester, schnellerMock());
       expect(find.byType(OpenContainer<void>), findsNothing);
-      expect(find.byType(ZeitleisteScreen), findsOneWidget);
+      expect(find.byType(TimelineScreen), findsOneWidget);
 
       // Eintrag öffnen und per Wischen vom linken Rand zurück.
       await tester.tap(find.text(labor));
       await tester.pumpAndSettle();
-      expect(find.byType(EintragScreen), findsOneWidget);
+      expect(find.byType(EntryScreen), findsOneWidget);
       await tester.dragFrom(const Offset(2, 400), const Offset(500, 0));
       await tester.pumpAndSettle();
-      expect(find.byType(EintragScreen), findsNothing);
+      expect(find.byType(EntryScreen), findsNothing);
 
       // Auch zurück zu den Bereichen per Wischen.
       await tester.dragFrom(const Offset(2, 400), const Offset(500, 0));
       await tester.pumpAndSettle();
-      expect(find.byType(ZeitleisteScreen), findsNothing);
+      expect(find.byType(TimelineScreen), findsNothing);
       expect(find.text('Bald verfügbar'), findsNWidgets(3));
     } finally {
       debugDefaultTargetPlatformOverride = null;
@@ -234,7 +234,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Hochladen'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(EintragScreen), findsOneWidget);
+      expect(find.byType(EntryScreen), findsOneWidget);
       expect(haptik, [leicht]);
     });
 

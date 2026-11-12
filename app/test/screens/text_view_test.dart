@@ -18,11 +18,11 @@ import '../helpers.dart';
 Future<void> zeigeText(WidgetTester tester, List<int> bytes) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: OriginaldateiScreen(
+      home: OriginalFileScreen(
         api: schnellerMock()..simulateError = true,
         entryId: laborId,
         fileName: 'text.txt',
-        vorhanden: FileContent(
+        preloaded: FileContent(
           bytes: Uint8List.fromList(bytes),
           mimeType: 'text/plain; charset=utf-8',
         ),
@@ -73,7 +73,7 @@ void main() {
       );
 
       final scrollbar = find.descendant(
-        of: find.byType(OriginaldateiScreen),
+        of: find.byType(OriginalFileScreen),
         matching: find.byType(Scrollable),
       );
       await tester.drag(scrollbar.first, const Offset(0, -500));
@@ -130,7 +130,7 @@ void main() {
       ModuleCatalogScope(
         catalog: ModuleCatalog.defaults(),
         child: MaterialApp(
-          home: EintragScreen(api: api, entryId: id),
+          home: EntryScreen(api: api, entryId: id),
         ),
       ),
     );
@@ -144,7 +144,7 @@ void main() {
     await tester.tap(find.text('Originaldatei öffnen'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(OriginaldateiScreen), findsOneWidget);
+    expect(find.byType(OriginalFileScreen), findsOneWidget);
     expect(find.byType(SelectableText), findsOneWidget);
     expect(find.textContaining('Überweisung vom 21.10.2026'), findsOneWidget);
   });

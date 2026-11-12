@@ -37,7 +37,7 @@ void main() {
   ) async {
     await zumUpload(tester, schnellerMock(), FakeDateiAuswahl());
 
-    expect(find.text(cloudHinweis), findsOneWidget);
+    expect(find.text(cloudNotice), findsOneWidget);
     expect(find.text('Foto aufnehmen'), findsOneWidget);
     expect(find.text('Bild auswählen'), findsOneWidget);
     expect(find.text('PDF auswählen'), findsOneWidget);
@@ -108,7 +108,7 @@ void main() {
     tester,
   ) async {
     final mock = schnellerMock();
-    final vorhanden = await mock.upload(
+    final preloaded = await mock.upload(
       testPdf('doppelt.pdf').bytes,
       'doppelt.pdf',
       module: 'health',
@@ -128,7 +128,7 @@ void main() {
     await tester.tap(find.text('Vorhandenen Eintrag öffnen'));
     await tester.pumpAndSettle();
     expect(find.text('Erkannte Angaben'), findsOneWidget);
-    expect(find.textContaining(vorhanden.file.fileName), findsWidgets);
+    expect(find.textContaining(preloaded.file.fileName), findsWidgets);
   });
 
   testWidgets('über 10 MB: Meldung ohne Upload', (tester) async {

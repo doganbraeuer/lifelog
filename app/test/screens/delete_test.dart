@@ -38,7 +38,7 @@ void main() {
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
     expect((await mock.getEntry(laborId)).id, laborId);
   });
 
@@ -52,8 +52,8 @@ void main() {
     await tester.tap(loeschenBestaetigen());
     await tester.pumpAndSettle();
 
-    expect(find.byType(EintragScreen), findsNothing);
-    expect(find.byType(ZeitleisteScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsNothing);
+    expect(find.byType(TimelineScreen), findsOneWidget);
     expect(find.text('Eintrag gelöscht.'), findsOneWidget);
     expect(find.text(labor), findsNothing);
     await expectLater(
@@ -71,7 +71,7 @@ void main() {
     await tester.tap(loeschenBestaetigen());
     await tester.pumpAndSettle();
 
-    expect(find.byType(EintragScreen), findsOneWidget);
+    expect(find.byType(EntryScreen), findsOneWidget);
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);
     // Der Knopf ist wieder bedienbar.
     final knopf = tester.widget<IconButton>(
@@ -112,7 +112,7 @@ void main() {
     await tester.tap(loeschenBestaetigen());
     await tester.pumpAndSettle();
 
-    expect(find.byType(FrageScreen), findsOneWidget);
+    expect(find.byType(QuestionScreen), findsOneWidget);
     await tester.tap(
       find.descendant(
         of: find.byType(NavigationBar),

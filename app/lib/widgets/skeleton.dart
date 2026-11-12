@@ -1,25 +1,24 @@
-// Platzhalter (Skeleton) beim ersten Laden: graue Formen in der Gestalt
-// des späteren Inhalts, die ruhig pulsieren. Für Screenreader heißt das
-// Ganze „Wird geladen“; die Formen selbst sind ausgeblendet.
+// Skeletons for the first load: grey shapes in the form of the later
+// content that pulse calmly. For screen readers the whole thing is called
+// „Wird geladen“ (loading); the shapes themselves are hidden.
 
 import 'package:flutter/material.dart';
 
 import 'motion.dart';
 
-/// Pulsiert seine Kinder ruhig in der Deckkraft. Mit „Animationen
-/// entfernen“ bleibt es statisch.
-class Pulsieren extends StatefulWidget {
-  const Pulsieren({super.key, required this.child});
+/// Pulses its child calmly in opacity. With „Animationen entfernen“ it
+/// stays static.
+class Pulse extends StatefulWidget {
+  const Pulse({super.key, required this.child});
 
   final Widget child;
 
   @override
-  State<Pulsieren> createState() => _PulsierenState();
+  State<Pulse> createState() => _PulseState();
 }
 
-class _PulsierenState extends State<Pulsieren>
-    with SingleTickerProviderStateMixin {
-  late final _verlauf = AnimationController(
+class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
     vsync: this,
     duration: Durations.extralong4,
   );
@@ -27,18 +26,18 @@ class _PulsierenState extends State<Pulsieren>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (bewegungAus(context)) {
-      _verlauf
+    if (motionDisabled(context)) {
+      _controller
         ..stop()
         ..value = 1;
-    } else if (!_verlauf.isAnimating) {
-      _verlauf.repeat(reverse: true);
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
     }
   }
 
   @override
   void dispose() {
-    _verlauf.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -48,45 +47,45 @@ class _PulsierenState extends State<Pulsieren>
       opacity: Tween(
         begin: 0.45,
         end: 1.0,
-      ).animate(CurvedAnimation(parent: _verlauf, curve: Easing.standard)),
+      ).animate(CurvedAnimation(parent: _controller, curve: Easing.standard)),
       child: widget.child,
     );
   }
 }
 
-/// Ein grauer Balken mit runden Ecken.
-class PlatzhalterBalken extends StatelessWidget {
-  const PlatzhalterBalken({
+/// A grey bar with rounded corners.
+class SkeletonBar extends StatelessWidget {
+  const SkeletonBar({
     super.key,
-    this.breite,
-    this.hoehe = 12,
-    this.rund = false,
+    this.width,
+    this.height = 12,
+    this.circular = false,
   });
 
-  final double? breite;
-  final double hoehe;
+  final double? width;
+  final double height;
 
-  /// Kreis statt Balken (z. B. für einen Punkt der Zeitachse).
-  final bool rund;
+  /// Circle instead of a bar (e.g. for a dot on the timeline axis).
+  final bool circular;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: rund ? hoehe : breite,
-      height: hoehe,
+      width: circular ? height : width,
+      height: height,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: rund ? null : BorderRadius.circular(hoehe / 2),
-        shape: rund ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: circular ? null : BorderRadius.circular(height / 2),
+        shape: circular ? BoxShape.circle : BoxShape.rectangle,
       ),
     );
   }
 }
 
-/// Rahmen für Platzhalter: meldet „Wird geladen“, blendet die Formen für
-/// Screenreader aus und lässt sie pulsieren.
-class Platzhalter extends StatelessWidget {
-  const Platzhalter({super.key, required this.child});
+/// Frame for skeletons: announces „Wird geladen“, hides the shapes from
+/// screen readers and lets them pulse.
+class Skeleton extends StatelessWidget {
+  const Skeleton({super.key, required this.child});
 
   final Widget child;
 
@@ -96,18 +95,18 @@ class Platzhalter extends StatelessWidget {
       container: true,
       label: 'Wird geladen',
       liveRegion: true,
-      child: ExcludeSemantics(child: Pulsieren(child: child)),
+      child: ExcludeSemantics(child: Pulse(child: child)),
     );
   }
 }
 
-/// Platzhalter in der Form der Zeitachse: eine Überschrift und fünf Zeilen.
-class ZeitachsenPlatzhalter extends StatelessWidget {
-  const ZeitachsenPlatzhalter({super.key});
+/// Skeleton in the form of the timeline axis: a header and five rows.
+class TimelineSkeleton extends StatelessWidget {
+  const TimelineSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Platzhalter(
+    return Skeleton(
       child: ListView(
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(0, 20, 16, 0),
@@ -116,7 +115,7 @@ class ZeitachsenPlatzhalter extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(64, 0, 0, 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: PlatzhalterBalken(breite: 120, hoehe: 14),
+              child: SkeletonBar(width: 120, height: 14),
             ),
           ),
           for (var i = 0; i < 5; i++)
@@ -127,23 +126,20 @@ class ZeitachsenPlatzhalter extends StatelessWidget {
                   const SizedBox(
                     width: 64,
                     child: Center(
-                      child: PlatzhalterBalken(hoehe: 36, rund: true),
+                      child: SkeletonBar(height: 36, circular: true),
                     ),
                   ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        PlatzhalterBalken(breite: 110.0 + (i % 3) * 30),
+                        SkeletonBar(width: 110.0 + (i % 3) * 30),
                         const SizedBox(height: 8),
-                        PlatzhalterBalken(
-                          breite: 160.0 - (i % 2) * 40,
-                          hoehe: 10,
-                        ),
+                        SkeletonBar(width: 160.0 - (i % 2) * 40, height: 10),
                       ],
                     ),
                   ),
-                  const PlatzhalterBalken(breite: 72),
+                  const SkeletonBar(width: 72),
                 ],
               ),
             ),
@@ -153,46 +149,46 @@ class ZeitachsenPlatzhalter extends StatelessWidget {
   }
 }
 
-/// Platzhalter für eine Antwort mit zwei Quellen-Karten.
-class AntwortPlatzhalter extends StatelessWidget {
-  const AntwortPlatzhalter({super.key});
+/// Skeleton for an answer with two source cards.
+class AnswerSkeleton extends StatelessWidget {
+  const AnswerSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    Widget karte(List<Widget> kinder) => Card(
+    Widget card(List<Widget> children) => Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: kinder,
+          children: children,
         ),
       ),
     );
 
-    return Platzhalter(
+    return Skeleton(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          karte(const [
-            PlatzhalterBalken(),
+          card(const [
+            SkeletonBar(),
             SizedBox(height: 10),
-            PlatzhalterBalken(),
+            SkeletonBar(),
             SizedBox(height: 10),
-            PlatzhalterBalken(breite: 180),
+            SkeletonBar(width: 180),
           ]),
           const SizedBox(height: 12),
           for (var i = 0; i < 2; i++)
-            karte(const [
+            card(const [
               Row(
                 children: [
-                  PlatzhalterBalken(hoehe: 32, rund: true),
+                  SkeletonBar(height: 32, circular: true),
                   SizedBox(width: 12),
-                  Expanded(child: PlatzhalterBalken()),
+                  Expanded(child: SkeletonBar()),
                 ],
               ),
               SizedBox(height: 10),
-              PlatzhalterBalken(breite: 200, hoehe: 10),
+              SkeletonBar(width: 200, height: 10),
             ]),
         ],
       ),

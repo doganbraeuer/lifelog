@@ -14,130 +14,130 @@ import '../widgets/navigation.dart';
 import '../widgets/skeleton.dart';
 import 'entry_screen.dart';
 
-/// Alle Einträge eines Moduls als Zeitachse mit Monatsabschnitten.
-/// Sortierung und Richtung sind wählbar; sortiert wird im Backend, die App
-/// zeigt die Liste in der gelieferten Reihenfolge und gruppiert sie nur.
-class ZeitleisteScreen extends StatefulWidget {
-  const ZeitleisteScreen({
+/// All entries of a module as a timeline axis with month sections.
+/// Sort and order can be chosen; the backend sorts, the app shows the list
+/// in the order it receives and only groups it.
+class TimelineScreen extends StatefulWidget {
+  const TimelineScreen({
     super.key,
     required this.api,
     required this.moduleId,
-    this.zumHochladen,
+    this.onUpload,
   });
 
   final ApiClient api;
 
-  /// Nur Einträge mit diesem `modul` werden gezeigt.
+  /// Only entries with this `module` are shown.
   final String moduleId;
 
-  /// Wechselt zur Seite „Hochladen“ (Knopf im leeren Zustand).
-  final VoidCallback? zumHochladen;
+  /// Switches to the „Hochladen“ page (button in the empty state).
+  final VoidCallback? onUpload;
 
   @override
-  State<ZeitleisteScreen> createState() => ZeitleisteScreenState();
+  State<TimelineScreen> createState() => TimelineScreenState();
 }
 
-class ZeitleisteScreenState extends State<ZeitleisteScreen> {
-  var _sortierung = Sort.documentDate;
-  var _richtung = SortOrder.desc;
+class TimelineScreenState extends State<TimelineScreen> {
+  var _sort = Sort.documentDate;
+  var _order = SortOrder.desc;
 
-  List<EntrySummary>? _eintraege;
-  ApiException? _fehler;
-  var _laedt = false;
+  List<EntrySummary>? _entries;
+  ApiException? _error;
+  var _loading = false;
 
-  /// Zählt die Anfragen. Wechselt jemand schnell die Sortierung, kommen
-  /// Antworten evtl. in falscher Reihenfolge an; dann zählt nur die letzte.
-  var _anfrageNr = 0;
+  /// Counts the requests. If someone changes the sort quickly, responses may
+  /// arrive in the wrong order; then only the last one counts.
+  var _requestNumber = 0;
 
   @override
   void initState() {
     super.initState();
-    neuLaden();
+    reload();
   }
 
-  /// Lädt die Liste neu. Öffentlich, damit z. B. der Upload die Zeitleiste
-  /// nach einem neuen Eintrag aktualisieren kann.
-  Future<void> neuLaden() async {
-    final nr = ++_anfrageNr;
+  /// Reloads the list. Public, so that e.g. the upload can refresh the
+  /// timeline after a new entry.
+  Future<void> reload() async {
+    final number = ++_requestNumber;
     setState(() {
-      _laedt = true;
-      _fehler = null;
+      _loading = true;
+      _error = null;
     });
     try {
       final entries = await widget.api.listEntries(
         module: widget.moduleId,
-        sort: _sortierung,
-        order: _richtung,
+        sort: _sort,
+        order: _order,
       );
-      if (!mounted || nr != _anfrageNr) return;
+      if (!mounted || number != _requestNumber) return;
       setState(() {
-        // Das Backend liefert nur Einträge des Moduls (?modul=), sortiert.
-        _eintraege = entries;
-        _laedt = false;
+        // The backend only returns entries of the module (?module=), sorted.
+        _entries = entries;
+        _loading = false;
       });
-    } on ApiException catch (fehler) {
-      if (!mounted || nr != _anfrageNr) return;
+    } on ApiException catch (error) {
+      if (!mounted || number != _requestNumber) return;
       setState(() {
-        _fehler = fehler;
-        _laedt = false;
+        _error = error;
+        _loading = false;
       });
     }
   }
 
-  void _sortierungWaehlen(Sort sort) {
-    if (sort == _sortierung) return;
-    _sortierung = sort;
-    neuLaden();
+  void _chooseSort(Sort sort) {
+    if (sort == _sort) return;
+    _sort = sort;
+    reload();
   }
 
-  void _richtungUmschalten() {
-    _richtung = _richtung == SortOrder.desc ? SortOrder.asc : SortOrder.desc;
-    neuLaden();
+  void _toggleOrder() {
+    _order = _order == SortOrder.desc ? SortOrder.asc : SortOrder.desc;
+    reload();
   }
 
-  /// Öffnet einen Eintrag. Öffentlich, damit der Upload nach dem Hochladen
-  /// (oder bei einem Duplikat) direkt den Eintrag zeigen kann.
-  Future<void> eintragOeffnen(String entryId) async {
-    await oeffneSeite<void>(
+  /// Opens an entry. Public, so that the upload can show the entry right
+  /// after uploading (or for a duplicate).
+  Future<void> openEntry(String entryId) async {
+    await openPage<void>(
       context,
-      EintragScreen(api: widget.api, entryId: entryId),
+      EntryScreen(api: widget.api, entryId: entryId),
     );
-    // Nach einer Korrektur kann sich z. B. das Datum geändert haben.
-    if (mounted) neuLaden();
+    // After a correction e.g. the date may have changed.
+    if (mounted) reload();
   }
 
   @override
   Widget build(BuildContext context) {
-    final absteigend = _richtung == SortOrder.desc;
+    final descending = _order == SortOrder.desc;
     return Scaffold(
       appBar: AppBar(
-        leading: const BereicheKnopf(),
+        leading: const ModulesButton(),
         title: const Text('Zeitleiste'),
         actions: [
-          MockHinweis(sichtbar: widget.api.isMock),
+          MockBanner(visible: widget.api.isMock),
           PopupMenuButton<Sort>(
             icon: const Icon(Icons.sort),
             tooltip: 'Sortieren nach',
-            onSelected: _sortierungWaehlen,
+            onSelected: _chooseSort,
             itemBuilder: (_) => [
               CheckedPopupMenuItem(
                 value: Sort.documentDate,
-                checked: _sortierung == Sort.documentDate,
+                checked: _sort == Sort.documentDate,
                 child: const Text('Nach Dokumentdatum'),
               ),
               CheckedPopupMenuItem(
                 value: Sort.importedAt,
-                checked: _sortierung == Sort.importedAt,
+                checked: _sort == Sort.importedAt,
                 child: const Text('Nach Importdatum'),
               ),
             ],
           ),
           IconButton(
-            icon: Icon(absteigend ? Icons.arrow_downward : Icons.arrow_upward),
-            tooltip: absteigend
+            icon: Icon(descending ? Icons.arrow_downward : Icons.arrow_upward),
+            tooltip: descending
                 ? 'Neueste zuerst (tippen: älteste zuerst)'
                 : 'Älteste zuerst (tippen: neueste zuerst)',
-            onPressed: _richtungUmschalten,
+            onPressed: _toggleOrder,
           ),
         ],
         bottom: PreferredSize(
@@ -147,15 +147,15 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${_sortierung == Sort.documentDate ? 'Dokumentdatum' : 'Importdatum'}'
-                  ' · ${absteigend ? 'neueste zuerst' : 'älteste zuerst'}',
+                  '${_sort == Sort.documentDate ? 'Dokumentdatum' : 'Importdatum'}'
+                  ' · ${descending ? 'neueste zuerst' : 'älteste zuerst'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              // Ladebalken, wenn schon eine Liste da ist und neu geladen wird.
+              // Progress bar when a list is already there and is being reloaded.
               SizedBox(
                 height: 4,
-                child: _laedt && _eintraege != null
+                child: _loading && _entries != null
                     ? const LinearProgressIndicator()
                     : null,
               ),
@@ -163,80 +163,76 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
           ),
         ),
       ),
-      body: _inhalt(),
+      body: _content(),
     );
   }
 
-  /// Weicher Wechsel zwischen Platzhalter, Liste, leerem Zustand und Fehler.
-  Widget _inhalt() => Uebergang(child: _zustand());
+  /// Soft switch between skeleton, list, empty state and error.
+  Widget _content() => FadeThroughSwitcher(child: _state());
 
-  Widget _zustand() {
-    final fehler = _fehler;
-    if (fehler != null) {
-      return FehlerAnzeige(
-        key: const ValueKey('fehler'),
-        fehler: fehler,
-        erneut: neuLaden,
+  Widget _state() {
+    final error = _error;
+    if (error != null) {
+      return ErrorView(
+        key: const ValueKey('error'),
+        error: error,
+        onRetry: reload,
       );
     }
-    final entries = _eintraege;
+    final entries = _entries;
     if (entries == null) {
-      // Erstes Laden: Platzhalter in der Form der Zeitachse.
-      return const ZeitachsenPlatzhalter(key: ValueKey('laedt'));
+      // First load: skeleton in the form of the timeline axis.
+      return const TimelineSkeleton(key: ValueKey('loading'));
     }
     return RefreshIndicator(
       key: ValueKey(entries.isEmpty ? 'leer' : 'liste'),
-      onRefresh: neuLaden,
+      onRefresh: reload,
       child: entries.isEmpty
-          ? _LeereZeitleiste(
-              moduleId: widget.moduleId,
-              zumHochladen: widget.zumHochladen,
-            )
-          : _zeitachse(entries),
+          ? _EmptyTimeline(moduleId: widget.moduleId, onUpload: widget.onUpload)
+          : _timelineAxis(entries),
     );
   }
 
-  /// Zeitachse: Monatsüberschriften, links eine durchgehende Linie mit
-  /// einem Punkt pro Eintrag.
-  Widget _zeitachse(List<EntrySummary> entries) {
-    final gruppen = groupTimeline(entries, _sortierung);
-    // Die Eintrag-Ansicht hängt am obersten Navigator; sie bekommt das
-    // Farbschema des Moduls mit (wie bei oeffneSeite).
+  /// Timeline axis: month headers, on the left a continuous line with one
+  /// dot per entry.
+  Widget _timelineAxis(List<EntrySummary> entries) {
+    final groups = groupTimeline(entries, _sort);
+    // The entry view hangs on the top-level navigator; it gets the module's
+    // color scheme passed along (as with openPage).
     final themes = InheritedTheme.capture(
       from: context,
       to: Navigator.of(context).context,
     );
-    final zeilen = <Widget>[];
-    for (var g = 0; g < gruppen.length; g++) {
-      final gruppe = gruppen[g];
-      zeilen.add(
-        _MonatsUeberschrift(
-          key: ValueKey('monat-${gruppe.title}'),
-          title: gruppe.title,
-          linieOben: g > 0,
+    final lines = <Widget>[];
+    for (var g = 0; g < groups.length; g++) {
+      final group = groups[g];
+      lines.add(
+        _MonthHeader(
+          key: ValueKey('month-${group.title}'),
+          title: group.title,
+          lineAbove: g > 0,
         ),
       );
-      for (var i = 0; i < gruppe.entries.length; i++) {
-        final entry = gruppe.entries[i];
-        final letzter =
-            g == gruppen.length - 1 && i == gruppe.entries.length - 1;
-        zeilen.add(
-          // Key nach Eintrag: Nach Löschen oder Umsortieren bleibt jede
-          // Zeile mit ihrem Eintrag verbunden (auch der Rücklauf des
-          // Container Transform landet am richtigen Platz).
+      for (var i = 0; i < group.entries.length; i++) {
+        final entry = group.entries[i];
+        final last = g == groups.length - 1 && i == group.entries.length - 1;
+        lines.add(
+          // Key per entry: after deleting or re-sorting every row stays tied
+          // to its entry (the reverse animation of the container transform
+          // also lands in the right place).
           ContainerTransform(
-            key: ValueKey('eintrag-${entry.id}'),
-            geschlossen: (context, oeffnen) => _EintragZeile(
+            key: ValueKey('entry-${entry.id}'),
+            closedBuilder: (context, onOpen) => _EntryRow(
               entry: entry,
-              zeigeImport: _sortierung == Sort.importedAt,
-              linieUnten: !letzter,
-              onTap: oeffnen,
+              showImport: _sort == Sort.importedAt,
+              lineBelow: !last,
+              onTap: onOpen,
             ),
-            offen: (_) =>
-                themes.wrap(EintragScreen(api: widget.api, entryId: entry.id)),
-            // Nach einer Korrektur oder dem Löschen neu laden.
-            beimSchliessen: () {
-              if (mounted) neuLaden();
+            openBuilder: (_) =>
+                themes.wrap(EntryScreen(api: widget.api, entryId: entry.id)),
+            // Reload after a correction or a deletion.
+            onClosed: () {
+              if (mounted) reload();
             },
           ),
         );
@@ -244,49 +240,45 @@ class ZeitleisteScreenState extends State<ZeitleisteScreen> {
     }
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
-      children: zeilen,
+      children: lines,
     );
   }
 }
 
-/// Breite der linken Spalte mit Linie und Punkten.
-const _achsenBreite = 64.0;
+/// Width of the left column with line and dots.
+const _axisWidth = 64.0;
 
-/// Zeichnet die senkrechte Linie der Zeitachse in der linken Spalte.
-class _AchsenMaler extends CustomPainter {
-  _AchsenMaler({required this.color, required this.oben, required this.unten});
+/// Paints the vertical line of the timeline axis in the left column.
+class _AxisPainter extends CustomPainter {
+  _AxisPainter({required this.color, required this.top, required this.bottom});
 
   final Color color;
 
-  /// Linie von oben bis zur Mitte bzw. von der Mitte bis unten zeichnen.
-  final bool oben;
-  final bool unten;
+  /// Paint the line from the top to the middle or from the middle to the bottom.
+  final bool top;
+  final bool bottom;
 
   @override
   void paint(Canvas canvas, Size size) {
     final x = size.width / 2;
     final y = size.height / 2;
-    final stift = Paint()
+    final paint = Paint()
       ..color = color
       ..strokeWidth = 2;
-    if (oben) canvas.drawLine(Offset(x, 0), Offset(x, y), stift);
-    if (unten) canvas.drawLine(Offset(x, y), Offset(x, size.height), stift);
+    if (top) canvas.drawLine(Offset(x, 0), Offset(x, y), paint);
+    if (bottom) canvas.drawLine(Offset(x, y), Offset(x, size.height), paint);
   }
 
   @override
-  bool shouldRepaint(_AchsenMaler alt) =>
-      alt.color != color || alt.oben != oben || alt.unten != unten;
+  bool shouldRepaint(_AxisPainter old) =>
+      old.color != color || old.top != top || old.bottom != bottom;
 }
 
-class _MonatsUeberschrift extends StatelessWidget {
-  const _MonatsUeberschrift({
-    super.key,
-    required this.title,
-    required this.linieOben,
-  });
+class _MonthHeader extends StatelessWidget {
+  const _MonthHeader({super.key, required this.title, required this.lineAbove});
 
   final String title;
-  final bool linieOben;
+  final bool lineAbove;
 
   @override
   Widget build(BuildContext context) {
@@ -297,16 +289,16 @@ class _MonatsUeberschrift extends StatelessWidget {
           left: 0,
           top: 0,
           bottom: 0,
-          width: _achsenBreite,
+          width: _axisWidth,
           child: ExcludeSemantics(
             child: CustomPaint(
-              painter: _AchsenMaler(
+              painter: _AxisPainter(
                 color: theme.colorScheme.outlineVariant,
-                oben: linieOben,
-                unten: true,
+                top: lineAbove,
+                bottom: true,
               ),
               child: Center(
-                // Kleiner Knoten, an dem der Monat beginnt.
+                // Small node where the month starts.
                 child: Container(
                   width: 10,
                   height: 10,
@@ -320,7 +312,7 @@ class _MonatsUeberschrift extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(_achsenBreite, 20, 16, 8),
+          padding: const EdgeInsets.fromLTRB(_axisWidth, 20, 16, 8),
           child: Semantics(
             header: true,
             child: Text(
@@ -337,31 +329,31 @@ class _MonatsUeberschrift extends StatelessWidget {
   }
 }
 
-class _EintragZeile extends StatelessWidget {
-  const _EintragZeile({
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({
     required this.entry,
-    required this.zeigeImport,
-    required this.linieUnten,
+    required this.showImport,
+    required this.lineBelow,
     required this.onTap,
   });
 
   final EntrySummary entry;
 
-  /// Bei Sortierung nach Importdatum wird es mit angezeigt, damit die
-  /// Reihenfolge nachvollziehbar ist.
-  final bool zeigeImport;
-  final bool linieUnten;
+  /// When sorting by import date it is shown too, so that the order makes
+  /// sense.
+  final bool showImport;
+  final bool lineBelow;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final datum = entry.documentDate;
+    final date = entry.documentDate;
     final issuer = entry.issuer;
-    final grau = theme.colorScheme.onSurfaceVariant;
+    final grey = theme.colorScheme.onSurfaceVariant;
     final catalog = ModuleCatalog.of(context);
-    // Sanfte Töne aus der Typfarbe; sie kennzeichnet nur den Typ.
-    final punkt = ColorScheme.fromSeed(
+    // Soft tones from the type color; it only marks the type.
+    final dot = ColorScheme.fromSeed(
       seedColor: catalog.typeColor(entry.module, entry.type),
       brightness: theme.brightness,
     );
@@ -372,22 +364,22 @@ class _EintragZeile extends StatelessWidget {
           left: 0,
           top: 0,
           bottom: 0,
-          width: _achsenBreite,
+          width: _axisWidth,
           child: ExcludeSemantics(
             child: CustomPaint(
-              painter: _AchsenMaler(
+              painter: _AxisPainter(
                 color: theme.colorScheme.outlineVariant,
-                oben: true,
-                unten: linieUnten,
+                top: true,
+                bottom: lineBelow,
               ),
               child: Center(
                 child: Container(
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: punkt.primaryContainer,
+                    color: dot.primaryContainer,
                     shape: BoxShape.circle,
-                    // Ring in Hintergrundfarbe trennt den Punkt von der Linie.
+                    // A ring in the background color separates the dot from the line.
                     border: Border.all(
                       color: theme.colorScheme.surface,
                       width: 3,
@@ -396,7 +388,7 @@ class _EintragZeile extends StatelessWidget {
                   child: Icon(
                     catalog.typeIcon(entry.module, entry.type),
                     size: 18,
-                    color: punkt.onPrimaryContainer,
+                    color: dot.onPrimaryContainer,
                   ),
                 ),
               ),
@@ -404,25 +396,25 @@ class _EintragZeile extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.only(left: _achsenBreite - 8),
+          padding: const EdgeInsets.only(left: _axisWidth - 8),
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 8, right: 16),
             title: Text(catalog.typeName(entry.module, entry.type)),
             subtitle: Text(
               [
                 issuer ?? 'Quelle unbekannt',
-                if (zeigeImport)
-                  'Importiert: ${formatZeitpunktLokal(entry.importedAt)}',
+                if (showImport)
+                  'Importiert: ${formatLocalTimestamp(entry.importedAt)}',
               ].join('\n'),
-              maxLines: zeigeImport ? 3 : 2,
+              maxLines: showImport ? 3 : 2,
               overflow: TextOverflow.ellipsis,
             ),
-            isThreeLine: zeigeImport,
-            trailing: datum != null
-                ? Text(datum.display)
+            isThreeLine: showImport,
+            trailing: date != null
+                ? Text(date.display)
                 : Text(
                     'ohne Datum',
-                    style: TextStyle(fontStyle: FontStyle.italic, color: grau),
+                    style: TextStyle(fontStyle: FontStyle.italic, color: grey),
                   ),
             onTap: onTap,
           ),
@@ -432,19 +424,19 @@ class _EintragZeile extends StatelessWidget {
   }
 }
 
-/// Leerer Zustand: großes Symbol, Hinweis und Knopf zum Hochladen.
-class _LeereZeitleiste extends StatelessWidget {
-  const _LeereZeitleiste({required this.moduleId, required this.zumHochladen});
+/// Empty state: large icon, hint and button to upload.
+class _EmptyTimeline extends StatelessWidget {
+  const _EmptyTimeline({required this.moduleId, required this.onUpload});
 
   final String moduleId;
-  final VoidCallback? zumHochladen;
+  final VoidCallback? onUpload;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final icon =
         ModuleCatalog.of(context).byId(moduleId)?.icon ?? Icons.inbox_outlined;
-    // ListView statt Column, damit Pull-to-Refresh auch hier geht.
+    // ListView instead of Column, so that pull-to-refresh works here too.
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 64, 32, 32),
       children: [
@@ -480,11 +472,11 @@ class _LeereZeitleiste extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        if (zumHochladen != null) ...[
+        if (onUpload != null) ...[
           const SizedBox(height: 24),
           Center(
             child: FilledButton.icon(
-              onPressed: zumHochladen,
+              onPressed: onUpload,
               icon: const Icon(Icons.upload_file),
               label: const Text('Dokument hochladen'),
             ),

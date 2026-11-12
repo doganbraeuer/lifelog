@@ -43,7 +43,7 @@ void main() {
       final semantik = tester.ensureSemantics();
       await gesundheitOeffnen(tester, langsamerMock());
 
-      final zeitleiste = find.byType(ZeitleisteScreen);
+      final zeitleiste = find.byType(TimelineScreen);
       expect(
         find.descendant(
           of: zeitleiste,
@@ -89,7 +89,7 @@ void main() {
     }
 
     double deckkraft(WidgetTester tester, int i) => tester
-        .widget<FadeTransition>(find.byKey(ValueKey('gestaffelt-$i')))
+        .widget<FadeTransition>(find.byKey(ValueKey('staggered-$i')))
         .opacity
         .value;
 
@@ -102,7 +102,7 @@ void main() {
       expect(find.bySemanticsLabel('Wird geladen'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(FrageScreen),
+          of: find.byType(QuestionScreen),
           matching: find.byType(CircularProgressIndicator),
         ),
         findsNothing,

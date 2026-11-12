@@ -4,12 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers.dart';
 
 double deckkraft(WidgetTester tester, String moduleId) => tester
-    .widget<FadeTransition>(find.byKey(ValueKey('einblenden-$moduleId')))
+    .widget<FadeTransition>(find.byKey(ValueKey('fade-in-$moduleId')))
     .opacity
     .value;
 
 double skalierung(WidgetTester tester, String moduleId) =>
-    tester.widget<AnimatedScale>(find.byKey(ValueKey('druck-$moduleId'))).scale;
+    tester.widget<AnimatedScale>(find.byKey(ValueKey('press-$moduleId'))).scale;
 
 void main() {
   testWidgets('Kacheln blenden beim Start ein', (tester) async {
