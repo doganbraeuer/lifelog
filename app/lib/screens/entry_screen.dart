@@ -8,12 +8,14 @@ import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/verification.dart';
 import '../module/module_catalog.dart';
+import '../platform/pdf_viewer.dart';
 import '../widgets/error_view.dart';
 import '../widgets/format.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'correction_dialogs.dart';
 import 'original_file_screen.dart';
+import 'original_location_screen.dart';
 import 'verification_view.dart';
 
 /// Shows an entry and allows correcting wrongly recognized values.
@@ -21,10 +23,18 @@ import 'verification_view.dart';
 /// Every correction is its own PATCH. Afterwards the screen always shows
 /// the backend's response; the app does not recompute anything itself.
 class EntryScreen extends StatefulWidget {
-  const EntryScreen({super.key, required this.api, required this.entryId});
+  const EntryScreen({
+    super.key,
+    required this.api,
+    required this.entryId,
+    this.pdfViewer = const PdfxViewer(),
+  });
 
   final ApiClient api;
   final String entryId;
+
+  /// Shows and renders PDFs; replaced by a fake viewer in tests.
+  final PdfViewer pdfViewer;
 
   @override
   State<EntryScreen> createState() => _EntryScreenState();
@@ -138,8 +148,38 @@ class _EntryScreenState extends State<EntryScreen> {
         entryId: entry.id,
         fileName: entry.file.fileName,
         preloaded: preloaded,
+        pdfViewer: widget.pdfViewer,
       ),
     );
+  }
+
+  /// Opens the original at the locations of a value. [value] is the text
+  /// the row shows.
+  void _showInOriginal(
+    Entry entry,
+    String label,
+    String value,
+    FieldCheck check,
+  ) {
+    openPage<void>(
+      context,
+      OriginalLocationScreen(
+        api: widget.api,
+        entry: entry,
+        label: label,
+        value: value,
+        locations: check.locations,
+        preloaded: _image,
+        pdfViewer: widget.pdfViewer,
+      ),
+    );
+  }
+
+  /// Callback for a row: only if the value has at least one location.
+  VoidCallback? _jump(Entry entry, String label, String value, String field) {
+    final check = entry.verification.checkFor(field);
+    if (check == null || check.locations.isEmpty) return null;
+    return () => _showInOriginal(entry, label, value, check);
   }
 
   // -------------------------------------------------------------------------
@@ -268,6 +308,12 @@ class _EntryScreenState extends State<EntryScreen> {
           ),
           check: entry.verification.checkFor('documentDate'),
           edit: edit(() => _correctDate(entry)),
+          showInOriginal: _jump(
+            entry,
+            'Dokumentdatum',
+            entry.documentDate?.display ?? '',
+            'documentDate',
+          ),
         ),
         _FieldRow(
           label: 'Quelle',
@@ -275,6 +321,7 @@ class _EntryScreenState extends State<EntryScreen> {
           correction: _correctionHint(entry.correctionFor('issuer')),
           check: entry.verification.checkFor('issuer'),
           edit: edit(() => _correctIssuer(entry)),
+          showInOriginal: _jump(entry, 'Quelle', entry.issuer ?? '', 'issuer'),
         ),
         _FieldRow(
           label: 'Importiert',
@@ -302,6 +349,12 @@ class _EntryScreenState extends State<EntryScreen> {
             ].join('\n').nullIfEmpty,
             check: entry.verification.checkFor('facts.${fact.id}'),
             edit: edit(() => _correctFact(entry, fact)),
+            showInOriginal: _jump(
+              entry,
+              fact.name,
+              [fact.value, ?fact.unit].join(' '),
+              'facts.${fact.id}',
+            ),
           ),
         const _Section('Volltext'),
         Padding(
@@ -366,6 +419,9 @@ class _Section extends StatelessWidget {
 /// - found: a small check mark after the value;
 /// - not found: a grey line „Nicht im Original gefunden“;
 /// - corrected: the result is added to the correction hint instead.
+///
+/// A value with a location in the original can be tapped (the whole row
+/// except the pencil) and carries a small grey icon as a hint.
 class _FieldRow extends StatelessWidget {
   const _FieldRow({
     required this.label,
@@ -374,6 +430,7 @@ class _FieldRow extends StatelessWidget {
     this.check,
     this.edit,
     this.correctable = true,
+    this.showInOriginal,
   });
 
   final String label;
@@ -391,6 +448,9 @@ class _FieldRow extends StatelessWidget {
   /// `false`: no pencil button at all (e.g. for the import date).
   final bool correctable;
 
+  /// Opens the original at the value; `null` if it has no location.
+  final VoidCallback? showInOriginal;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -405,7 +465,8 @@ class _FieldRow extends StatelessWidget {
             if (found) 'im Original gefunden',
             if (notFound) 'nicht im Original gefunden',
           ].join(' · ');
-    return ListTile(
+    final tile = ListTile(
+      onTap: showInOriginal,
       title: Text(
         label,
         style: theme.textTheme.labelMedium?.copyWith(
@@ -438,6 +499,17 @@ class _FieldRow extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (showInOriginal != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: ExcludeSemantics(
+                    child: Icon(
+                      Icons.find_in_page_outlined,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
             ],
           ),
           if (correction != null)
@@ -462,6 +534,9 @@ class _FieldRow extends StatelessWidget {
             )
           : null,
     );
+    if (showInOriginal == null) return tile;
+    // The hint tells screen-reader users what a double tap does.
+    return Semantics(hint: showInOriginalHint, child: tile);
   }
 }
 

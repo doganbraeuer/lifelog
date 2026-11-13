@@ -14,6 +14,9 @@ import '../widgets/format.dart';
 /// Mark next to a confirmed value, also read out by screen readers.
 const foundLabel = 'Im Original gefunden';
 
+/// What tapping a value with a location does; read out by screen readers.
+const showInOriginalHint = 'Im Original zeigen';
+
 /// Line under an unconfirmed value.
 const notFoundLabel = 'Nicht im Original gefunden';
 

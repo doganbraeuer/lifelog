@@ -363,6 +363,12 @@ the text layer of a PDF, or OCR for photos and scans.
 | Grund, warum nicht geprüft (App) | verification reason | Dart `VerificationReason` (one value per `reason`, plus `unknown`) |
 | Status eines Felds (App) | field check status | Dart `FieldCheckStatus` (`confirmed`, `unconfirmed`, `correctedConfirmed`, `correctedUnconfirmed`, `unknown`) |
 | Fundstelle in einer Datei / in einem Text-Import (App) | page location / text location | Dart `PageLocation`, `TextLocation` (both a `Location`) |
+| Fundstelle im Original zeigen, Sprung ins Original (App) | show in original | Dart `OriginalLocationScreen`; `app/lib/screens/original_location_screen.dart`; hint `showInOriginalHint` („Im Original zeigen“) |
+| Foto bzw. Text-Import mit markierter Fundstelle (App) | photo location view / text location view | Dart `PhotoLocationView`, `TextLocationView` |
+| Markierung der Fundstellen auf einer Seite oder einem Foto (App) | location overlay | Dart `LocationOverlay`, `LocationMarksPainter`, `fittedPageRect`, `locationRect`, `focusTransform`; `app/lib/widgets/location_overlay.dart` |
+| als Bild gerenderte PDF-Seite (App) | rendered PDF page | Dart `RenderedPdfPage`, `PdfViewer.renderPage` |
+| Codepoint-Bereich als UTF-16-Bereich (App) | UTF-16 range | Dart `TextLocation.utf16Range` |
+| Mock-Foto mit Wortblöcken, Layout einer Mock-Seite (App) | mock photo, mock layout | Dart `createMockPhoto`, `MockLayout` (`pdfA4`, `photo`) |
 | geprüft / nicht geprüft | `checked` / `unchecked` | |
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |
 | korrigiert und bestätigt / korrigiert und unbestätigt | `corrected_confirmed` / `corrected_unconfirmed` | |
