@@ -412,17 +412,16 @@ class _Reader {
       return {'start': offset + m.start, 'end': offset + m.end};
     }
     final layout = page.layout;
+    final runes = page.lines[m.line].runes.toList();
+    final before = layout.widthOf(runes.sublist(0, m.start));
+    final width = layout.widthOf(runes.sublist(m.start, m.end));
     return {
       'page': m.page + 1,
-      'x': _fraction(
-        (layout.left + m.start * layout.charWidth) / layout.pageWidth,
-      ),
+      'x': _fraction((layout.left + before) / layout.pageWidth),
       'y': _fraction(
         (layout.firstTop + m.line * layout.lineHeight) / layout.pageHeight,
       ),
-      'width': _fraction(
-        (m.end - m.start) * layout.charWidth / layout.pageWidth,
-      ),
+      'width': _fraction(width / layout.pageWidth),
       'height': _fraction(layout.textHeight / layout.pageHeight),
     };
   }

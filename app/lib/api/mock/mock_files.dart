@@ -17,11 +17,12 @@ class MockLayout {
     required this.lineHeight,
     required this.charWidth,
     required this.textHeight,
+    this.helveticaSize,
   });
 
   /// The mock PDF (createMockPdfPages): A4 in points, Helvetica 11 pt,
-  /// 15 pt line spacing, first line at the top left. 5.5 pt is an average
-  /// character width.
+  /// 15 pt line spacing, first line at the top left (baseline at 52 pt from
+  /// the top, capitals 7.9 pt above it, descenders 2.3 pt below).
   static const pdfA4 = MockLayout(
     pageWidth: 595,
     pageHeight: 842,
@@ -30,6 +31,7 @@ class MockLayout {
     lineHeight: 15,
     charWidth: 5.5,
     textHeight: 12,
+    helveticaSize: 11,
   );
 
   /// The mock photo (createMockPhoto), in pixels.
@@ -52,12 +54,56 @@ class MockLayout {
   /// Top edge of the text of the first line.
   final double firstTop;
   final double lineHeight;
+
+  /// Width of every character, unless [helveticaSize] is set.
   final double charWidth;
 
   /// Height of the text of a line (from the top of capitals to below the
   /// descenders).
   final double textHeight;
+
+  /// Font size of a page written in Helvetica (the mock PDF); characters then
+  /// have their real Helvetica widths instead of [charWidth].
+  final double? helveticaSize;
+
+  /// Width of [runes] in a line, in the units of the page.
+  double widthOf(Iterable<int> runes) {
+    final size = helveticaSize;
+    if (size == null) return runes.length * charWidth;
+    var units = 0;
+    for (final rune in runes) {
+      // The PDF writes characters outside Latin-1 as „?“ (see _pdfText).
+      units += _helveticaWidths[rune > 255 ? 0x3F : rune] ?? 556;
+    }
+    return units * size / 1000;
+  }
 }
+
+/// Widths of Helvetica (standard font metrics, in 1/1000 em) for the
+/// characters the mock data uses; other characters count as 556, the width
+/// of a digit.
+const _helveticaWidths = <int, int>{
+  0x20: 278, 0x21: 278, 0x22: 355, 0x25: 889, 0x26: 667, 0x27: 191, //
+  0x28: 333, 0x29: 333, 0x2A: 389, 0x2B: 584, 0x2C: 278, 0x2D: 333, //
+  0x2E: 278, 0x2F: 278, 0x3A: 278, 0x3B: 278, 0x3C: 584, 0x3D: 584, //
+  0x3E: 584, 0x40: 1015, //
+  // A–Z
+  0x41: 667, 0x42: 667, 0x43: 722, 0x44: 722, 0x45: 667, 0x46: 611, //
+  0x47: 778, 0x48: 722, 0x49: 278, 0x4A: 500, 0x4B: 667, 0x4C: 556, //
+  0x4D: 833, 0x4E: 722, 0x4F: 778, 0x50: 667, 0x51: 778, 0x52: 722, //
+  0x53: 667, 0x54: 611, 0x55: 722, 0x56: 667, 0x57: 944, 0x58: 667, //
+  0x59: 667, 0x5A: 611, //
+  0x5B: 278, 0x5C: 278, 0x5D: 278, 0x5F: 556, //
+  // a–z
+  0x61: 556, 0x62: 556, 0x63: 500, 0x64: 556, 0x65: 556, 0x66: 278, //
+  0x67: 556, 0x68: 556, 0x69: 222, 0x6A: 222, 0x6B: 500, 0x6C: 222, //
+  0x6D: 833, 0x6E: 556, 0x6F: 556, 0x70: 556, 0x71: 556, 0x72: 333, //
+  0x73: 500, 0x74: 278, 0x75: 556, 0x76: 500, 0x77: 722, 0x78: 500, //
+  0x79: 500, 0x7A: 500, //
+  // Ä Ö Ü ä ö ü ß
+  0xC4: 667, 0xD6: 778, 0xDC: 722, 0xE4: 556, 0xF6: 556, 0xFC: 556, //
+  0xDF: 611,
+};
 
 /// A one-page PDF with the given lines of text (font Helvetica).
 Uint8List createMockPdf(List<String> lines) => createMockPdfPages([lines]);
