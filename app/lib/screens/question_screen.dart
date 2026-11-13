@@ -206,69 +206,157 @@ class _QuestionScreenState extends State<QuestionScreen> {
   }
 }
 
-/// A source: number as in the answer text, document and excerpt.
-class _SourceCard extends StatelessWidget {
+/// A source in one compact line: number as in the answer text, type, date
+/// and issuer. The excerpt only shows when expanded.
+///
+/// Two separate tap targets, so that one is not hit instead of the other:
+/// the left part opens the entry, the arrow button on the right (behind a
+/// divider) shows or hides the excerpt.
+class _SourceCard extends StatefulWidget {
   const _SourceCard({required this.source, required this.onOpen});
 
   final Source source;
   final VoidCallback onOpen;
 
   @override
+  State<_SourceCard> createState() => _SourceCardState();
+}
+
+class _SourceCardState extends State<_SourceCard> {
+  /// `true` while the excerpt is shown. Every card starts collapsed.
+  var _expanded = false;
+
+  void _toggle() => setState(() => _expanded = !_expanded);
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final catalog = ModuleCatalog.of(context);
+    final source = widget.source;
     // Type name from the module of the source; a type is only unique with it.
-    final header = [
-      catalog.typeName(source.module, source.type),
-      source.documentDate?.display ?? 'ohne Datum',
-    ].join(' · ');
+    final typeName = catalog.typeName(source.module, source.type);
+    final date = source.documentDate?.display ?? 'ohne Datum';
+    final issuer = source.issuer ?? 'Quelle unbekannt';
+    // Always the number from the backend, never the position in the list:
+    // the numbers can have gaps (e.g. only 1 and 3).
+    final number = source.number;
     return Card(
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              CircleAvatar(radius: 16, child: Text('${source.number}')),
-              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          catalog.typeIcon(source.module, source.type),
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            header,
-                            style: theme.textTheme.labelLarge,
+                // One label for the screen reader instead of the single
+                // texts; the hint says what a double tap does.
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  label: 'Quelle $number: $typeName, $date, $issuer',
+                  onTapHint: 'Eintrag öffnen',
+                  onTap: widget.onOpen,
+                  excludeSemantics: true,
+                  child: InkWell(
+                    onTap: widget.onOpen,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                      child: Row(
+                        children: [
+                          CircleAvatar(radius: 16, child: Text('$number')),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      catalog.typeIcon(
+                                        source.module,
+                                        source.type,
+                                      ),
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        '$typeName · $date',
+                                        style: theme.textTheme.labelLarge,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  issuer,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      source.issuer ?? 'Quelle unbekannt',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '„${source.excerpt}“',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontStyle: FontStyle.italic,
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              const SizedBox(height: 32, child: VerticalDivider(width: 1)),
+              // The label names the source, otherwise a screen reader would
+              // read several buttons with the same text.
+              Semantics(
+                button: true,
+                expanded: _expanded,
+                label: _expanded
+                    ? 'Auszug von Quelle $number ausblenden'
+                    : 'Auszug von Quelle $number anzeigen',
+                onTap: _toggle,
+                excludeSemantics: true,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: IconButton(
+                    onPressed: _toggle,
+                    tooltip: _expanded
+                        ? 'Auszug ausblenden'
+                        : 'Auszug anzeigen',
+                    icon: Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
-        ),
+          // The height glides along instead of the sources below jumping.
+          AnimatedSize(
+            duration: motionDuration(context, Durations.medium2),
+            curve: Easing.emphasizedDecelerate,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Divider(height: 1),
+                      // Own node for the screen reader, otherwise the excerpt
+                      // would be merged into the label of the arrow button.
+                      Semantics(
+                        container: true,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                          child: Text(
+                            '„${source.excerpt}“',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }

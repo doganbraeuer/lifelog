@@ -15,10 +15,10 @@ Finder saveButton() => find.widgetWithText(FilledButton, 'Speichern');
 Finder textField() => find.widgetWithText(TextField, 'Dokumentinhalt');
 
 const hintWithSpeech =
-    'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB, Text bis 100 000 '
+    'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB, Text bis 100 000 '
     'Zeichen oder eine Sprachnotiz bis 5 Minuten.';
 const hintWithoutSpeech =
-    'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB oder Text bis 100 000 '
+    'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB oder Text bis 100 000 '
     'Zeichen.';
 const unavailableNotice = 'Sprachnotizen sind gerade nicht verfügbar.';
 

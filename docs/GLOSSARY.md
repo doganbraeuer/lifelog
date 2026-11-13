@@ -186,7 +186,7 @@ The backend never sends these; the app sets them itself in an
 |---|---|---|---|
 | `NETZWERK_FEHLER` | `NETWORK_ERROR` | No connection or timeout | `api/api_exception.dart` (`ErrorCode.networkError`) |
 | `UNBEKANNTE_ANTWORT` | `UNEXPECTED_RESPONSE` | The response does not match the contract | `api/api_exception.dart` (`ErrorCode.unexpectedResponse`) |
-| – | `PICK_FAILED` | Choosing a photo or file failed (camera, photo library or file picker), e.g. access denied | `screens/upload_screen.dart` |
+| – | `PICK_FAILED` | Choosing a photo or file failed (camera, photo library or file picker), e.g. access denied | `api/api_exception.dart` (`ErrorCode.pickFailed`), `screens/upload_screen.dart` |
 | – | `RECORDING_FAILED` | Recording a spoken note failed: microphone access denied, or the recording could not be started or saved | `api/api_exception.dart` (`ErrorCode.recordingFailed`), `screens/upload_screen.dart`, `screens/voice_note_view.dart` |
 
 ### Status

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
+import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/screens/upload_screen.dart';
@@ -89,6 +90,32 @@ void main() {
       await mock.listEntries(module: 'health'),
       hasLength(sampleCount + 1),
     );
+  });
+
+  testWidgets('a WebP image gets an image preview and can be uploaded', (
+    tester,
+  ) async {
+    final mock = fastMock();
+    final chooser = FakeFileChooser()..image = testWebp('befund.webp');
+    await goToUpload(tester, mock, chooser);
+
+    await tester.tap(find.text('Bild auswählen'));
+    await tester.pumpAndSettle();
+    expect(find.text('befund.webp'), findsOneWidget);
+    // Shown as an image, not with the PDF icon.
+    final preview = tester.widget<Image>(find.byType(Image));
+    expect(preview.image, isA<MemoryImage>());
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsNothing);
+
+    final before = {
+      for (final e in await mock.listEntries(module: 'health')) e.id,
+    };
+    await tester.tap(uploadButton());
+    await tester.pumpAndSettle();
+    final added = (await mock.listEntries(module: 'health'))
+        .where((e) => !before.contains(e.id))
+        .single;
+    expect((await mock.getEntry(added.id)).file.mimeType, 'image/webp');
   });
 
   testWidgets('X on the preview discards the file', (tester) async {
@@ -188,6 +215,25 @@ void main() {
     expect(find.textContaining('Kein Zugriff'), findsOneWidget);
   });
 
+  testWidgets('choice failed for another reason: message to try again', (
+    tester,
+  ) async {
+    await goToUpload(tester, fastMock(), _BrokenChooser());
+
+    await tester.tap(find.text('Bild auswählen'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Die Auswahl hat nicht geklappt. Bitte noch einmal versuchen.'),
+      findsOneWidget,
+    );
+    expect(find.text('Bild auswählen'), findsOneWidget);
+  });
+
+  test('PICK_FAILED is the app-only code from docs/GLOSSARY.md', () {
+    expect(ErrorCode.pickFailed, 'PICK_FAILED');
+  });
+
   testWidgets('photo after a restart (Android) is offered again', (
     tester,
   ) async {
@@ -209,4 +255,10 @@ class _NoAccessChooser extends FakeFileChooser {
   @override
   Future<ChosenFile?> takePhoto() async =>
       throw PlatformException(code: 'camera_access_denied');
+}
+
+class _BrokenChooser extends FakeFileChooser {
+  @override
+  Future<ChosenFile?> pickImage() async =>
+      throw PlatformException(code: 'invalid_image');
 }

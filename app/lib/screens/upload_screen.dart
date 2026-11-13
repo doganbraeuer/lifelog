@@ -139,7 +139,7 @@ class _UploadScreenState extends State<UploadScreen> {
       if (!mounted) return;
       setState(() {
         _error = ApiException(
-          code: 'PICK_FAILED',
+          code: ErrorCode.pickFailed,
           message: e.code.contains('access_denied')
               ? 'Kein Zugriff auf Kamera oder Fotos. Bitte in den '
                     'Einstellungen des Geräts erlauben.'
@@ -469,10 +469,10 @@ class _UploadScreenState extends State<UploadScreen> {
         Text(
           // Only promise spoken notes when they work right now.
           _speech == SpeechStatus.ok
-              ? 'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB, '
+              ? 'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB, '
                     'Text bis 100 000 Zeichen oder eine Sprachnotiz bis '
                     '5 Minuten.'
-              : 'Erlaubt sind JPEG, PNG, HEIC und PDF bis 10 MB '
+              : 'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB '
                     'oder Text bis 100 000 Zeichen.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,

@@ -6,6 +6,13 @@ import '../helpers.dart';
 
 const hit = 'Welchen Hämoglobinwert hatte ich im Oktober?';
 
+/// The excerpt of the source for [hit], as the expanded card shows it.
+const hitExcerpt = '„Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)“';
+
+/// Matches a line in the lab report and in the doctor's letter, so the mock
+/// answers with two sources.
+const twoSources = 'Welcher Patient ist Max Mustermann?';
+
 /// Starts the app and switches to the „Fragen“ page.
 Future<void> goToQuestions(WidgetTester tester, MockApiClient mock) async {
   useLargeScreen(tester);
@@ -57,7 +64,9 @@ void main() {
     expect(find.text('500/500'), findsOneWidget);
   });
 
-  testWidgets('answer with source, tapping opens the entry', (tester) async {
+  testWidgets('answer with a collapsed source, tapping opens the entry', (
+    tester,
+  ) async {
     await goToQuestions(tester, fastMock());
     await askQuestion(tester, hit);
 
@@ -66,10 +75,9 @@ void main() {
     expect(find.text('Quellen'), findsOneWidget);
     expect(find.text('Laborbefund · 14.10.2026'), findsOneWidget);
     expect(find.text('Labor Muster GmbH, Salzburg'), findsOneWidget);
-    expect(
-      find.text('„Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)“'),
-      findsOneWidget,
-    );
+    // Collapsed: the excerpt is hidden, only the arrow is there.
+    expect(find.text(hitExcerpt), findsNothing);
+    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
 
     await tester.tap(find.text('Laborbefund · 14.10.2026'));
     await tester.pumpAndSettle();
@@ -79,6 +87,54 @@ void main() {
     await tapBack(tester);
     expect(find.text('Quellen'), findsOneWidget);
     expect(find.text('„$hit“'), findsOneWidget);
+  });
+
+  testWidgets('the arrow shows and hides the excerpt, it does not open', (
+    tester,
+  ) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, hit);
+
+    await tester.tap(find.byTooltip('Auszug anzeigen'));
+    await tester.pumpAndSettle();
+    expect(find.text(hitExcerpt), findsOneWidget);
+    expect(find.byTooltip('Auszug ausblenden'), findsOneWidget);
+    // Still on the answer: expanding did not open the entry.
+    expect(find.text('Erkannte Angaben'), findsNothing);
+    expect(find.text('„$hit“'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Auszug ausblenden'));
+    await tester.pumpAndSettle();
+    expect(find.text(hitExcerpt), findsNothing);
+    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
+  });
+
+  testWidgets('several sources expand independently', (tester) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, twoSources);
+
+    expect(find.byTooltip('Auszug anzeigen'), findsNWidgets(2));
+    expect(find.text('Laborbefund · 14.10.2026'), findsOneWidget);
+    expect(find.text('Arztbrief · 02.09.2026'), findsOneWidget);
+    expect(find.textContaining('„Patient: Max Mustermann'), findsNothing);
+
+    await tester.tap(find.byTooltip('Auszug anzeigen').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('„Patient: Max Mustermann'), findsOneWidget);
+    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
+    expect(find.byTooltip('Auszug ausblenden'), findsOneWidget);
+  });
+
+  testWidgets('a new answer starts collapsed again', (tester) async {
+    await goToQuestions(tester, fastMock());
+    await askQuestion(tester, hit);
+    await tester.tap(find.byTooltip('Auszug anzeigen'));
+    await tester.pumpAndSettle();
+    expect(find.text(hitExcerpt), findsOneWidget);
+
+    await askQuestion(tester, 'Hämoglobin');
+    expect(find.text(hitExcerpt), findsNothing);
+    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
   });
 
   testWidgets('without a hit: only the fixed sentence, no sources', (
