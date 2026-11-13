@@ -26,7 +26,8 @@ const cloudNotice =
 ///
 /// Flow: choose a file → check the preview → „Hochladen“. The preview
 /// prevents the wrong file from going to the cloud by accident.
-/// For text: type or paste → „Importieren“.
+/// For text: type, paste or dictate (microphone in the field) →
+/// „Importieren“ or „Speichern“.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({
     super.key,
@@ -66,13 +67,14 @@ class _UploadScreenState extends State<UploadScreen> {
   var _textMode = false;
   final _text = QuantityHighlightController();
 
-  /// `true` while recording or transcribing a spoken note.
+  /// `true` while recording or transcribing a spoken note. Only in the text
+  /// screen; the recording replaces the field, its text is kept.
   var _voiceMode = false;
 
-  /// `true` if the text in the field comes from a spoken note: it is
+  /// `true` if the text in the field contains a spoken note: it is
   /// unchecked machine output, so the page asks to check it and marks
-  /// numbers and units in it. Kept in the controller, so that the marks
-  /// and this flag can never disagree.
+  /// numbers and units in the field. Kept in the controller, so that the
+  /// marks and this flag can never disagree.
   bool get _textFromSpeech => _text.highlightQuantities;
   set _textFromSpeech(bool value) => _text.highlightQuantities = value;
 
@@ -287,18 +289,19 @@ class _UploadScreenState extends State<UploadScreen> {
     });
   }
 
-  /// The backend recognized text: show it in the text field for checking.
-  /// It is only saved when the user confirms („Speichern“).
+  /// The backend recognized text: put it into the field at the cursor (or
+  /// at the end) for checking. It is only saved when the user confirms
+  /// („Speichern“).
   void _showTranscript(String text) {
-    _text.text = text;
+    _text.value = insertTranscript(_text.value, text);
     setState(() {
       _voiceMode = false;
-      _textMode = true;
       _textFromSpeech = true;
       _error = null;
     });
   }
 
+  /// Back to the field with its text unchanged („Abbrechen“, an error).
   void _closeVoice() => setState(() => _voiceMode = false);
 
   void _showVoiceError(ApiException? error) => setState(() => _error = error);
@@ -339,29 +342,18 @@ class _UploadScreenState extends State<UploadScreen> {
                     },
                   ),
                 ),
-                // Soft switch between choice, preview, text field and
-                // recording.
+                // Soft switch between choice, preview and text screen.
                 FadeThroughSwitcher(
-                  child: switch ((_file, _textMode, _voiceMode)) {
-                    (final file?, _, _) => KeyedSubtree(
+                  child: switch ((_file, _textMode)) {
+                    (final file?, _) => KeyedSubtree(
                       key: const ValueKey('preview'),
                       child: _preview(file),
                     ),
-                    (null, _, true) => KeyedSubtree(
-                      key: const ValueKey('voice'),
-                      child: VoiceNoteView(
-                        api: widget.api,
-                        recorder: widget.voiceRecorder,
-                        onTranscribed: _showTranscript,
-                        onClosed: _closeVoice,
-                        onError: _showVoiceError,
-                      ),
-                    ),
-                    (null, true, false) => KeyedSubtree(
+                    (null, true) => KeyedSubtree(
                       key: const ValueKey('text'),
                       child: _textInput(),
                     ),
-                    (null, false, false) => KeyedSubtree(
+                    (null, false) => KeyedSubtree(
                       key: const ValueKey('choose'),
                       child: _chooserButtons(),
                     ),
@@ -372,8 +364,10 @@ class _UploadScreenState extends State<UploadScreen> {
           ),
           // Fixed bar below the list: it does not scroll and sits right above
           // the open keyboard (the shell shrinks the screen). That way the
-          // buttons stay reachable even with long text.
-          if (_textMode && _file == null && !_uploading) _textActions(),
+          // buttons stay reachable even with long text. Hidden while
+          // recording, so nothing is saved halfway.
+          if (_textMode && _file == null && !_uploading && !_voiceMode)
+            _textActions(),
         ],
       ),
     );
@@ -454,24 +448,14 @@ class _UploadScreenState extends State<UploadScreen> {
           icon: const Icon(Icons.notes),
           label: const Text('Text eingeben'),
         ),
-        // Switched off on the server: no button at all. Otherwise only
-        // usable when /status says the speech recognition answers.
-        if (_speech != SpeechStatus.off) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _speech == SpeechStatus.ok ? _openVoice : null,
-            icon: const Icon(Icons.mic_none),
-            label: const Text('Sprachnotiz'),
-          ),
-        ],
-        if (_speech == SpeechStatus.unavailable) _speechUnavailable(),
         const SizedBox(height: 12),
         Text(
-          // Only promise spoken notes when they work right now.
+          // Only promise dictation when it works right now. The microphone
+          // is in the text screen, not here.
           _speech == SpeechStatus.ok
-              ? 'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB, '
-                    'Text bis 100 000 Zeichen oder eine Sprachnotiz bis '
-                    '5 Minuten.'
+              ? 'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB oder '
+                    'Text bis 100 000 Zeichen. Unter „Text eingeben“ kannst '
+                    'du den Text auch diktieren (bis 5 Minuten).'
               : 'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB '
                     'oder Text bis 100 000 Zeichen.',
           textAlign: TextAlign.center,
@@ -504,28 +488,29 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  /// Text field; the buttons are in the fixed bar ([_textActions]).
+  /// Text screen: the field with the microphone, or the recording in its
+  /// place. The buttons are in the fixed bar ([_textActions]).
   Widget _textInput() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_textFromSpeech) ...[
+        if (_textFromSpeech && !_voiceMode) ...[
           const _TranscriptNotice(),
           const SizedBox(height: 12),
         ],
-        TextField(
-          controller: _text,
-          enabled: !_uploading,
-          minLines: 6,
-          maxLines: 14,
-          maxLength: maxTextLength,
-          keyboardType: TextInputType.multiline,
-          decoration: const InputDecoration(
-            labelText: 'Dokumentinhalt',
-            hintText: 'Text des Dokuments eingeben oder einfügen',
-            alignLabelWithHint: true,
-            border: OutlineInputBorder(),
-          ),
+        FadeThroughSwitcher(
+          child: _voiceMode
+              ? KeyedSubtree(
+                  key: const ValueKey('voice'),
+                  child: VoiceNoteView(
+                    api: widget.api,
+                    recorder: widget.voiceRecorder,
+                    onTranscribed: _showTranscript,
+                    onClosed: _closeVoice,
+                    onError: _showVoiceError,
+                  ),
+                )
+              : KeyedSubtree(key: const ValueKey('field'), child: _textField()),
         ),
         FadeThroughSwitcher(
           child: _uploading
@@ -536,6 +521,56 @@ class _UploadScreenState extends State<UploadScreen> {
                 )
               : const SizedBox.shrink(key: ValueKey('ready')),
         ),
+      ],
+    );
+  }
+
+  /// The field „Dokumentinhalt“ with the microphone in its top right
+  /// corner. A suffixIcon is centered vertically, which would put the
+  /// button in the middle of the six lines; so the button lies over the
+  /// field, and an empty suffixIcon keeps the text clear of it.
+  Widget _textField() {
+    // Switched off on the server: no microphone at all. Otherwise only
+    // usable when /status says the speech recognition answers.
+    final microphone = _speech != SpeechStatus.off;
+    final canRecord = _speech == SpeechStatus.ok && !_uploading;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Stack(
+          children: [
+            TextField(
+              controller: _text,
+              enabled: !_uploading,
+              minLines: 6,
+              maxLines: 14,
+              maxLength: maxTextLength,
+              keyboardType: TextInputType.multiline,
+              decoration: InputDecoration(
+                labelText: 'Dokumentinhalt',
+                hintText: canRecord
+                    ? 'Text des Dokuments eingeben, einfügen oder diktieren'
+                    : 'Text des Dokuments eingeben oder einfügen',
+                alignLabelWithHint: true,
+                border: const OutlineInputBorder(),
+                // Empty room for the microphone on top of it. Not a wider
+                // contentPadding: that would also move the counter below.
+                suffixIcon: microphone ? const SizedBox(width: 40) : null,
+              ),
+            ),
+            if (microphone)
+              PositionedDirectional(
+                top: 4,
+                end: 4,
+                child: IconButton(
+                  onPressed: canRecord ? _openVoice : null,
+                  icon: const Icon(Icons.mic_none),
+                  tooltip: 'Sprachnotiz aufnehmen',
+                ),
+              ),
+          ],
+        ),
+        if (_speech == SpeechStatus.unavailable) _speechUnavailable(),
       ],
     );
   }

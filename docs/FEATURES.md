@@ -72,7 +72,7 @@ Lifelog („Bereiche“, module overview)
 |---|---|---|---|
 | Module overview | „Lifelog“ | App start | One tile per module; inactive modules marked „Bald verfügbar“. A „Mock“ badge if the app runs without a backend. |
 | Timeline | „Zeitleiste“ | Tab 1 of a module | All entries of the module on a time axis, grouped by month, with sort menu and order button |
-| Upload | „Hochladen“ | Tab 2, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“; preview; progress; errors |
+| Upload | „Hochladen“ | Tab 2, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“ (field with a microphone to dictate); preview; progress; errors |
 | Questions | „Fragen“ | Tab 3 | Question field, answer with tappable references, sources that expand to the full text with the passage marked |
 | Entry | type name, e.g. „Laborbefund“ | A row in the timeline, a source of an answer, a successful upload, a duplicate | Original preview, „Angaben“, „Erkannte Angaben“, „Volltext“; correction and delete |
 | Original | file name | „Originaldatei öffnen“ or a tap on the preview in the entry | Image (zoomable), PDF (pages), or text |
@@ -281,7 +281,8 @@ Tab „Hochladen“ → „Text eingeben“.
 
 1. Tap „Text eingeben“; the field „Dokumentinhalt“ opens.
 2. Type or paste the text (at most 100,000 characters; the counter shows
-   the length).
+   the length). The microphone in the top right corner of the field
+   dictates text instead ([voice note](#5-voice-note)).
 3. Tap „Importieren“. „Abbrechen“ closes the field.
 4. On success: „Text gespeichert.“, then the new entry opens as after an
    upload. After an error the text stays, so it can be changed or sent
@@ -321,64 +322,82 @@ then is it saved as a [text import](#4-text-import).
 
 ### Where
 
-Tab „Hochladen“ → „Sprachnotiz“ (microphone icon), below „Text eingeben“.
-There are no extra screens: below the cloud notice, the tab changes from the
-buttons to the recording, then to the waiting view, then to the text field
-„Dokumentinhalt“ for checking.
+Tab „Hochladen“ → „Text eingeben“ → the microphone (tooltip „Sprachnotiz
+aufnehmen“) in the top right corner of the field „Dokumentinhalt“. There
+is no button of its own in the upload choice and there are no extra
+screens: the recording and then the waiting view take the place of the
+field, and the recognized text comes back into it for checking.
 
-The button follows `GET /status` (field `speech`), asked when the tab opens:
+The microphone follows `GET /status` (field `speech`), asked when the tab
+opens:
 
-- `ok`: the button works, and the hint below the buttons ends with „… oder
-  eine Sprachnotiz bis 5 Minuten.“
-- `unavailable`, or `/status` cannot be reached: the button is greyed out,
-  below it „Sprachnotizen sind gerade nicht verfügbar.“ and „Erneut prüfen“.
-- `off`: no button.
+- `ok`: the microphone works. The hint in the upload choice says „Unter
+  „Text eingeben“ kannst du den Text auch diktieren (bis 5 Minuten).“, and
+  the empty field says „Text des Dokuments eingeben, einfügen oder
+  diktieren“.
+- `unavailable`, or `/status` cannot be reached: the microphone is greyed
+  out, below the field „Sprachnotizen sind gerade nicht verfügbar.“ and
+  „Erneut prüfen“.
+- `off`: no microphone.
 
-<img src="features/voice-note-button.png" width="260" alt="Tab „Hochladen“ with the button „Sprachnotiz“ below „Text eingeben“">
+<img src="features/voice-note-mic.png" width="260" alt="Text screen: the field „Dokumentinhalt“ with typed text and the microphone in its top right corner, buttons „Abbrechen“ and „Importieren“ below">
 
 ### How to use
 
-1. Tap „Sprachnotiz“. The first time, the phone asks for the microphone
+1. Tap „Text eingeben“, type something first if you like, and put the
+   cursor where the dictated text should go.
+2. Tap the microphone. The first time, the phone asks for the microphone
    (Android: „Lifelog erlauben, Audioaufnahmen zu machen?“). If access is
    denied, a card says „Kein Zugriff auf das Mikrofon. Bitte in den
    Einstellungen des Geräts erlauben.“
-2. The recording starts at once: a pulsing microphone, the running time and
-   „Aufnahme läuft · höchstens 5 Minuten“. Speak the note.
-3. Tap „Stopp“. „Abbrechen“ throws the recording away and goes back to the
-   buttons. The recording also stops by itself at 4:58, just under the
-   limit, and when the phone interrupts it (a call) or the app goes to the
-   background; it then goes on as after „Stopp“.
-4. Wait: „Die Sprachnotiz wird in Text umgewandelt. Das kann bis zu zwei
+3. The recording starts at once in place of the field: a pulsing
+   microphone, the running time and „Aufnahme läuft · höchstens 5
+   Minuten“. The bar with „Importieren“ is hidden meanwhile. Speak the
+   note.
+4. Tap „Stopp“. „Abbrechen“ throws the recording away and goes back to the
+   field, whose text stays as it was. The recording also stops by itself at
+   4:58, just under the limit, and when the phone interrupts it (a call) or
+   the app goes to the background; it then goes on as after „Stopp“.
+5. Wait: „Die Sprachnotiz wird in Text umgewandelt. Das kann bis zu zwei
    Minuten dauern.“
-5. Check the text. It is in the field „Dokumentinhalt“, below the card
-   „Erkannter Text aus deiner Sprachnotiz. Bitte prüfen und bei Bedarf
-   korrigieren, bevor du speicherst.“ and „Zahlen und Einheiten sind
-   markiert. Bitte besonders genau prüfen.“ Every number and the word right
-   after it are marked (bold on a light background), e.g. „400 Milligramm“,
-   „2,5 Milliunits pro Liter“, „130/85 mmHg“, because a real but wrong
-   unit („mL pro Liter“) is the mistake no check catches. Function words
-   such as „nach“, „bis“ or „und“ are not taken as units („12.11.2026 nach
-   …“ marks only the date).
-   The marks follow the editing: a number typed in is marked at once. Text
-   typed with „Text eingeben“ is not marked.
-6. Correct what is wrong, then tap „Speichern“. From here on it is a
+6. Check the text. It is in the field „Dokumentinhalt“:
+   - at the cursor, separated by a space (a selection is replaced, as
+     typing would); a space after it only if a letter or digit follows;
+   - without a cursor (the field was never tapped) at the end, on a new
+     line;
+   - in an empty field, on its own.
+
+   Above the field is the card „Erkannter Text aus deiner Sprachnotiz.
+   Bitte prüfen und bei Bedarf korrigieren, bevor du speicherst.“ and
+   „Zahlen und Einheiten sind markiert. Bitte besonders genau prüfen.“ Every
+   number and the word right after it are marked (bold on a light
+   background), e.g. „400 Milligramm“, „2,5 Milliunits pro Liter“, „130/85
+   mmHg“, because a real but wrong unit („mL pro Liter“) is the mistake no
+   check catches. Function words such as „nach“, „bis“ or „und“ are not
+   taken as units („12.11.2026 nach …“ marks only the date).
+   The marks follow the editing: a number typed in is marked at once. Once
+   something is dictated, the marks cover the whole field, typed text too.
+   Text typed without dictating is not marked.
+7. Dictate again if needed; each text goes in at the cursor.
+8. Correct what is wrong, then tap „Speichern“. From here on it is a
    [text import](#4-text-import): „Text gespeichert.“, then the new entry
    opens. The same text a second time gives „Diesen Text hast du schon
    importiert.“ with „Vorhandenen Eintrag öffnen“. „Abbrechen“ throws the
    text away; nothing is saved.
 
-<img src="features/voice-note-recording.png" width="260" alt="Recording: pulsing microphone, running time 0:06, buttons „Stopp“ and „Abbrechen“"> <img src="features/voice-note-check.png" width="260" alt="Recognized text in the field „Dokumentinhalt“ with marked numbers and units, button „Speichern“">
+<img src="features/voice-note-recording.png" width="260" alt="Recording in place of the field: pulsing microphone, running time, buttons „Stopp“ and „Abbrechen“"> <img src="features/voice-note-check.png" width="260" alt="Typed text with the recognized text added at the cursor in the field „Dokumentinhalt“, numbers and units marked, button „Speichern“">
 
 **Errors.** A card shows the message from the backend.
 
 - No speech (`NO_SPEECH`: silence, only noise, or too short): „In der
   Aufnahme ist keine Sprache zu hören.“ The recording is deleted and the
-  buttons come back; record again.
+  field comes back with its text unchanged; record again.
 - Too long, too large, unreadable or an unknown format
   (`AUDIO_TOO_LONG`, `FILE_TOO_LARGE`, `UNREADABLE`,
   `UNSUPPORTED_FILE_TYPE`): the backend's message, e.g. „Die Aufnahme ist
   länger als 5 Minuten. Bitte kürzer sprechen oder aufteilen.“ The
-  recording is deleted, as a second try would fail the same way.
+  recording is deleted, as a second try would fail the same way, and the
+  field comes back.
 - Temporary errors (no connection, server error, speech recognition not
   reachable, unexpected answer): the message plus „Erneut versuchen“, which
   sends the same recording again without speaking again, and „Verwerfen“.
@@ -449,7 +468,7 @@ after about 3 seconds; what was said is not evaluated.
 
 ### Status
 
-**Backend done, app in progress** (Dylan).
+**Done**.
 
 ---
 

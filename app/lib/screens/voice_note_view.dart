@@ -28,8 +28,9 @@ enum _Phase { starting, recording, transcribing, failed }
 /// Records a spoken note and turns it into text (docs/API.md 3.9).
 ///
 /// Flow: record (with running time) → „Stopp“ → the backend transcribes →
-/// [onTranscribed] gets the text. Saving is not done here: the upload page
-/// shows the text for checking and saves it through the text import.
+/// [onTranscribed] gets the text. Saving is not done here: the text screen
+/// of the upload page inserts the text into its field ([insertTranscript])
+/// for checking and saves it through the text import.
 ///
 /// The recording is deleted as soon as it is no longer needed: after the
 /// transcription, after an error without a chance of success, on
@@ -263,6 +264,50 @@ class _VoiceNoteViewState extends State<VoiceNoteView>
       const SizedBox(height: 8),
       TextButton(onPressed: _cancel, child: const Text('Verwerfen')),
     ],
+  );
+}
+
+final _whitespace = RegExp(r'\s');
+final _letterOrDigit = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
+/// Puts the recognized [transcript] into the text of a field.
+///
+/// - With a cursor in the field: at the cursor; a selection is replaced, as
+///   typing would do. A space separates it from the text before, so one
+///   can dictate the rest of a sentence.
+/// - Without a cursor (the field was never tapped): at the end, on a new
+///   line, as a new paragraph.
+/// - No separator at the start of the text or after whitespace. A space
+///   after it only if a letter or digit follows right away, not before
+///   punctuation such as `.`, `,` or `/`.
+///
+/// The cursor ends up behind the inserted text. An empty transcript changes
+/// nothing.
+TextEditingValue insertTranscript(TextEditingValue value, String transcript) {
+  final insert = transcript.trim();
+  if (insert.isEmpty) return value;
+  final text = value.text;
+  final selection = value.selection;
+  final hasCursor = selection.isValid && selection.end <= text.length;
+  final start = hasCursor ? selection.start : text.length;
+  final end = hasCursor ? selection.end : text.length;
+  final before = text.substring(0, start);
+  final after = text.substring(end);
+  final lead = before.isEmpty || _whitespace.hasMatch(before[before.length - 1])
+      ? ''
+      : hasCursor
+      ? ' '
+      : '\n';
+  final trail =
+      after.isNotEmpty &&
+          _letterOrDigit.hasMatch(String.fromCharCode(after.runes.first))
+      ? ' '
+      : '';
+  return TextEditingValue(
+    text: '$before$lead$insert$trail$after',
+    selection: TextSelection.collapsed(
+      offset: start + lead.length + insert.length,
+    ),
   );
 }
 
