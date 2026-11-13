@@ -63,6 +63,7 @@ Lifelog („Bereiche“, module overview)
     ├── Tab „Zeitleiste“ (timeline) ──────────┐
     ├── Tab „Hochladen“ (upload)              ├── Entry („Eintrag“)
     │     photo, image, PDF, text             │     ├── Original („Originaldatei“)
+    │                                         │     ├── Location of a value
     └── Tab „Fragen“ (questions) ─ source ────┘     ├── correction dialogs
                                                     └── delete dialog
 ```
@@ -75,6 +76,7 @@ Lifelog („Bereiche“, module overview)
 | Questions | „Fragen“ | Tab 3 | Question field, answer, sources |
 | Entry | type name, e.g. „Laborbefund“ | A row in the timeline, a source of an answer, a successful upload, a duplicate | Original preview, „Angaben“, „Erkannte Angaben“, „Volltext“; correction and delete |
 | Original | file name | „Originaldatei öffnen“ or a tap on the preview in the entry | Image (zoomable), PDF (pages), or text |
+| Location in the original | name of the field, value below | A value with the small grey icon in the entry | The PDF page or photo with the value framed, or the text with it highlighted; „Fundstelle 1 von 2“; „Ganzes Original öffnen“ |
 | Dialogs | „Typ korrigieren“, „Datum wählen“, „Quelle korrigieren“, „<Fact> korrigieren“, „Eintrag löschen?“ | Pencil and trash buttons in the entry | Correct one value, or confirm deleting |
 
 The tabs can also be switched by swiping. All three tabs stay alive while
@@ -615,8 +617,8 @@ has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
    ([Correction](#9-correction)). The app shows the check from the
    backend's response right away: the card and the mark of the value
    change, e.g. to „4 von 6 Werten im Original gefunden (67 %)“.
-4. The jump from a value to its place in the original is not built yet
-   ([Original](#12-original)); the app already reads the `locations`.
+4. Tap a value with the small grey icon to see its place in the original
+   ([Original](#12-original), „Jump to a value in the original“).
 
 ### Behind the scenes
 
@@ -671,8 +673,8 @@ has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
 
 ### Status
 
-**Backend done, app in progress** (Dylan: showing the check and jumping to
-the place).
+**Done** (the app shows the check and jumps to the place; the jump is
+still to be tested against the real backend).
 
 ---
 
@@ -822,6 +824,10 @@ the grey line „Nicht im Original gefunden“ if not. A corrected value shows
 the result in its correction hint („… · im Original gefunden“). After a
 correction both come from the backend's response.
 
+**Jump to the original:** a value with a location carries a small grey
+icon after it; tapping the row (not the pencil) shows the value in the
+original ([Original](#12-original)).
+
 ### Behind the scenes
 
 - `GET /api/v1/entries/{id}` returns the full entry (API.md section 2),
@@ -838,7 +844,7 @@ correction both come from the backend's response.
 
 ### Status
 
-**Done**; verification display **in progress** (Dylan).
+**Done**, including the verification marks and the jump to the original.
 
 ---
 
@@ -852,6 +858,7 @@ with the document itself.
 ### Where
 
 [Entry](#11-entry) → „Originaldatei öffnen“, or a tap on the image preview.
+At one value: a tap on a value with the small grey icon in the entry.
 
 ### How to use
 
@@ -861,9 +868,36 @@ with the document itself.
 
 **Jump to a value in the original:**
 
-> **TODO (Dylan):** where the jump starts (a value in the entry, a mark of
-> the verification), how the place is shown (page, highlighted rectangle)
-> and how to get back.
+- **Where it starts:** in the [entry](#11-entry), every value with at
+  least one location (`documentDate`, `issuer`, any fact; also a corrected
+  value that was found) can be tapped. A small grey icon after the value
+  (and after the check mark) shows this; screen readers read the row with
+  „Im Original zeigen“. Values without a location look and behave as
+  before. The pencil stays a button of its own, so correcting is not
+  affected. „Typ“ and „Importiert“ are never checked and never tappable.
+- **How the place is shown:** a screen with the name of the field as
+  title and the value below it, e.g. „Hämoglobin“ / „14,2 g/dl“:
+  - **PDF:** only the page of the location, zoomed in on it; the rectangle
+    has a light fill and a thin frame in the color of the module. Other
+    rectangles of the same value on this page are filled more lightly. The
+    bar at the bottom says „Seite 2“.
+  - **Photo:** the photo upright, with the rectangle over it, zoomed in.
+  - **Text import:** the full text with the range highlighted, scrolled so
+    that it is in the upper third.
+  - Pinch to zoom, drag to move, as in the original.
+- **Several locations** (at most 3, best first): „Fundstelle 1 von 2“ with
+  the buttons „Vorherige Fundstelle“ and „Nächste Fundstelle“; a location
+  on another page switches the page („Fundstelle 2 von 2 · Seite 2“).
+- **Whole original:** the button „Ganzes Original öffnen“ (top right) opens
+  the file as above.
+- **Back** leads into the entry (from the whole original first back to the
+  location).
+- If a location cannot be shown (page missing, image not decodable), the
+  screen says „Diese Stelle kann nicht angezeigt werden.“ or „Das Bild kann
+  auf diesem Gerät nicht angezeigt werden.“ and offers „Ganzes Original
+  öffnen“.
+
+<img src="features/jump-entry.png" width="260" alt="Entry „Laborbefund“: date, issuer and facts with a check mark and a small grey icon; CRP („Nicht im Original gefunden“) without the icon"> <img src="features/jump-pdf.png" width="260" alt="Location of „Ramipril 5 mg“ on page 2 of a PDF: the value framed, bar „Fundstelle 2 von 2 · Seite 2“ with arrows"> <img src="features/jump-text.png" width="260" alt="Location of „Blutdruck“ in a text import: „135/85 mmHg“ highlighted in the full text">
 
 ### Behind the scenes
 
@@ -880,6 +914,23 @@ with the document itself.
   HEIC rotation applied), which is also how Flutter shows it. For a text
   import a location is a range `start`/`end` in `fullText` (Unicode code
   points).
+- **App, jump** (`OriginalLocationScreen`, `LocationOverlay`):
+  - PDF: the one page is rendered as an image with `pdfx` (2000 px wide)
+    instead of drawing over the PDF viewer, whose page position and zoom
+    are not available. Rendered pages are kept while the screen is open.
+  - Photo: the size comes from the decoded image. Flutter applies the EXIF
+    orientation while decoding (the platform the HEIC rotation), so it is
+    already the upright size the fractions refer to; the size in the file
+    header would be swapped for a portrait photo. A test decodes a JPEG
+    with orientation 6 (8×4 raw, 4×8 upright).
+  - Page and photo are fitted into the screen (`BoxFit.contain`); each
+    rectangle is offset plus fraction × shown size. The start zoom (1× to
+    3×) centers the location and never shows area beside the page.
+  - Text import: code points are converted to Dart string indices
+    (`TextLocation.utf16Range`), so emojis before the value do not shift
+    the highlight. Shown is `fullText`, not the decoded file.
+  - The image of an entry is loaded once and reused for the preview, the
+    location and the whole original.
 
 ### Limits
 
@@ -889,11 +940,19 @@ with the document itself.
 - No download or sharing of the original.
 - References `[n]` of an answer do not lead to a place in the original yet;
   a design is proposed in API.md, section 4.
+- Jump: the locations do not say whether two rectangles are two lines of
+  one value or two separate matches, so „Fundstelle 1 von 2“ steps through
+  rectangles, and a value spanning two lines counts as two locations.
+- Jump: rotated PDF pages (`/Rotate`) are not handled (the backend does
+  not test them either).
+- Jump in mock mode: the rectangles of the sample data are computed from
+  the layout of the mock files. For a photo or PDF uploaded in mock mode
+  they do not match the real file; only the real backend measures them.
 
 ### Status
 
-Showing the original: **Done.** Jumping to a value: **Backend done, app in
-progress** (Dylan).
+Showing the original: **Done.** Jumping to a value: **Done** (app tested
+with the mock on Android; against the real backend still to be tested).
 
 ---
 
