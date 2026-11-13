@@ -9,14 +9,74 @@ import 'package:pdfx/pdfx.dart';
 /// interface; tests pass their own.
 abstract interface class PdfViewer {
   Widget buildView(Uint8List bytes);
+
+  /// Renders page [page] (starting at 1) as an image, for showing a
+  /// location on it. Throws a [RangeError] if the PDF has no such page.
+  Future<RenderedPdfPage> renderPage(Uint8List bytes, int page);
+}
+
+/// One page of a PDF rendered as an image.
+class RenderedPdfPage {
+  const RenderedPdfPage({
+    required this.image,
+    required this.width,
+    required this.height,
+    required this.pageCount,
+  });
+
+  /// The page as a PNG.
+  final Uint8List image;
+
+  /// Size of [image] in pixels; its aspect ratio is that of the page.
+  final double width;
+  final double height;
+
+  /// Number of pages of the whole PDF.
+  final int pageCount;
 }
 
 /// Real viewer with pdfx: zoomable, pages below each other.
 class PdfxViewer implements PdfViewer {
   const PdfxViewer();
 
+  /// Width of a rendered page in pixels: sharp enough for a zoom of about
+  /// 3× on a phone, and an A4 page stays at about 23 MB in memory.
+  static const renderWidth = 2000.0;
+
   @override
   Widget buildView(Uint8List bytes) => _PdfxView(bytes: bytes);
+
+  @override
+  Future<RenderedPdfPage> renderPage(Uint8List bytes, int page) async {
+    final document = await PdfDocument.openData(bytes);
+    try {
+      final count = document.pagesCount;
+      if (page < 1 || page > count) {
+        throw RangeError.range(page, 1, count, 'page');
+      }
+      final pdfPage = await document.getPage(page);
+      try {
+        final height = renderWidth * pdfPage.height / pdfPage.width;
+        final image = await pdfPage.render(
+          width: renderWidth,
+          height: height,
+          format: PdfPageImageFormat.png,
+          backgroundColor: '#FFFFFF',
+        );
+        if (image == null) throw StateError('page $page was not rendered');
+        return RenderedPdfPage(
+          image: image.bytes,
+          width: (image.width ?? renderWidth).toDouble(),
+          height: (image.height ?? height).toDouble(),
+          pageCount: count,
+        );
+      } finally {
+        await pdfPage.close();
+      }
+    } finally {
+      await document.close();
+    }
+  }
 }
 
 class _PdfxView extends StatefulWidget {

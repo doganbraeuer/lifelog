@@ -94,7 +94,7 @@ List<MockEntry> sampleData() {
       'Blutdruck 128/82 mmHg\n'
       'Puls 72/min\n'
       'Körpergewicht 78 kg';
-  final doctorLetterImage = createMockPng();
+  final doctorLetterImage = createMockPhoto(doctorLetterText.split('\n'));
   final doctorLetter = <String, dynamic>{
     'id': '6727a20bc2b4e5d6f7a8b9d4',
     'module': 'health',
@@ -317,6 +317,7 @@ List<MockEntry> sampleData() {
       MockOriginal.page(
         VerificationSource.ocr,
         doctorLetterText.replaceFirst('72/min', '72/mln').split('\n'),
+        layout: MockLayout.photo,
       ),
     ),
     MockEntry(_deepCopy(other), otherImage),

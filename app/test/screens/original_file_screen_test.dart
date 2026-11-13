@@ -1,20 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock_api_client.dart';
-import 'package:lifelog/platform/pdf_viewer.dart';
 import 'package:lifelog/screens/original_file_screen.dart';
 
 import '../helpers.dart';
-
-/// Instead of pdfx: only shows how many bytes arrived and whether it is a PDF.
-class FakePdfViewer implements PdfViewer {
-  @override
-  Widget buildView(Uint8List bytes) => Text(
-    'PDF-Ansicht: ${bytes.length} Bytes, '
-    '${String.fromCharCodes(bytes.take(5))}',
-  );
-}
 
 Future<void> showOriginal(
   WidgetTester tester,

@@ -6,10 +6,12 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_exception.dart';
+import 'package:lifelog/api/mock/mock_files.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/main.dart';
 import 'package:lifelog/module/module_catalog.dart';
 import 'package:lifelog/platform/file_chooser.dart';
+import 'package:lifelog/platform/pdf_viewer.dart';
 import 'package:lifelog/platform/voice_recorder.dart';
 
 /// Tall test screen, so that long lists are built completely
@@ -125,6 +127,37 @@ class FakeFileChooser implements FileChooser {
 
   @override
   Future<ChosenFile?> retrieveLostFile() async => lost;
+}
+
+/// Instead of pdfx (which needs Android or iOS): the view only shows how
+/// many bytes arrived and whether it is a PDF; a rendered page is a small
+/// grey PNG in A4 proportions. [renderedPages] records which pages were
+/// asked for.
+class FakePdfViewer implements PdfViewer {
+  /// Number of pages of every PDF.
+  int pageCount = 2;
+
+  final renderedPages = <int>[];
+
+  @override
+  Widget buildView(Uint8List bytes) => Text(
+    'PDF-Ansicht: ${bytes.length} Bytes, '
+    '${String.fromCharCodes(bytes.take(5))}',
+  );
+
+  @override
+  Future<RenderedPdfPage> renderPage(Uint8List bytes, int page) async {
+    renderedPages.add(page);
+    if (page < 1 || page > pageCount) {
+      throw RangeError.range(page, 1, pageCount, 'page');
+    }
+    return RenderedPdfPage(
+      image: createMockPng(width: 60, height: 85),
+      width: 595,
+      height: 842,
+      pageCount: pageCount,
+    );
+  }
 }
 
 /// A small "PDF": the magic bytes are right, the rest is arbitrary.
