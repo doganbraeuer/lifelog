@@ -368,6 +368,8 @@ the text layer of a PDF, or OCR for photos and scans.
 | Markierung der Fundstellen auf einer Seite oder einem Foto (App) | location overlay | Dart `LocationOverlay`, `LocationMarksPainter`, `fittedPageRect`, `locationRect`, `focusTransform`; `app/lib/widgets/location_overlay.dart` |
 | als Bild gerenderte PDF-Seite (App) | rendered PDF page | Dart `RenderedPdfPage`, `PdfViewer.renderPage` |
 | Codepoint-Bereich als UTF-16-Bereich (App) | UTF-16 range | Dart `TextLocation.utf16Range` |
+| Auszug einer Quelle im Volltext finden (App) | locate excerpt | Dart `locateExcerpt`; `app/lib/model/excerpt_location.dart` |
+| Verweis [n] im Antworttext (App) | citation | Dart `Citation`, `findCitations`; `app/lib/model/citations.dart` |
 | Mock-Foto mit Wortblöcken, Layout einer Mock-Seite (App) | mock photo, mock layout | Dart `createMockPhoto`, `MockLayout` (`pdfA4`, `photo`) |
 | geprüft / nicht geprüft | `checked` / `unchecked` | |
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |

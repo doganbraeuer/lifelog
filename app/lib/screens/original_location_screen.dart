@@ -380,10 +380,17 @@ class _TextLocationViewState extends State<TextLocationView> {
   /// The text in pieces: plain, highlighted, plain, ...
   List<TextSpan> _spans(ColorScheme colors) {
     final text = widget.fullText;
-    final ranges = [
-      for (final location in widget.locations)
-        (location.utf16Range(text), identical(location, widget.current)),
-    ]..sort((a, b) => a.$1.$1.compareTo(b.$1.$1));
+    // Overlapping ranges are skipped below. With the same start the current
+    // one comes first, so a range with the same text never hides it.
+    final ranges =
+        [
+          for (final location in widget.locations)
+            (location.utf16Range(text), identical(location, widget.current)),
+        ]..sort((a, b) {
+          final byStart = a.$1.$1.compareTo(b.$1.$1);
+          if (byStart != 0) return byStart;
+          return (b.$2 ? 1 : 0) - (a.$2 ? 1 : 0);
+        });
     final spans = <TextSpan>[];
     var at = 0;
     for (final ((start, end), isCurrent) in ranges) {

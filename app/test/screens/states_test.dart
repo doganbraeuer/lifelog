@@ -124,7 +124,7 @@ void main() {
       final firstSource = opacityOf(tester, 2);
       expect(answer, greaterThan(firstSource));
       // The text is still complete already (no typewriter effect).
-      expect(find.textContaining('[1]'), findsOneWidget);
+      expect(find.textContaining('Hämoglobin 14,2 g/dl'), findsOneWidget);
 
       await tester.pumpAndSettle();
       expect(opacityOf(tester, 0), 1);

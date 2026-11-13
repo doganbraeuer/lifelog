@@ -73,7 +73,7 @@ Lifelog („Bereiche“, module overview)
 | Module overview | „Lifelog“ | App start | One tile per module; inactive modules marked „Bald verfügbar“. A „Mock“ badge if the app runs without a backend. |
 | Timeline | „Zeitleiste“ | Tab 1 of a module | All entries of the module on a time axis, grouped by month, with sort menu and order button |
 | Upload | „Hochladen“ | Tab 2, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“; preview; progress; errors |
-| Questions | „Fragen“ | Tab 3 | Question field, answer, sources |
+| Questions | „Fragen“ | Tab 3 | Question field, answer with tappable references, sources that expand to the full text with the passage marked |
 | Entry | type name, e.g. „Laborbefund“ | A row in the timeline, a source of an answer, a successful upload, a duplicate | Original preview, „Angaben“, „Erkannte Angaben“, „Volltext“; correction and delete |
 | Original | file name | „Originaldatei öffnen“ or a tap on the preview in the entry | Image (zoomable), PDF (pages), or text |
 | Location in the original | name of the field, value below | A value with the small grey icon in the entry | The PDF page or photo with the value framed, or the text with it highlighted; „Fundstelle 1 von 2“; „Ganzes Original öffnen“ |
@@ -1017,30 +1017,58 @@ Tab „Fragen“.
 2. While searching: „Suche in deinen Dokumenten …“.
 3. The answer appears with references like [1]; below it „Quellen“: one
    compact card per source (see below).
-4. Tap a source to open its entry; „Zurück“ leads back to the answer.
+4. Tap a reference in the answer text to jump to its source (see below), or
+   tap a source to open its entry; „Zurück“ leads back to the answer.
 5. On an error: „Erneut versuchen“.
+
+**References in the answer text:**
+
+- Every reference with a matching source (`sources[].number`) is a link:
+  in the primary color, bold, lightly underlined. In a list like [1, 3]
+  each number is a link of its own. A reference without a source stays
+  plain text.
+- Tapping it scrolls to that source card, expands it and highlights it
+  briefly (a light background that fades out after about a second).
+- The answer text can still be selected and copied (long press); a short
+  tap follows the link. The copied text is unchanged, with the references.
+- Screen reader: a reference reads „Quelle 1 anzeigen“ and expands
+  source 1.
 
 **Compact sources:**
 
 - Each source is one line: the number as in the answer text, the type
   icon, „Typ · Datum“ (e.g. „Laborbefund · 14.10.2026“) and the issuer
-  below it. A long issuer is shortened with „…“. The excerpt is hidden.
+  below it. A long issuer is shortened with „…“. The text is hidden.
 - The card has two separate tap targets, divided by a thin vertical line:
   - **Left part:** opens the entry.
-  - **Arrow on the right** (tooltip „Auszug anzeigen“): shows the excerpt
-    the answer is based on below the line, in italics and quotation marks.
-    The arrow turns up („Auszug ausblenden“) and hides it again. Expanding
-    never opens the entry.
+  - **Arrow on the right** (tooltip „Textstelle anzeigen“): shows the
+    whole text of the entry (`fullText`) below the line, in a box of fixed
+    height that scrolls by itself to the passage the answer is based on.
+    The passage is highlighted. The arrow turns up („Textstelle
+    ausblenden“) and hides it again. Expanding never opens the entry.
+- If several sources of the answer come from the same entry, the box marks
+  all their passages; the one of this card is stronger, the others light.
+- The entry is loaded when a card is first expanded (`GET /entries/{id}`),
+  once per entry and answer, also when two cards show the same entry.
+  While it loads, the box shows a spinner.
+- The passage is found even when the excerpt differs from the full text in
+  spaces and line breaks (the backend trims paragraphs and lines when it
+  builds chunks). If it is still not found, the card shows only the
+  excerpt in italics and quotation marks, as before.
+- If the entry cannot be loaded, a quiet line says „Der ganze Text kann
+  gerade nicht geladen werden.“ with „Erneut versuchen“, and the excerpt
+  is shown below it. For an entry deleted in the meantime the line says
+  „Der Eintrag ist nicht mehr vorhanden.“, without retry.
 - Every card expands on its own. A new answer starts with all cards
   collapsed; after „Zurück“ from an entry the cards stay as they were.
 - The number always comes from the backend, so gaps (e.g. only 1 and 3)
   stay correct.
 - Screen reader: the left part reads e.g. „Quelle 1: Laborbefund,
   14.10.2026, Labor Muster GmbH, Salzburg“ with the hint „Eintrag
-  öffnen“; the arrow reads „Auszug von Quelle 1 anzeigen“ (or
+  öffnen“; the arrow reads „Textstelle von Quelle 1 anzeigen“ (or
   „… ausblenden“) and reports whether it is expanded.
 
-<img src="features/sources-compact.png" width="260" alt="Answer with two collapsed sources: 1 Laborbefund · 14.10.2026 and 2 Arztbrief · 02.09.2026, each with an arrow on the right"> <img src="features/sources-expanded.png" width="260" alt="Source 1 expanded: below the line the excerpt „Patient: Max Mustermann, geb. 01.01.1990“, the arrow points up">
+<img src="features/sources-compact.png" width="260" alt="Answer with references [1] and [2] as links and two collapsed sources from the same Laborbefund, each with an arrow on the right"> <img src="features/sources-expanded.png" width="260" alt="Source 2 expanded after tapping [2]: the full text of the Laborbefund in a box, „Befundart: Blutbild klein“ strongly and „Leukozyten 6,8 G/l“ lightly highlighted">
 
 ### Behind the scenes
 
@@ -1074,14 +1102,16 @@ Tab „Fragen“.
 - The threshold was calibrated on synthetic data with a margin of 0.012;
   letterheads and addresses in chunks can make unrelated questions score
   close to it (e.g. questions mentioning „Salzburg“).
-- A reference leads to the entry, not yet to the place in the original
-  (proposal in API.md, section 4).
+- A source shows its passage in the full text, not on the page of the PDF
+  or photo. The passage is found by its words; if the same excerpt occurs
+  twice in the text, the first occurrence is marked.
 - The question and the matching chunks are sent to Gemini (see
   [privacy](#privacy)).
 
 ### Status
 
-**Done**, including compact sources.
+**Done**, including compact sources, the full text with the marked passage
+and tappable references.
 
 ---
 

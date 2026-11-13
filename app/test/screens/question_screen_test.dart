@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock_api_client.dart';
+import 'package:lifelog/screens/original_location_screen.dart';
 
 import '../helpers.dart';
 
 const hit = 'Welchen Hämoglobinwert hatte ich im Oktober?';
 
-/// The excerpt of the source for [hit], as the expanded card shows it.
-const hitExcerpt = '„Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)“';
+/// The full text of an expanded source card.
+Finder sourceText() => find.byType(TextLocationView);
 
 /// Matches a line in the lab report and in the doctor's letter, so the mock
 /// answers with two sources.
@@ -71,13 +72,22 @@ void main() {
     await askQuestion(tester, hit);
 
     expect(find.text('„$hit“'), findsOneWidget);
-    expect(find.textContaining('[1]'), findsOneWidget);
+    // The reference stays in the text (the screen reader label is not).
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Text &&
+            (w.textSpan?.toPlainText(includeSemanticsLabels: false) ?? '')
+                .contains('[1]'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Quellen'), findsOneWidget);
     expect(find.text('Laborbefund · 14.10.2026'), findsOneWidget);
     expect(find.text('Labor Muster GmbH, Salzburg'), findsOneWidget);
-    // Collapsed: the excerpt is hidden, only the arrow is there.
-    expect(find.text(hitExcerpt), findsNothing);
-    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
+    // Collapsed: the text is hidden, only the arrow is there.
+    expect(sourceText(), findsNothing);
+    expect(find.byTooltip('Textstelle anzeigen'), findsOneWidget);
 
     await tester.tap(find.text('Laborbefund · 14.10.2026'));
     await tester.pumpAndSettle();
@@ -89,52 +99,91 @@ void main() {
     expect(find.text('„$hit“'), findsOneWidget);
   });
 
-  testWidgets('the arrow shows and hides the excerpt, it does not open', (
+  testWidgets('the arrow shows and hides the full text, it does not open', (
     tester,
   ) async {
     await goToQuestions(tester, fastMock());
     await askQuestion(tester, hit);
 
-    await tester.tap(find.byTooltip('Auszug anzeigen'));
+    await tester.tap(find.byTooltip('Textstelle anzeigen'));
     await tester.pumpAndSettle();
-    expect(find.text(hitExcerpt), findsOneWidget);
-    expect(find.byTooltip('Auszug ausblenden'), findsOneWidget);
+    // The whole lab report, not only the excerpt.
+    final view = tester.widget<TextLocationView>(sourceText());
+    expect(view.fullText, contains('Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)'));
+    expect(view.fullText, contains('Max Mustermann'));
+    expect(
+      view.current.textIn(view.fullText),
+      'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)',
+    );
+    expect(find.byTooltip('Textstelle ausblenden'), findsOneWidget);
     // Still on the answer: expanding did not open the entry.
     expect(find.text('Erkannte Angaben'), findsNothing);
     expect(find.text('„$hit“'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Auszug ausblenden'));
+    await tester.tap(find.byTooltip('Textstelle ausblenden'));
     await tester.pumpAndSettle();
-    expect(find.text(hitExcerpt), findsNothing);
-    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
+    expect(sourceText(), findsNothing);
+    expect(find.byTooltip('Textstelle anzeigen'), findsOneWidget);
   });
 
   testWidgets('several sources expand independently', (tester) async {
     await goToQuestions(tester, fastMock());
     await askQuestion(tester, twoSources);
 
-    expect(find.byTooltip('Auszug anzeigen'), findsNWidgets(2));
+    expect(find.byTooltip('Textstelle anzeigen'), findsNWidgets(2));
     expect(find.text('Laborbefund · 14.10.2026'), findsOneWidget);
     expect(find.text('Arztbrief · 02.09.2026'), findsOneWidget);
-    expect(find.textContaining('„Patient: Max Mustermann'), findsNothing);
+    expect(sourceText(), findsNothing);
 
-    await tester.tap(find.byTooltip('Auszug anzeigen').first);
+    await tester.tap(find.byTooltip('Textstelle anzeigen').first);
     await tester.pumpAndSettle();
-    expect(find.textContaining('„Patient: Max Mustermann'), findsOneWidget);
-    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
-    expect(find.byTooltip('Auszug ausblenden'), findsOneWidget);
+    expect(sourceText(), findsOneWidget);
+    final view = tester.widget<TextLocationView>(sourceText());
+    expect(view.current.textIn(view.fullText), contains('Max Mustermann'));
+    expect(find.byTooltip('Textstelle anzeigen'), findsOneWidget);
+    expect(find.byTooltip('Textstelle ausblenden'), findsOneWidget);
   });
 
   testWidgets('a new answer starts collapsed again', (tester) async {
     await goToQuestions(tester, fastMock());
     await askQuestion(tester, hit);
-    await tester.tap(find.byTooltip('Auszug anzeigen'));
+    await tester.tap(find.byTooltip('Textstelle anzeigen'));
     await tester.pumpAndSettle();
-    expect(find.text(hitExcerpt), findsOneWidget);
+    expect(sourceText(), findsOneWidget);
 
     await askQuestion(tester, 'Hämoglobin');
-    expect(find.text(hitExcerpt), findsNothing);
-    expect(find.byTooltip('Auszug anzeigen'), findsOneWidget);
+    expect(sourceText(), findsNothing);
+    expect(find.byTooltip('Textstelle anzeigen'), findsOneWidget);
+  });
+
+  testWidgets('the mock loads the entry; a load error shows the excerpt', (
+    tester,
+  ) async {
+    final mock = fastMock();
+    await goToQuestions(tester, mock);
+    await askQuestion(tester, hit);
+
+    mock.simulateError = true;
+    await tester.tap(find.byTooltip('Textstelle anzeigen'));
+    await tester.pumpAndSettle();
+    expect(sourceText(), findsNothing);
+    expect(
+      find.text('Der ganze Text kann gerade nicht geladen werden.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('„Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)“'),
+      findsOneWidget,
+    );
+
+    mock.simulateError = false;
+    await tester.tap(find.text('Erneut versuchen'));
+    await tester.pumpAndSettle();
+    expect(sourceText(), findsOneWidget);
+    expect(
+      find.text('Der ganze Text kann gerade nicht geladen werden.'),
+      findsNothing,
+    );
   });
 
   testWidgets('without a hit: only the fixed sentence, no sources', (
