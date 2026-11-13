@@ -450,6 +450,7 @@ text import (docs/API.md, 3.9).
 | Aufnahme nicht möglich (App) | recorder exception | Dart `RecorderException`, shown as `RECORDING_FAILED` |
 | Ergebnis der Transkription (App) | transcript | Dart `Transcript`; `app/lib/model/transcript.dart` |
 | Zahlen und Einheiten im erkannten Text markieren | quantity highlight | Dart `QuantityHighlightController`; `app/lib/widgets/quantity_highlight.dart` |
+| erkannten Text an der Cursorposition einfügen (App) | insert transcript | Dart `insertTranscript`; `app/lib/screens/voice_note_view.dart` |
 
 | Item | Value |
 |---|---|

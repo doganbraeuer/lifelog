@@ -9,18 +9,25 @@ import 'package:lifelog/screens/modules_screen.dart';
 
 import '../helpers.dart';
 
-Finder voiceButton() => find.widgetWithText(OutlinedButton, 'Sprachnotiz');
+/// The microphone in the field „Dokumentinhalt“.
+Finder micButton() => find.widgetWithIcon(IconButton, Icons.mic_none);
+
+/// The old button of its own in the upload choice; it is gone.
+Finder oldVoiceButton() => find.widgetWithText(OutlinedButton, 'Sprachnotiz');
 Finder stopButton() => find.widgetWithText(FilledButton, 'Stopp');
 Finder saveButton() => find.widgetWithText(FilledButton, 'Speichern');
+Finder importButton() => find.widgetWithText(FilledButton, 'Importieren');
 Finder textField() => find.widgetWithText(TextField, 'Dokumentinhalt');
 
 const hintWithSpeech =
-    'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB, Text bis 100 000 '
-    'Zeichen oder eine Sprachnotiz bis 5 Minuten.';
+    'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB oder Text bis '
+    '100 000 Zeichen. Unter „Text eingeben“ kannst du den Text auch '
+    'diktieren (bis 5 Minuten).';
 const hintWithoutSpeech =
     'Erlaubt sind JPEG, PNG, HEIC, WebP und PDF bis 10 MB oder Text bis 100 000 '
     'Zeichen.';
 const unavailableNotice = 'Sprachnotizen sind gerade nicht verfügbar.';
+const transcript = MockApiClient.sampleTranscript;
 
 /// Starts the app and switches to the „Hochladen“ page.
 Future<void> goToUpload(
@@ -41,11 +48,27 @@ Future<void> goToUpload(
   await tester.pumpAndSettle();
 }
 
-/// Taps „Sprachnotiz“ and waits until the recording runs. No
+/// Opens the text screen („Text eingeben“).
+Future<void> openText(WidgetTester tester) async {
+  await tester.tap(find.text('Text eingeben'));
+  await tester.pumpAndSettle();
+}
+
+/// The upload page, then the text screen.
+Future<void> goToText(
+  WidgetTester tester,
+  MockApiClient mock,
+  FakeVoiceRecorder recorder,
+) async {
+  await goToUpload(tester, mock, recorder);
+  await openText(tester);
+}
+
+/// Taps the microphone and waits until the recording runs. No
 /// pumpAndSettle while recording: the clock ticks and the microphone
 /// pulses, so the screen never settles.
 Future<void> startRecording(WidgetTester tester) async {
-  await tester.tap(voiceButton());
+  await tester.tap(micButton());
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 500));
 }
@@ -56,8 +79,11 @@ Future<void> stopAndTranscribe(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-bool enabled(WidgetTester tester, Finder button) =>
-    tester.widget<ButtonStyleButton>(button).onPressed != null;
+bool micEnabled(WidgetTester tester) =>
+    tester.widget<IconButton>(micButton()).onPressed != null;
+
+TextEditingController fieldController(WidgetTester tester) =>
+    tester.widget<TextField>(textField()).controller!;
 
 const quantityHint =
     'Zahlen und Einheiten sind markiert. Bitte besonders genau prüfen.';
@@ -97,56 +123,63 @@ class _StatusFailsMock extends MockApiClient {
 
 void main() {
   group('entry depends on /status', () {
-    testWidgets('speech ok: button active, hint promises spoken notes', (
-      tester,
-    ) async {
+    testWidgets('speech ok: no button of its own in the upload, hint names '
+        'dictation, the microphone in the field works', (tester) async {
       await goToUpload(tester, fastMock(), FakeVoiceRecorder());
 
-      expect(voiceButton(), findsOneWidget);
-      expect(enabled(tester, voiceButton()), isTrue);
+      expect(oldVoiceButton(), findsNothing);
+      expect(micButton(), findsNothing);
       expect(find.text(hintWithSpeech), findsOneWidget);
+      expect(find.text(unavailableNotice), findsNothing);
+
+      await openText(tester);
+      expect(micButton(), findsOneWidget);
+      expect(micEnabled(tester), isTrue);
+      expect(find.byTooltip('Sprachnotiz aufnehmen'), findsOneWidget);
       expect(find.text(unavailableNotice), findsNothing);
     });
 
-    testWidgets('speech off: no button, hint without spoken notes', (
+    testWidgets('speech off: no microphone, hint without dictation', (
       tester,
     ) async {
       final mock = fastMock()..speechStatus = SpeechStatus.off;
       await goToUpload(tester, mock, FakeVoiceRecorder());
 
-      expect(voiceButton(), findsNothing);
       expect(find.text(hintWithoutSpeech), findsOneWidget);
+      await openText(tester);
+      expect(micButton(), findsNothing);
       expect(find.text(unavailableNotice), findsNothing);
     });
 
-    testWidgets('speech unavailable: button disabled, „Erneut prüfen“', (
+    testWidgets('speech unavailable: microphone disabled, „Erneut prüfen“', (
       tester,
     ) async {
       final mock = fastMock()..speechStatus = SpeechStatus.unavailable;
       await goToUpload(tester, mock, FakeVoiceRecorder());
-
-      expect(enabled(tester, voiceButton()), isFalse);
-      expect(find.text(unavailableNotice), findsOneWidget);
       expect(find.text(hintWithoutSpeech), findsOneWidget);
+      // The notice belongs to the microphone, so it is in the text screen.
+      expect(find.text(unavailableNotice), findsNothing);
 
-      // The speech recognition is back: checking again enables the button.
+      await openText(tester);
+      expect(micEnabled(tester), isFalse);
+      expect(find.text(unavailableNotice), findsOneWidget);
+
+      // The speech recognition is back: checking again enables it.
       mock.speechStatus = SpeechStatus.ok;
       await tester.tap(find.text('Erneut prüfen'));
       await tester.pumpAndSettle();
 
-      expect(enabled(tester, voiceButton()), isTrue);
+      expect(micEnabled(tester), isTrue);
       expect(find.text(unavailableNotice), findsNothing);
-      expect(find.text(hintWithSpeech), findsOneWidget);
     });
 
-    testWidgets('status cannot be loaded: button disabled with notice', (
+    testWidgets('status cannot be loaded: microphone disabled with notice', (
       tester,
     ) async {
-      await goToUpload(tester, _StatusFailsMock(), FakeVoiceRecorder());
+      await goToText(tester, _StatusFailsMock(), FakeVoiceRecorder());
 
-      expect(enabled(tester, voiceButton()), isFalse);
+      expect(micEnabled(tester), isFalse);
       expect(find.text(unavailableNotice), findsOneWidget);
-      expect(find.text(hintWithoutSpeech), findsOneWidget);
     });
   });
 
@@ -155,9 +188,9 @@ void main() {
       tester,
     ) async {
       final recorder = FakeVoiceRecorder()..permission = false;
-      await goToUpload(tester, fastMock(), recorder);
+      await goToText(tester, fastMock(), recorder);
 
-      await tester.tap(voiceButton());
+      await tester.tap(micButton());
       await tester.pumpAndSettle();
 
       expect(
@@ -170,16 +203,17 @@ void main() {
       expect(recorder.permissionRequests, 1);
       expect(recorder.starts, 0);
       expect(stopButton(), findsNothing);
-      expect(voiceButton(), findsOneWidget);
+      expect(textField(), findsOneWidget);
     });
 
-    testWidgets('recorder does not start: message, back to the choice', (
+    testWidgets('recorder does not start: message, back to the text', (
       tester,
     ) async {
       final recorder = FakeVoiceRecorder()..failStart = true;
-      await goToUpload(tester, fastMock(), recorder);
+      await goToText(tester, fastMock(), recorder);
+      await tester.enterText(textField(), 'Schon getippt');
 
-      await tester.tap(voiceButton());
+      await tester.tap(micButton());
       await tester.pumpAndSettle();
 
       expect(
@@ -190,7 +224,7 @@ void main() {
         findsOneWidget,
       );
       expect(recorder.hasFile, isFalse);
-      expect(voiceButton(), findsOneWidget);
+      expect(fieldController(tester).text, 'Schon getippt');
     });
   });
 
@@ -202,12 +236,16 @@ void main() {
       transcriptionDelay: const Duration(seconds: 2),
     );
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, mock, recorder);
+    await goToText(tester, mock, recorder);
 
     await startRecording(tester);
     expect(recorder.recording, isTrue);
     expect(find.text('0:00'), findsOneWidget);
     expect(find.text('Aufnahme läuft · höchstens 5 Minuten'), findsOneWidget);
+    // The recording replaces the field; nothing can be saved meanwhile.
+    expect(textField(), findsNothing);
+    expect(importButton(), findsNothing);
+    expect(saveButton(), findsNothing);
 
     await tester.pump(const Duration(seconds: 7));
     expect(find.text('0:07'), findsOneWidget);
@@ -229,15 +267,11 @@ void main() {
       find.textContaining('Erkannter Text aus deiner Sprachnotiz'),
       findsOneWidget,
     );
-    expect(
-      tester.widget<TextField>(textField()).controller!.text,
-      MockApiClient.sampleTranscript,
-    );
+    expect(fieldController(tester).text, transcript);
     // Nothing is saved before the confirmation.
     expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
 
-    const edited =
-        '${MockApiClient.sampleTranscript} Kontrolle in zwei Wochen.';
+    const edited = '$transcript Kontrolle in zwei Wochen.';
     await tester.enterText(textField(), edited);
     await tester.pump();
     await tester.tap(saveButton());
@@ -253,12 +287,78 @@ void main() {
     expect((await mock.getEntry(created.id)).fullText, edited);
   });
 
-  testWidgets('„Abbrechen“ while recording: deleted, back to the choice', (
+  group('the recognized text goes into the field', () {
+    testWidgets('at the cursor, with spaces around it', (tester) async {
+      await goToText(tester, fastMock(), FakeVoiceRecorder());
+      await tester.enterText(textField(), 'Arztbrief: Ende.');
+      // Cursor after „Arztbrief:“.
+      fieldController(tester).selection = const TextSelection.collapsed(
+        offset: 10,
+      );
+
+      await startRecording(tester);
+      await stopAndTranscribe(tester);
+
+      expect(fieldController(tester).text, 'Arztbrief: $transcript Ende.');
+      expect(
+        fieldController(tester).selection,
+        TextSelection.collapsed(offset: 11 + transcript.length),
+      );
+    });
+
+    testWidgets('after typed text the cursor is at its end: a space', (
+      tester,
+    ) async {
+      await goToText(tester, fastMock(), FakeVoiceRecorder());
+      await tester.enterText(textField(), 'Arztbrief:');
+
+      await startRecording(tester);
+      await stopAndTranscribe(tester);
+
+      expect(fieldController(tester).text, 'Arztbrief: $transcript');
+    });
+
+    testWidgets('without a cursor: at the end, on a new line', (tester) async {
+      await goToText(tester, fastMock(), FakeVoiceRecorder());
+      // Set without tapping the field: no cursor.
+      fieldController(tester).text = 'Kopfzeile';
+      expect(fieldController(tester).selection.isValid, isFalse);
+
+      await startRecording(tester);
+      await stopAndTranscribe(tester);
+
+      expect(fieldController(tester).text, 'Kopfzeile\n$transcript');
+    });
+
+    testWidgets('dictating twice adds the second text, everything marked', (
+      tester,
+    ) async {
+      await goToText(tester, fastMock(), FakeVoiceRecorder());
+      await tester.enterText(textField(), 'Puls 64/min');
+
+      await startRecording(tester);
+      await stopAndTranscribe(tester);
+      await startRecording(tester);
+      await stopAndTranscribe(tester);
+
+      expect(
+        fieldController(tester).text,
+        'Puls 64/min $transcript $transcript',
+      );
+      // The marks cover the whole field, the typed number too.
+      expect(markedInField(tester).first, '64');
+      expect(find.text(quantityHint), findsOneWidget);
+      expect(saveButton(), findsOneWidget);
+    });
+  });
+
+  testWidgets('„Abbrechen“ while recording: deleted, back to the text', (
     tester,
   ) async {
     final mock = fastMock();
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, mock, recorder);
+    await goToText(tester, mock, recorder);
+    await tester.enterText(textField(), 'Schon getippt');
 
     await startRecording(tester);
     await tester.pump(const Duration(seconds: 3));
@@ -270,13 +370,16 @@ void main() {
     expect(recorder.hasFile, isFalse);
     expect(recorder.discards, greaterThan(0));
     expect(stopButton(), findsNothing);
-    expect(voiceButton(), findsOneWidget);
+    // The text is unchanged and still the normal text import.
+    expect(fieldController(tester).text, 'Schon getippt');
+    expect(find.textContaining('Erkannter Text'), findsNothing);
+    expect(importButton(), findsOneWidget);
     expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
   });
 
   testWidgets('stops on its own at 4:58 and transcribes', (tester) async {
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, fastMock(), recorder);
+    await goToText(tester, fastMock(), recorder);
 
     await startRecording(tester);
     await tester.pump(const Duration(minutes: 4, seconds: 57));
@@ -288,27 +391,38 @@ void main() {
 
     expect(recorder.recording, isFalse);
     expect(recorder.hasFile, isFalse);
-    expect(
-      tester.widget<TextField>(textField()).controller!.text,
-      MockApiClient.sampleTranscript,
-    );
+    expect(fieldController(tester).text, transcript);
   });
 
   testWidgets('the system stops the recording (call): like „Stopp“', (
     tester,
   ) async {
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, fastMock(), recorder);
+    await goToText(tester, fastMock(), recorder);
 
     await startRecording(tester);
     recorder.stopBySystem();
     await tester.pumpAndSettle();
 
     expect(recorder.hasFile, isFalse);
-    expect(
-      tester.widget<TextField>(textField()).controller!.text,
-      MockApiClient.sampleTranscript,
-    );
+    expect(fieldController(tester).text, transcript);
+  });
+
+  testWidgets('the app goes to the background: like „Stopp“', (tester) async {
+    final recorder = FakeVoiceRecorder();
+    await goToText(tester, fastMock(), recorder);
+
+    await startRecording(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(recorder.recording, isFalse);
+    expect(recorder.hasFile, isFalse);
+    expect(fieldController(tester).text, transcript);
   });
 
   for (final (fileName, message) in [
@@ -323,17 +437,19 @@ void main() {
       tester,
     ) async {
       final recorder = FakeVoiceRecorder()..fileName = fileName;
-      await goToUpload(tester, fastMock(), recorder);
+      await goToText(tester, fastMock(), recorder);
+      await tester.enterText(textField(), 'Schon getippt');
 
       await startRecording(tester);
       await stopAndTranscribe(tester);
 
       expect(find.text(message), findsOneWidget);
       expect(recorder.hasFile, isFalse);
-      // No chance of success with the same recording: back to the choice.
+      // No chance of success with the same recording: back to the text,
+      // which is unchanged.
       expect(find.text('Erneut versuchen'), findsNothing);
-      expect(voiceButton(), findsOneWidget);
-      expect(textField(), findsNothing);
+      expect(fieldController(tester).text, 'Schon getippt');
+      expect(micButton(), findsOneWidget);
     });
   }
 
@@ -342,7 +458,7 @@ void main() {
   ) async {
     final mock = fastMock();
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, mock, recorder);
+    await goToText(tester, mock, recorder);
 
     await startRecording(tester);
     mock.speechStatus = SpeechStatus.unavailable; // fails from now on
@@ -353,6 +469,8 @@ void main() {
       findsOneWidget,
     );
     expect(recorder.hasFile, isTrue);
+    // Still in the recording view: no saving meanwhile.
+    expect(importButton(), findsNothing);
 
     mock.speechStatus = SpeechStatus.ok;
     await tester.tap(find.text('Erneut versuchen'));
@@ -360,17 +478,14 @@ void main() {
 
     expect(recorder.hasFile, isFalse);
     expect(find.textContaining('nicht erreichbar'), findsNothing);
-    expect(
-      tester.widget<TextField>(textField()).controller!.text,
-      MockApiClient.sampleTranscript,
-    );
+    expect(fieldController(tester).text, transcript);
   });
 
   testWidgets('„Verwerfen“ after an error deletes the recording', (
     tester,
   ) async {
     final recorder = FakeVoiceRecorder()..fileName = 'note_modelerror.m4a';
-    await goToUpload(tester, fastMock(), recorder);
+    await goToText(tester, fastMock(), recorder);
 
     await startRecording(tester);
     await stopAndTranscribe(tester);
@@ -381,14 +496,14 @@ void main() {
 
     expect(recorder.hasFile, isFalse);
     expect(find.textContaining('nicht erreichbar'), findsNothing);
-    expect(voiceButton(), findsOneWidget);
+    expect(textField(), findsOneWidget);
   });
 
   testWidgets('„Abbrechen“ on the recognized text saves nothing', (
     tester,
   ) async {
     final mock = fastMock();
-    await goToUpload(tester, mock, FakeVoiceRecorder());
+    await goToText(tester, mock, FakeVoiceRecorder());
 
     await startRecording(tester);
     await stopAndTranscribe(tester);
@@ -398,16 +513,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(textField(), findsNothing);
-    expect(voiceButton(), findsOneWidget);
     expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
 
     // „Text eingeben“ afterwards is the normal text import again: no
     // notice, no marks.
-    await tester.tap(find.text('Text eingeben'));
-    await tester.pumpAndSettle();
+    await openText(tester);
+    expect(fieldController(tester).text, isEmpty);
     expect(find.textContaining('Erkannter Text'), findsNothing);
     expect(find.text(quantityHint), findsNothing);
-    expect(find.widgetWithText(FilledButton, 'Importieren'), findsOneWidget);
+    expect(importButton(), findsOneWidget);
     await tester.enterText(textField(), 'Ibuprofen 400 Milligramm');
     await tester.pump();
     expect(markedInField(tester), isEmpty);
@@ -416,7 +530,7 @@ void main() {
   testWidgets('recognized text: numbers and units are marked, new ones too', (
     tester,
   ) async {
-    await goToUpload(tester, fastMock(), FakeVoiceRecorder());
+    await goToText(tester, fastMock(), FakeVoiceRecorder());
 
     await startRecording(tester);
     await stopAndTranscribe(tester);
@@ -433,7 +547,7 @@ void main() {
     // Marks follow the editing: a corrected unit, an added number.
     await tester.enterText(
       textField(),
-      MockApiClient.sampleTranscript
+      transcript
           .replaceFirst('Milliunits', 'mU')
           .replaceFirst('Grad.', 'Grad. Kontrolle in 14 Tagen.'),
     );
@@ -444,10 +558,8 @@ void main() {
   });
 
   testWidgets('the text import of typed text marks nothing', (tester) async {
-    await goToUpload(tester, fastMock(), FakeVoiceRecorder());
+    await goToText(tester, fastMock(), FakeVoiceRecorder());
 
-    await tester.tap(find.text('Text eingeben'));
-    await tester.pumpAndSettle();
     await tester.enterText(textField(), 'Ibuprofen 400 Milligramm');
     await tester.pump();
 
@@ -459,7 +571,7 @@ void main() {
     tester,
   ) async {
     final recorder = FakeVoiceRecorder();
-    await goToUpload(tester, fastMock(), recorder);
+    await goToText(tester, fastMock(), recorder);
 
     await startRecording(tester);
     expect(recorder.hasFile, isTrue);
