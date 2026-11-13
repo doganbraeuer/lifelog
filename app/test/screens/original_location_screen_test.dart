@@ -326,6 +326,41 @@ void main() {
           .position;
       expect(position.pixels, 0);
     });
+
+    testWidgets('the same range twice: the current one stays strong', (
+      tester,
+    ) async {
+      // Two sources with the same excerpt give the same range. Overlapping
+      // ranges are skipped, so the current one must come first.
+      const text = 'Puls 64/min und mehr';
+      // Not const: two separate objects, like two located excerpts.
+      // ignore: prefer_const_constructors
+      final other = TextLocation(start: 0, end: 11);
+      // ignore: prefer_const_constructors
+      final current = TextLocation(start: 0, end: 11);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextLocationView(
+              fullText: text,
+              locations: [other, current],
+              current: current,
+            ),
+          ),
+        ),
+      );
+
+      final view = tester.widget<SelectableText>(find.byType(SelectableText));
+      final strong = Theme.of(tester.element(find.byType(TextLocationView)))
+          .colorScheme
+          .primaryContainer;
+      final marked = [
+        for (final span in view.textSpan!.children!)
+          if (span is TextSpan && span.style?.backgroundColor != null)
+            (span.text, span.style!.backgroundColor == strong),
+      ];
+      expect(marked, [('Puls 64/min', true)]);
+    });
   });
 
   group('back', () {

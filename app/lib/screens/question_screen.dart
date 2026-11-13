@@ -1,16 +1,27 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../model/answer.dart';
+import '../model/citations.dart';
+import '../model/entry.dart';
+import '../model/excerpt_location.dart';
+import '../model/verification.dart';
 import '../module/module_catalog.dart';
 import '../widgets/motion.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import '../widgets/skeleton.dart';
+import 'original_location_screen.dart';
 
 /// Maximum length of a question according to docs/API.md.
 const maxQuestionLength = 500;
+
+/// Height of the box with the full text of an expanded source.
+const sourceTextHeight = 240.0;
 
 /// Ask a question about one's own documents. The answer comes from the
 /// backend and is based only on the sources shown. The app shows answer
@@ -44,6 +55,17 @@ class _QuestionScreenState extends State<QuestionScreen> {
   ApiException? _error;
   var _searching = false;
 
+  /// Loaded entries of the sources by ID, so that each entry is loaded only
+  /// once per answer, even if several sources point to it.
+  final _entries = <String, Future<Entry>>{};
+
+  /// The source cards of the current answer by number, for the references
+  /// in the answer text.
+  var _cards = <int, GlobalKey<_SourceCardState>>{};
+
+  /// One tap recognizer per number that has a source.
+  var _recognizers = <int, TapGestureRecognizer>{};
+
   @override
   void initState() {
     super.initState();
@@ -54,7 +76,15 @@ class _QuestionScreenState extends State<QuestionScreen> {
   @override
   void dispose() {
     _field.dispose();
+    _disposeRecognizers();
     super.dispose();
+  }
+
+  void _disposeRecognizers() {
+    for (final recognizer in _recognizers.values) {
+      recognizer.dispose();
+    }
+    _recognizers = {};
   }
 
   bool get _canSend => !_searching && _field.text.trim().isNotEmpty;
@@ -67,20 +97,54 @@ class _QuestionScreenState extends State<QuestionScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _asked = text;
-      _answer = null;
+      _setAnswer(null);
       _error = null;
       _searching = true;
     });
     try {
       final answer = await widget.api.ask(text, module: widget.moduleId);
       if (!mounted) return;
-      setState(() => _answer = answer);
+      setState(() => _setAnswer(answer));
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _searching = false);
     }
   }
+
+  /// A new answer gets new cards, recognizers and loaded entries.
+  void _setAnswer(Answer? answer) {
+    _answer = answer;
+    _entries.clear();
+    _disposeRecognizers();
+    _cards = {
+      for (final source in answer?.sources ?? const <Source>[])
+        source.number: GlobalKey<_SourceCardState>(),
+    };
+    _recognizers = {
+      for (final number in _cards.keys)
+        number: TapGestureRecognizer()..onTap = () => _reveal(number),
+    };
+  }
+
+  /// Loads an entry once. A failed attempt is forgotten, so that „Erneut
+  /// versuchen“ loads again.
+  Future<Entry> _loadEntry(String id) {
+    final loaded = _entries[id];
+    if (loaded != null) return loaded;
+    final future = widget.api.getEntry(id);
+    _entries[id] = future;
+    future.then(
+      (_) {},
+      onError: (Object _) {
+        if (identical(_entries[id], future)) _entries.remove(id);
+      },
+    );
+    return future;
+  }
+
+  /// A reference in the answer text was tapped.
+  void _reveal(int number) => _cards[number]?.currentState?.reveal();
 
   @override
   Widget build(BuildContext context) {
@@ -90,9 +154,15 @@ class _QuestionScreenState extends State<QuestionScreen> {
         title: const Text('Fragen'),
         actions: [MockBanner(visible: widget.api.isMock)],
       ),
-      body: ListView(
+      // Not a ListView: it would not build the cards outside the screen,
+      // and a reference in the answer text must be able to scroll to them.
+      // The content is small (question, answer, a few sources).
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        children: [_input(), const SizedBox(height: 16), ..._result()],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [_input(), const SizedBox(height: 16), ..._result()],
+        ),
       ),
     );
   }
@@ -179,9 +249,14 @@ class _QuestionScreenState extends State<QuestionScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SelectableText(
-                  answer.answer,
-                  style: theme.textTheme.bodyLarge,
+                // A selection area instead of SelectableText: the text stays
+                // selectable and copyable (long press), and the references
+                // still react to a short tap.
+                child: SelectionArea(
+                  child: Text.rich(
+                    TextSpan(children: _answerSpans(answer, theme)),
+                    style: theme.textTheme.bodyLarge,
+                  ),
                 ),
               ),
             ),
@@ -197,36 +272,209 @@ class _QuestionScreenState extends State<QuestionScreen> {
               ),
             for (final source in answer.sources)
               _SourceCard(
+                key: _cards[source.number],
                 source: source,
+                sameEntry: [
+                  for (final s in answer.sources)
+                    if (s.entryId == source.entryId) s,
+                ],
+                loadEntry: _loadEntry,
                 onOpen: () => widget.openEntry(source.entryId),
               ),
           ],
         ),
     ];
   }
+
+  /// The answer text with every reference that has a source as a link. A
+  /// reference without a source (e.g. [2] if only 1 and 3 came) stays plain
+  /// text.
+  List<TextSpan> _answerSpans(Answer answer, ThemeData theme) {
+    final text = answer.answer;
+    final primary = theme.colorScheme.primary;
+    final link = TextStyle(
+      color: primary,
+      fontWeight: FontWeight.w600,
+      decoration: TextDecoration.underline,
+      decorationColor: primary.withValues(alpha: 0.5),
+    );
+    final spans = <TextSpan>[];
+    var at = 0;
+    for (final citation in findCitations(text)) {
+      final recognizer = _recognizers[citation.number];
+      if (recognizer == null) continue;
+      if (citation.start > at) {
+        spans.add(TextSpan(text: text.substring(at, citation.start)));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(citation.start, citation.end),
+          style: link,
+          recognizer: recognizer,
+          semanticsLabel: 'Quelle ${citation.number} anzeigen',
+        ),
+      );
+      at = citation.end;
+    }
+    if (at < text.length) spans.add(TextSpan(text: text.substring(at)));
+    return spans;
+  }
 }
 
 /// A source in one compact line: number as in the answer text, type, date
-/// and issuer. The excerpt only shows when expanded.
+/// and issuer. Expanded, it shows the full text of the entry with the place
+/// of the excerpt marked.
 ///
 /// Two separate tap targets, so that one is not hit instead of the other:
 /// the left part opens the entry, the arrow button on the right (behind a
-/// divider) shows or hides the excerpt.
+/// divider) shows or hides the text.
 class _SourceCard extends StatefulWidget {
-  const _SourceCard({required this.source, required this.onOpen});
+  const _SourceCard({
+    super.key,
+    required this.source,
+    required this.sameEntry,
+    required this.loadEntry,
+    required this.onOpen,
+  });
 
   final Source source;
+
+  /// All sources of the answer from the same entry, this one included. Their
+  /// places are marked too, this one more strongly.
+  final List<Source> sameEntry;
+
+  /// Loads the entry (once per answer, see the question screen).
+  final Future<Entry> Function(String entryId) loadEntry;
   final VoidCallback onOpen;
 
   @override
   State<_SourceCard> createState() => _SourceCardState();
 }
 
+/// The full text with the places of the sources from this entry.
+typedef _MarkedText = ({
+  String fullText,
+  List<TextLocation> locations,
+  TextLocation current,
+});
+
 class _SourceCardState extends State<_SourceCard> {
-  /// `true` while the excerpt is shown. Every card starts collapsed.
+  /// `true` while the text is shown. Every card starts collapsed.
   var _expanded = false;
 
-  void _toggle() => setState(() => _expanded = !_expanded);
+  /// `true` while the entry is loading.
+  var _loading = false;
+
+  /// The full text with the places, once loaded and found. Computed only
+  /// once: the text view scrolls again for every new location object.
+  _MarkedText? _marked;
+
+  /// The entry could not be loaded; the excerpt is shown instead.
+  ApiException? _loadError;
+
+  /// `true` for a short time after a reference in the answer was tapped.
+  var _highlighted = false;
+  Timer? _highlightTimer;
+
+  /// After a tap on a reference: once the card is fully expanded, scroll
+  /// again so that its end is visible as well.
+  var _scrollWhenExpanded = false;
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
+  }
+
+  void _toggle() {
+    setState(() => _expanded = !_expanded);
+    if (_expanded && _marked == null && !_loading && _loadError == null) {
+      _load();
+    }
+  }
+
+  void _load() {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    final source = widget.source;
+    widget
+        .loadEntry(source.entryId)
+        .then(
+          (entry) {
+            if (!mounted) return;
+            setState(() {
+              _loading = false;
+              _marked = _mark(entry.fullText);
+            });
+          },
+          onError: (Object error) {
+            if (!mounted) return;
+            setState(() {
+              _loading = false;
+              _loadError = error is ApiException
+                  ? error
+                  : const ApiException(
+                      code: ErrorCode.unexpectedResponse,
+                      message: 'Unerwartete Antwort des Servers.',
+                    );
+            });
+          },
+        );
+  }
+
+  /// Finds the places of this source and of the others from the same entry.
+  /// `null` if the place of this source is not found; then only the excerpt
+  /// is shown.
+  _MarkedText? _mark(String fullText) {
+    final current = locateExcerpt(fullText, widget.source.excerpt);
+    if (current == null) return null;
+    return (
+      fullText: fullText,
+      locations: [
+        current,
+        for (final other in widget.sameEntry)
+          if (other.number != widget.source.number)
+            ?locateExcerpt(fullText, other.excerpt),
+      ],
+      current: current,
+    );
+  }
+
+  /// A reference in the answer text points to this card: expand it, scroll
+  /// to it and highlight it briefly.
+  void reveal() {
+    if (!_expanded) {
+      _toggle();
+      _scrollWhenExpanded = !motionDisabled(context);
+    }
+    _highlightTimer?.cancel();
+    setState(() => _highlighted = true);
+    _highlightTimer = Timer(Durations.extralong4, () {
+      if (mounted) setState(() => _highlighted = false);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.1,
+        duration: motionDuration(context, Durations.medium4),
+        curve: Easing.standard,
+      );
+    });
+  }
+
+  void _expansionEnded() {
+    if (!_scrollWhenExpanded || !mounted) return;
+    _scrollWhenExpanded = false;
+    Scrollable.ensureVisible(
+      context,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      duration: motionDuration(context, Durations.medium2),
+      curve: Easing.standard,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -240,8 +488,21 @@ class _SourceCardState extends State<_SourceCard> {
     // Always the number from the backend, never the position in the list:
     // the numbers can have gaps (e.g. only 1 and 3).
     final number = source.number;
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    final cardColor =
+        CardTheme.of(context).color ?? theme.colorScheme.surfaceContainerLow;
+    // Highlighted at once, then it fades back slowly. Not primaryContainer:
+    // number circle and text marks have that color and would vanish.
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(
+        end: _highlighted ? theme.colorScheme.secondaryContainer : cardColor,
+      ),
+      duration: motionDuration(
+        context,
+        _highlighted ? Durations.short2 : Durations.extralong4,
+      ),
+      curve: Easing.standard,
+      builder: (context, color, child) =>
+          Card(color: color, clipBehavior: Clip.antiAlias, child: child),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -309,8 +570,8 @@ class _SourceCardState extends State<_SourceCard> {
                 button: true,
                 expanded: _expanded,
                 label: _expanded
-                    ? 'Auszug von Quelle $number ausblenden'
-                    : 'Auszug von Quelle $number anzeigen',
+                    ? 'Textstelle von Quelle $number ausblenden'
+                    : 'Textstelle von Quelle $number anzeigen',
                 onTap: _toggle,
                 excludeSemantics: true,
                 child: Padding(
@@ -318,8 +579,8 @@ class _SourceCardState extends State<_SourceCard> {
                   child: IconButton(
                     onPressed: _toggle,
                     tooltip: _expanded
-                        ? 'Auszug ausblenden'
-                        : 'Auszug anzeigen',
+                        ? 'Textstelle ausblenden'
+                        : 'Textstelle anzeigen',
                     icon: Icon(
                       _expanded ? Icons.expand_less : Icons.expand_more,
                     ),
@@ -333,29 +594,87 @@ class _SourceCardState extends State<_SourceCard> {
             duration: motionDuration(context, Durations.medium2),
             curve: Easing.emphasizedDecelerate,
             alignment: Alignment.topCenter,
+            onEnd: _expansionEnded,
             child: _expanded
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Divider(height: 1),
-                      // Own node for the screen reader, otherwise the excerpt
+                      // Own node for the screen reader, otherwise the text
                       // would be merged into the label of the arrow button.
-                      Semantics(
-                        container: true,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                          child: Text(
-                            '„${source.excerpt}“',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                      ),
+                      Semantics(container: true, child: _details(theme)),
                     ],
                   )
                 : const SizedBox.shrink(),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Below the line: loading, the full text with the place marked, or the
+  /// excerpt (place not found, or the entry could not be loaded).
+  Widget _details(ThemeData theme) {
+    if (_loading) {
+      return const SizedBox(
+        height: sourceTextHeight,
+        child: Center(
+          child: CircularProgressIndicator(semanticsLabel: 'Text wird geladen'),
+        ),
+      );
+    }
+    final marked = _marked;
+    if (marked != null) {
+      return SizedBox(
+        height: sourceTextHeight,
+        child: TextLocationView(
+          fullText: marked.fullText,
+          locations: marked.locations,
+          current: marked.current,
+        ),
+      );
+    }
+    final error = _loadError;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (error != null) _loadErrorRow(theme, error),
+          Text(
+            '„${widget.source.excerpt}“',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A calm note instead of an error card: the excerpt below still shows
+  /// what the answer is based on.
+  Widget _loadErrorRow(ThemeData theme, ApiException error) {
+    // A deleted entry does not come back; trying again makes no sense.
+    final gone =
+        error.code == ErrorCode.entryNotFound ||
+        error.code == ErrorCode.invalidId;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              gone
+                  ? 'Der Eintrag ist nicht mehr vorhanden.'
+                  : 'Der ganze Text kann gerade nicht geladen werden.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (!gone)
+            TextButton(onPressed: _load, child: const Text('Erneut versuchen')),
         ],
       ),
     );
