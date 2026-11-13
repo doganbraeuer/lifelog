@@ -252,4 +252,22 @@ class TextLocation extends Location {
   /// The text of this range in [fullText].
   String textIn(String fullText) =>
       String.fromCharCodes(fullText.runes.skip(start).take(end - start));
+
+  /// This range as UTF-16 indices into [fullText], for `substring` and
+  /// `TextSelection`. Dart strings count UTF-16 code units, so a character
+  /// outside the BMP (e.g. an emoji) is one code point but two units.
+  /// Offsets beyond the text are clamped to its end.
+  (int, int) utf16Range(String fullText) {
+    var units = 0;
+    var codePoints = 0;
+    int? from;
+    for (final rune in fullText.runes) {
+      if (codePoints == start) from = units;
+      if (codePoints == end) break;
+      units += rune > 0xFFFF ? 2 : 1;
+      codePoints++;
+    }
+    from ??= units; // start at or beyond the end of the text
+    return (from, units < from ? from : units);
+  }
 }

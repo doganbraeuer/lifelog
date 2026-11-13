@@ -127,6 +127,51 @@ void main() {
     expect(const TextLocation(start: 2, end: 4).textIn('a🙂bc'), 'bc');
   });
 
+  group('utf16Range: code points to Dart string indices', () {
+    test('umlauts are one code unit each, so nothing shifts', () {
+      const text = 'Hämoglobin 14,2 g/dl';
+      const location = TextLocation(start: 11, end: 20);
+      expect(location.utf16Range(text), (11, 20));
+      final (start, end) = location.utf16Range(text);
+      expect(text.substring(start, end), '14,2 g/dl');
+    });
+
+    test('an emoji before the range shifts it by one code unit', () {
+      const text = 'Puls 🫀 64/min';
+      // Code points: „Puls “ 0–4, 🫀 5, „ “ 6, „64/min“ 7–12.
+      const location = TextLocation(start: 7, end: 13);
+      expect(location.textIn(text), '64/min');
+      final (start, end) = location.utf16Range(text);
+      expect((start, end), (8, 14));
+      expect(text.substring(start, end), '64/min');
+    });
+
+    test('an emoji inside the range counts twice', () {
+      const text = 'Ä 🙂🙂 Ö';
+      const location = TextLocation(start: 2, end: 4);
+      expect(location.utf16Range(text), (2, 6));
+      expect(location.textIn(text), '🙂🙂');
+    });
+
+    test('agrees with textIn for every range of a mixed text', () {
+      const text = 'Größe 🙂 182 cm\n✅ Gewicht 81 kg 👍';
+      final length = text.runes.length;
+      for (var start = 0; start <= length; start++) {
+        for (var end = start; end <= length; end++) {
+          final location = TextLocation(start: start, end: end);
+          final (from, to) = location.utf16Range(text);
+          expect(text.substring(from, to), location.textIn(text));
+        }
+      }
+    });
+
+    test('offsets beyond the text are clamped to its end', () {
+      expect(const TextLocation(start: 3, end: 99).utf16Range('a🙂b'), (4, 4));
+      expect(const TextLocation(start: 1, end: 99).utf16Range('a🙂b'), (1, 4));
+      expect(const TextLocation(start: 0, end: 0).utf16Range(''), (0, 0));
+    });
+  });
+
   test('every status of a field', () {
     for (final (code, status) in [
       ('confirmed', FieldCheckStatus.confirmed),
