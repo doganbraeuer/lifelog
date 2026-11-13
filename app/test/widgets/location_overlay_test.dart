@@ -142,6 +142,35 @@ void main() {
       expect(shiftOf(m), Offset.zero);
     });
 
+    test('a word near the top of a letterboxed page: no grey above it', () {
+      // A4 portrait in 360×640: the page fills the width, 80 px of
+      // background above and below. The word sits close to the top edge.
+      const page = Rect.fromLTWH(0, 80, 360, 480);
+      const word = Rect.fromLTWH(150, 90, 30, 10);
+      final m = focusTransform(viewport, word, page: page);
+      expect(scaleOf(m), 3);
+      // The top edge of the page lands exactly at the top of the view
+      // instead of 35 px further down.
+      expect(MatrixUtils.transformPoint(m, page.topLeft).dy, 0);
+      // And the bottom edge is still below the view.
+      expect(
+        MatrixUtils.transformPoint(m, page.bottomLeft).dy,
+        greaterThan(640),
+      );
+    });
+
+    test('a page narrower than the view stays centered', () {
+      // A4 in a wide view at scale 1: 283 px of 800, centered.
+      const page = Rect.fromLTWH(258.5, 0, 283, 400);
+      final m = focusTransform(
+        const Size(800, 400),
+        const Rect.fromLTWH(258.5, 0, 283, 400),
+        page: page,
+      );
+      expect(scaleOf(m), 1);
+      expect(shiftOf(m).dx, closeTo(0, 0.001));
+    });
+
     test('a word at the bottom right corner: clamped to the far edge', () {
       const corner = Rect.fromLTWH(340, 630, 20, 10);
       final m = focusTransform(viewport, corner);

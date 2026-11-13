@@ -33,21 +33,40 @@ Rect locationRect(PageLocation location, Rect page) => Rect.fromLTWH(
 /// [viewport]: zooms in on [target] and centers it.
 ///
 /// The scale makes the target take up about 80 % of the width or 40 % of the
-/// height, between 1 and [maxScale]. The shift is clamped so that no area
-/// outside the child becomes visible.
-Matrix4 focusTransform(Size viewport, Rect target, {double maxScale = 3}) {
+/// height, between 1 and [maxScale]. The shift is clamped to [page] (the
+/// shown page, by default the whole child): no area beside the page becomes
+/// visible, and a page smaller than the view stays centered.
+Matrix4 focusTransform(
+  Size viewport,
+  Rect target, {
+  Rect? page,
+  double maxScale = 3,
+}) {
+  final bounds = page ?? Offset.zero & viewport;
   final width = math.max(target.width, 1.0);
   final height = math.max(target.height, 1.0);
   final scale = math
       .min(viewport.width * 0.8 / width, viewport.height * 0.4 / height)
       .clamp(1.0, maxScale);
-  final dx = (viewport.width / 2 - scale * target.center.dx).clamp(
-    viewport.width - scale * viewport.width,
-    0.0,
-  );
-  final dy = (viewport.height / 2 - scale * target.center.dy).clamp(
-    viewport.height - scale * viewport.height,
-    0.0,
+
+  // Shift along one axis: the target in the middle, but the page edges not
+  // inside the view.
+  double shift(double view, double center, double start, double end) {
+    if (scale * (end - start) <= view) {
+      return (view - scale * (start + end)) / 2;
+    }
+    return (view / 2 - scale * center).clamp(
+      view - scale * end,
+      -scale * start,
+    );
+  }
+
+  final dx = shift(viewport.width, target.center.dx, bounds.left, bounds.right);
+  final dy = shift(
+    viewport.height,
+    target.center.dy,
+    bounds.top,
+    bounds.bottom,
   );
   return Matrix4.diagonal3Values(scale, scale, 1)..setTranslationRaw(dx, dy, 0);
 }
@@ -93,12 +112,14 @@ class _LocationOverlayState extends State<LocationOverlay> {
   /// Zooms in on the current location after the frame, if it or the
   /// available space changed. (Setting the controller during the build
   /// would rebuild the viewer in the middle of the build.)
-  void _focusLater(Size viewport, Rect target) {
+  void _focusLater(Size viewport, Rect page, Rect target) {
     final key = (widget.current, viewport);
     if (_focused == key) return;
     _focused = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _transform.value = focusTransform(viewport, target);
+      if (mounted) {
+        _transform.value = focusTransform(viewport, target, page: page);
+      }
     });
   }
 
@@ -111,7 +132,7 @@ class _LocationOverlayState extends State<LocationOverlay> {
         builder: (context, constraints) {
           final viewport = constraints.biggest;
           final page = fittedPageRect(widget.pageSize, viewport);
-          _focusLater(viewport, locationRect(widget.current, page));
+          _focusLater(viewport, page, locationRect(widget.current, page));
           return InteractiveViewer(
             transformationController: _transform,
             maxScale: 8,
@@ -129,11 +150,17 @@ class _LocationOverlayState extends State<LocationOverlay> {
                   ),
                   Positioned.fromRect(
                     rect: page,
-                    child: CustomPaint(
-                      painter: LocationMarksPainter(
-                        locations: widget.locations,
-                        current: widget.current,
-                        color: colors.primary,
+                    // Repaints on zoom, so the frame keeps its width on
+                    // screen instead of growing with the page.
+                    child: ListenableBuilder(
+                      listenable: _transform,
+                      builder: (context, _) => CustomPaint(
+                        painter: LocationMarksPainter(
+                          locations: widget.locations,
+                          current: widget.current,
+                          color: colors.primary,
+                          scale: _transform.value.getMaxScaleOnAxis(),
+                        ),
                       ),
                     ),
                   ),
@@ -155,11 +182,16 @@ class LocationMarksPainter extends CustomPainter {
     required this.locations,
     required this.current,
     required this.color,
+    this.scale = 1,
   });
 
   final List<PageLocation> locations;
   final PageLocation current;
   final Color color;
+
+  /// Current zoom of the viewer; the frame is drawn 1.5 logical pixels wide
+  /// on screen at every zoom.
+  final double scale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -169,7 +201,7 @@ class LocationMarksPainter extends CustomPainter {
     final frame = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = 1.5 / scale;
     for (final location in locations) {
       if (identical(location, current)) continue;
       canvas.drawRRect(_marked(location, page), otherFill);
@@ -183,7 +215,7 @@ class LocationMarksPainter extends CustomPainter {
   /// A little larger than the word, so the frame does not cover letters.
   static RRect _marked(PageLocation location, Rect page) {
     final rect = locationRect(location, page);
-    final padding = math.max(2.0, rect.height * 0.2);
+    final padding = rect.height * 0.2;
     return RRect.fromRectAndRadius(
       rect.inflate(padding),
       Radius.circular(padding),
@@ -194,5 +226,6 @@ class LocationMarksPainter extends CustomPainter {
   bool shouldRepaint(LocationMarksPainter old) =>
       old.locations != locations ||
       old.current != current ||
-      old.color != color;
+      old.color != color ||
+      old.scale != scale;
 }
