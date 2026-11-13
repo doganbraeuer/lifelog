@@ -9,19 +9,23 @@
 //   the mock original.
 // - The unit only has to follow the value in the same line (no limit of
 //   three words), and the issuer is not searched across line breaks.
-// - Rectangles are estimated from line and column in the layout of the mock
-//   PDF (`createMockPdf`), not measured.
+// - Rectangles are estimated from line and column in the layout of the page
+//   (`MockLayout`: the mock PDF or the mock photo), not measured.
 
 import '../../model/plain_date.dart';
 import '../../model/verification.dart';
+import 'mock_files.dart';
 
 /// One page of the original as the second reader sees it.
 class MockPage {
-  const MockPage(this.source, this.lines);
+  const MockPage(this.source, this.lines, {this.layout = MockLayout.pdfA4});
 
   /// `pdfText`, `ocr` or `text`.
   final VerificationSource source;
   final List<String> lines;
+
+  /// Where the lines are on the page; for rectangles.
+  final MockLayout layout;
 }
 
 /// What the second reader sees of a document. It may differ from `fullText`
@@ -30,8 +34,11 @@ class MockOriginal {
   const MockOriginal(this.pages);
 
   /// One page of a file read by text layer or OCR.
-  MockOriginal.page(VerificationSource source, List<String> lines)
-    : pages = [MockPage(source, lines)];
+  MockOriginal.page(
+    VerificationSource source,
+    List<String> lines, {
+    MockLayout layout = MockLayout.pdfA4,
+  }) : pages = [MockPage(source, lines, layout: layout)];
 
   /// A text import: the entered text itself.
   MockOriginal.text(String fullText)
@@ -390,17 +397,6 @@ class _Reader {
     return 80 + text.codeUnits.fold(0, (a, b) => a + b) % 17;
   }
 
-  // Layout of the mock PDF (createMockPdf): A4 in points, Helvetica 11 pt,
-  // 15 pt line spacing, first line at the top left. 5.5 pt is an average
-  // character width.
-  static const _pageWidth = 595.0;
-  static const _pageHeight = 842.0;
-  static const _left = 56.0;
-  static const _firstTop = 44.0;
-  static const _lineHeight = 15.0;
-  static const _charWidth = 5.5;
-  static const _textHeight = 12.0;
-
   static double _fraction(double value) =>
       double.parse(value.toStringAsFixed(4));
 
@@ -415,12 +411,19 @@ class _Reader {
       }
       return {'start': offset + m.start, 'end': offset + m.end};
     }
+    final layout = page.layout;
     return {
       'page': m.page + 1,
-      'x': _fraction((_left + m.start * _charWidth) / _pageWidth),
-      'y': _fraction((_firstTop + m.line * _lineHeight) / _pageHeight),
-      'width': _fraction((m.end - m.start) * _charWidth / _pageWidth),
-      'height': _fraction(_textHeight / _pageHeight),
+      'x': _fraction(
+        (layout.left + m.start * layout.charWidth) / layout.pageWidth,
+      ),
+      'y': _fraction(
+        (layout.firstTop + m.line * layout.lineHeight) / layout.pageHeight,
+      ),
+      'width': _fraction(
+        (m.end - m.start) * layout.charWidth / layout.pageWidth,
+      ),
+      'height': _fraction(layout.textHeight / layout.pageHeight),
     };
   }
 }

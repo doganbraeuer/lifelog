@@ -6,6 +6,59 @@ import 'dart:convert';
 import 'dart:io' show zlib;
 import 'dart:typed_data';
 
+/// Where the lines of a mock original sit on its page. The mock verification
+/// estimates its rectangles from this, so they land on the values.
+class MockLayout {
+  const MockLayout({
+    required this.pageWidth,
+    required this.pageHeight,
+    required this.left,
+    required this.firstTop,
+    required this.lineHeight,
+    required this.charWidth,
+    required this.textHeight,
+  });
+
+  /// The mock PDF (createMockPdfPages): A4 in points, Helvetica 11 pt,
+  /// 15 pt line spacing, first line at the top left. 5.5 pt is an average
+  /// character width.
+  static const pdfA4 = MockLayout(
+    pageWidth: 595,
+    pageHeight: 842,
+    left: 56,
+    firstTop: 44,
+    lineHeight: 15,
+    charWidth: 5.5,
+    textHeight: 12,
+  );
+
+  /// The mock photo (createMockPhoto), in pixels.
+  static const photo = MockLayout(
+    pageWidth: 600,
+    pageHeight: 800,
+    left: 40,
+    firstTop: 48,
+    lineHeight: 36,
+    charWidth: 12,
+    textHeight: 20,
+  );
+
+  final double pageWidth;
+  final double pageHeight;
+
+  /// Left edge of every line.
+  final double left;
+
+  /// Top edge of the text of the first line.
+  final double firstTop;
+  final double lineHeight;
+  final double charWidth;
+
+  /// Height of the text of a line (from the top of capitals to below the
+  /// descenders).
+  final double textHeight;
+}
+
 /// A one-page PDF with the given lines of text (font Helvetica).
 Uint8List createMockPdf(List<String> lines) => createMockPdfPages([lines]);
 
@@ -76,14 +129,49 @@ Uint8List createMockPdfPages(List<List<String>> pages) {
 }
 
 /// A grey "photo" of a document: a white page with bars as lines of text.
-Uint8List createMockPng({int width = 240, int height = 320}) {
+Uint8List createMockPng({int width = 240, int height = 320}) =>
+    _greyPng(width, height, (x, y) => _greyValue(x, y, width, height));
+
+/// A grey "photo" of a sheet of paper on a table, with one dark block per
+/// character of [lines] (gaps for spaces), laid out as in
+/// [MockLayout.photo]. The mock verification uses the same layout, so its
+/// rectangles lie exactly on the "words".
+Uint8List createMockPhoto(List<String> lines) {
+  const layout = MockLayout.photo;
+  final width = layout.pageWidth.toInt();
+  final height = layout.pageHeight.toInt();
+  final runes = [for (final line in lines) line.runes.toList()];
+  const sheet = 16; // table visible around the sheet
+  return _greyPng(width, height, (x, y) {
+    if (x < sheet || x >= width - sheet || y < sheet || y >= height - sheet) {
+      return 110;
+    }
+    final top = y - layout.firstTop;
+    if (top < 0) return 255;
+    final line = top ~/ layout.lineHeight;
+    if (line >= runes.length || top % layout.lineHeight >= layout.textHeight) {
+      return 255;
+    }
+    final left = x - layout.left;
+    if (left < 0) return 255;
+    final column = left ~/ layout.charWidth;
+    final chars = runes[line];
+    if (column >= chars.length) return 255;
+    // A thin gap between characters, none at all for a space.
+    if (String.fromCharCode(chars[column]).trim().isEmpty) return 255;
+    return left % layout.charWidth < layout.charWidth - 2 ? 70 : 255;
+  });
+}
+
+/// A greyscale PNG; [grey] gives the value (0–255) of every pixel.
+Uint8List _greyPng(int width, int height, int Function(int x, int y) grey) {
   // Raw data: per row one filter byte (0 = none), then one grey value per
   // pixel.
   final raw = BytesBuilder();
   for (var y = 0; y < height; y++) {
     raw.addByte(0);
     for (var x = 0; x < width; x++) {
-      raw.addByte(_greyValue(x, y, width, height));
+      raw.addByte(grey(x, y));
     }
   }
 
