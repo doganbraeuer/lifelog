@@ -8,8 +8,7 @@ import '../api/api_exception.dart';
 import '../model/answer.dart';
 import '../model/citations.dart';
 import '../model/entry.dart';
-import '../model/excerpt_location.dart';
-import '../model/verification.dart';
+import '../model/source_marks.dart';
 import '../module/module_catalog.dart';
 import '../widgets/motion.dart';
 import '../widgets/mock_banner.dart';
@@ -278,6 +277,8 @@ class _QuestionScreenState extends State<QuestionScreen> {
                   for (final s in answer.sources)
                     if (s.entryId == source.entryId) s,
                 ],
+                answer: answer.answer,
+                question: asked,
                 loadEntry: _loadEntry,
                 onOpen: () => widget.openEntry(source.entryId),
               ),
@@ -322,8 +323,8 @@ class _QuestionScreenState extends State<QuestionScreen> {
 }
 
 /// A source in one compact line: number as in the answer text, type, date
-/// and issuer. Expanded, it shows the full text of the entry with the place
-/// of the excerpt marked.
+/// and issuer. Expanded, it shows the full text of the entry with the lines
+/// marked that match the answer sentence citing it ([markSources]).
 ///
 /// Two separate tap targets, so that one is not hit instead of the other:
 /// the left part opens the entry, the arrow button on the right (behind a
@@ -333,6 +334,8 @@ class _SourceCard extends StatefulWidget {
     super.key,
     required this.source,
     required this.sameEntry,
+    required this.answer,
+    required this.question,
     required this.loadEntry,
     required this.onOpen,
   });
@@ -340,8 +343,12 @@ class _SourceCard extends StatefulWidget {
   final Source source;
 
   /// All sources of the answer from the same entry, this one included. Their
-  /// places are marked too, this one more strongly.
+  /// lines are marked too, those of this one more strongly.
   final List<Source> sameEntry;
+
+  /// Answer text and question; they decide which lines are marked.
+  final String answer;
+  final String question;
 
   /// Loads the entry (once per answer, see the question screen).
   final Future<Entry> Function(String entryId) loadEntry;
@@ -351,12 +358,8 @@ class _SourceCard extends StatefulWidget {
   State<_SourceCard> createState() => _SourceCardState();
 }
 
-/// The full text with the places of the sources from this entry.
-typedef _MarkedText = ({
-  String fullText,
-  List<TextLocation> locations,
-  TextLocation current,
-});
+/// The full text with the marks of the sources from this entry.
+typedef _MarkedText = ({String fullText, SourceMarks marks});
 
 class _SourceCardState extends State<_SourceCard> {
   /// `true` while the text is shown. Every card starts collapsed.
@@ -424,22 +427,18 @@ class _SourceCardState extends State<_SourceCard> {
         );
   }
 
-  /// Finds the places of this source and of the others from the same entry.
-  /// `null` if the place of this source is not found; then only the excerpt
-  /// is shown.
+  /// Finds the lines of this source and of the others from the same entry.
+  /// `null` if the passage of this source is not found; then only the
+  /// excerpt is shown.
   _MarkedText? _mark(String fullText) {
-    final current = locateExcerpt(fullText, widget.source.excerpt);
-    if (current == null) return null;
-    return (
+    final marks = markSources(
       fullText: fullText,
-      locations: [
-        current,
-        for (final other in widget.sameEntry)
-          if (other.number != widget.source.number)
-            ?locateExcerpt(fullText, other.excerpt),
-      ],
-      current: current,
+      source: widget.source,
+      sameEntry: widget.sameEntry,
+      answer: widget.answer,
+      question: widget.question,
     );
+    return marks == null ? null : (fullText: fullText, marks: marks);
   }
 
   /// A reference in the answer text points to this card: expand it, scroll
@@ -625,12 +624,16 @@ class _SourceCardState extends State<_SourceCard> {
     }
     final marked = _marked;
     if (marked != null) {
+      final marks = marked.marks;
+      // Without own marks, scrollTo is the passage: not in locations, so it
+      // is not highlighted, but the view scrolls to its start.
       return SizedBox(
         height: sourceTextHeight,
         child: TextLocationView(
           fullText: marked.fullText,
-          locations: marked.locations,
-          current: marked.current,
+          locations: [...marks.current, ...marks.others],
+          current: marks.scrollTo,
+          strongLocations: marks.current,
         ),
       );
     }

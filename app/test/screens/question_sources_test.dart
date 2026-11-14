@@ -16,10 +16,22 @@ import '../helpers.dart';
 /// Full text of the lab report as a phone might send it: `\r\n`, a line
 /// with spaces around it, and a "blank" line that contains a space.
 const labText =
-    'Labor Muster GmbH\r\nMusterstraße 1, 5020 Salzburg\r\n\r\n'
+    'Labor Muster GmbH\r\nMusterstraße 1, 5020 Salzburg\r\n'
+    'Laborbefund vom 14.10.2026\r\n\r\n'
     '  Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)  \r\n'
     'Leukozyten 6,8 G/l (Ref. 4,0-10,0)\n \n'
-    'CRP <0,5 mg/dl (Ref. <0,5)';
+    'CRP <0,5 mg/dl (Ref. <0,5)\n'
+    'Thrombozyten 245 G/l (Ref. 150-400)\n'
+    'Material: Serum, Abnahme nüchtern um 08:15 Uhr\n'
+    'Befund vidiert: Dr. Max Muster, Facharzt für Labormedizin';
+
+/// A long lab report, so that the box has to scroll to the passage at the
+/// end.
+final longLabText = [
+  'Labor Muster GmbH',
+  for (var i = 1; i <= 30; i++) 'Parameter $i: unauffällig',
+  'Vitamin D 32 ng/ml (Ref. 30-100)',
+].join('\n');
 
 const doctorLetterText =
     'Dr. Erika Beispiel\n\nArztbrief vom 02.09.2026\n'
@@ -32,7 +44,8 @@ const doctorLetterText =
 Map<String, dynamic> answerWithGap() => {
   'answer':
       'Hämoglobin 14,2 g/dl [1], Blutdruck 128/82 mmHg [3], '
-      'Leukozyten und CRP [1, 4]. Mehr steht dazu nicht [7].',
+      'Leukozyten 6,8 G/l und CRP <0,5 mg/dl [1, 4]. '
+      'Mehr steht dazu nicht [7].',
   'found': true,
   'sources': [
     source(1, labReportId, 'Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)'),
@@ -90,6 +103,9 @@ class FakeBackend {
   /// Full texts by entry ID.
   final texts = {labReportId: labText, doctorLetterId: doctorLetterText};
 
+  /// The answer to the question.
+  var answer = answerWithGap();
+
   http.Response _json(Object body, [int status = 200]) => http.Response.bytes(
     utf8.encode(jsonEncode(body)),
     status,
@@ -98,7 +114,7 @@ class FakeBackend {
 
   Future<http.Response> handle(http.Request request) async {
     final path = request.url.path;
-    if (path.endsWith('/questions')) return _json(answerWithGap());
+    if (path.endsWith('/questions')) return _json(answer);
     final id = path.split('/').last;
     loads[id] = (loads[id] ?? 0) + 1;
     if (failEntries) {
@@ -227,8 +243,8 @@ void main() {
     expect(opened, [doctorLetterId]);
   });
 
-  testWidgets('expanded: the full text, every place of the entry marked, '
-      'its own one strongly', (tester) async {
+  testWidgets('expanded: the full text, the matching lines of the entry '
+      'marked, its own ones strongly', (tester) async {
     final backend = FakeBackend();
     await showAnswer(tester, [], backend);
     expect(backend.loads, isEmpty, reason: 'loaded only when expanded');
@@ -237,25 +253,21 @@ void main() {
     await tester.pumpAndSettle();
     final view = tester.widget<TextLocationView>(textOf(1));
     expect(view.fullText, labText);
-    // The chunk of source 4 has other whitespace than the full text and is
-    // still found.
+    // Line by line, trimmed. The chunk of source 4 has other whitespace
+    // than the full text and is still found.
     expect(marks(tester, textOf(1)), [
       ('Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)', true),
-      (
-        'Leukozyten 6,8 G/l (Ref. 4,0-10,0)\n \nCRP <0,5 mg/dl (Ref. <0,5)',
-        false,
-      ),
+      ('Leukozyten 6,8 G/l (Ref. 4,0-10,0)', false),
+      ('CRP <0,5 mg/dl (Ref. <0,5)', false),
     ]);
 
-    // Source 4 from the same entry: the same places, the other one strong.
+    // Source 4 from the same entry: the same lines, its own ones strong.
     await tester.tap(arrowOf(4));
     await tester.pumpAndSettle();
     expect(marks(tester, textOf(4)), [
       ('Hämoglobin 14,2 g/dl (Ref. 13,5-17,5)', false),
-      (
-        'Leukozyten 6,8 G/l (Ref. 4,0-10,0)\n \nCRP <0,5 mg/dl (Ref. <0,5)',
-        true,
-      ),
+      ('Leukozyten 6,8 G/l (Ref. 4,0-10,0)', true),
+      ('CRP <0,5 mg/dl (Ref. <0,5)', true),
     ]);
 
     // Loaded once for both cards; collapsing and expanding loads nothing.
@@ -264,6 +276,30 @@ void main() {
     await tester.tap(arrowOf(1));
     await tester.pumpAndSettle();
     expect(backend.loads, {labReportId: 1});
+  });
+
+  testWidgets('a general answer: nothing marked, the text is still there, '
+      'scrolled to the passage', (tester) async {
+    const excerpt = 'Vitamin D 32 ng/ml (Ref. 30-100)';
+    final backend = FakeBackend()
+      ..texts[labReportId] = longLabText
+      ..answer = {
+        'answer': 'In deinen Befunden stehen Laborwerte [1].',
+        'found': true,
+        'sources': [source(1, labReportId, excerpt)],
+      };
+    await showAnswer(tester, [], backend);
+
+    await tester.tap(arrowOf(1));
+    await tester.pumpAndSettle();
+    expect(textOf(1), findsOneWidget);
+    expect(marks(tester, textOf(1)), isEmpty);
+    final view = tester.widget<TextLocationView>(textOf(1));
+    expect(view.current.textIn(longLabText), excerpt);
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(of: textOf(1), matching: find.byType(Scrollable)).first,
+    );
+    expect(scroll.position.pixels, greaterThan(0));
   });
 
   testWidgets('place not found: only the excerpt, as before', (tester) async {

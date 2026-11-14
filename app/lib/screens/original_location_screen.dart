@@ -306,11 +306,22 @@ class TextLocationView extends StatefulWidget {
     required this.fullText,
     required this.locations,
     required this.current,
+    this.strongLocations,
   });
 
   final String fullText;
+
+  /// All highlighted ranges.
   final List<TextLocation> locations;
+
+  /// Scroll target. Strongly highlighted if it is one of [locations] and
+  /// [strongLocations] is not given. It need not be highlighted at all:
+  /// outside [locations] it only says where to scroll.
   final TextLocation current;
+
+  /// The ranges of [locations] (same objects) that are highlighted strongly,
+  /// the others lightly. `null`: only [current].
+  final List<TextLocation>? strongLocations;
 
   @override
   State<TextLocationView> createState() => _TextLocationViewState();
@@ -380,12 +391,16 @@ class _TextLocationViewState extends State<TextLocationView> {
   /// The text in pieces: plain, highlighted, plain, ...
   List<TextSpan> _spans(ColorScheme colors) {
     final text = widget.fullText;
-    // Overlapping ranges are skipped below. With the same start the current
-    // one comes first, so a range with the same text never hides it.
+    final strong = widget.strongLocations ?? [widget.current];
+    // Overlapping ranges are skipped below. With the same start a strong one
+    // comes first, so a range with the same text never hides it.
     final ranges =
         [
           for (final location in widget.locations)
-            (location.utf16Range(text), identical(location, widget.current)),
+            (
+              location.utf16Range(text),
+              strong.any((s) => identical(s, location)),
+            ),
         ]..sort((a, b) {
           final byStart = a.$1.$1.compareTo(b.$1.$1);
           if (byStart != 0) return byStart;
