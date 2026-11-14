@@ -361,6 +361,44 @@ void main() {
       ];
       expect(marked, [('Puls 64/min', true)]);
     });
+
+    testWidgets('several strong ranges; current outside only scrolls', (
+      tester,
+    ) async {
+      const text = 'Natrium 140\nKalium 4,1\nChlorid 102\nCalcium 2,3';
+      const natrium = TextLocation(start: 0, end: 11);
+      const kalium = TextLocation(start: 12, end: 22);
+      const chlorid = TextLocation(start: 23, end: 34);
+      // The whole text as scroll target, not in locations: not highlighted.
+      const all = TextLocation(start: 0, end: 46);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: TextLocationView(
+              fullText: text,
+              locations: [natrium, kalium, chlorid],
+              current: all,
+              strongLocations: [natrium, chlorid],
+            ),
+          ),
+        ),
+      );
+
+      final view = tester.widget<SelectableText>(find.byType(SelectableText));
+      final strong = Theme.of(tester.element(find.byType(TextLocationView)))
+          .colorScheme
+          .primaryContainer;
+      final marked = [
+        for (final span in view.textSpan!.children!)
+          if (span is TextSpan && span.style?.backgroundColor != null)
+            (span.text, span.style!.backgroundColor == strong),
+      ];
+      expect(marked, [
+        ('Natrium 140', true),
+        ('Kalium 4,1', false),
+        ('Chlorid 102', true),
+      ]);
+    });
   });
 
   group('back', () {

@@ -370,6 +370,14 @@ the text layer of a PDF, or OCR for photos and scans.
 | Codepoint-Bereich als UTF-16-Bereich (App) | UTF-16 range | Dart `TextLocation.utf16Range` |
 | Auszug einer Quelle im Volltext finden (App) | locate excerpt | Dart `locateExcerpt`; `app/lib/model/excerpt_location.dart` |
 | Verweis [n] im Antworttext (App) | citation | Dart `Citation`, `findCitations`; `app/lib/model/citations.dart` |
+| Markierung einer Quelle im Volltext: eigene Zeilen stark, die anderer Quellen desselben Eintrags schwach (App) | source marks, mark sources, mark passage | Dart `SourceMarks`, `markSources`, `markPassage`; `app/lib/model/source_marks.dart` |
+| Anker: die Antwortsätze, die eine Quelle mit [n] zitieren (App) | anchor | Dart `anchorText` |
+| Text in Sätze teilen (App) | split sentences | Dart `splitSentences` |
+| Markierabschnitt: Zeile, lange Zeile als Satz (App) | segment | Dart `splitSegments`, `maxSegmentLength` |
+| Begriff (Zahl, Datum, Einheit, Fachwort) (App) | term, term kind | Dart `Term`, `TermKind` (`number`, `date`, `unit`, `word`), `findTerms`, `Term.baseWeight` |
+| Seltenheit eines Begriffs (1 / Zahl der Abschnitte mit ihm) (App) | rarity | Dart `minRarity` |
+| Grenzen der Markierung (App) | — | Dart `maxMarkedSegments`, `minScoreShare`, `maxMarkedShare` |
+| stark markierte Fundstellen in der Textansicht (App) | strong locations | Dart `TextLocationView.strongLocations` |
 | Mock-Foto mit Wortblöcken, Layout einer Mock-Seite (App) | mock photo, mock layout | Dart `createMockPhoto`, `MockLayout` (`pdfA4`, `photo`) |
 | geprüft / nicht geprüft | `checked` / `unchecked` | |
 | bestätigt / unbestätigt | `confirmed` / `unconfirmed` | |

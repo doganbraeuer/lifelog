@@ -1062,11 +1062,23 @@ Tab „Fragen“.
   - **Left part:** opens the entry.
   - **Arrow on the right** (tooltip „Textstelle anzeigen“): shows the
     whole text of the entry (`fullText`) below the line, in a box of fixed
-    height that scrolls by itself to the passage the answer is based on.
-    The passage is highlighted. The arrow turns up („Textstelle
-    ausblenden“) and hides it again. Expanding never opens the entry.
-- If several sources of the answer come from the same entry, the box marks
-  all their passages; the one of this card is stronger, the others light.
+    height that scrolls by itself to the first marked line (see below).
+    The arrow turns up („Textstelle ausblenden“) and hides it again.
+    Expanding never opens the entry.
+- **What is marked:** not the whole passage (in a short document that is
+  often the whole text), only up to 3 lines of it that match the answer
+  sentence citing this source: lines with a number from that sentence
+  (`2,1` and `2.1` count as equal), or with at least two of its rarer
+  words. A unit or word that is on many lines counts little; the question
+  counts half; a date alone (often also in the header) marks a line only
+  if the sentence has nothing else. Long lines are split into sentences.
+- **When nothing is marked:** for a general answer (e.g. to „Was steht in
+  meinen Befunden?“), when no line matches clearly, or when the marks would
+  cover more than 35 % of the text. The text is still shown, scrolled to
+  the start of the passage.
+- If several sources of the answer come from the same entry, the box also
+  marks the lines of the others, lightly; those of this card are stronger.
+  Light marks are left out if all marks together would pass 35 %.
 - The entry is loaded when a card is first expanded (`GET /entries/{id}`),
   once per entry and answer, also when two cards show the same entry.
   While it loads, the box shows a spinner.
@@ -1123,14 +1135,17 @@ Tab „Fragen“.
   close to it (e.g. questions mentioning „Salzburg“).
 - A source shows its passage in the full text, not on the page of the PDF
   or photo. The passage is found by its words; if the same excerpt occurs
-  twice in the text, the first occurrence is marked.
+  twice in the text, the first occurrence is used.
+- The marks compare terms, not meanings: an answer that rephrases
+  („Ferritinwert“ instead of „Ferritin“, „Oktober“ instead of a date
+  without a day) may leave a line unmarked. Rather nothing than too much.
 - The question and the matching chunks are sent to Gemini (see
   [privacy](#privacy)).
 
 ### Status
 
-**Done**, including compact sources, the full text with the marked passage
-and tappable references.
+**Done**, including compact sources, the full text with the matching lines
+marked (nothing rather than too much) and tappable references.
 
 ---
 
