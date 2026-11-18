@@ -1,6 +1,6 @@
 # Lifelog REST API (prototype)
 
-Status: 2026-11-12 · Version `v1` · Draft
+Status: 2026-11-18 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
 This document defines the interface between the Flutter app (`app/`) and the
@@ -19,13 +19,59 @@ All examples contain synthetic data only.
 - Requests and responses are JSON in UTF-8
   (`Content-Type: application/json; charset=utf-8`). Exceptions are the
   upload (`multipart/form-data`), fetching the original file (binary data)
-  and deleting (response without a body).
+  and the responses without a body (deleting, logout, password change).
 - Field names are English and follow [GLOSSARY.md](GLOSSARY.md) and the data
   model in `CLAUDE.md`.
 - Entry IDs are MongoDB ObjectIds as a 24-character hex string,
   e.g. `"6727a1f3c2b4e5d6f7a8b9c0"`.
-- The prototype has no login. The backend knows exactly one user
-  (see [open points](#4-open-points)).
+- Every request except `GET /status` and `POST /auth/login` needs a token,
+  see [login and tokens](#login-and-tokens).
+
+### Login and tokens
+
+Since 2026-11-18. Every user has an account and logs in with username and
+password ([3.10](#310-log-in)). Accounts are created by an administrator
+with `backend/cmd/users`; there is no registration through the API. A new
+account has a start password and `mustChangePassword: true`.
+
+- All endpoints except `GET /status` and `POST /auth/login` need the header
+  `Authorization: Bearer <token>`. The scheme `Bearer` is case-insensitive.
+- Without a valid token the backend answers `401 UNAUTHORIZED`: the token
+  is missing, unknown or expired, or the account is disabled. The response
+  has the header `WWW-Authenticate: Bearer`. This also applies to unknown
+  paths: without a token, everything except the two public endpoints is
+  closed.
+- While `mustChangePassword` is `true`, only `GET /me`, `POST /me/password`
+  and `POST /auth/logout` work. Every other endpoint answers
+  `403 PASSWORD_CHANGE_REQUIRED`.
+- Order of the checks: first the token (`401`), then the password change
+  (`403`), then the checks of the endpoint itself. Every endpoint except
+  the two public ones can therefore also answer `401` and `403`; the error
+  tables of the endpoints do not repeat this.
+- The token is an opaque string of 43 characters; the app does not
+  interpret it. It is valid for 30 days from the login (`expiresAt`) and is
+  not extended by using it. After that, or after any `401`, the app asks
+  for a new login.
+- The client gets the token exactly once, in the login response. The
+  backend stores only its SHA-256 hash, never the token itself. The app
+  keeps the token like a password. On the server on the internet, requests
+  go only over HTTPS.
+- Every login creates its own token (one per device). Logout ends only the
+  token of this device ([3.11](#311-log-out)); a password change ends all
+  other tokens of the account ([3.14](#314-change-the-password)).
+- The backend never returns a password or a password hash, and never logs
+  a password, a token or the `Authorization` header.
+
+**Announced for a later PR** (per-user separation of data):
+
+- Each user only sees their own entries: timeline, entry, original file,
+  correction, delete and questions. An entry of another user answers
+  `404 ENTRY_NOT_FOUND`, exactly like an entry that does not exist.
+- `409 DUPLICATE` only applies within the user's own account. The unique
+  index becomes `(userId, file.sha256)`, so a duplicate never reveals that
+  another user has the same file.
+- `429 LIMIT_REACHED` when the user reaches a daily limit. The limits are
+  defined in that PR.
 
 ### Modules
 
@@ -70,13 +116,18 @@ depends on the code.
 
 | HTTP | Code | When |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | JSON not readable, required field missing, wrong format, unknown field, unknown `module`, upload with both `file` and `text` |
+| 400 | `INVALID_REQUEST` | JSON not readable, required field missing, wrong format, unknown field, unknown `module`, upload with both `file` and `text`, `displayName` not 1–50 characters |
 | 400 | `INVALID_PARAMETER` | Unknown value for a query parameter |
 | 400 | `INVALID_ID` | ID is not a valid ObjectId |
 | 400 | `FILE_MISSING` | Upload without `file` and without `text`, or the content is empty; transcription without `audio` |
 | 400 | `FIELD_NOT_CORRECTABLE` | Correction of a field that is not (yet) correctable, e.g. `fullText` |
 | 400 | `QUESTION_MISSING` | Question missing or only whitespace |
 | 400 | `QUESTION_TOO_LONG` | Question longer than 500 characters |
+| 400 | `WRONG_PASSWORD` | Password change: `currentPassword` is wrong (since 2026-11-18). `message`: „Das bisherige Passwort stimmt nicht.“ |
+| 400 | `WEAK_PASSWORD` | Password change: the new password has fewer than 10 characters, more than 72 bytes, or equals the current one (since 2026-11-18). `message` e.g.: „Das neue Passwort muss mindestens 10 Zeichen lang sein.“ |
+| 401 | `INVALID_CREDENTIALS` | Login: unknown username, wrong password or disabled account, always with the same message (since 2026-11-18). `message`: „Benutzername oder Passwort stimmt nicht.“ |
+| 401 | `UNAUTHORIZED` | Token missing, unknown or expired, or account disabled (since 2026-11-18). `message`: „Bitte melde dich an.“ |
+| 403 | `PASSWORD_CHANGE_REQUIRED` | `mustChangePassword` is `true` and the endpoint is not `GET /me`, `POST /me/password` or `POST /auth/logout` (since 2026-11-18). `message`: „Bitte ändere zuerst dein Startpasswort.“ |
 | 404 | `ENTRY_NOT_FOUND` | No entry with this ID |
 | 404 | `FACT_NOT_FOUND` | Correction refers to an unknown fact ID |
 | 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded |
@@ -85,6 +136,8 @@ depends on the code.
 | 415 | `UNSUPPORTED_FILE_TYPE` | Upload: not JPEG, PNG, HEIC, WebP or PDF. Transcription: not one of the audio formats in 3.9 |
 | 422 | `UNREADABLE` | The vision LLM recognizes no document in the file, or a recording cannot be decoded |
 | 422 | `NO_SPEECH` | No speech in the recording: silence, noise, or shorter than 0.5 s (since 2026-11-12) |
+| 429 | `TOO_MANY_ATTEMPTS` | Too many failed attempts at login or password change; header `Retry-After` and `details.retryAfterSeconds` give the wait in seconds (since 2026-11-18). `message`: „Zu viele Fehlversuche. Bitte versuche es in einigen Minuten erneut.“ |
+| 429 | `LIMIT_REACHED` | Announced for a later PR: the user has reached a daily limit. `message` e.g.: „Du hast dein Tageslimit erreicht. Morgen geht es weiter.“ |
 | 500 | `INTERNAL_ERROR` | Unexpected error in the backend, e.g. database unreachable |
 | 502 | `EXTRACTION_FAILED` | The vision LLM returns a response that does not match the expected JSON |
 | 503 | `MODEL_UNAVAILABLE` | Language, embedding or speech recognition model does not respond or reports a limit |
@@ -398,8 +451,14 @@ The list only returns what the timeline needs. `fullText`, `facts`, `file`,
 | `PATCH` | `/api/v1/entries/{id}` | Correct recognized values |
 | `DELETE` | `/api/v1/entries/{id}` | Delete an entry with its original file and chunks |
 | `POST` | `/api/v1/questions` | Ask a question, answer with sources |
-| `GET` | `/api/v1/status` | Health check: is the backend running, is the database reachable? |
+| `GET` | `/api/v1/status` | Health check: is the backend running, is the database reachable? No token needed. |
 | `POST` | `/api/v1/transcriptions` | Turn a recording into text; nothing is stored (since 2026-11-12) |
+| `POST` | `/api/v1/auth/login` | Log in and get a token; no token needed (since 2026-11-18) |
+| `POST` | `/api/v1/auth/logout` | Log out this device (since 2026-11-18) |
+| `GET` | `/api/v1/me` | Get the logged-in user (since 2026-11-18) |
+| `PATCH` | `/api/v1/me` | Change the display name (since 2026-11-18) |
+| `POST` | `/api/v1/me/password` | Change the password (since 2026-11-18) |
+| `PUT` | `/api/v1/me/consent` | Record the consent; implemented in a later PR |
 
 ### 3.1 Upload and extract a file or text
 
@@ -1018,6 +1077,10 @@ Checks whether the backend is running and MongoDB is reachable. Calls no
 model and therefore costs nothing. The path is deliberately not `/health`,
 so it is not confused with the module `health`.
 
+One of the two endpoints that work without a token (see
+[login and tokens](#login-and-tokens)), so that monitoring and the app can
+check the server before a login. It returns nothing about users or entries.
+
 **Response `200 OK`**
 
 ```json
@@ -1169,6 +1232,310 @@ least 130 seconds and shows a loading indicator.
 The server log contains only length, size and result codes, never the
 text.
 
+### 3.10 Log in
+
+Since 2026-11-18. Besides `/status` the only endpoint that works without a
+token.
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `username` | String | Required. The backend removes whitespace at the edges and converts it to lowercase, so `Tester01 ` logs in as `tester01` (phone keyboards often start with a capital letter). |
+| `password` | String | Required. Taken exactly as sent, not trimmed. |
+
+The body is at most 4 KB. Unknown fields are an error.
+
+```json
+{
+  "username": "tester01",
+  "password": "h4Pq8sZt2kXw"
+}
+```
+
+**Response `200 OK`**
+
+```http
+Cache-Control: no-store
+```
+
+```json
+{
+  "token": "q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM",
+  "expiresAt": "2026-12-18T09:15:42Z",
+  "mustChangePassword": true,
+  "user": {
+    "id": "673b0c1fa2d4e5f6a7b8c9d0",
+    "username": "tester01",
+    "displayName": "tester01"
+  }
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `token` | String | Opaque, 43 characters. Sent as `Authorization: Bearer <token>` with every further request. Only in this response; the backend cannot show it again. |
+| `expiresAt` | String | RFC 3339, UTC. 30 days after the login. |
+| `mustChangePassword` | Boolean | `true` for a start password. The app then asks for a new password ([3.14](#314-change-the-password)) before anything else. |
+| `user` | Object | `id` (ObjectId), `username`, `displayName`, as in [3.12](#312-get-the-logged-in-user) |
+
+`Cache-Control: no-store`: the response contains the token and must not end
+up in any cache.
+
+**Failed attempts**
+
+A failed attempt is a login with an unknown username, a wrong password or
+a disabled account, and a wrong `currentPassword` when changing the
+password ([3.14](#314-change-the-password)). The backend counts them in
+two ways:
+
+1. **Per username and IP address:** 5 failed attempts for the same username
+   from the same IP address within 15 minutes lock this combination for
+   1 minute. Every further lock doubles the time (2, 4, 8 minutes, at most
+   15 minutes). After one hour without a failed attempt, or after a
+   successful login, the next lock starts at 1 minute again. Someone
+   guessing from another IP address therefore cannot lock out an account.
+2. **Per IP address,** whatever the username: 30 failed attempts within
+   15 minutes lock this address for 15 minutes. IPv6 addresses count per
+   /64 network.
+
+During a lock the backend answers `429 TOO_MANY_ATTEMPTS` without checking
+the password, even if it is correct. The header `Retry-After` and
+`details.retryAfterSeconds` give the remaining wait in seconds, rounded up;
+both have the same value. The `message` names no fixed time, because the
+wait grows.
+
+The IP address is the address of the connection. Behind a reverse proxy
+(e.g. Caddy) the backend takes the client address from `X-Forwarded-For`,
+but only if the proxy is configured as trusted (backend/README.md). The
+counters live in the backend's memory; a restart resets them.
+
+An unknown username takes as long as a known one (the backend compares
+against a dummy hash), so neither the response nor its timing reveals
+whether an account exists.
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | Body is not a JSON object, larger than 4 KB, or has an unknown field; `username` or `password` missing, empty or not a string | Bitte Benutzername und Passwort schicken. |
+| 401 | `INVALID_CREDENTIALS` | Unknown username, wrong password, disabled account, or a password longer than 72 bytes. Always the same message, so the response does not reveal which. | Benutzername oder Passwort stimmt nicht. |
+| 429 | `TOO_MANY_ATTEMPTS` | Too many failed attempts, see above. Header `Retry-After`, `details.retryAfterSeconds` | Zu viele Fehlversuche. Bitte versuche es in einigen Minuten erneut. |
+| 500 | `INTERNAL_ERROR` | | |
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+```
+
+```json
+{
+  "error": {
+    "code": "TOO_MANY_ATTEMPTS",
+    "message": "Zu viele Fehlversuche. Bitte versuche es in einigen Minuten erneut.",
+    "details": { "retryAfterSeconds": 60 }
+  }
+}
+```
+
+### 3.11 Log out
+
+Since 2026-11-18.
+
+```http
+POST /api/v1/auth/logout
+Authorization: Bearer q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM
+```
+
+No body.
+
+**Response `204 No Content`**
+
+The token of this device is invalid afterwards; a further request with it
+gets `401 UNAUTHORIZED`. Other devices of the same account stay logged in.
+Logout also works while `mustChangePassword` is `true`. The app deletes its
+stored token in any case, also if this request fails.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Token missing or no longer valid (section 1) |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.12 Get the logged-in user
+
+Since 2026-11-18. Also works while `mustChangePassword` is `true`.
+
+```http
+GET /api/v1/me
+Authorization: Bearer q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "id": "673b0c1fa2d4e5f6a7b8c9d0",
+  "username": "tester01",
+  "displayName": "Erika",
+  "mustChangePassword": false
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | String | ObjectId of the user |
+| `username` | String | 3–32 characters, only `a-z` and `0-9`. Set when the account is created; cannot be changed through the API. |
+| `displayName` | String | Name the app shows, e.g. in a greeting. Equal to the username unless the administrator gave one or the user changed it ([3.13](#313-change-the-display-name)). |
+| `mustChangePassword` | Boolean | `true` until the start password has been changed ([3.14](#314-change-the-password)) |
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Section 1 |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.13 Change the display name
+
+Since 2026-11-18.
+
+```http
+PATCH /api/v1/me
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `displayName` | String | Required. Whitespace at the edges is removed; then 1 to 50 characters (Unicode characters, not bytes) without control characters such as line breaks or tabs. |
+
+Only `displayName` can be changed. Any other field is an error.
+
+```json
+{
+  "displayName": "Erika"
+}
+```
+
+**Response `200 OK`**
+
+The user as in [3.12](#312-get-the-logged-in-user), with the stored
+(trimmed) name.
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | `displayName` missing, `null`, not a string, empty after trimming, longer than 50 characters, or with control characters (`details.field`: `displayName`) | Der Anzeigename muss 1 bis 50 Zeichen lang sein. |
+| 400 | `INVALID_REQUEST` | Body is not a JSON object, or has an unknown field (`details.field` names it) | Unbekanntes Feld: username. |
+| 500 | `INTERNAL_ERROR` | | |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Der Anzeigename muss 1 bis 50 Zeichen lang sein.",
+    "details": { "field": "displayName" }
+  }
+}
+```
+
+### 3.14 Change the password
+
+Since 2026-11-18. Also works while `mustChangePassword` is `true`; that is
+how a start password is replaced.
+
+```http
+POST /api/v1/me/password
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `currentPassword` | String | Required. The password used so far (for a new account: the start password). |
+| `newPassword` | String | Required. At least 10 characters (Unicode characters), at most 72 bytes in UTF-8 (bcrypt's limit; an umlaut counts as 2 bytes), not equal to `currentPassword`. Taken exactly as sent, not trimmed. There are no further rules such as required special characters. |
+
+```json
+{
+  "currentPassword": "h4Pq8sZt2kXw",
+  "newPassword": "Sonnenblume am Mönchsberg"
+}
+```
+
+**Processing in the backend**
+
+1. If the username together with this IP address, or the IP address
+   alone, is locked after failed attempts ([3.10](#310-log-in)), answer
+   `429 TOO_MANY_ATTEMPTS` without checking anything.
+2. Check `currentPassword`. A wrong one is `400 WRONG_PASSWORD` and counts
+   as a failed attempt, with the same counters as the login.
+3. Check `newPassword` (`400 WEAK_PASSWORD`).
+4. Store the new password and set `mustChangePassword` to `false`.
+5. End all other tokens of the account. The token of this request stays
+   valid, so the app stays logged in.
+
+If a request has several errors, the first in this order is reported.
+
+**Response `204 No Content`**
+
+No body.
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | Body is not a JSON object, or has an unknown field; a field missing or not a string | Bitte das bisherige und das neue Passwort schicken. |
+| 400 | `WRONG_PASSWORD` | `currentPassword` is wrong; counts as a failed attempt. Deliberately `400` and not `401`: the token is still valid, and the app must not log out. | Das bisherige Passwort stimmt nicht. |
+| 400 | `WEAK_PASSWORD` | `newPassword` has fewer than 10 characters | Das neue Passwort muss mindestens 10 Zeichen lang sein. |
+| 400 | `WEAK_PASSWORD` | `newPassword` has more than 72 bytes | Das neue Passwort ist zu lang. Erlaubt sind höchstens 72 Byte, Umlaute zählen doppelt. |
+| 400 | `WEAK_PASSWORD` | `newPassword` equals `currentPassword` | Das neue Passwort muss sich vom bisherigen unterscheiden. |
+| 429 | `TOO_MANY_ATTEMPTS` | Too many failed attempts, as in [3.10](#310-log-in). Header `Retry-After`, `details.retryAfterSeconds` | Zu viele Fehlversuche. Bitte versuche es in einigen Minuten erneut. |
+| 500 | `INTERNAL_ERROR` | | |
+
+### 3.15 Record the consent
+
+**Implemented in a later PR.** Described here so that the app can plan for
+it; until then the backend does not know this path.
+
+```http
+PUT /api/v1/me/consent
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `version` | String | Required, not empty. Version of the consent text the user agreed to, e.g. `"2026-11-18"`. |
+
+```json
+{
+  "version": "2026-11-18"
+}
+```
+
+**Response `204 No Content`**
+
+The backend stores `consentVersion` (the `version` sent) and `consentAt`
+(the time of the request, RFC 3339, UTC) with the user.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | `version` missing, empty or not a string; unknown field |
+| 500 | `INTERNAL_ERROR` | |
+
 ---
 
 ## 4. Open points
@@ -1202,9 +1569,12 @@ Planned behaviour:
 
 ### Further points
 
-- **Login and multiple users:** the prototype has one user without login.
-  Later every call needs a login, and every entry belongs to a user.
-  Duplicate detection then applies per user.
+- **Login and multiple users:** since 2026-11-18 every call except
+  `/status` and the login needs a token ([login and tokens](#login-and-tokens),
+  3.10–3.14). Still open, announced there for a later PR: every entry
+  belongs to a user and each user only sees their own, duplicate detection
+  per user (`(userId, file.sha256)`), daily limits per user
+  (`429 LIMIT_REACHED`), and storing the consent ([3.15](#315-record-the-consent)).
 - **Asynchronous upload:** instead of waiting up to 60 seconds,
   `POST /entries` could return `202 Accepted` immediately. The app then
   polls the status.
@@ -1352,6 +1722,43 @@ same way with `start`/`end` in `fullText`.
 ---
 
 ## 5. Changes
+
+### 2026-11-18: Accounts and login (Dylan, agreed with Dogan)
+
+**Breaking:** from this change on, every endpoint except `GET /status` and
+`POST /auth/login` needs a token. An app without login gets
+`401 UNAUTHORIZED` everywhere else.
+
+1. **Login and tokens** ([section 1](#login-and-tokens)): header
+   `Authorization: Bearer <token>`; `401 UNAUTHORIZED` (with
+   `WWW-Authenticate: Bearer`) if the token is missing, unknown or expired
+   or the account is disabled, also for unknown paths;
+   `403 PASSWORD_CHANGE_REQUIRED` while `mustChangePassword` is `true`,
+   except for `GET /me`, `POST /me/password` and `POST /auth/logout`. A
+   token is valid for 30 days; the backend stores only its hash.
+2. **New endpoints:** `POST /auth/login` ([3.10](#310-log-in)),
+   `POST /auth/logout` ([3.11](#311-log-out)), `GET /me`
+   ([3.12](#312-get-the-logged-in-user)), `PATCH /me`
+   ([3.13](#313-change-the-display-name)), `POST /me/password`
+   ([3.14](#314-change-the-password)). `PUT /me/consent`
+   ([3.15](#315-record-the-consent)) is described but implemented in a
+   later PR.
+3. **Failed attempts** ([3.10](#310-log-in)): per username and IP address a
+   lock that grows from 1 to 15 minutes, per IP address a lock of
+   15 minutes; a wrong `currentPassword` counts too.
+   `429 TOO_MANY_ATTEMPTS` with the header `Retry-After` and
+   `details.retryAfterSeconds`.
+4. **New error codes:** `400 WRONG_PASSWORD`, `400 WEAK_PASSWORD`,
+   `401 INVALID_CREDENTIALS`, `401 UNAUTHORIZED`,
+   `403 PASSWORD_CHANGE_REQUIRED`, `429 TOO_MANY_ATTEMPTS`; announced:
+   `429 LIMIT_REACHED`. New `details` key: `retryAfterSeconds`.
+5. **Announced for a later PR:** entries of other users answer
+   `404 ENTRY_NOT_FOUND`; `DUPLICATE` only within the own account (unique
+   index `(userId, file.sha256)`); `429 LIMIT_REACHED` for a daily limit
+   per user.
+6. **App:** log in, keep the token like a password, send it with every
+   request, ask for a new password while `mustChangePassword` is `true`, and
+   show the login again after a `401`.
 
 ### 2026-11-12: Transcription (spoken notes)
 
