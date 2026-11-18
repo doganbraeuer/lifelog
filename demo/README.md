@@ -16,6 +16,23 @@ demo/upload.sh             # seed entries + 11 uploads
 demo/upload.sh --no-seed   # uploads only
 ```
 
+Since 2026-11-18 every upload needs a token (docs/API.md 3.10). Log in
+once with an account whose start password is already changed (accounts:
+`backend/cmd/users`, see backend/README.md) and export the token. `read -s`
+keeps the password off the screen and out of the shell history:
+
+```sh
+read -rp "Username: " LL_USER; read -rsp "Password: " LL_PW; echo
+export LIFELOG_TOKEN=$(printf '{"username":"%s","password":"%s"}' "$LL_USER" "$LL_PW" \
+  | curl -s -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:8080/api/v1/auth/login \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+unset LL_PW
+demo/upload.sh
+```
+
+Without `LIFELOG_TOKEN` the script stops before the seed entries. The token
+is valid for 30 days; on a `401` log in again.
+
 The script checks `GET /api/v1/status`, runs `go run ./cmd/seed` (4 entries
 with embeddings) and uploads the same 11 files as in the calibration
 baseline (`docs/calibration/2026-11-11-baseline.md`). On 503 (model

@@ -19,15 +19,151 @@ reaches it via `http://10.0.2.2:8080`. For a real phone on the Wi-Fi:
 backend is then reachable from the whole network, so only do this for
 testing.
 
-Manual upload (synthetic documents only):
+`/status` is the only endpoint besides the login that works without a
+token. Everything else needs `Authorization: Bearer <token>`, see
+[accounts and login](#accounts-and-login).
+
+Manual upload (synthetic documents only; `TOKEN` from the login, see
+below):
 
 ```sh
-curl -F file=@testdata/lab_report.pdf localhost:8080/api/v1/entries   # file
-curl -F "text=<mytext.txt" localhost:8080/api/v1/entries              # text import
+curl -H "Authorization: Bearer $TOKEN" -F file=@testdata/lab_report.pdf localhost:8080/api/v1/entries   # file
+curl -H "Authorization: Bearer $TOKEN" -F "text=<mytext.txt" localhost:8080/api/v1/entries              # text import
 ```
 
 For the text import, `curl` reads the file content with `<` into the form
 field `text` (not as a file attachment). It is stored as `text.txt`.
+
+## Accounts and login
+
+Since 2026-11-18 every endpoint except `GET /api/v1/status` and
+`POST /api/v1/auth/login` needs a token (docs/API.md, section 1 and
+3.10–3.15). **The app needs a login from now on:** until the app sends a
+token, the current app gets `401` for everything except `/status`.
+
+How it works:
+
+- Accounts are created only with `cmd/users`; there is no registration.
+  Passwords are stored as bcrypt hashes (cost 12), at least 10 characters
+  and at most 72 bytes.
+- A login returns a token (32 random bytes) exactly once. The database
+  keeps only its SHA-256 hash in the collection `sessions`; a TTL index
+  deletes sessions 30 days after the login.
+- The middleware (`internal/api/auth.go`) checks every request: token
+  hash, expiry, account exists and is not disabled. It locks by default: a
+  new route needs a token unless it is added to the two public ones. There
+  is no switch to turn login off, not even for development.
+- An account with a start password (`mustChangePassword`) can only call
+  `GET /me`, `POST /me/password` and `POST /auth/logout` until the password
+  is changed; everything else is `403 PASSWORD_CHANGE_REQUIRED`.
+- The log never contains passwords, tokens, the `Authorization` header or
+  the username of a failed login, only user IDs.
+
+### The first admin account
+
+Run `cmd/users` where the backend runs, in its `backend/` folder: it uses
+the same `.env` (`MONGODB_URI`, `MONGODB_DB`) as the server, so the account
+lands in the server's database. On the test server that is the server's
+`.env`, not the one on your own computer.
+
+```sh
+go run ./cmd/users add --username admin1 --role admin
+```
+
+This prints a generated password of 24 characters **once**; put it into a
+password manager right away. An admin has no forced password change. To
+choose the password yourself, give it on standard input, never as an
+argument (it would end up in the shell history):
+
+```sh
+# Git Bash / macOS / Linux: read -s does not show the input
+read -rs PW && printf '%s\n' "$PW" | go run ./cmd/users add --username admin1 --role admin --password-stdin; unset PW
+```
+
+```powershell
+# PowerShell: hidden input; UTF-8 so that umlauts survive the pipe
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
+$p = Read-Host -AsSecureString
+[Net.NetworkCredential]::new('', $p).Password | go run ./cmd/users add --username admin1 --role admin --password-stdin
+Remove-Variable p
+```
+
+### Test accounts
+
+```sh
+go run ./cmd/users add-batch --prefix tester --count 10
+```
+
+creates `tester01` … `tester10` and prints one list of usernames and start
+passwords (12 characters, without the easily confused 0, O, 1 and l),
+**only this once**. Give every tester only their own line. At the first
+login the app gets `mustChangePassword: true` and asks for a new password.
+A single account: `go run ./cmd/users add --username tester11
+[--display-name Erika]`.
+
+### Managing accounts
+
+```sh
+go run ./cmd/users list                                 # username, displayName, role, disabled, mustChangePassword, createdAt (never hashes)
+go run ./cmd/users reset-password --username tester03   # new start password (admin: 24 characters), ends all sessions
+go run ./cmd/users disable --username tester03          # locked at once: every session ends, login refused
+go run ./cmd/users enable --username tester03
+go run ./cmd/users revoke-sessions --username tester03  # log out every device of one account
+go run ./cmd/users revoke-sessions --all                # log out everybody
+go run ./cmd/users delete --username tester03           # the account and its sessions
+```
+
+Every action writes an entry to the collection `auditLog`: time, action,
+target username and operator (operating system user and computer name),
+never passwords. `delete` does not yet delete the account's entries;
+entries have no owner until the PR for the per-user separation of data.
+
+### Failed attempts
+
+5 failed logins for the same username from the same IP address within 15
+minutes lock this pair for 1 minute; every further lock doubles the time
+(2, 4, 8, at most 15 minutes). 30 failed attempts from one IP address lock
+it for 15 minutes. A wrong current password at `POST /me/password` counts
+too. Someone guessing from another address cannot lock out a tester. The
+counters live in memory: **a restart of the backend resets them.**
+
+### Behind a reverse proxy (Caddy) and HTTPS
+
+On the server on the internet, tokens and passwords may only travel over
+HTTPS. The backend itself speaks plain HTTP and stays on `127.0.0.1`
+(`ADDRESS`, the default); Caddy in front of it gets a certificate and
+forwards the requests:
+
+```text
+lifelog.example.org {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Behind Caddy every request comes from `127.0.0.1`. So that the limits
+count the real clients and not one shared address, set in the server's
+`.env`:
+
+```sh
+TRUSTED_PROXIES=127.0.0.1,::1
+```
+
+The backend then takes the client address from `X-Forwarded-For`, which
+Caddy writes; without `TRUSTED_PROXIES` that header is ignored, because
+every client could send it. On start the server logs
+`x_forwarded_for=true` or `false`.
+
+### Trying it with curl
+
+```sh
+TOKEN=$(printf '{"username":"%s","password":"%s"}' "tester01" "$PW" \
+  | curl -s -H 'Content-Type: application/json' --data-binary @- localhost:8080/api/v1/auth/login \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+curl -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/me
+curl -X POST -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/auth/logout
+```
+
+(`PW` read with `read -rs PW` as above.)
 
 ## Test
 
@@ -250,7 +386,7 @@ To try out `DELETE /entries/{id}` (e.g. from the app):
 
 ```sh
 go run ./cmd/seed -throwaway                            # creates a throwaway entry with a new ID and prints the ID
-curl -i -X DELETE localhost:8080/api/v1/entries/<ID>   # 204, a second time 404
+curl -i -X DELETE -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/entries/<ID>   # 204, a second time 404
 ```
 
 The throwaway entry needs no Gemini: its chunk has a fixed vector instead of
@@ -297,12 +433,14 @@ sips -s format png lab_report.pdf --out lab_report.png
 |---|---|
 | `cmd/server` | Start: configuration, MongoDB, HTTP server, clean shutdown |
 | `cmd/seed` | Insert or remove the synthetic seed entries |
+| `cmd/users` | Create, reset, disable, enable, list and delete accounts; end sessions |
 | `cmd/calibrate` | Measure vector search scores for fixed questions (threshold) |
 | `cmd/models` | List available Gemini models |
 | `cmd/ocrcheck` | Fill in (`-write`) or redo (`-recheck -write`) the verification of stored entries, measure OCR on `demo/` |
 | `cmd/speechcheck` | Measure the transcription on the sentences in `demo/speech/` (key terms, speed, silence) |
 | `scripts/whisper-server.sh`, `.ps1` | Download and verify the Whisper models, start whisper-server |
 | `internal/sampledata` | The invented seed entries, shared by seed and calibrate |
+| `internal/auth` | Password hashes (bcrypt), tokens, generated passwords, the counter for failed attempts, the client IP, the user in the request context |
 | `internal/config` | Read and check environment variables, mask secrets |
 | `internal/core` | Domain logic without I/O: types, modules, sorting, file type, chunks, checking the extraction, questions, corrections, verification against the original, audio type, loudness check and cleaning of transcripts |
 | `internal/llm` | Replaceable interface to the models (`Reader`, `Embedder`, `Answerer`) |
@@ -314,6 +452,6 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `internal/speech` | Replaceable speech recognition: `Transcriber`, `Converter` (audio → 16 kHz PCM), `Engine`; `Pipeline` checks length and loudness and cleans the text |
 | `internal/speech/ffmpeg`, `internal/speech/whisper` | Implementations: ffmpeg (one temporary file, deleted right after), whisper-server over HTTP |
 | `internal/speech/fake` | Fake transcriber for tests |
-| `internal/service` | Use cases: upload, text import, question, correction, delete |
-| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), indexes |
-| `internal/api` | Router, handlers, error format, JSON types |
+| `internal/service` | Use cases: upload, text import, question, correction, delete, login and account |
+| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), users, sessions, audit log, indexes |
+| `internal/api` | Router, auth middleware, handlers, error format, JSON types |
