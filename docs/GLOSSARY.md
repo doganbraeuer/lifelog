@@ -71,7 +71,7 @@ Base path stays `/api/v1`.
 | – | `POST /transcriptions` (since 2026-11-12, see "Speech") |
 | – | `POST /auth/login`, `POST /auth/logout` (since 2026-11-18, see "Accounts and login") |
 | – | `GET /me`, `PATCH /me`, `POST /me/password` (since 2026-11-18) |
-| – | `PUT /me/consent` (announced, later PR) |
+| – | `PUT /me/consent` (since 2026-11-18) |
 
 ### Upload (multipart form fields)
 
@@ -157,6 +157,7 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | `details.maxZeichen` | `details.maxChars` |
 | – | `details.maxSeconds` (since 2026-11-12, for `AUDIO_TOO_LONG`) |
 | – | `details.retryAfterSeconds` (since 2026-11-18, for `TOO_MANY_ATTEMPTS`; same value as the header `Retry-After`) |
+| – | `details.limit` (since 2026-11-18, for `LIMIT_REACHED`: `uploads`, `questions`, `transcriptions`) |
 
 ### Error codes
 
@@ -186,7 +187,7 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 401 | – | `UNAUTHORIZED` (since 2026-11-18) |
 | 403 | – | `PASSWORD_CHANGE_REQUIRED` (since 2026-11-18) |
 | 429 | – | `TOO_MANY_ATTEMPTS` (since 2026-11-18) |
-| 429 | – | `LIMIT_REACHED` (announced, later PR) |
+| 429 | – | `LIMIT_REACHED` (since 2026-11-18) |
 
 ### App-only error codes
 
@@ -261,10 +262,10 @@ Every place where the app talks to the backend:
 | GridFS metadata `mimeTyp` | `mimeType` |
 | entry fields | same as entry JSON (`_id` stays) |
 | chunk `eintragId` / `modul` / `nr` / `text` / `embedding` | `entryId` / `module` / `position` / `text` / `embedding` |
-| index `datei_sha256_eindeutig` on `datei.sha256` | `file_sha256_unique` on `file.sha256` |
+| index `datei_sha256_eindeutig` on `datei.sha256` | `file_sha256_unique` on `file.sha256`; replaced on 2026-11-18 by `user_file_sha256_unique` on `(userId, file.sha256)` and dropped on start |
 | index `modul` | `module` |
 | index `eintragId` | `entryId` |
-| vector index `abschnitte_vektor` (filter `modul`) | `chunks_vector` (filter `module`) |
+| vector index `abschnitte_vektor` (filter `modul`) | `chunks_vector` (filter `module`; since 2026-11-18 also `userId`) |
 | file `abschnitte_vektor.json` | `chunks_vector.json` |
 | integration test database `<MONGODB_DB>_integrationstest` | `<MONGODB_DB>_integration_test` |
 | – | collections `users`, `sessions`, `auditLog` (since 2026-11-18, fields see "Accounts and login") |
@@ -272,6 +273,9 @@ Every place where the app talks to the backend:
 | – | index `token_hash_unique` on `sessions.tokenHash` |
 | – | TTL index `expires_at_ttl` on `sessions.expiresAt` (`expireAfterSeconds: 0`: MongoDB deletes a session once it has expired) |
 | – | index `userId` on `sessions.userId` |
+| – | field `userId` (owner, ObjectId) on `entries`, `chunks`, `ocr`, and `metadata.userId` on `originals.files` (since 2026-11-18, see "Accounts and login") |
+| – | index `user_module` on `entries` `(userId, module)`, `user_entry` on `chunks` `(userId, entryId)`, `userId` on `ocr`, `metadata_userId` on `originals.files` |
+| – | collection `usage` (daily limits): `userId`, `day`, `kind`, `count`, `expiresAt`; index `usage_unique` on `(userId, day, kind)`, TTL index `expires_at_ttl` on `expiresAt` |
 
 ## Environment variables
 
@@ -289,6 +293,7 @@ Every place where the app talks to the backend:
 | – | `SPEECH_ENGINE`, `WHISPER_URL` (since 2026-11-12, see "Speech") |
 | – | `TRUSTED_PROXIES` (since 2026-11-18, see "Accounts and login") |
 | – | `LIFELOG_TOKEN` (since 2026-11-18, `demo/upload.sh` only: the token it sends) |
+| – | `LIMIT_UPLOADS_PER_DAY`, `LIMIT_QUESTIONS_PER_DAY`, `LIMIT_TRANSCRIPTIONS_PER_DAY` (since 2026-11-18, daily limits, defaults 30, 60, 30) |
 
 ## Commands (backend/cmd)
 
@@ -302,6 +307,7 @@ Every place where the app talks to the backend:
 | calibration groups `passend` / `nah` / `fachfremd` | `relevant` / `near` / `unrelated` |
 | – | `cmd/speechcheck` (since 2026-11-12, see "Speech") |
 | – | `cmd/users` (since 2026-11-18, see "Accounts and login") |
+| – | `cmd/seed --username`, `cmd/calibrate --username` (since 2026-11-18: required, the account whose entries they use) |
 
 ## Backend packages and folders
 
@@ -522,7 +528,7 @@ through the API.
 | gesperrt (Konto) | disabled | `disabled` |
 | Version der Einwilligung | consent version | `consentVersion` |
 | Zeitpunkt der Einwilligung | consent at | `consentAt` |
-| Einwilligung | consent | `PUT /me/consent` (later PR), field `version` |
+| Einwilligung | consent | `PUT /me/consent`, field `version`; `Accounts.RecordConsent` |
 | Zugangsschlüssel nach dem Login | token | `token`; `auth.NewToken` |
 | Hash des Tokens (SHA-256, hex) | token hash | `tokenHash`; `auth.HashToken` |
 | Ablaufzeitpunkt | expires at | `expiresAt` |
@@ -538,22 +544,33 @@ through the API.
 | Sperre nach Fehlversuchen, Wartezeit | lockout, retry after | `auth.Limiter`; header `Retry-After`, `details.retryAfterSeconds` |
 | vertrauenswürdiger Proxy (z. B. Caddy) | trusted proxy | env `TRUSTED_PROXIES` |
 | IP-Adresse des Clients | client IP | `auth.ClientIP` |
+| Daten pro Nutzer, Eigentümer eines Eintrags | per-user data, owner | `userId` (ObjectId) on `entries`, `chunks`, `ocr`, `metadata.userId` on `originals.files`; Go `core.Entry.UserID` |
+| fehlender Nutzer (Programmierfehler) | no user | `core.ErrNoUser` |
+| Altdaten ohne Eigentümer | orphaned data (orphans) | documents without `userId`; visible to nobody |
+| Altdaten einem Konto zuordnen | assign orphans | `cmd/users assign-orphans`; `store.AssignOrphans` |
+| Tageslimit | daily limit | `core.LimitKind` (`uploads`, `questions`, `transcriptions`), `core.LimitReachedError`; `429 LIMIT_REACHED`, `details.limit` |
+| Verbrauch, Zähler pro Tag | usage | collection `usage`; `service.Usage`, `store.IncrementUsage` |
+| Kalendertag (Europe/Vienna) | day | `day` (`YYYY-MM-DD`); `core.UsageDay` |
+| Art des Limits (Feld im Zähler) | kind | `kind` (same values as `details.limit`) |
+| Suchindex wird neu gebaut | search index updating | `core.ErrSearchUpdating`; `503 MODEL_UNAVAILABLE` |
 
 | Item | Value |
 |---|---|
 | login request | `username`, `password` |
-| login response | `token`, `expiresAt`, `mustChangePassword`, `user` (`id`, `username`, `displayName`) |
-| `GET /me` and `PATCH /me` response | `id`, `username`, `displayName`, `mustChangePassword` |
+| login response | `token`, `expiresAt`, `mustChangePassword`, `user` (`id`, `username`, `displayName`, `consentVersion`) |
+| `GET /me` and `PATCH /me` response | `id`, `username`, `displayName`, `mustChangePassword`, `consentVersion` |
 | `PATCH /me` request | `displayName` |
 | `POST /me/password` request | `currentPassword`, `newPassword` |
-| `PUT /me/consent` request (later PR) | `version` |
+| `PUT /me/consent` request | `version` |
 | headers | `Authorization: Bearer <token>`, `WWW-Authenticate: Bearer`, `Retry-After`, `Cache-Control: no-store` (login) |
-| error codes | `WRONG_PASSWORD`, `WEAK_PASSWORD`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`, `PASSWORD_CHANGE_REQUIRED`, `TOO_MANY_ATTEMPTS`; announced `LIMIT_REACHED` |
+| error codes | `WRONG_PASSWORD`, `WEAK_PASSWORD`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`, `PASSWORD_CHANGE_REQUIRED`, `TOO_MANY_ATTEMPTS`, `LIMIT_REACHED` |
+| `details.limit` values | `uploads`, `questions`, `transcriptions` |
 | `users` fields | `_id`, `username`, `displayName`, `passwordHash`, `role`, `mustChangePassword`, `disabled`, `createdAt`, `consentVersion`, `consentAt` |
 | `sessions` fields | `_id`, `tokenHash`, `userId`, `createdAt`, `expiresAt` (the token itself is never stored) |
 | `auditLog` fields | `_id`, `time`, `action`, `targetUsername`, `operator` (never passwords or tokens) |
-| `auditLog.action` values | `add`, `reset_password`, `disable`, `enable`, `revoke_sessions`, `revoke_all_sessions`, `list`, `delete` |
-| env | `TRUSTED_PROXIES` (default empty: the client IP is the address of the connection; behind Caddy on the same machine `127.0.0.1,::1`) |
+| `auditLog.action` values | `add`, `reset_password`, `disable`, `enable`, `revoke_sessions`, `revoke_all_sessions`, `list`, `delete`, `assign_orphans` |
+| `usage` fields | `_id`, `userId`, `day`, `kind`, `count`, `expiresAt` |
+| env | `TRUSTED_PROXIES` (default empty: the client IP is the address of the connection; behind Caddy on the same machine `127.0.0.1,::1`); `LIMIT_UPLOADS_PER_DAY` (30), `LIMIT_QUESTIONS_PER_DAY` (60), `LIMIT_TRANSCRIPTIONS_PER_DAY` (30) |
 
 ### Commands (cmd/users)
 
@@ -564,8 +581,9 @@ through the API.
 | `reset-password` | `--username`, `--password-stdin` | new password like `add`; also ends all sessions of the account |
 | `disable`, `enable` | `--username` | `disable` also ends all sessions |
 | `revoke-sessions` | `--username` or `--all` | |
-| `list` | – | never shows hashes |
-| `delete` | `--username` | the account and its sessions |
+| `list` | – | never shows hashes; column `entries` with the number of entries |
+| `delete` | `--username` | the account, its sessions and all its data (entries, chunks, OCR words, originals, usage) |
+| `assign-orphans` | `--username` | gives every entry, chunk, OCR document and original without an owner to this account; can be run again |
 
 `--password-stdin` reads the password from standard input. A password is
 never accepted as a command argument, so it does not end up in the shell

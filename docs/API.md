@@ -62,16 +62,59 @@ account has a start password and `mustChangePassword: true`.
 - The backend never returns a password or a password hash, and never logs
   a password, a token or the `Authorization` header.
 
-**Announced for a later PR** (per-user separation of data):
+### Per-user data
 
-- Each user only sees their own entries: timeline, entry, original file,
-  correction, delete and questions. An entry of another user answers
-  `404 ENTRY_NOT_FOUND`, exactly like an entry that does not exist.
+Since 2026-11-18 every entry belongs to the user who uploaded it, together
+with its original file, its chunks and the words read from the original.
+
+- Each user only sees their own entries: timeline ([3.2](#32-list-entries-for-the-timeline)),
+  entry ([3.3](#33-get-an-entry)), original file ([3.4](#34-get-the-original-file)),
+  correction ([3.5](#35-correct-recognized-values)) and delete
+  ([3.7](#37-delete-an-entry)). An entry of another user answers
+  `404 ENTRY_NOT_FOUND`, exactly like an entry that does not exist, so the
+  response does not reveal that it exists.
+- Questions ([3.6](#36-ask-a-question)) only search the user's own
+  documents: the vector search filters by user and module, and the answer
+  only cites the user's own entries.
 - `409 DUPLICATE` only applies within the user's own account. The unique
-  index becomes `(userId, file.sha256)`, so a duplicate never reveals that
-  another user has the same file.
-- `429 LIMIT_REACHED` when the user reaches a daily limit. The limits are
-  defined in that PR.
+  index is `(userId, file.sha256)`, so a duplicate never reveals that another
+  user has the same file; another user uploading the same file gets `201`.
+- Admins (role `admin`) have no additional rights through the API, also no
+  access to entries of other users.
+
+### Daily limits
+
+Since 2026-11-18. Each user may make a limited number of costly requests
+per calendar day (time zone Europe/Vienna, the day starts at 00:00 local
+time):
+
+| Limit (`details.limit`) | Requests | Default | Environment variable |
+|---|---|---|---|
+| `uploads` | `POST /entries` (file and text) | 30 | `LIMIT_UPLOADS_PER_DAY` |
+| `questions` | `POST /questions` | 60 | `LIMIT_QUESTIONS_PER_DAY` |
+| `transcriptions` | `POST /transcriptions` | 30 | `LIMIT_TRANSCRIPTIONS_PER_DAY` |
+
+- A request counts once it is accepted: after its input has been checked
+  and before the backend calls the vision LLM, the language or embedding
+  model, or the speech recognition. Whether it succeeds afterwards does not
+  matter; the limit protects the model budget. A request refused by its
+  input checks (e.g. `400`, `413`, `415`) does not count, nor does an upload
+  refused as `409 DUPLICATE`, because a duplicate costs no model call.
+- When the limit is reached, the backend answers `429 LIMIT_REACHED` and
+  calls no model:
+
+  ```json
+  {
+    "error": {
+      "code": "LIMIT_REACHED",
+      "message": "Du hast dein Tageslimit erreicht. Morgen geht es weiter.",
+      "details": { "limit": "questions" }
+    }
+  }
+  ```
+
+- The counters are stored in the database, so a restart of the backend
+  does not reset them. Admins have the same limits.
 
 ### Modules
 
@@ -128,19 +171,19 @@ depends on the code.
 | 401 | `INVALID_CREDENTIALS` | Login: unknown username, wrong password or disabled account, always with the same message (since 2026-11-18). `message`: „Benutzername oder Passwort stimmt nicht.“ |
 | 401 | `UNAUTHORIZED` | Token missing, unknown or expired, or account disabled (since 2026-11-18). `message`: „Bitte melde dich an.“ |
 | 403 | `PASSWORD_CHANGE_REQUIRED` | `mustChangePassword` is `true` and the endpoint is not `GET /me`, `POST /me/password` or `POST /auth/logout` (since 2026-11-18). `message`: „Bitte ändere zuerst dein Startpasswort.“ |
-| 404 | `ENTRY_NOT_FOUND` | No entry with this ID |
+| 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user (see [per-user data](#per-user-data)) |
 | 404 | `FACT_NOT_FOUND` | Correction refers to an unknown fact ID |
-| 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded |
+| 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded by the same user |
 | 413 | `FILE_TOO_LARGE` | File or recording larger than 10 MB, or text longer than 100,000 characters |
 | 413 | `AUDIO_TOO_LONG` | Recording longer than 5 minutes (since 2026-11-12) |
 | 415 | `UNSUPPORTED_FILE_TYPE` | Upload: not JPEG, PNG, HEIC, WebP or PDF. Transcription: not one of the audio formats in 3.9 |
 | 422 | `UNREADABLE` | The vision LLM recognizes no document in the file, or a recording cannot be decoded |
 | 422 | `NO_SPEECH` | No speech in the recording: silence, noise, or shorter than 0.5 s (since 2026-11-12) |
 | 429 | `TOO_MANY_ATTEMPTS` | Too many failed attempts at login or password change; header `Retry-After` and `details.retryAfterSeconds` give the wait in seconds (since 2026-11-18). `message`: „Zu viele Fehlversuche. Bitte versuche es in einigen Minuten erneut.“ |
-| 429 | `LIMIT_REACHED` | Announced for a later PR: the user has reached a daily limit. `message` e.g.: „Du hast dein Tageslimit erreicht. Morgen geht es weiter.“ |
+| 429 | `LIMIT_REACHED` | The user has reached a daily limit ([daily limits](#daily-limits)); `details.limit` is `uploads`, `questions` or `transcriptions` (since 2026-11-18). `message`: „Du hast dein Tageslimit erreicht. Morgen geht es weiter.“ |
 | 500 | `INTERNAL_ERROR` | Unexpected error in the backend, e.g. database unreachable |
 | 502 | `EXTRACTION_FAILED` | The vision LLM returns a response that does not match the expected JSON |
-| 503 | `MODEL_UNAVAILABLE` | Language, embedding or speech recognition model does not respond or reports a limit |
+| 503 | `MODEL_UNAVAILABLE` | Language, embedding or speech recognition model does not respond or reports a limit; for questions also while the search index is being rebuilt (since 2026-11-18, see 3.6) |
 
 ### Important rules
 
@@ -458,7 +501,7 @@ The list only returns what the timeline needs. `fullText`, `facts`, `file`,
 | `GET` | `/api/v1/me` | Get the logged-in user (since 2026-11-18) |
 | `PATCH` | `/api/v1/me` | Change the display name (since 2026-11-18) |
 | `POST` | `/api/v1/me/password` | Change the password (since 2026-11-18) |
-| `PUT` | `/api/v1/me/consent` | Record the consent; implemented in a later PR |
+| `PUT` | `/api/v1/me/consent` | Record the consent (since 2026-11-18) |
 
 ### 3.1 Upload and extract a file or text
 
@@ -525,30 +568,35 @@ Hausarztpraxis Beispiel
 
 1. Check size and type, or check the text; check `module`.
 2. Compute the SHA-256 hash over the file content (or the UTF-8 bytes of the
-   text) and look up `file.sha256` in MongoDB. If the hash already exists,
-   the backend stops with `409 DUPLICATE`. This check comes **before** the
-   model call, so a duplicate costs no model call. A unique index on
-   `file.sha256` also catches the case where the same file is uploaded twice
-   at the same time. The check applies across all modules.
-3. Send the file to the vision LLM. It returns `documentDate`, `issuer`,
+   text) and look up `file.sha256` among the user's own entries. If the hash
+   already exists there, the backend stops with `409 DUPLICATE`. This check
+   comes **before** the model call, so a duplicate costs no model call. A
+   unique index on `(userId, file.sha256)` also catches the case where the
+   same user uploads the same file twice at the same time. The check applies
+   across all modules of the user, never across users (see
+   [per-user data](#per-user-data)).
+3. Count the upload against the user's daily limit `uploads`. At the limit
+   the backend stops with `429 LIMIT_REACHED` (see [daily limits](#daily-limits)).
+4. Send the file to the vision LLM. It returns `documentDate`, `issuer`,
    `type`, `fullText` and `facts` as JSON. For a text import the language
    model gets the text and returns the same fields except `fullText`;
    `fullText` is the entered text.
-4. Check the JSON (required fields, date format, allowed `type` of the
+5. Check the JSON (required fields, date format, allowed `type` of the
    module) and set `module`. The backend **drops** a single fact without
    `name` or without `value` instead of rejecting the whole upload. It only
    logs which field was missing (e.g. `facts[2].value`), **never** a value.
    The remaining facts are numbered without gaps (`f1`, `f2`, …).
-5. Check the recognized values (see [verification](#verification)). For a
-   file, reading the original runs **in parallel** to step 3, so the upload
+6. Check the recognized values (see [verification](#verification)). For a
+   file, reading the original runs **in parallel** to step 4, so the upload
    does not take longer: a PDF page with a text layer is read directly, a
    page without one and a photo go through OCR. A photo (JPEG, PNG, HEIC,
    WebP) is first prepared: turned upright and scaled to a long side
    between 2500 and 4096 pixels. For a text import the
    values are compared against the entered text.
-6. Split the full text into chunks and compute embeddings.
-7. Store the original file, the chunks with embeddings, the words read
-   from the original (with positions) and the entry.
+7. Split the full text into chunks and compute embeddings.
+8. Store the original file, the chunks with embeddings, the words read
+   from the original (with positions) and the entry, each marked with the
+   user.
 
 If a step fails, the backend stores nothing. No half entry is left behind.
 Exception: if reading the original fails, the upload still succeeds and
@@ -629,10 +677,11 @@ If the original could not be read, `verification` looks like this:
 |---|---|---|
 | 400 | `FILE_MISSING` | Neither `file` nor `text`, or the content is empty or only whitespace |
 | 400 | `INVALID_REQUEST` | `file` and `text` together, more than one file or more than one `text` field, `text` not valid UTF-8 (`details.field`: `text`), or unknown `module` (`details.field`, `details.value`) |
-| 409 | `DUPLICATE` | A file or text with the same SHA-256 hash exists. `details.entryId` names the existing entry. |
+| 409 | `DUPLICATE` | The same user already has a file or text with the same SHA-256 hash. `details.entryId` names the existing entry. |
 | 413 | `FILE_TOO_LARGE` | File over 10 MB or text over 100,000 characters (then `details.maxChars`: `100000`) |
 | 415 | `UNSUPPORTED_FILE_TYPE` | Not JPEG, PNG, HEIC, WebP or PDF |
 | 422 | `UNREADABLE` | No document recognizable, e.g. blurry photo (only for `file`) |
+| 429 | `LIMIT_REACHED` | Daily limit reached, `details.limit`: `uploads` (see [daily limits](#daily-limits)) |
 | 502 | `EXTRACTION_FAILED` | Response of the vision LLM does not match the expected JSON |
 | 503 | `MODEL_UNAVAILABLE` | Vision LLM or embedding model unreachable |
 | 500 | `INTERNAL_ERROR` | e.g. database unreachable |
@@ -666,8 +715,10 @@ GET /api/v1/entries?module=health&sort=documentDate&order=desc
 | `sort` | `documentDate`, `importedAt` | `documentDate` |
 | `order` | `desc`, `asc` | `desc` |
 
-All parameters are optional. The list only contains entries of the chosen
-module. Without parameters the newest document from `health` comes first.
+All parameters are optional. The list only contains the user's own entries
+of the chosen module, never those of other users (see
+[per-user data](#per-user-data)). Without parameters the newest document
+from `health` comes first.
 
 **Sorting rules**
 
@@ -756,7 +807,7 @@ example in [section 2](#full-entry).
 | HTTP | Code | Note |
 |---|---|---|
 | 400 | `INVALID_ID` | `{id}` is not a valid ObjectId |
-| 404 | `ENTRY_NOT_FOUND` | |
+| 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user |
 | 500 | `INTERNAL_ERROR` | |
 
 ### 3.4 Get the original file
@@ -767,6 +818,9 @@ GET /api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0/file
 
 The app uses this to show the original next to the recognized values. This
 makes it possible to check whether the vision LLM read correctly.
+
+The file is only returned if the entry belongs to the user; the backend
+also checks the owner stored with the file itself.
 
 **Response `200 OK`**
 
@@ -798,7 +852,7 @@ For a text import it is the text with
 | HTTP | Code | Note |
 |---|---|---|
 | 400 | `INVALID_ID` | |
-| 404 | `ENTRY_NOT_FOUND` | |
+| 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user |
 | 500 | `INTERNAL_ERROR` | |
 
 ### 3.5 Correct recognized values
@@ -915,7 +969,7 @@ The updated full entry. Excerpt for the example above:
 | 400 | `INVALID_ID` | |
 | 400 | `INVALID_REQUEST` | e.g. `"documentDate": "15.10.2026"`, unknown field, unknown `type`, wrong JSON type, `null` for `type` or `value`, empty `value`, fact without `id`, duplicate fact `id`, fact without change, empty body. `details.field` names the field (e.g. `facts.f2.value`), `details.value` the rejected value, for fact errors without a field `details.factId` the ID. |
 | 400 | `FIELD_NOT_CORRECTABLE` | e.g. `fullText`, `module`, `importedAt`, `file`, `facts.<id>.name`. `details.field` names the field. |
-| 404 | `ENTRY_NOT_FOUND` | |
+| 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user; nothing is changed |
 | 404 | `FACT_NOT_FOUND` | `details.factId` names the unknown ID |
 | 500 | `INTERNAL_ERROR` | |
 
@@ -945,7 +999,7 @@ Content-Type: application/json
 | Field | Type | Note |
 |---|---|---|
 | `question` | String | Required, at most 500 characters |
-| `module` | String | Optional, default `health`. Only documents of this module are searched. |
+| `module` | String | Optional, default `health`. Only the user's own documents of this module are searched. |
 
 ```json
 {
@@ -956,20 +1010,37 @@ Content-Type: application/json
 
 **Processing in the backend**
 
-1. Compute the embedding of the question.
-2. Find the best-matching chunks of the module via Atlas Vector Search (at
-   most 5).
-3. First layer: chunks with a score below 0.82 are dropped (coarse filter,
+1. Check the question and the module.
+2. If the search index is being rebuilt (e.g. after an update of its
+   definition), stop with `503 MODEL_UNAVAILABLE` (see below). This happens
+   before any model call and does not count against the daily limit.
+3. Count the question against the user's daily limit `questions`. At the
+   limit the backend stops with `429 LIMIT_REACHED` (see
+   [daily limits](#daily-limits)).
+4. Compute the embedding of the question.
+5. Find the best-matching chunks of the user's own entries in the module
+   via Atlas Vector Search (at most 5). The search itself filters by user
+   and module, so chunks of other users are never candidates.
+6. First layer: chunks with a score below 0.82 are dropped (coarse filter,
    calibrated on 2026-11-04 with `backend/cmd/calibrate`, see the comment on
-   `core.MinScore`), as are chunks whose entry no longer exists. If none
-   remains, the backend answers with the fixed sentence (see below) without
-   calling the language model.
-4. Otherwise the language model gets the question and only these chunks. It
+   `core.MinScore`), as are chunks whose entry no longer exists or does not
+   belong to the user. If none remains, the backend answers with the fixed
+   sentence (see below) without calling the language model.
+7. Otherwise the language model gets the question and only these chunks. It
    answers only from these chunks and sets references like `[1]`. If the
    chunks do not answer the question, it answers with the fixed sentence.
-5. Second layer: if the answer contains no valid reference, it counts as
+8. Second layer: if the answer contains no valid reference, it counts as
    "nothing found" (fixed sentence, `found: false`). An answer without
    sources never reaches the app.
+
+**While the search index is being rebuilt**, questions do not work. The
+backend answers `503 MODEL_UNAVAILABLE` with the message „Die Suche wird
+gerade aktualisiert. Bitte versuche es in ein paar Minuten erneut.“ instead
+of an answer, never „nothing found“. Usually the backend knows this before
+step 3; then the question costs nothing and does not count. If it only
+notices in step 5, the embedding of step 4 has already been computed and
+the question counts. Upload, timeline and everything else work normally
+meanwhile.
 
 `sources` only contains the chunks the answer actually refers to. The
 numbers `number` are not necessarily without gaps (e.g. only `1` and `3`);
@@ -1027,7 +1098,8 @@ No hit is not an error. The answer is always literally:
 | 400 | `INVALID_REQUEST` | Body is not valid JSON, unknown field, or unknown `module` (`details.field`, `details.value`) |
 | 400 | `QUESTION_MISSING` | Field missing, empty or only whitespace |
 | 400 | `QUESTION_TOO_LONG` | Over 500 characters |
-| 503 | `MODEL_UNAVAILABLE` | Embedding or language model unreachable, or the language model returns no usable answer (e.g. empty or blocked) |
+| 429 | `LIMIT_REACHED` | Daily limit reached, `details.limit`: `questions` (see [daily limits](#daily-limits)) |
+| 503 | `MODEL_UNAVAILABLE` | Embedding or language model unreachable, or the language model returns no usable answer (e.g. empty or blocked). Also while the search index is being rebuilt, then with the message „Die Suche wird gerade aktualisiert. Bitte versuche es in ein paar Minuten erneut.“ |
 | 500 | `INTERNAL_ERROR` | |
 
 ### 3.7 Delete an entry
@@ -1064,7 +1136,7 @@ No body.
 | HTTP | Code | Note |
 |---|---|---|
 | 400 | `INVALID_ID` | |
-| 404 | `ENTRY_NOT_FOUND` | Also when deleting the same entry a second time |
+| 404 | `ENTRY_NOT_FOUND` | Also when deleting the same entry a second time, and for an entry of another user (nothing is deleted) |
 | 500 | `INTERNAL_ERROR` | |
 
 ### 3.8 Status (health check)
@@ -1207,6 +1279,7 @@ least 130 seconds and shows a loading indicator.
 | 415 | `UNSUPPORTED_FILE_TYPE` | Not one of the formats above | Dieses Audioformat wird nicht unterstützt. Erlaubt sind M4A, 3GP, AMR, WAV, OGG, WebM, MP3 und FLAC. |
 | 422 | `UNREADABLE` | Damaged, or no audio track | Die Aufnahme lässt sich nicht abspielen. |
 | 422 | `NO_SPEECH` | Silence, noise only, or shorter than 0.5 s | In der Aufnahme ist keine Sprache zu hören. |
+| 429 | `LIMIT_REACHED` | Daily limit reached, `details.limit`: `transcriptions` (since 2026-11-18, see [daily limits](#daily-limits)). Counted after the checks of size and format, before ffmpeg and Whisper. | Du hast dein Tageslimit erreicht. Morgen geht es weiter. |
 | 503 | `MODEL_UNAVAILABLE` | Speech recognition or `ffmpeg` not reachable, or the time limit was exceeded | Die Spracherkennung ist gerade nicht erreichbar. Bitte später noch einmal versuchen. |
 | 500 | `INTERNAL_ERROR` | Unexpected error | |
 
@@ -1272,7 +1345,8 @@ Cache-Control: no-store
   "user": {
     "id": "673b0c1fa2d4e5f6a7b8c9d0",
     "username": "tester01",
-    "displayName": "tester01"
+    "displayName": "tester01",
+    "consentVersion": null
   }
 }
 ```
@@ -1282,7 +1356,7 @@ Cache-Control: no-store
 | `token` | String | Opaque, 43 characters. Sent as `Authorization: Bearer <token>` with every further request. Only in this response; the backend cannot show it again. |
 | `expiresAt` | String | RFC 3339, UTC. 30 days after the login. |
 | `mustChangePassword` | Boolean | `true` for a start password. The app then asks for a new password ([3.14](#314-change-the-password)) before anything else. |
-| `user` | Object | `id` (ObjectId), `username`, `displayName`, as in [3.12](#312-get-the-logged-in-user) |
+| `user` | Object | `id` (ObjectId), `username`, `displayName`, `consentVersion` (since 2026-11-18), as in [3.12](#312-get-the-logged-in-user) |
 
 `Cache-Control: no-store`: the response contains the token and must not end
 up in any cache.
@@ -1384,7 +1458,8 @@ Authorization: Bearer q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM
   "id": "673b0c1fa2d4e5f6a7b8c9d0",
   "username": "tester01",
   "displayName": "Erika",
-  "mustChangePassword": false
+  "mustChangePassword": false,
+  "consentVersion": "2026-11-18"
 }
 ```
 
@@ -1394,6 +1469,7 @@ Authorization: Bearer q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM
 | `username` | String | 3–32 characters, only `a-z` and `0-9`. Set when the account is created; cannot be changed through the API. |
 | `displayName` | String | Name the app shows, e.g. in a greeting. Equal to the username unless the administrator gave one or the user changed it ([3.13](#313-change-the-display-name)). |
 | `mustChangePassword` | Boolean | `true` until the start password has been changed ([3.14](#314-change-the-password)) |
+| `consentVersion` | String or `null` | Version of the consent text the user last agreed to ([3.15](#315-record-the-consent)); `null` if they have not agreed yet. The app compares it with the version of its own text and shows the notice again if they differ. Since 2026-11-18. |
 
 **Errors**
 
@@ -1504,8 +1580,11 @@ No body.
 
 ### 3.15 Record the consent
 
-**Implemented in a later PR.** Described here so that the app can plan for
-it; until then the backend does not know this path.
+Since 2026-11-18. The app shows its consent notice and sends the version
+of that text once the user agrees. Like every endpoint except the three
+named in section 1, it answers `403 PASSWORD_CHANGE_REQUIRED` while the
+start password is unchanged; the app asks for the consent after the
+password change.
 
 ```http
 PUT /api/v1/me/consent
@@ -1516,7 +1595,7 @@ Content-Type: application/json
 
 | Field | Type | Note |
 |---|---|---|
-| `version` | String | Required, not empty. Version of the consent text the user agreed to, e.g. `"2026-11-18"`. |
+| `version` | String | Required. Version of the consent text the user agreed to, e.g. `"2026-11-18"`. Whitespace at the edges is removed; then 1 to 100 characters without control characters. |
 
 ```json
 {
@@ -1526,15 +1605,18 @@ Content-Type: application/json
 
 **Response `204 No Content`**
 
-The backend stores `consentVersion` (the `version` sent) and `consentAt`
-(the time of the request, RFC 3339, UTC) with the user.
+The backend stores `consentVersion` (the trimmed `version`) and `consentAt`
+(the server time of the request, UTC) with the user. Sending the same
+version again only sets `consentAt` anew. `GET /me` and the login response
+show `consentVersion` from then on.
 
 **Errors**
 
-| HTTP | Code | Note |
-|---|---|---|
-| 400 | `INVALID_REQUEST` | `version` missing, empty or not a string; unknown field |
-| 500 | `INTERNAL_ERROR` | |
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | `version` missing, `null`, not a string, empty after trimming, longer than 100 characters, or with control characters (`details.field`: `version`) | Bitte die Version des Hinweises schicken. |
+| 400 | `INVALID_REQUEST` | Body is not a JSON object, or has an unknown field (`details.field` names it) | Unbekanntes Feld: … |
+| 500 | `INTERNAL_ERROR` | | |
 
 ---
 
@@ -1569,12 +1651,12 @@ Planned behaviour:
 
 ### Further points
 
-- **Login and multiple users:** since 2026-11-18 every call except
-  `/status` and the login needs a token ([login and tokens](#login-and-tokens),
-  3.10–3.14). Still open, announced there for a later PR: every entry
-  belongs to a user and each user only sees their own, duplicate detection
-  per user (`(userId, file.sha256)`), daily limits per user
-  (`429 LIMIT_REACHED`), and storing the consent ([3.15](#315-record-the-consent)).
+- **Login and multiple users:** done on 2026-11-18: login and tokens
+  ([login and tokens](#login-and-tokens), 3.10–3.14), per-user data
+  ([per-user data](#per-user-data)), daily limits
+  ([daily limits](#daily-limits)) and the consent ([3.15](#315-record-the-consent)).
+  Still open: limits per month, and a way for users to see how much of
+  their daily limit is left.
 - **Asynchronous upload:** instead of waiting up to 60 seconds,
   `POST /entries` could return `202 Accepted` immediately. The app then
   polls the status.
@@ -1722,6 +1804,34 @@ same way with `start`/`end` in `fullText`.
 ---
 
 ## 5. Changes
+
+### 2026-11-18: Per-user data, daily limits, consent (Dylan, agreed with Dogan)
+
+Builds on "Accounts and login" below; implements what was announced there.
+
+1. **Per-user data** ([per-user data](#per-user-data)): timeline, entry,
+   original file, correction, delete and questions only see the user's own
+   entries. An entry of another user answers `404 ENTRY_NOT_FOUND`. The
+   vector search filters by user and module. `409 DUPLICATE` only within the
+   own account (unique index `(userId, file.sha256)`); another user gets
+   `201` for the same file. Admins have no additional rights.
+2. **Daily limits** ([daily limits](#daily-limits)): per user and calendar
+   day in Europe/Vienna, 30 uploads, 60 questions and 30 transcriptions by
+   default (`LIMIT_UPLOADS_PER_DAY`, `LIMIT_QUESTIONS_PER_DAY`,
+   `LIMIT_TRANSCRIPTIONS_PER_DAY`). Counted after the input checks and
+   before any model call. `429 LIMIT_REACHED` with `details.limit`.
+3. **Questions while the search index is rebuilt** ([3.6](#36-ask-a-question)):
+   `503 MODEL_UNAVAILABLE` with its own message instead of an answer.
+4. **Consent** ([3.15](#315-record-the-consent)): `PUT /me/consent` is
+   implemented. `GET /me`, `PATCH /me` and `user` in the login response have
+   the new field `consentVersion` (string or `null`).
+5. **Operation:** entries stored before this change have no owner and are
+   visible to nobody until an administrator assigns them with
+   `go run ./cmd/users assign-orphans --username <name>` (backend/README.md).
+   On its first start the backend updates the vector index; questions only
+   work again once it is `READY`.
+6. **App:** handle `429 LIMIT_REACHED` (show `message`), read
+   `consentVersion` and send `PUT /me/consent` after the password change.
 
 ### 2026-11-18: Accounts and login (Dylan, agreed with Dogan)
 
