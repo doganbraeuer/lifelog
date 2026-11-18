@@ -69,6 +69,9 @@ Base path stays `/api/v1`.
 | `POST /fragen` | `POST /questions` |
 | `GET /status` | `GET /status` (unchanged) |
 | – | `POST /transcriptions` (since 2026-11-12, see "Speech") |
+| – | `POST /auth/login`, `POST /auth/logout` (since 2026-11-18, see "Accounts and login") |
+| – | `GET /me`, `PATCH /me`, `POST /me/password` (since 2026-11-18) |
+| – | `PUT /me/consent` (announced, later PR) |
 
 ### Upload (multipart form fields)
 
@@ -153,6 +156,7 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | `details.eintragId` | `details.entryId` |
 | `details.maxZeichen` | `details.maxChars` |
 | – | `details.maxSeconds` (since 2026-11-12, for `AUDIO_TOO_LONG`) |
+| – | `details.retryAfterSeconds` (since 2026-11-18, for `TOO_MANY_ATTEMPTS`; same value as the header `Retry-After`) |
 
 ### Error codes
 
@@ -176,6 +180,13 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 503 | `MODELL_NICHT_ERREICHBAR` | `MODEL_UNAVAILABLE` |
 | 413 | – | `AUDIO_TOO_LONG` (since 2026-11-12) |
 | 422 | – | `NO_SPEECH` (since 2026-11-12) |
+| 400 | – | `WRONG_PASSWORD` (since 2026-11-18) |
+| 400 | – | `WEAK_PASSWORD` (since 2026-11-18) |
+| 401 | – | `INVALID_CREDENTIALS` (since 2026-11-18) |
+| 401 | – | `UNAUTHORIZED` (since 2026-11-18) |
+| 403 | – | `PASSWORD_CHANGE_REQUIRED` (since 2026-11-18) |
+| 429 | – | `TOO_MANY_ATTEMPTS` (since 2026-11-18) |
+| 429 | – | `LIMIT_REACHED` (announced, later PR) |
 
 ### App-only error codes
 
@@ -256,6 +267,11 @@ Every place where the app talks to the backend:
 | vector index `abschnitte_vektor` (filter `modul`) | `chunks_vector` (filter `module`) |
 | file `abschnitte_vektor.json` | `chunks_vector.json` |
 | integration test database `<MONGODB_DB>_integrationstest` | `<MONGODB_DB>_integration_test` |
+| – | collections `users`, `sessions`, `auditLog` (since 2026-11-18, fields see "Accounts and login") |
+| – | index `username_unique` on `users.username` |
+| – | index `token_hash_unique` on `sessions.tokenHash` |
+| – | TTL index `expires_at_ttl` on `sessions.expiresAt` (`expireAfterSeconds: 0`: MongoDB deletes a session once it has expired) |
+| – | index `userId` on `sessions.userId` |
 
 ## Environment variables
 
@@ -271,6 +287,8 @@ Every place where the app talks to the backend:
 | `LIFELOG_DIAGNOSE_DATEI` / `_MODELL` / `_VARIANTE` | `LIFELOG_DIAGNOSE_FILE` / `_MODEL` / `_VARIANT` |
 | `API_BASE_URL` (app) | unchanged |
 | – | `SPEECH_ENGINE`, `WHISPER_URL` (since 2026-11-12, see "Speech") |
+| – | `TRUSTED_PROXIES` (since 2026-11-18, see "Accounts and login") |
+| – | `LIFELOG_TOKEN` (since 2026-11-18, `demo/upload.sh` only: the token it sends) |
 
 ## Commands (backend/cmd)
 
@@ -283,6 +301,7 @@ Every place where the app talks to the backend:
 | `-entfernen` / `-ohne-abschnitte` / `-wegwerf` | `-remove` / `-no-chunks` / `-throwaway` |
 | calibration groups `passend` / `nah` / `fachfremd` | `relevant` / `near` / `unrelated` |
 | – | `cmd/speechcheck` (since 2026-11-12, see "Speech") |
+| – | `cmd/users` (since 2026-11-18, see "Accounts and login") |
 
 ## Backend packages and folders
 
@@ -297,6 +316,7 @@ Every place where the app talks to the backend:
 | `internal/modell/gemini` | `internal/llm/gemini` |
 | `internal/beispieldaten` | `internal/sampledata` |
 | `internal/api` | unchanged |
+| – | `internal/auth` (since 2026-11-18: passwords, tokens, failed attempts, client IP) |
 | `backend/testdaten` (`laborbefund.*`) | `backend/testdata` (`lab_report.*`) |
 
 ## Demo data (demo/)
@@ -481,3 +501,72 @@ text import (docs/API.md, 3.9).
 | Microphone button | hide or disable when `/status` says `speech` is not `ok` |
 | Clean up | delete the local recording after the transcription |
 | New codes | `AUDIO_TOO_LONG`, `NO_SPEECH` (constants in `api/api_exception.dart`) |
+
+## Accounts and login
+
+Added 2026-11-18. Every user has an account and logs in with username and
+password; every request except `/status` and the login carries a token
+(docs/API.md, section 1 "Login and tokens" and 3.10–3.15). Accounts are
+created by an administrator with `cmd/users`; there is no registration
+through the API.
+
+| German | English | Go type / field |
+|---|---|---|
+| Benutzer, Nutzer, Konto | user, account | `core.User`; collection `users` |
+| Sitzung (Anmeldung auf einem Gerät) | session | `core.Session`; collection `sessions` |
+| Benutzername | username | `username` (3–32 characters, `a-z` and `0-9`, stored lowercase) |
+| Anzeigename | display name | `displayName` |
+| Passwort-Hash (bcrypt) | password hash | `passwordHash` (never in the API, never in the log) |
+| Rolle: Nutzer, Administrator | role: `user`, `admin` | `core.Role` (`core.RoleUser`, `core.RoleAdmin`); `role` |
+| Passwort muss geändert werden | must change password | `mustChangePassword` |
+| gesperrt (Konto) | disabled | `disabled` |
+| Version der Einwilligung | consent version | `consentVersion` |
+| Zeitpunkt der Einwilligung | consent at | `consentAt` |
+| Einwilligung | consent | `PUT /me/consent` (later PR), field `version` |
+| Zugangsschlüssel nach dem Login | token | `token`; `auth.NewToken` |
+| Hash des Tokens (SHA-256, hex) | token hash | `tokenHash`; `auth.HashToken` |
+| Ablaufzeitpunkt | expires at | `expiresAt` |
+| Anlegezeitpunkt | created at | `createdAt` |
+| Protokoll der Verwaltungsaktionen | audit log | collection `auditLog` |
+| wer `cmd/users` ausführt (Betriebssystem-Nutzer und Rechner) | operator | `operator` (`"<os user>@<host>"`) |
+| betroffener Benutzername | target username | `targetUsername` |
+| Anmelden / Abmelden | log in / log out (nouns: login / logout) | `POST /auth/login`, `POST /auth/logout` |
+| eigenes Konto | the logged-in user ("me") | `GET /me`, `PATCH /me`; `auth.UserFrom` (user from the request context) |
+| Startpasswort | start password | generated by `cmd/users`; the account has `mustChangePassword: true` |
+| Passwort ändern: bisheriges, neues Passwort | change the password: current password, new password | `POST /me/password`; `currentPassword`, `newPassword` |
+| Fehlversuch | failed attempt | |
+| Sperre nach Fehlversuchen, Wartezeit | lockout, retry after | `auth.Limiter`; header `Retry-After`, `details.retryAfterSeconds` |
+| vertrauenswürdiger Proxy (z. B. Caddy) | trusted proxy | env `TRUSTED_PROXIES` |
+| IP-Adresse des Clients | client IP | `auth.ClientIP` |
+
+| Item | Value |
+|---|---|
+| login request | `username`, `password` |
+| login response | `token`, `expiresAt`, `mustChangePassword`, `user` (`id`, `username`, `displayName`) |
+| `GET /me` and `PATCH /me` response | `id`, `username`, `displayName`, `mustChangePassword` |
+| `PATCH /me` request | `displayName` |
+| `POST /me/password` request | `currentPassword`, `newPassword` |
+| `PUT /me/consent` request (later PR) | `version` |
+| headers | `Authorization: Bearer <token>`, `WWW-Authenticate: Bearer`, `Retry-After`, `Cache-Control: no-store` (login) |
+| error codes | `WRONG_PASSWORD`, `WEAK_PASSWORD`, `INVALID_CREDENTIALS`, `UNAUTHORIZED`, `PASSWORD_CHANGE_REQUIRED`, `TOO_MANY_ATTEMPTS`; announced `LIMIT_REACHED` |
+| `users` fields | `_id`, `username`, `displayName`, `passwordHash`, `role`, `mustChangePassword`, `disabled`, `createdAt`, `consentVersion`, `consentAt` |
+| `sessions` fields | `_id`, `tokenHash`, `userId`, `createdAt`, `expiresAt` (the token itself is never stored) |
+| `auditLog` fields | `_id`, `time`, `action`, `targetUsername`, `operator` (never passwords or tokens) |
+| `auditLog.action` values | `add`, `reset_password`, `disable`, `enable`, `revoke_sessions`, `revoke_all_sessions`, `list`, `delete` |
+| env | `TRUSTED_PROXIES` (default empty: the client IP is the address of the connection; behind Caddy on the same machine `127.0.0.1,::1`) |
+
+### Commands (cmd/users)
+
+| Command | Flags | Note |
+|---|---|---|
+| `add` | `--username`, `--display-name`, `--role` (`user` default, `admin`), `--password-stdin` | `user`: generated start password (12 characters), `mustChangePassword: true`; `admin`: generated password (24 characters), `mustChangePassword: false` |
+| `add-batch` | `--prefix`, `--count` | e.g. `--prefix tester --count 10` creates `tester01` … `tester10` |
+| `reset-password` | `--username`, `--password-stdin` | new password like `add`; also ends all sessions of the account |
+| `disable`, `enable` | `--username` | `disable` also ends all sessions |
+| `revoke-sessions` | `--username` or `--all` | |
+| `list` | – | never shows hashes |
+| `delete` | `--username` | the account and its sessions |
+
+`--password-stdin` reads the password from standard input. A password is
+never accepted as a command argument, so it does not end up in the shell
+history.
