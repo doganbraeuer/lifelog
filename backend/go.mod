@@ -6,6 +6,7 @@ require (
 	github.com/gen2brain/heic v0.7.2
 	github.com/joho/godotenv v1.5.1
 	go.mongodb.org/mongo-driver/v2 v2.9.3
+	golang.org/x/crypto v0.53.0
 	golang.org/x/image v0.43.0
 	golang.org/x/text v0.39.0
 	google.golang.org/genai v1.77.0
@@ -28,7 +29,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
