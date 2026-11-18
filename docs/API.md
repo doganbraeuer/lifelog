@@ -1474,9 +1474,9 @@ Content-Type: application/json
 
 **Processing in the backend**
 
-1. If this username or IP address is locked after failed attempts
-   ([3.10](#310-log-in)), answer `429 TOO_MANY_ATTEMPTS` without checking
-   anything.
+1. If the username together with this IP address, or the IP address
+   alone, is locked after failed attempts ([3.10](#310-log-in)), answer
+   `429 TOO_MANY_ATTEMPTS` without checking anything.
 2. Check `currentPassword`. A wrong one is `400 WRONG_PASSWORD` and counts
    as a failed attempt, with the same counters as the login.
 3. Check `newPassword` (`400 WEAK_PASSWORD`).
