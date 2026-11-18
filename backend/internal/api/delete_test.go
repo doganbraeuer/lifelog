@@ -23,9 +23,9 @@ func (d *fakeDeleter) Delete(_ context.Context, id string) error {
 
 func deleteEntry(t *testing.T, d *fakeDeleter, id string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(), Deleter: d})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(), Deleter: d}))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/entries/"+id, nil))
+	router.ServeHTTP(rec, authorized(httptest.NewRequest(http.MethodDelete, "/api/v1/entries/"+id, nil)))
 	return rec
 }
 
@@ -90,8 +90,8 @@ func TestDelete_Canceled(t *testing.T) {
 // is no DELETE on /file.
 func TestDelete_OtherMethodsUnaffected(t *testing.T) {
 	d := &fakeDeleter{}
-	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(),
-		Corrector: &fakeCorrector{err: core.ErrEntryNotFound}, Deleter: d})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Entries: storeWithEntry(),
+		Corrector: &fakeCorrector{err: core.ErrEntryNotFound}, Deleter: d}))
 	for _, tc := range []struct {
 		method, path string
 		status       int
@@ -103,7 +103,7 @@ func TestDelete_OtherMethodsUnaffected(t *testing.T) {
 	} {
 		body := strings.NewReader(`{"type": "doctor_letter"}`)
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, body))
+		router.ServeHTTP(rec, authorized(httptest.NewRequest(tc.method, tc.path, body)))
 		if rec.Code != tc.status {
 			t.Errorf("%s %s: status %d, want %d", tc.method, tc.path, rec.Code, tc.status)
 		}

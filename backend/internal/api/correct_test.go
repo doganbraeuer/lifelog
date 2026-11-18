@@ -31,11 +31,11 @@ func (c *fakeCorrector) Correct(_ context.Context, id string, ch core.Change) (c
 
 func correct(t *testing.T, c *fakeCorrector, id, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Corrector: c})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Corrector: c}))
 	r := httptest.NewRequest(http.MethodPatch, "/api/v1/entries/"+id, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, r)
+	router.ServeHTTP(rec, authorized(r))
 	return rec
 }
 
