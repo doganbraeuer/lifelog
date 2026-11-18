@@ -36,6 +36,11 @@ type Store struct {
 	chunks  *mongo.Collection
 	ocr     *mongo.Collection
 	files   *mongo.GridFSBucket
+
+	// Accounts and login (accounts.go).
+	users    *mongo.Collection
+	sessions *mongo.Collection
+	auditLog *mongo.Collection
 }
 
 // NewID creates a new ObjectId as hex string. The upload assigns the IDs in
@@ -62,6 +67,10 @@ func Connect(ctx context.Context, uri, database string) (*Store, error) {
 		chunks:  db.Collection(collChunks),
 		ocr:     db.Collection(collOCR),
 		files:   db.GridFSBucket(options.GridFSBucket().SetName(bucketFiles)),
+
+		users:    db.Collection(collUsers),
+		sessions: db.Collection(collSessions),
+		auditLog: db.Collection(collAuditLog),
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -115,7 +124,9 @@ func (s *Store) CreateIndexes(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create indexes: %w", err)
 	}
-	return nil
+
+	// users and sessions (accounts.go).
+	return s.createAccountIndexes(ctx)
 }
 
 // ListSummaries returns all entries of a module in short form, unsorted.
