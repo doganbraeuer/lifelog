@@ -41,7 +41,10 @@ func CheckID(id string) error {
 
 // Entry is a full entry as in docs/API.md, section 2.
 type Entry struct {
-	ID           string    // ObjectId as hex string (24 characters)
+	ID string // ObjectId as hex string (24 characters)
+	// UserID is the owner (docs/API.md, per-user data). The store fills it
+	// when reading; it is never part of the API response.
+	UserID       string
 	Module       string    // e.g. "health"
 	Type         string    // e.g. "lab_report", valid within the module
 	DocumentDate *string   // "YYYY-MM-DD" or nil if not recognized
