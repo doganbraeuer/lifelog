@@ -588,3 +588,34 @@ through the API.
 `--password-stdin` reads the password from standard input. A password is
 never accepted as a command argument, so it does not end up in the shell
 history.
+
+### App (login)
+
+Added 2026-11-18. Names in the app (`app/lib/`), all app-internal. Display
+texts are German and quoted as they appear.
+
+| German | English | Dart type / file |
+|---|---|---|
+| Anmeldung, Sitzung der App | session | `SessionController`, `SessionScope`; `session/session_controller.dart` |
+| Zustand der Sitzung | session phase | `SessionPhase` (`loading`, `offline`, `signedOut`, `mustChangePassword`, `needsConsent`, `ready`) |
+| gespeicherte Anmeldung (Token und Ablauf) | stored session | `StoredSession`; `session/session_store.dart` |
+| sicherer Speicher für das Token | session store | `SessionStore`, `SecureSessionStore` (flutter_secure_storage) |
+| zentrale Stelle für 401 und 403 | guarded API client | `GuardedApiClient`; `session/guarded_api_client.dart` |
+| lokale Daten (temporäre Dateien, Bild-Cache) | local data | `LocalData`, `PluginLocalData`; `session/local_data.dart` |
+| Generation (neuer Schlüssel der MaterialApp) | generation | `SessionController.generation` |
+| angemeldeter Nutzer | user | `User`; `model/user.dart` |
+| Antwort des Logins | login result | `LoginResult`; `model/user.dart` |
+| Token setzen | use token | `ApiClient.useToken` |
+| Anmelden (Bildschirm) | login screen | `LoginScreen`; „Anmelden“ |
+| Eigenes Passwort festlegen / Passwort ändern | change password screen | `ChangePasswordScreen(mandatory: …)` |
+| Einwilligung, Hinweis zum Datenschutz | consent screen | `ConsentScreen(readOnly: …)`; „Bevor du startest“, „Zustimmen“, „Nicht jetzt“ |
+| Text und Version der Einwilligung | consent text, consent version | `consentTitle`, `consentParagraphs`, `consentVersion` (`"2026-11-18"`); `session/consent_text.dart` |
+| Einstellungen | settings screen | `SettingsScreen`; „Einstellungen“, `settingsIconSize` (36) |
+| Passwortfeld mit Augen-Symbol | password field | `PasswordField`; `widgets/password_field.dart` |
+| Passwortregeln der App | password rules | `checkNewPassword`, `minPasswordLength` (10), `maxPasswordBytes` (72); `session/password_rules.dart` |
+| Wartezeit in Minuten | wait hint | `waitHint` („Bitte warte etwa 1 Minute.“ / „… 3 Minuten.“) |
+| Hinweis nach Ende der Sitzung | relogin notice | `reloginNotice` („Bitte melde dich erneut an.“) |
+| Meldung nach Passwortwechsel | password changed message | `passwordChangedMessage` („Passwort geändert. Andere Geräte wurden abgemeldet.“) |
+| Anzeigename prüfen | check display name | `checkDisplayName`, `maxDisplayNameLength` (50) |
+| Testkonten des Mocks | mock accounts | `tester01` / `MockApiClient.mockStartPassword`, `admin` / `MockApiClient.mockAdminPassword` |
+| Auslöser Tageslimit im Mock | limit trigger | `limitreached` in file name, text, question or recording name |

@@ -46,6 +46,7 @@ quoted as they appear („Hochladen“).
   12. [Original](#12-original)
   13. [Delete](#13-delete)
   14. [Questions with sources](#14-questions-with-sources)
+  15. [Login and account](#15-login-and-account)
 - [Privacy](#privacy)
 - [Reliability](#reliability)
 - [Measurements](#measurements)
@@ -1146,6 +1147,205 @@ Tab „Fragen“.
 
 **Done**, including compact sources, the full text with the matching lines
 marked (nothing rather than too much) and tappable references.
+
+---
+
+## 15. Login and account
+
+Since 2026-11-18 every user has an account (docs/API.md, section 1 "Login
+and tokens", 3.10–3.15). The app shows the modules only after login,
+password change and consent. Four parts: [login](#151-login),
+[own password](#152-own-password), [consent](#153-consent) and
+[settings](#154-settings).
+
+```
+App start
+├── no token / expired ───────────────► „Anmelden“
+├── token → GET /me
+│     ├── 401 ────────────────────────► „Anmelden“ + „Bitte melde dich erneut an.“
+│     ├── no network / 5xx ───────────► error with „Erneut versuchen“ (token kept)
+│     ├── mustChangePassword ─────────► „Eigenes Passwort festlegen“
+│     ├── consentVersion ≠ 2026-11-18 ► „Bevor du startest“
+│     └── otherwise ──────────────────► „Lifelog“ (modules), ⚙ „Einstellungen“
+```
+
+### 15.1 Login
+
+#### What it does
+
+Logs in with username and password and keeps the token on the phone, so the
+user stays logged in for 30 days.
+
+#### Where
+
+The first screen while there is no valid token: „Anmelden“.
+
+#### How to use
+
+1. Type „Benutzername“ and „Passwort“. The eye icon shows or hides the
+   password.
+2. Tap „Anmelden“.
+3. Wrong data: „Benutzername oder Passwort stimmt nicht.“ After 5 failed
+   attempts the server locks for a while: its message plus „Bitte warte etwa
+   1 Minute.“ (or „… 3 Minuten.“, rounded up).
+4. „Passwort vergessen? Melde dich bei uns.“: there is no reset in the app
+   during the test phase.
+
+#### Behind the scenes
+
+- `POST /api/v1/auth/login`; the response has the token, `expiresAt`,
+  `mustChangePassword` and the user.
+- The token and `expiresAt` go into the secure storage
+  (`SecureSessionStore`, package flutter_secure_storage 11.2.0): on Android
+  encrypted with a key in the Android Keystore, on iOS in the Keychain with
+  „this device only“. Never into normal settings. **The password is never
+  stored**; it lives only in the text field.
+- From then on every request carries `Authorization: Bearer <token>`: JSON
+  calls, uploads, text import, transcription and the original file. Only
+  `/status` and the login go without. The token is never logged and never
+  part of an error message.
+- The username field has no autocorrect, no suggestions and no capital
+  letter at the start; the backend lowercases it anyway.
+- Android: `allowBackup="false"` and data extraction rules keep the app's
+  data out of cloud backups and device transfers.
+- At start the app checks a stored token with `GET /me`. Expired (by
+  `expiresAt`) or `401`: token deleted, login with „Bitte melde dich erneut
+  an.“ No network: the token stays and the app offers „Erneut versuchen“.
+- If any call answers `401` while the app is in use, one central place
+  (`GuardedApiClient` → `SessionController`) deletes the token and the local
+  data, closes every page and shows the login with the same notice.
+
+#### Limits
+
+- No „Passwort vergessen“; a new password comes from us (`cmd/users
+  reset-password`).
+- No biometric unlock; the token stays valid for 30 days unless the user
+  logs out, changes the password on another device, or we revoke it.
+- Mock mode: test accounts `tester01` (start password) and `admin`; the
+  login screen names them. Every account sees the same sample data.
+
+#### Status
+
+**Done.**
+
+### 15.2 Own password
+
+#### What it does
+
+Replaces the start password after the first login, and changes the
+password later from the settings.
+
+#### Where
+
+„Eigenes Passwort festlegen“ right after the first login (no way back, only
+„Abmelden“); „Einstellungen“ → „Passwort ändern“.
+
+#### How to use
+
+1. Type „Bisheriges Passwort“, „Neues Passwort“ and „Neues Passwort
+   wiederholen“.
+2. Tap „Passwort speichern“.
+3. Success: „Passwort geändert. Andere Geräte wurden abgemeldet.“
+
+#### Behind the scenes
+
+- The app checks first: at least 10 characters, at most 72 bytes (umlauts
+  count twice, emojis four times), not the current password, both new ones
+  equal. Then `POST /api/v1/me/password` (`204`).
+- Server errors show the server's message: `WRONG_PASSWORD` („Das bisherige
+  Passwort stimmt nicht.“), `WEAK_PASSWORD`, and `TOO_MANY_ATTEMPTS` with the
+  wait. A wrong current password counts as a failed attempt.
+- The backend ends all other tokens of the account; this phone stays logged
+  in.
+- If the server asks for a password change while the app is open (`403
+  PASSWORD_CHANGE_REQUIRED`, e.g. after a reset), the app closes every page
+  and shows this screen.
+
+#### Limits
+
+- No strength meter and no rules beyond length; long passphrases are
+  encouraged by the hint text.
+
+#### Status
+
+**Done.**
+
+### 15.3 Consent
+
+#### What it does
+
+Shows what happens with the user's data and asks for explicit consent to
+process health data for the test.
+
+#### Where
+
+„Bevor du startest“ after the password change, and whenever the text has a
+new version. Read-only under „Einstellungen“ → „Hinweis zum Datenschutz“.
+
+#### How to use
+
+1. Read the notice (scrollable): who runs the test, where the data goes
+   (server in the EU, MongoDB Atlas, Google Gemini), who can see it, how
+   long it is kept, how to withdraw.
+2. „Zustimmen“ opens the app. „Nicht jetzt“ logs out.
+
+#### Behind the scenes
+
+- The text and its version (`consentVersion = "2026-11-18"`) are constants
+  in `app/lib/session/consent_text.dart`.
+- „Zustimmen“ sends `PUT /api/v1/me/consent` with the version. The backend
+  stores it with the time; `GET /me` returns `consentVersion`.
+- If the stored version differs from the app's, the notice comes again. A
+  new version of the text therefore only needs a new constant.
+
+#### Limits
+
+- Withdrawing works by e-mail to us, not in the app.
+- The text is only in German.
+
+#### Status
+
+**Done.**
+
+### 15.4 Settings
+
+#### What it does
+
+Shows who is logged in and offers display name, password, privacy notice
+and logout.
+
+#### Where
+
+The large gear icon („Einstellungen“) at the top right of the module
+overview.
+
+#### How to use
+
+- „Angemeldet als Erika (tester01)“ at the top.
+- „Anzeigename ändern“: 1 to 50 characters; „Anzeigename geändert.“
+- „Passwort ändern“: see [own password](#152-own-password).
+- „Hinweis zum Datenschutz“: the consent text, read-only.
+- „Abmelden“ → „Abmelden?“ → „Abmelden“.
+
+#### Behind the scenes
+
+- Display name: `PATCH /api/v1/me`; the app checks the length first and
+  shows the server's message if it still refuses.
+- Logout: `POST /api/v1/auth/logout` (errors ignored), then the app deletes
+  the token, empties its temporary folder (recordings, copies of photos and
+  PDFs) and the image cache, closes every page and shows the login. The
+  MaterialApp gets a new key, so no data of the previous user stays in
+  memory.
+
+#### Limits
+
+- The username cannot be changed; deleting the account goes through us.
+- Other devices stay logged in after a logout here (only a password change
+  ends them).
+
+#### Status
+
+**Done.**
 
 ---
 
