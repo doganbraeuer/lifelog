@@ -10,6 +10,10 @@ import '../widgets/container_transform.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'module_shell.dart';
+import 'settings_screen.dart';
+
+/// Size of the settings icon on the „Bereiche“ screen (normal icons: 24).
+const settingsIconSize = 36.0;
 
 /// Start screen: one tile per module from the module catalog.
 ///
@@ -89,7 +93,25 @@ class _ModulesScreenState extends State<ModulesScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lifelog'),
-        actions: [MockBanner(visible: widget.api.isMock)],
+        // Taller than usual, so that the large settings icon fits.
+        toolbarHeight: 72,
+        actions: [
+          MockBanner(visible: widget.api.isMock),
+          // Large and clearly visible on purpose (wish of Prof. Pree).
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton.filledTonal(
+              key: const ValueKey('settings-button'),
+              tooltip: 'Einstellungen',
+              iconSize: settingsIconSize,
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              ),
+            ),
+          ),
+        ],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),

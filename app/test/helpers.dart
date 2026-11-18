@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_exception.dart';
@@ -13,6 +13,8 @@ import 'package:lifelog/module/module_catalog.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/platform/pdf_viewer.dart';
 import 'package:lifelog/platform/voice_recorder.dart';
+import 'package:lifelog/session/local_data.dart';
+import 'package:lifelog/session/session_store.dart';
 
 /// Tall test screen, so that long lists are built completely
 /// (a ListView only builds what is visible).
@@ -37,17 +39,102 @@ Future<void> openHealth(WidgetTester tester) async {
 
 /// The app with a mock backend and a fake file chooser. Without [catalog]
 /// the default modules apply.
+///
+/// Without [store] the app starts logged in as the mock's `admin`, who has
+/// agreed to the current consent notice, so that it opens on the „Bereiche“
+/// screen as before the login existed.
 LifelogApp testApp(
   ApiClient api, {
   FileChooser? chooser,
   VoiceRecorder? recorder,
   ModuleCatalog? catalog,
+  SessionStore? store,
+  LocalData? localData,
 }) => LifelogApp(
   api: api,
   fileChooser: chooser ?? FakeFileChooser(),
   voiceRecorder: recorder ?? FakeVoiceRecorder(),
   catalog: catalog ?? ModuleCatalog.defaults(),
+  sessionStore: store ?? signedInStore(api),
+  localData: localData ?? FakeLocalData(),
 );
+
+/// Field „Benutzername“ on the login screen.
+Finder usernameField() => find.widgetWithText(TextField, 'Benutzername');
+
+/// Field „Passwort“ on the login screen.
+Finder passwordField() => find.widgetWithText(TextField, 'Passwort');
+
+/// Starts the app without a token (login screen) and returns the store.
+Future<FakeSessionStore> startSignedOut(
+  WidgetTester tester,
+  MockApiClient mock, {
+  FakeLocalData? localData,
+}) async {
+  final store = FakeSessionStore();
+  await tester.pumpWidget(testApp(mock, store: store, localData: localData));
+  await tester.pumpAndSettle();
+  return store;
+}
+
+/// Types username and password and taps „Anmelden“.
+Future<void> logIn(
+  WidgetTester tester,
+  String username,
+  String password,
+) async {
+  await tester.enterText(usernameField(), username);
+  await tester.enterText(passwordField(), password);
+  await tester.tap(find.widgetWithText(FilledButton, 'Anmelden'));
+  await tester.pumpAndSettle();
+}
+
+/// Far in the future, for tokens that do not expire during a test.
+final farFuture = DateTime.utc(2099);
+
+/// A store with a valid session of [username] in the mock. With [consent]
+/// the user has agreed to the current notice.
+FakeSessionStore signedInStore(
+  ApiClient api, {
+  String username = 'admin',
+  bool consent = true,
+}) => FakeSessionStore(
+  api is MockApiClient
+      ? StoredSession(
+          token: api.signInForTest(username, consent: consent),
+          expiresAt: farFuture,
+        )
+      : null,
+);
+
+/// Keeps the session in memory instead of the secure storage. [session] is
+/// visible, so tests can check that the token was stored or deleted.
+class FakeSessionStore implements SessionStore {
+  FakeSessionStore([this.session]);
+
+  StoredSession? session;
+  var clears = 0;
+
+  @override
+  Future<StoredSession?> read() async => session;
+
+  @override
+  Future<void> write(StoredSession session) async => this.session = session;
+
+  @override
+  Future<void> clear() async {
+    clears++;
+    session = null;
+  }
+}
+
+/// Counts how often the local data would have been deleted.
+class FakeLocalData implements LocalData {
+  var clears = 0;
+
+  @override
+  Future<void> clear() async => clears++;
+}
 
 /// Records nothing; it pretends a file exists between [start] and
 /// [discard], so tests can check that the recording gets deleted.
@@ -189,18 +276,27 @@ Matcher throwsApiException(String code, {int? status}) => throwsA(
 );
 
 /// Mock without artificial delay and with a fixed clock.
+///
+/// With [signedIn] (default) the mock already uses a token of `admin`, so
+/// that direct calls such as `listEntries` work as before the login
+/// existed. Tests of the login pass `signedIn: false`.
 MockApiClient fastMock({
   bool withSampleData = true,
   DateTime Function()? clock,
   ModuleCatalog? catalog,
-}) => MockApiClient(
-  withSampleData: withSampleData,
-  delay: Duration.zero,
-  uploadDelay: Duration.zero,
-  transcriptionDelay: Duration.zero,
-  clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
-  catalog: catalog,
-);
+  bool signedIn = true,
+}) {
+  final mock = MockApiClient(
+    withSampleData: withSampleData,
+    delay: Duration.zero,
+    uploadDelay: Duration.zero,
+    transcriptionDelay: Duration.zero,
+    clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
+    catalog: catalog,
+  );
+  if (signedIn) mock.useToken(mock.signInForTest('admin'));
+  return mock;
+}
 
 const labReportId = '6727a1f3c2b4e5d6f7a8b9c0';
 const doctorLetterId = '6727a20bc2b4e5d6f7a8b9d4';

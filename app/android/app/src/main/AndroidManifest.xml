@@ -9,10 +9,18 @@
     <!-- Bewusst KEINE CAMERA-Permission: image_picker nutzt die Kamera-App über
          einen Intent. Wäre CAMERA deklariert, müsste die App sie zur Laufzeit
          anfragen, sonst stürzt der Kamera-Aufruf ab. -->
+    <!-- No backup: the login token (flutter_secure_storage) must not end up
+         in a Google Drive backup. allowBackup="false" covers Android up to
+         11 and the cloud backup; dataExtractionRules also excludes the
+         transfer to a new device on Android 12 and later. The key in the
+         Android Keystore would not move along anyway, so a copied token
+         could not even be decrypted. -->
     <application
         android:label="Lifelog"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

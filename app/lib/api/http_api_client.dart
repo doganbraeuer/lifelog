@@ -11,6 +11,7 @@ import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
+import '../model/user.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
@@ -40,9 +41,23 @@ class HttpApiClient implements ApiClient {
   final String _base;
   final http.Client _client;
 
+  /// Token for `Authorization: Bearer`. Only in memory; it is never logged
+  /// and never put into an [ApiException].
+  String? _token;
+
+  /// For the two public endpoints `/status` and the login: without token.
   static const _jsonHeaders = {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json',
+  };
+
+  /// [_jsonHeaders] plus the token. Every endpoint except `/status` and the
+  /// login needs it (docs/API.md section 1).
+  Map<String, String> get _authJsonHeaders => {..._jsonHeaders, ..._authHeader};
+
+  /// Only the token header (original file and multipart requests).
+  Map<String, String> get _authHeader => {
+    if (_token case final token?) 'Authorization': 'Bearer $token',
   };
 
   @override
@@ -65,7 +80,7 @@ class HttpApiClient implements ApiClient {
       },
     );
     final response = await _send(
-      () => _client.get(uri, headers: _jsonHeaders),
+      () => _client.get(uri, headers: _authJsonHeaders),
       defaultTimeout,
     );
     return _read(
@@ -77,7 +92,7 @@ class HttpApiClient implements ApiClient {
   @override
   Future<Entry> getEntry(String id) async {
     final response = await _send(
-      () => _client.get(_uri(_entryPath(id)), headers: _jsonHeaders),
+      () => _client.get(_uri(_entryPath(id)), headers: _authJsonHeaders),
       defaultTimeout,
     );
     return _read(response, Entry.fromJson);
@@ -86,7 +101,7 @@ class HttpApiClient implements ApiClient {
   @override
   Future<FileContent> getFile(String id) async {
     final response = await _send(
-      () => _client.get(_uri('${_entryPath(id)}/file')),
+      () => _client.get(_uri('${_entryPath(id)}/file'), headers: _authHeader),
       longTimeout,
     );
     final contentType = response.headers['content-type'];
@@ -104,6 +119,7 @@ class HttpApiClient implements ApiClient {
   }) async {
     final request = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
+      ..headers.addAll(_authHeader)
       ..fields['module'] = module
       ..files.add(
         http.MultipartFile.fromBytes(
@@ -124,6 +140,7 @@ class HttpApiClient implements ApiClient {
     // MultipartRequest sends form fields as UTF-8.
     final request = http.MultipartRequest('POST', _uri('/entries'))
       ..headers['Accept'] = 'application/json'
+      ..headers.addAll(_authHeader)
       ..fields['text'] = text
       ..fields['module'] = module;
     return _sendForm(request);
@@ -143,7 +160,7 @@ class HttpApiClient implements ApiClient {
     final response = await _send(
       () => _client.patch(
         _uri(_entryPath(id)),
-        headers: _jsonHeaders,
+        headers: _authJsonHeaders,
         body: jsonEncode(patch.toJson()),
       ),
       defaultTimeout,
@@ -155,7 +172,7 @@ class HttpApiClient implements ApiClient {
   Future<void> deleteEntry(String id) async {
     // Success is 204 without a body; errors come as JSON as always.
     await _send(
-      () => _client.delete(_uri(_entryPath(id)), headers: _jsonHeaders),
+      () => _client.delete(_uri(_entryPath(id)), headers: _authJsonHeaders),
       defaultTimeout,
     );
   }
@@ -165,7 +182,7 @@ class HttpApiClient implements ApiClient {
     final response = await _send(
       () => _client.post(
         _uri('/questions'),
-        headers: _jsonHeaders,
+        headers: _authJsonHeaders,
         body: jsonEncode({'question': question, 'module': module}),
       ),
       longTimeout,
@@ -177,6 +194,7 @@ class HttpApiClient implements ApiClient {
   Future<Transcript> transcribe(Uint8List bytes, String fileName) async {
     final request = http.MultipartRequest('POST', _uri('/transcriptions'))
       ..headers['Accept'] = 'application/json'
+      ..headers.addAll(_authHeader)
       ..files.add(
         http.MultipartFile.fromBytes(
           'audio',
@@ -204,6 +222,97 @@ class HttpApiClient implements ApiClient {
       alsoAccept: const {503},
     );
     return _read(response, ServerStatus.fromJson);
+  }
+
+  // ---------------------------------------------------------------------
+  // Accounts and login (3.10–3.15)
+  // ---------------------------------------------------------------------
+
+  @override
+  void useToken(String? token) => _token = token;
+
+  @override
+  Future<LoginResult> login(String username, String password) async {
+    // Public endpoint: deliberately without the token (_jsonHeaders).
+    final response = await _send(
+      () => _client.post(
+        _uri('/auth/login'),
+        headers: _jsonHeaders,
+        body: jsonEncode({'username': username, 'password': password}),
+      ),
+      defaultTimeout,
+    );
+    final result = _read(response, LoginResult.fromJson);
+    _token = result.token;
+    return result;
+  }
+
+  @override
+  Future<void> logout() async {
+    try {
+      // 204 without a body.
+      await _send(
+        () => _client.post(_uri('/auth/logout'), headers: _authJsonHeaders),
+        defaultTimeout,
+      );
+    } finally {
+      // The app logs out in any case, also if the call fails (3.11).
+      _token = null;
+    }
+  }
+
+  @override
+  Future<User> me() async {
+    final response = await _send(
+      () => _client.get(_uri('/me'), headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+    return _read(response, User.fromJson);
+  }
+
+  @override
+  Future<User> updateDisplayName(String displayName) async {
+    final response = await _send(
+      () => _client.patch(
+        _uri('/me'),
+        headers: _authJsonHeaders,
+        body: jsonEncode({'displayName': displayName}),
+      ),
+      defaultTimeout,
+    );
+    return _read(response, User.fromJson);
+  }
+
+  @override
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    // 204 without a body. bcrypt makes the backend slower than usual, the
+    // default timeout is still plenty.
+    await _send(
+      () => _client.post(
+        _uri('/me/password'),
+        headers: _authJsonHeaders,
+        body: jsonEncode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      ),
+      defaultTimeout,
+    );
+  }
+
+  @override
+  Future<void> recordConsent(String version) async {
+    await _send(
+      () => _client.put(
+        _uri('/me/consent'),
+        headers: _authJsonHeaders,
+        body: jsonEncode({'version': version}),
+      ),
+      defaultTimeout,
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -258,12 +367,15 @@ class HttpApiClient implements ApiClient {
           'code': final String code,
           'message': final String message,
         }) {
-          final details = error['details'];
+          final raw = error['details'];
+          final details = raw is Map<String, dynamic>
+              ? raw
+              : const <String, dynamic>{};
           return ApiException(
             httpStatus: response.statusCode,
             code: code,
             message: message,
-            details: details is Map<String, dynamic> ? details : const {},
+            details: _withRetryAfter(code, details, response.headers),
           );
         }
       }
@@ -276,6 +388,24 @@ class HttpApiClient implements ApiClient {
       message:
           'Unerwartete Antwort vom Server (Status ${response.statusCode}).',
     );
+  }
+
+  /// For `429 TOO_MANY_ATTEMPTS` the wait comes in `details.retryAfterSeconds`
+  /// and in the header `Retry-After`, both with the same value (3.10). If
+  /// the field is missing (e.g. a proxy changed the body), the header fills
+  /// it in.
+  static Map<String, dynamic> _withRetryAfter(
+    String code,
+    Map<String, dynamic> details,
+    Map<String, String> headers,
+  ) {
+    if (code != ErrorCode.tooManyAttempts ||
+        details['retryAfterSeconds'] is num) {
+      return details;
+    }
+    final seconds = int.tryParse(headers['retry-after']?.trim() ?? '');
+    if (seconds == null) return details;
+    return {...details, 'retryAfterSeconds': seconds};
   }
 
   /// Decodes the body as UTF-8 JSON and converts it. If the response does

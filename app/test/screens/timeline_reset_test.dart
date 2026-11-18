@@ -23,6 +23,8 @@ Future<MockApiClient> longMock({Duration delay = Duration.zero}) async {
     uploadDelay: Duration.zero,
     clock: () => DateTime.utc(2026, 11, 4, 9, 30, 0),
   );
+  // Every call needs a token, as in the backend.
+  mock.useToken(mock.signInForTest('admin'));
   for (var month = 1; month <= 12; month++) {
     final mm = month.toString().padLeft(2, '0');
     await mock.importText(

@@ -11,8 +11,10 @@ import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
+import '../model/user.dart';
 import '../model/verification.dart';
 import '../module/module_catalog.dart';
+import '../session/consent_text.dart' as notice;
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
@@ -46,6 +48,26 @@ const notFoundAnswer = 'Dazu finde ich nichts in deinen Dokumenten.';
 ///   itself, so these only work in tests.
 /// - With [speechStatus] other than `ok`, `/status` reports it and a
 ///   transcription returns 503.
+/// - `limitreached` in a file name, a text, a question or the file name of
+///   a recording returns `429 LIMIT_REACHED` (daily limit).
+///
+/// Accounts and login (docs/API.md section 1, 3.10–3.15) work as in the
+/// backend: every call except `/status` and the login needs a token from
+/// [login], otherwise `401 UNAUTHORIZED`; while the start password is
+/// unchanged, everything except [me], [changePassword] and [logout] answers
+/// `403 PASSWORD_CHANGE_REQUIRED`. Test accounts (synthetic, only in the
+/// mock):
+///
+/// | Username | Password | Note |
+/// |---|---|---|
+/// | `tester01` | `Startpasswort1` | start password: must change it, no consent yet |
+/// | `admin` | `Adminpasswort1` | no password change required, no consent yet |
+///
+/// After 5 failed attempts for a username (wrong password at login, or a
+/// wrong current password when changing it) the next attempt gets
+/// `429 TOO_MANY_ATTEMPTS` with `retryAfterSeconds: 60`, measured with the
+/// mock's clock. Unlike the backend the mock does not separate entries per
+/// user: every account sees the sample data.
 class MockApiClient implements ApiClient {
   MockApiClient({
     bool withSampleData = true,
@@ -94,6 +116,40 @@ class MockApiClient implements ApiClient {
   final _originals = <String, MockOriginal>{};
   final _random = Random();
   var _counter = 0;
+
+  /// Accounts by username; see the table in the class comment.
+  final _users = <String, _MockUser>{
+    'tester01': _MockUser(
+      id: '673b0c1fa2d4e5f6a7b8c9d0',
+      username: 'tester01',
+      password: mockStartPassword,
+      mustChangePassword: true,
+    ),
+    'admin': _MockUser(
+      id: '673b0c1fa2d4e5f6a7b8c9d1',
+      username: 'admin',
+      password: mockAdminPassword,
+      mustChangePassword: false,
+    ),
+  };
+
+  /// Valid tokens → username. One per login, like the backend's `sessions`.
+  final _sessions = <String, String>{};
+
+  /// Token of this client (what HttpApiClient would send).
+  String? _token;
+
+  /// Failed attempts per username, and until when it is locked.
+  final _failures = <String, int>{};
+  final _lockedUntil = <String, DateTime>{};
+
+  /// Passwords of the test accounts in the class comment (synthetic).
+  static const mockStartPassword = 'Startpasswort1';
+  static const mockAdminPassword = 'Adminpasswort1';
+
+  /// Failed attempts that lock a username, and for how long.
+  static const maxFailedAttempts = 5;
+  static const lockDuration = Duration(seconds: 60);
 
   @override
   bool get isMock => true;
@@ -426,6 +482,8 @@ class MockApiClient implements ApiClient {
   /// `modelerror` in the file name or in the text.
   void _checkTriggers(String content) {
     final lower = content.toLowerCase();
+    // The daily limit is checked before the model call (section 1).
+    if (lower.contains('limitreached')) throw _limitReached;
     if (lower.contains('unreadable')) {
       throw const ApiException(
         httpStatus: 422,
@@ -843,6 +901,7 @@ class MockApiClient implements ApiClient {
     }
     final moduleId = _checkModule(module);
     final words = _words(question).where((w) => !_stopWords.contains(w));
+    if (words.contains('limitreached')) throw _limitReached;
     if (words.contains('modelerror')) throw _modelUnavailable;
 
     // Instead of vector search: a simple word search in the lines of the
@@ -996,6 +1055,7 @@ class MockApiClient implements ApiClient {
     // 2. "Speech recognition": switched off or failing, or errors
     // triggered via the file name.
     final lower = fileName.toLowerCase();
+    if (lower.contains('limitreached')) throw _limitReached;
     if (speechStatus != SpeechStatus.ok || lower.contains('modelerror')) {
       throw _speechUnavailable;
     }
@@ -1035,8 +1095,203 @@ class MockApiClient implements ApiClient {
 
   @override
   Future<ServerStatus> getStatus() async {
-    await _wait(delay);
+    await _wait(delay, access: _Access.public);
     return ServerStatus(status: 'ok', database: 'ok', speech: speechStatus);
+  }
+
+  // ---------------------------------------------------------------------
+  // Accounts and login (3.10–3.15)
+  // ---------------------------------------------------------------------
+
+  @override
+  void useToken(String? token) => _token = token;
+
+  @override
+  Future<LoginResult> login(String username, String password) async {
+    await _wait(delay, access: _Access.public);
+    if (username.trim().isEmpty || password.isEmpty) {
+      throw _invalid('Bitte Benutzername und Passwort schicken.');
+    }
+    // As in the backend: trimmed and lowercase, the password exactly as sent.
+    final name = username.trim().toLowerCase();
+    _checkLock(name);
+    final user = _users[name];
+    if (user == null ||
+        utf8.encode(password).length > maxPasswordBytes ||
+        user.password != password) {
+      _countFailure(name);
+      throw const ApiException(
+        httpStatus: 401,
+        code: ErrorCode.invalidCredentials,
+        message: 'Benutzername oder Passwort stimmt nicht.',
+      );
+    }
+    _failures.remove(name);
+    final token = _newToken();
+    _sessions[token] = name;
+    _token = token;
+    return LoginResult(
+      token: token,
+      expiresAt: _clock().add(const Duration(days: 30)),
+      user: user.toUser(),
+    );
+  }
+
+  @override
+  Future<void> logout() async {
+    try {
+      await _wait(delay, access: _Access.duringPasswordChange);
+      _sessions.remove(_token);
+    } finally {
+      _token = null;
+    }
+  }
+
+  @override
+  Future<User> me() async {
+    final user = await _wait(delay, access: _Access.duringPasswordChange);
+    return user!.toUser();
+  }
+
+  @override
+  Future<User> updateDisplayName(String displayName) async {
+    final user = (await _wait(delay))!;
+    final trimmed = displayName.trim();
+    final length = trimmed.runes.length;
+    if (length < 1 || length > 50 || _controlCharacter.hasMatch(trimmed)) {
+      throw _invalid('Der Anzeigename muss 1 bis 50 Zeichen lang sein.', {
+        'field': 'displayName',
+      });
+    }
+    user.displayName = trimmed;
+    return user.toUser();
+  }
+
+  /// bcrypt's limit in the backend (3.14).
+  static const maxPasswordBytes = 72;
+
+  @override
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final user = (await _wait(delay, access: _Access.duringPasswordChange))!;
+    // Order as in the backend: lock, current password, new password.
+    _checkLock(user.username);
+    if (currentPassword != user.password) {
+      _countFailure(user.username);
+      throw const ApiException(
+        httpStatus: 400,
+        code: ErrorCode.wrongPassword,
+        message: 'Das bisherige Passwort stimmt nicht.',
+      );
+    }
+    final weak = newPassword.runes.length < 10
+        ? 'Das neue Passwort muss mindestens 10 Zeichen lang sein.'
+        : utf8.encode(newPassword).length > maxPasswordBytes
+        ? 'Das neue Passwort ist zu lang. Erlaubt sind höchstens 72 Byte, '
+              'Umlaute zählen doppelt.'
+        : newPassword == currentPassword
+        ? 'Das neue Passwort muss sich vom bisherigen unterscheiden.'
+        : null;
+    if (weak != null) {
+      throw ApiException(
+        httpStatus: 400,
+        code: ErrorCode.weakPassword,
+        message: weak,
+      );
+    }
+    user
+      ..password = newPassword
+      ..mustChangePassword = false;
+    // All other tokens of the account end; this one stays valid.
+    _sessions.removeWhere((t, name) => name == user.username && t != _token);
+  }
+
+  @override
+  Future<void> recordConsent(String version) async {
+    final user = (await _wait(delay))!;
+    final trimmed = version.trim();
+    final length = trimmed.runes.length;
+    if (length < 1 || length > 100 || _controlCharacter.hasMatch(trimmed)) {
+      throw _invalid('Bitte die Version des Hinweises schicken.', {
+        'field': 'version',
+      });
+    }
+    user.consentVersion = trimmed;
+  }
+
+  static final _controlCharacter = RegExp(r'\p{Cc}', unicode: true);
+
+  /// Creates a session for [username] without a login and returns its
+  /// token, e.g. to start a test already logged in. With [consent] the user
+  /// has agreed to the current notice, without it not at all; the password
+  /// change is done.
+  @visibleForTesting
+  String signInForTest(String username, {bool consent = true}) {
+    final user = _users[username]!;
+    user.mustChangePassword = false;
+    user.consentVersion = consent ? notice.consentVersion : null;
+    final token = _newToken();
+    _sessions[token] = username;
+    return token;
+  }
+
+  /// Ends every session, as if all tokens expired. The next call answers
+  /// `401 UNAUTHORIZED`.
+  @visibleForTesting
+  void expireAllSessions() => _sessions.clear();
+
+  /// Sets the consent version stored for a user (e.g. an old one).
+  @visibleForTesting
+  void setConsentVersion(String username, String? version) =>
+      _users[username]!.consentVersion = version;
+
+  /// Demands a password change, as if an administrator reset the password
+  /// while the app was open. Calls then answer `403`.
+  @visibleForTesting
+  void requirePasswordChange(String username) =>
+      _users[username]!.mustChangePassword = true;
+
+  /// The user as the mock stores it, for checks in tests.
+  @visibleForTesting
+  User userForTest(String username) => _users[username]!.toUser();
+
+  /// 429 while [username] is locked after failed attempts.
+  void _checkLock(String username) {
+    final until = _lockedUntil[username];
+    if (until == null) return;
+    final remaining = until.difference(_clock());
+    if (remaining <= Duration.zero) {
+      _lockedUntil.remove(username);
+      return;
+    }
+    final seconds = (remaining.inMilliseconds / 1000).ceil();
+    throw ApiException(
+      httpStatus: 429,
+      code: ErrorCode.tooManyAttempts,
+      message:
+          'Zu viele Fehlversuche. Bitte versuche es in einigen Minuten '
+          'erneut.',
+      details: {'retryAfterSeconds': seconds},
+    );
+  }
+
+  void _countFailure(String username) {
+    final count = (_failures[username] ?? 0) + 1;
+    if (count >= maxFailedAttempts) {
+      _failures.remove(username);
+      _lockedUntil[username] = _clock().add(lockDuration);
+    } else {
+      _failures[username] = count;
+    }
+  }
+
+  /// 43 characters like the backend's token (32 random bytes, base64url).
+  String _newToken() {
+    final random = Random.secure();
+    final bytes = [for (var i = 0; i < 32; i++) random.nextInt(256)];
+    return base64Url.encode(bytes).replaceAll('=', '');
   }
 
   static const _speechUnavailable = ApiException(
@@ -1059,7 +1314,13 @@ class MockApiClient implements ApiClient {
         'Bitte später noch einmal versuchen.',
   );
 
-  Future<void> _wait(Duration duration) async {
+  /// Waits, then checks the token like the backend: first `401`, then `403`
+  /// for a start password (docs/API.md section 1). Returns the logged-in
+  /// user, `null` for public endpoints.
+  Future<_MockUser?> _wait(
+    Duration duration, {
+    _Access access = _Access.user,
+  }) async {
     if (duration > Duration.zero) await Future<void>.delayed(duration);
     if (simulateError) {
       throw const ApiException(
@@ -1070,5 +1331,67 @@ class MockApiClient implements ApiClient {
             'Bitte später noch einmal versuchen.',
       );
     }
+    if (access == _Access.public) return null;
+    final user = _users[_sessions[_token]];
+    if (user == null) {
+      throw const ApiException(
+        httpStatus: 401,
+        code: ErrorCode.unauthorized,
+        message: 'Bitte melde dich an.',
+      );
+    }
+    if (user.mustChangePassword && access != _Access.duringPasswordChange) {
+      throw const ApiException(
+        httpStatus: 403,
+        code: ErrorCode.passwordChangeRequired,
+        message: 'Bitte ändere zuerst dein Startpasswort.',
+      );
+    }
+    return user;
   }
+
+  static const _limitReached = ApiException(
+    httpStatus: 429,
+    code: ErrorCode.limitReached,
+    message: 'Du hast dein Tageslimit erreicht. Morgen geht es weiter.',
+  );
+}
+
+/// Who may call an endpoint of the mock.
+enum _Access {
+  /// `/status` and the login: no token.
+  public,
+
+  /// `GET /me`, `POST /me/password`, `POST /auth/logout`: also with a start
+  /// password.
+  duringPasswordChange,
+
+  /// Everything else.
+  user,
+}
+
+/// An account of the mock. Mutable: password, display name and consent
+/// change through the API.
+class _MockUser {
+  _MockUser({
+    required this.id,
+    required this.username,
+    required this.password,
+    required this.mustChangePassword,
+  }) : displayName = username;
+
+  final String id;
+  final String username;
+  String password;
+  String displayName;
+  bool mustChangePassword;
+  String? consentVersion;
+
+  User toUser() => User(
+    id: id,
+    username: username,
+    displayName: displayName,
+    mustChangePassword: mustChangePassword,
+    consentVersion: consentVersion,
+  );
 }

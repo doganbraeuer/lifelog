@@ -24,6 +24,29 @@ abstract final class ErrorCode {
   /// shorter than 0.5 s).
   static const noSpeech = 'NO_SPEECH';
 
+  // Accounts and login (section 1 "Login and tokens", 3.10–3.15):
+  /// Token missing, unknown or expired, or account disabled. The app logs
+  /// the user out and asks for a new login.
+  static const unauthorized = 'UNAUTHORIZED';
+
+  /// The start password has not been changed yet.
+  static const passwordChangeRequired = 'PASSWORD_CHANGE_REQUIRED';
+
+  /// Login: unknown username, wrong password or disabled account.
+  static const invalidCredentials = 'INVALID_CREDENTIALS';
+
+  /// Password change: the current password is wrong.
+  static const wrongPassword = 'WRONG_PASSWORD';
+
+  /// Password change: the new password breaks a rule.
+  static const weakPassword = 'WEAK_PASSWORD';
+
+  /// Too many failed attempts; see [ApiException.retryAfterSeconds].
+  static const tooManyAttempts = 'TOO_MANY_ATTEMPTS';
+
+  /// A daily limit is reached (`details.limit`).
+  static const limitReached = 'LIMIT_REACHED';
+
   // Only in the app, never sent by the backend:
   /// No connection or timeout.
   static const networkError = 'NETWORK_ERROR';
@@ -55,6 +78,13 @@ class ApiException implements Exception {
   final String code;
   final String message;
   final Map<String, dynamic> details;
+
+  /// Wait in seconds for `429 TOO_MANY_ATTEMPTS` (`details.retryAfterSeconds`),
+  /// otherwise `null`.
+  int? get retryAfterSeconds => switch (details['retryAfterSeconds']) {
+    final num seconds => seconds.ceil(),
+    _ => null,
+  };
 
   @override
   String toString() => 'ApiException($httpStatus $code: $message)';
