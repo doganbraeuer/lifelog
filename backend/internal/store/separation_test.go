@@ -136,8 +136,9 @@ func TestNeedsUpdate(t *testing.T) {
 
 func TestIsFilterNotIndexed(t *testing.T) {
 	for _, msg := range []string{
-		// As Atlas reports it while the index still has the old definition.
-		"(Location8) PlanExecutor error during aggregation :: caused by :: Path 'userId' needs to be indexed as filter",
+		// Exactly as Atlas reported it on 2026-11-18 while the index was
+		// BUILDING after the update and still served the old definition.
+		"(UnknownError) PlanExecutor error during aggregation :: caused by :: Path 'userId' needs to be indexed as filter",
 		"Path 'userId' needs to be indexed as a filter",
 	} {
 		if !isFilterNotIndexed(errors.New(msg)) {
