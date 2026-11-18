@@ -89,13 +89,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           widget.mandatory ? 'Eigenes Passwort festlegen' : 'Passwort ändern',
         ),
         automaticallyImplyLeading: !widget.mandatory,
-        actions: [
-          if (widget.mandatory)
-            TextButton(
-              onPressed: _busy ? null : SessionScope.of(context).logout,
-              child: const Text('Abmelden'),
-            ),
-        ],
       ),
       body: SafeArea(
         child: Center(
@@ -156,6 +149,17 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             )
                           : const Text('Passwort speichern'),
                     ),
+                    // Below the button, not in the app bar: there it would
+                    // cut the long title on a phone.
+                    if (widget.mandatory) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : SessionScope.of(context).logout,
+                        child: const Text('Abmelden'),
+                      ),
+                    ],
                   ],
                 ),
               ),
