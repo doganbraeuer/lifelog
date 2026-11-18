@@ -1,6 +1,6 @@
 # Lifelog features
 
-Status: 2026-11-12 · prototype
+Status: 2026-11-18 · prototype
 
 This document describes what Lifelog can do today: the screens of the app
 and every function of app and platform, each with the same sections. The
@@ -55,8 +55,9 @@ quoted as they appear („Hochladen“).
 
 ## The app at a glance
 
-The app is German, built with Flutter for iOS and Android. It opens on the
-module overview; each module has the same three tabs.
+The app is German, built with Flutter for iOS and Android. After the
+[login](#15-login-and-account) it opens on the module overview; each module
+has the same three tabs.
 
 ```
 Lifelog („Bereiche“, module overview)
@@ -71,7 +72,7 @@ Lifelog („Bereiche“, module overview)
 
 | Screen | Title in the app | Reached from | Shows |
 |---|---|---|---|
-| Module overview | „Lifelog“ | App start | One tile per module; inactive modules marked „Bald verfügbar“. A „Mock“ badge if the app runs without a backend. |
+| Module overview | „Lifelog“ | App start, after login | One tile per module; inactive modules marked „Bald verfügbar“. A „Mock“ badge if the app runs without a backend. The large „Einstellungen“ icon. |
 | Timeline | „Zeitleiste“ | Tab 1 of a module | All entries of the module on a time axis, grouped by month, with sort menu and order button |
 | Upload | „Hochladen“ | Tab 2, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“ (field with a microphone to dictate); preview; progress; errors |
 | Questions | „Fragen“ | Tab 3 | Question field, answer with tappable references, sources that expand to the full text with the passage marked |
@@ -132,8 +133,8 @@ verfügbar“ cannot be opened yet.
 - The module list is built into the app; later it could come from the
   backend.
 - An entry's `module` cannot be corrected.
-- Duplicate detection works across modules (the same file cannot be in two
-  modules).
+- Duplicate detection works across the modules of one user (the same file
+  cannot be in two of their modules).
 
 ### Status
 
@@ -496,8 +497,8 @@ the timeline.
 - The backend computes the SHA-256 hash of the file content (for a text:
   of its UTF-8 bytes) and looks it up **before** calling a model, so a
   duplicate costs no model call.
-- A unique index on `file.sha256` in MongoDB also catches the same file
-  uploaded twice at the same moment.
+- A unique index on `(userId, file.sha256)` in MongoDB also catches the same
+  file uploaded twice at the same moment.
 - Answer `409 DUPLICATE` with `details.entryId`; the app uses it for the
   button.
 
@@ -505,7 +506,9 @@ the timeline.
 
 - Only identical bytes count. A new photo of the same document, a scan
   instead of the PDF, or a text with one extra space is a new entry.
-- Applies across all modules.
+- Applies across all modules of the same user. Another user uploading the
+  same file gets a new entry, so a duplicate never reveals someone else's
+  file.
 - After deleting an entry, the same file can be uploaded again.
 
 ### Status
@@ -565,9 +568,11 @@ Nothing to do; upload a document.
 - The vision LLM can misread or invent a value. That is why the values are
   [checked against the original](#8-checking-values-with-ocr-verification)
   and can be [corrected](#9-correction).
-- The free tier of Gemini is used: Google may use the inputs to improve its
-  products, so **only synthetic documents** may be uploaded. The free tier
-  has request limits and is often overloaded (503).
+- Local development uses the free tier of Gemini: Google may use the inputs
+  to improve its products, so there **only synthetic documents** may be
+  uploaded. The free tier has request limits and is often overloaded (503).
+  The test server for real testers uses the paid tier (see
+  [privacy](#privacy)). Each user also has daily limits (API.md, section 1).
 - Changing the embedding model requires embedding all chunks again;
   otherwise search finds nothing useful.
 
@@ -760,8 +765,8 @@ value is kept and stays visible.
 
 ### What it does
 
-Shows all entries of a module on a time axis, newest first by default,
-grouped by month.
+Shows all of the user's own entries of a module on a time axis, newest
+first by default, grouped by month.
 
 ### Where
 
@@ -797,7 +802,8 @@ Tab „Zeitleiste“ (first tab of a module).
 
 ### Limits
 
-- No pagination: the list always holds all entries of the module.
+- No pagination: the list always holds all of the user's entries of the
+  module.
 - No filter by type, no text search in the timeline (use
   [questions](#14-questions-with-sources)).
 - The short form has no verification result, so the timeline cannot mark
@@ -1364,9 +1370,12 @@ health data must not be uploaded.
 | Question and the matching chunks | Google Gemini | Embedding the question, writing the answer |
 | Everything that is stored | MongoDB Atlas (cloud, free tier) | Storage |
 
-Gemini is used in the free tier, where Google may use inputs to improve its
-products. This is the main reason for the synthetic-data rule. The upload
-screen always shows: „Dokumente werden zur Auswertung an einen Cloud-Dienst
+Local development uses Gemini's free tier, where Google may use inputs to
+improve its products; there only synthetic data is used. The test server for
+real testers runs with the paid tier, where Google does not use the content
+to improve its products but keeps it for a limited time. The paid tier is a
+precondition for the [consent](#153-consent) notice. The upload screen
+always shows: „Dokumente werden zur Auswertung an einen Cloud-Dienst
 gesendet. Bitte nur Testdokumente verwenden.“
 
 ### What stays local
@@ -1378,6 +1387,12 @@ gesendet. Bitte nur Testdokumente verwenden.“
   and, for a few seconds, in one temporary file (mode 0600) that is deleted
   right after. The app is asked to delete its local recording too.
 - The app never calls a model directly; every call goes through the backend.
+- **On the phone:** the login token and its expiry are kept only in the
+  secure storage (flutter_secure_storage: Android Keystore, iOS Keychain for
+  this device only), never the password. The app allows no backup and no
+  transfer to a new device. Logging out (or a session that ends) deletes the
+  token, the app's temporary files (recordings, copies of photos and PDFs)
+  and the image cache ([login and account](#15-login-and-account)).
 
 ### What is stored, and deleting
 
@@ -1385,7 +1400,8 @@ MongoDB: the entry (`entries`), its chunks with embeddings (`chunks`), the
 words of the original with positions (`ocr`), and the original file (GridFS
 bucket `originals`). [Deleting](#13-delete) removes all four. Corrections
 keep the originally recognized value inside the entry; it is deleted with
-it.
+it. Every one of them belongs to the user who uploaded it; other users never
+see it (API.md, section 1 "Per-user data").
 
 ### Logs
 
@@ -1404,9 +1420,13 @@ public; its history was checked with gitleaks.
 
 ### Network
 
-- The backend listens on `127.0.0.1:8080` by default. For a phone on the
-  Wi-Fi it can listen on all interfaces (`ADDRESS=0.0.0.0`), only for
-  testing: the prototype has **no login and no TLS**.
+- Every request except `/status` and the login needs a token (since
+  2026-11-18, PRs #25, #26 and the app login).
+- The backend listens on `127.0.0.1:8080` by default. Locally the phone
+  reaches it over plain HTTP through `adb reverse`. It can also listen on
+  all interfaces (`ADDRESS=0.0.0.0`), only for testing, because the backend
+  itself has no TLS. On the test server HTTPS comes from Caddy in front of
+  the backend (in progress, Dogan).
 - The original file is sent with `Cache-Control: private, no-store` and
   `nosniff`.
 
@@ -1423,12 +1443,12 @@ recommendations; the app only shows what is in the documents.
 - iOS voice memos contain Apple's own transcript and a UUID inside the file
   ([docs/speech](speech/README.md)); the backend ignores them and stores
   nothing, but the file on the phone keeps them.
-- One user, no login, no encryption beyond what Atlas provides; login and
-  per-user data are open points (API.md, section 4).
+- No encryption beyond what Atlas provides.
 
 ### Status
 
-Rules above: **Done.** Removing photo metadata, login and TLS: **Open.**
+Rules above, login and per-user data: **Done.** HTTPS on the test server:
+**In progress.** Removing photo metadata: **Open.**
 
 ---
 
@@ -1510,8 +1530,8 @@ reports `speech` separately, without any model call.
 
 - Everything is synchronous; long uploads or recordings block one request.
 - One backend instance; whisper-server runs on the same machine.
-- The Gemini free tier is often overloaded or limited; the retries help but
-  cannot guarantee an answer.
+- Gemini (free tier locally, paid tier on the test server) can be
+  overloaded or limited; the retries help but cannot guarantee an answer.
 - No backup strategy is defined for the prototype.
 - The Windows start script for whisper-server is not tested.
 
