@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -92,6 +93,12 @@ type Config struct {
 	TesseractLang         string // language pack, e.g. "deu" or "deu+eng"
 	SpeechEngine          string // SpeechEngineWhisper or SpeechEngineNone
 	WhisperURL            string // base URL of the local whisper-server
+
+	// TrustedProxies (TRUSTED_PROXIES): reverse proxies whose
+	// X-Forwarded-For header is believed for the client IP (failed-attempt
+	// limits, docs/API.md 3.10). Empty = the address of the connection
+	// counts. Behind Caddy on the same machine: 127.0.0.1,::1.
+	TrustedProxies []netip.Prefix
 }
 
 // ListenAddress returns e.g. "127.0.0.1:8080". net.JoinHostPort puts IPv6
@@ -213,7 +220,42 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	c.GeminiFallbackReserve = time.Duration(sec) * time.Second
 
+	proxies, err := parseTrustedProxies(getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		return Config{}, err
+	}
+	c.TrustedProxies = proxies
+
 	return c, nil
+}
+
+// parseTrustedProxies reads a comma-separated list of IP addresses
+// ("127.0.0.1") and ranges ("10.0.0.0/8"). A single address becomes a range
+// of exactly that address. Addresses are not secret, so the error may name
+// the entry that is wrong.
+func parseTrustedProxies(value string) ([]netip.Prefix, error) {
+	var list []netip.Prefix
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "/") {
+			p, err := netip.ParsePrefix(part)
+			if err != nil {
+				return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP range like 10.0.0.0/8", part)
+			}
+			list = append(list, p.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(part)
+		if err != nil || addr.Zone() != "" {
+			return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP address like 127.0.0.1", part)
+		}
+		addr = addr.Unmap()
+		list = append(list, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return list, nil
 }
 
 // checkRenamed fails if a variable is still set under its old German name.
