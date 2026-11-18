@@ -28,13 +28,13 @@ type fakeStore struct {
 	fileErr error                 // if set, OpenFile fails with it
 }
 
-func (s *fakeStore) ListSummaries(_ context.Context, module string) ([]core.EntrySummary, error) {
+func (s *fakeStore) ListSummaries(_ context.Context, _ string, module string) ([]core.EntrySummary, error) {
 	s.calls++
 	s.askedModule = module
 	return slices.Clone(s.list), s.err
 }
 
-func (s *fakeStore) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
+func (s *fakeStore) GetEntry(_ context.Context, _ string, id string) (core.Entry, bool, error) {
 	s.calls++
 	if s.err != nil {
 		return core.Entry{}, false, s.err
@@ -43,7 +43,7 @@ func (s *fakeStore) GetEntry(_ context.Context, id string) (core.Entry, bool, er
 	return e, ok, nil
 }
 
-func (s *fakeStore) OpenFile(_ context.Context, fileID string) (io.ReadCloser, int64, error) {
+func (s *fakeStore) OpenFile(_ context.Context, _ string, fileID string) (io.ReadCloser, int64, error) {
 	if s.fileErr != nil {
 		return nil, 0, s.fileErr
 	}

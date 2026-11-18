@@ -24,7 +24,7 @@ type fakeCorrector struct {
 	change core.Change
 }
 
-func (c *fakeCorrector) Correct(_ context.Context, id string, ch core.Change) (core.Entry, error) {
+func (c *fakeCorrector) Correct(_ context.Context, _ string, id string, ch core.Change) (core.Entry, error) {
 	c.called, c.id, c.change = true, id, ch
 	return c.entry, c.err
 }

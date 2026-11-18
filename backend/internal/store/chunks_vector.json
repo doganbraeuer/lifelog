@@ -8,6 +8,10 @@
     },
     {
       "type": "filter",
+      "path": "userId"
+    },
+    {
+      "type": "filter",
       "path": "module"
     }
   ]

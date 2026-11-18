@@ -26,7 +26,7 @@ func fieldStatus(t *testing.T, v core.Verification, field string) string {
 
 func TestUpload_Verification(t *testing.T) {
 	s := newSetup()
-	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestUpload_VerificationFailsButUploadSucceeds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newSetup()
 			s.uploader.recognizer = tt.ocr
-			e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+			e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 			if err != nil {
 				t.Fatalf("upload failed: %v", err)
 			}
@@ -102,7 +102,7 @@ func TestUpload_VerificationFailsButUploadSucceeds(t *testing.T) {
 func TestUpload_WithoutOCR(t *testing.T) {
 	s := newSetup()
 	s.uploader.recognizer = nil
-	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestUpload_OCRTimeLimit(t *testing.T) {
 	s.ocr.Block = true // never finishes on its own
 	s.uploader.ocrTimeout = 50 * time.Millisecond
 	start := time.Now()
-	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestUpload_OCRRunsWhileModelReads(t *testing.T) {
 	s.uploader.recognizer = rec
 	s.uploader.reader = doneReader{Reader: signalReader{Reader: s.reader, ocrStarted: rec.started}, done: modelDone}
 
-	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestUpload_ModelErrorCancelsOCR(t *testing.T) {
 	s.uploader.ocrTimeout = 10 * time.Second
 	s.reader.Err = llm.ErrUnavailable
 	start := time.Now()
-	_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	_, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if !errors.Is(err, llm.ErrUnavailable) {
 		t.Fatalf("error %v", err)
 	}
@@ -217,7 +217,7 @@ func TestUpload_ModelErrorCancelsOCR(t *testing.T) {
 
 func TestTextImport_VerifiedAgainstText(t *testing.T) {
 	s := textSetup()
-	e, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+	e, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestCorrect_Reverifies(t *testing.T) {
 				t.Fatalf("before: %s", got)
 			}
 			s := &fakeCorrectionStore{entry: &e, ocr: &words}
-			got, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+			got, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 				core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr(tt.value)}}})
 			if err != nil {
 				t.Fatal(err)
@@ -287,12 +287,12 @@ func TestCorrect_ResetRemovesCorrectedStatus(t *testing.T) {
 	e := checkedEntry(words)
 	s := &fakeCorrectionStore{entry: &e, ocr: &words}
 	c := newFixedCorrector(s)
-	first, err := c.Correct(context.Background(), idLab, core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
+	first, err := c.Correct(context.Background(), testUser, idLab, core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.entry = &first
-	back, err := c.Correct(context.Background(), idLab, core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,3")}}})
+	back, err := c.Correct(context.Background(), testUser, idLab, core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,3")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestCorrect_ResetRemovesCorrectedStatus(t *testing.T) {
 func TestCorrect_UncheckedStaysUnchecked(t *testing.T) {
 	s := correctionData()
 	s.entry.Verification = core.Unchecked(core.ReasonOCRFailed)
-	got, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	got, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestCorrect_TextImportUsesFullText(t *testing.T) {
 	}
 	e.Verification = core.VerifyText(e, time.Now())
 	s := &fakeCorrectionStore{entry: &e}
-	got, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	got, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f1", Value: ptr("122/79")}}})
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +336,7 @@ func TestCorrect_WordsMissingKeepsVerification(t *testing.T) {
 	e := checkedEntry(words)
 	old := e.Verification
 	s := &fakeCorrectionStore{entry: &e} // no words stored
-	got, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	got, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
@@ -353,7 +353,7 @@ func TestCorrect_WordsReadErrorSavesNothing(t *testing.T) {
 	words := ocrResult("Leukozyten 6,8 G/l")
 	e := checkedEntry(words)
 	s := &fakeCorrectionStore{entry: &e, ocrErr: errDB}
-	_, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	_, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if !errors.Is(err, errDB) || len(s.saved) != 0 {
 		t.Errorf("error %v, saved %d", err, len(s.saved))
@@ -364,7 +364,7 @@ func TestCorrect_NoChangeReadsNoWords(t *testing.T) {
 	words := ocrResult("Leukozyten 6,3 G/l")
 	e := checkedEntry(words)
 	s := &fakeCorrectionStore{entry: &e, ocr: &words}
-	if _, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	if _, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,3")}}}); err != nil {
 		t.Fatal(err)
 	}

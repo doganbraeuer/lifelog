@@ -21,16 +21,18 @@ import (
 )
 
 // UploadStore is what the upload needs from the database. Implemented by
-// store.Store.
+// store.Store. Every method takes the user: everything an upload stores
+// carries the owner, and the duplicate check only looks at the user's own
+// entries.
 type UploadStore interface {
-	EntryByHash(ctx context.Context, sha256 string) (id string, found bool, err error)
-	SaveFile(ctx context.Context, id, fileName, mimeType string, data []byte) error
-	DeleteFile(ctx context.Context, id string) error
-	SaveChunks(ctx context.Context, chunks []core.Chunk) error
-	DeleteChunks(ctx context.Context, entryID string) error
-	SaveOCR(ctx context.Context, entryID string, r core.OCRResult) error
-	DeleteOCR(ctx context.Context, entryID string) error
-	SaveEntry(ctx context.Context, e core.Entry) error
+	EntryByHash(ctx context.Context, userID, sha256 string) (id string, found bool, err error)
+	SaveFile(ctx context.Context, userID, id, fileName, mimeType string, data []byte) error
+	DeleteFile(ctx context.Context, userID, id string) error
+	SaveChunks(ctx context.Context, userID string, chunks []core.Chunk) error
+	DeleteChunks(ctx context.Context, userID, entryID string) error
+	SaveOCR(ctx context.Context, userID, entryID string, r core.OCRResult) error
+	DeleteOCR(ctx context.Context, userID, entryID string) error
+	SaveEntry(ctx context.Context, userID string, e core.Entry) error
 }
 
 // Upload is an uploaded file.
@@ -50,6 +52,7 @@ type TextUpload struct {
 // checks. read calls the matching model. text marks a text import: its
 // values are checked against the entered text instead of OCR.
 type input struct {
+	userID   string
 	module   string
 	data     []byte // is stored and hashed
 	fileName string
@@ -73,15 +76,21 @@ type Uploader struct {
 	reader     llm.Reader
 	embedder   llm.Embedder
 	recognizer ocr.Recognizer // nil: OCR switched off, files stay unchecked
+	usage      UsageCounter
 	newID      func() string
 	now        func() time.Time
 	ocrTimeout time.Duration
 }
 
 // NewUploader creates the service. newID assigns ObjectIds (store.NewID).
-// rec reads the original for the verification; nil switches it off.
-func NewUploader(s UploadStore, r llm.Reader, e llm.Embedder, rec ocr.Recognizer, newID func() string) *Uploader {
-	return &Uploader{store: s, reader: r, embedder: e, recognizer: rec, newID: newID, now: time.Now,
+// rec reads the original for the verification; nil switches it off. usage
+// counts the daily limit and is required: there is no upload without a
+// limit.
+func NewUploader(s UploadStore, r llm.Reader, e llm.Embedder, rec ocr.Recognizer, usage UsageCounter, newID func() string) *Uploader {
+	if usage == nil {
+		panic("service: NewUploader needs a UsageCounter")
+	}
+	return &Uploader{store: s, reader: r, embedder: e, recognizer: rec, usage: usage, newID: newID, now: time.Now,
 		ocrTimeout: OCRTimeout}
 }
 
@@ -96,24 +105,30 @@ const OCRTimeout = 30 * time.Second
 // been canceled by then.
 const cleanupTimeout = 10 * time.Second
 
-// Upload uploads the file, has it read and stores everything.
+// Upload uploads the user's file, has it read and stores everything.
 //
 //  1. Check module, size and type.
-//  2. Compute the hash, check for a duplicate, BEFORE the model call.
-//  3. Have the vision LLM read it. At the same time, the second reader
+//  2. Compute the hash, check for a duplicate among the user's own entries,
+//     BEFORE the model call.
+//  3. Count the upload against the user's daily limit; from here on it
+//     costs model calls.
+//  4. Have the vision LLM read it. At the same time, the second reader
 //     reads the original (text layer or OCR, see verify).
-//  4. Check the extraction (core.CheckExtraction).
-//  5. Split the full text into chunks and embed them, then check the
+//  5. Check the extraction (core.CheckExtraction).
+//  6. Split the full text into chunks and embed them, then check the
 //     values against what the second reader read (core.Verify).
-//  6. Store file → chunks → words → entry. The entry comes last; if a step
-//     fails, the parts already stored are removed again. This way no half
-//     entry is left behind.
+//  7. Store file → chunks → words → entry, each with the owner. The entry
+//     comes last; if a step fails, the parts already stored are removed
+//     again. This way no half entry is left behind.
 //
-// Errors: core.ErrUnknownModule, core.ErrFileEmpty, core.ErrFileTooLarge,
-// core.ErrUnsupportedFileType, *DuplicateError, core.ErrUnreadable,
-// core.ErrInvalidExtraction, llm.ErrInvalidResponse, llm.ErrUnavailable or
-// another (internal) error.
-func (u *Uploader) Upload(ctx context.Context, up Upload) (core.Entry, error) {
+// Errors: core.ErrNoUser, core.ErrUnknownModule, core.ErrFileEmpty,
+// core.ErrFileTooLarge, core.ErrUnsupportedFileType, *DuplicateError,
+// *core.LimitReachedError, core.ErrUnreadable, core.ErrInvalidExtraction,
+// llm.ErrInvalidResponse, llm.ErrUnavailable or another (internal) error.
+func (u *Uploader) Upload(ctx context.Context, userID string, up Upload) (core.Entry, error) {
+	if userID == "" {
+		return core.Entry{}, core.ErrNoUser
+	}
 	// 1. Check, without network and without database.
 	module, err := core.CheckModule(up.Module)
 	if err != nil {
@@ -125,6 +140,7 @@ func (u *Uploader) Upload(ctx context.Context, up Upload) (core.Entry, error) {
 	}
 
 	return u.process(ctx, input{
+		userID:   userID,
 		module:   module,
 		data:     up.Data,
 		fileName: safeFileName(up.FileName),
@@ -146,10 +162,14 @@ func (u *Uploader) Upload(ctx context.Context, up Upload) (core.Entry, error) {
 //     and facts. The full text is the entered text, unchanged, and a text
 //     always counts as readable.
 //
-// Errors: core.ErrUnknownModule, core.ErrFileEmpty, core.ErrTextNotUTF8,
-// core.ErrTextTooLong, *DuplicateError, core.ErrInvalidExtraction,
+// Errors: core.ErrNoUser, core.ErrUnknownModule, core.ErrFileEmpty,
+// core.ErrTextNotUTF8, core.ErrTextTooLong, *DuplicateError,
+// *core.LimitReachedError, core.ErrInvalidExtraction,
 // llm.ErrInvalidResponse, llm.ErrUnavailable or an internal error.
-func (u *Uploader) UploadText(ctx context.Context, up TextUpload) (core.Entry, error) {
+func (u *Uploader) UploadText(ctx context.Context, userID string, up TextUpload) (core.Entry, error) {
+	if userID == "" {
+		return core.Entry{}, core.ErrNoUser
+	}
 	module, err := core.CheckModule(up.Module)
 	if err != nil {
 		return core.Entry{}, err
@@ -158,6 +178,7 @@ func (u *Uploader) UploadText(ctx context.Context, up TextUpload) (core.Entry, e
 		return core.Entry{}, err
 	}
 	return u.process(ctx, input{
+		userID:   userID,
 		module:   module,
 		data:     []byte(up.Text), // Go strings are UTF-8: exactly these bytes
 		fileName: core.TextFileName,
@@ -175,20 +196,27 @@ func (u *Uploader) UploadText(ctx context.Context, up TextUpload) (core.Entry, e
 	})
 }
 
-// process runs steps 2–6, the same for file and text.
+// process runs steps 2–7, the same for file and text.
 func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 	module := in.module
 
-	// 2. Check for a duplicate before a model call costs anything.
+	// 2. Check for a duplicate before a model call costs anything. Only the
+	// user's own entries count: another user's file is never a duplicate.
 	sum := sha256.Sum256(in.data)
 	hash := hex.EncodeToString(sum[:])
-	if id, found, err := u.store.EntryByHash(ctx, hash); err != nil {
+	if id, found, err := u.store.EntryByHash(ctx, in.userID, hash); err != nil {
 		return core.Entry{}, err
 	} else if found {
 		return core.Entry{}, &DuplicateError{EntryID: id}
 	}
 
-	// 3. Read. The second reader starts first and runs at the same time as
+	// 3. Daily limit: the request is accepted, from here on it costs model
+	// calls. Counted whether the upload succeeds or not.
+	if err := u.usage.Use(ctx, in.userID, core.LimitUploads); err != nil {
+		return core.Entry{}, err
+	}
+
+	// 4. Read. The second reader starts first and runs at the same time as
 	// the vision LLM, so the upload does not take longer. If the upload
 	// fails before its result is needed, the deferred cancel stops it.
 	ocrCtx, cancelOCR := context.WithTimeout(ctx, u.ocrTimeout)
@@ -200,7 +228,7 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 		return core.Entry{}, err
 	}
 
-	// 4. Check. Only field names go into the log, never values (health data).
+	// 5. Check. Only field names go into the log, never values (health data).
 	entry, dropped, err := core.CheckExtraction(extraction, module)
 	if len(dropped) > 0 {
 		slog.Warn("incomplete facts dropped", "fields", dropped)
@@ -213,7 +241,7 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 		return core.Entry{}, err
 	}
 
-	// 5. Chunks and embeddings.
+	// 6. Chunks and embeddings.
 	texts := core.SplitIntoChunks(entry.FullText, core.ChunkMaxChars)
 	vectors, err := u.embedder.EmbedChunks(ctx, texts)
 	if err != nil {
@@ -228,14 +256,16 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 	// with that precision: the response and a later query then show the
 	// same.
 	entry.ID = u.newID()
+	entry.UserID = in.userID
 	entry.ImportedAt = u.now().UTC().Truncate(time.Millisecond)
 
 	// Check the values. Only now wait for the second reader: it has had
 	// all the time of the model calls.
 	var words *core.OCRResult
 	entry.Verification, words = u.verify(entry, in, ocrDone)
-	// Only counts, never values.
-	slog.Info("verification", "status", entry.Verification.Status, "reason", entry.Verification.Reason,
+	// Only IDs and counts, never values or the file name.
+	slog.Info("verification", "entry", entry.ID, "user", in.userID,
+		"status", entry.Verification.Status, "reason", entry.Verification.Reason,
 		"source", entry.Verification.Source, "confirmed", entry.Verification.Confirmed,
 		"total", entry.Verification.Total)
 	entry.File = core.File{
@@ -252,7 +282,7 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 		}
 	}
 
-	// 6. Store, entry last.
+	// 7. Store, entry last.
 	if err := u.save(ctx, entry, chunks, words, in.data); err != nil {
 		return core.Entry{}, err
 	}
@@ -318,30 +348,30 @@ func verificationFrom(e core.Entry, r core.OCRResult, err error, now time.Time) 
 }
 
 func (u *Uploader) save(ctx context.Context, e core.Entry, chunks []core.Chunk, words *core.OCRResult, data []byte) error {
-	if err := u.store.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, data); err != nil {
+	if err := u.store.SaveFile(ctx, e.UserID, e.File.ID, e.File.FileName, e.File.MimeType, data); err != nil {
 		u.cleanup(ctx, e, false)
 		return err
 	}
-	if err := u.store.SaveChunks(ctx, chunks); err != nil {
+	if err := u.store.SaveChunks(ctx, e.UserID, chunks); err != nil {
 		u.cleanup(ctx, e, true)
 		return err
 	}
 	if words != nil {
-		if err := u.store.SaveOCR(ctx, e.ID, *words); err != nil {
+		if err := u.store.SaveOCR(ctx, e.UserID, e.ID, *words); err != nil {
 			u.cleanup(ctx, e, true)
 			return err
 		}
 	}
-	err := u.store.SaveEntry(ctx, e)
+	err := u.store.SaveEntry(ctx, e.UserID, e)
 	if err == nil {
 		return nil
 	}
 	u.cleanup(ctx, e, true)
 
 	if errors.Is(err, core.ErrDuplicate) {
-		// Someone uploaded the same file at the same time and was faster.
-		// Name the existing entry as in step 2.
-		if id, found, ferr := u.store.EntryByHash(ctx, e.File.Sha256); ferr == nil && found {
+		// The same user uploaded the same file at the same time and was
+		// faster. Name the existing entry as in step 2.
+		if id, found, ferr := u.store.EntryByHash(ctx, e.UserID, e.File.Sha256); ferr == nil && found {
 			return &DuplicateError{EntryID: id}
 		}
 	}
@@ -357,15 +387,15 @@ func (u *Uploader) cleanup(ctx context.Context, e core.Entry, withChunks bool) {
 	defer cancel()
 
 	if withChunks {
-		if err := u.store.DeleteChunks(ctx, e.ID); err != nil {
+		if err := u.store.DeleteChunks(ctx, e.UserID, e.ID); err != nil {
 			slog.Error("cleanup: chunks not deleted", "entry", e.ID, "error", err)
 		}
 		// Also if they were never stored: deleting nothing is no error.
-		if err := u.store.DeleteOCR(ctx, e.ID); err != nil {
+		if err := u.store.DeleteOCR(ctx, e.UserID, e.ID); err != nil {
 			slog.Error("cleanup: ocr words not deleted", "entry", e.ID, "error", err)
 		}
 	}
-	if err := u.store.DeleteFile(ctx, e.File.ID); err != nil {
+	if err := u.store.DeleteFile(ctx, e.UserID, e.File.ID); err != nil {
 		slog.Error("cleanup: file not deleted", "file", e.File.ID, "error", err)
 	}
 }

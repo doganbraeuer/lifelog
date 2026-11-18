@@ -20,7 +20,7 @@ type fakeAsker struct {
 	called           bool
 }
 
-func (a *fakeAsker) Ask(_ context.Context, question, module string) (core.Answer, error) {
+func (a *fakeAsker) Ask(_ context.Context, _ string, question, module string) (core.Answer, error) {
 	a.called, a.question, a.module = true, question, module
 	return a.answer, a.err
 }

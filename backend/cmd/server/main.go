@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -57,14 +58,9 @@ func run() error {
 		return err
 	}
 	// After CreateIndexes, because the chunk collection must exist. Not
-	// fatal: without the index, upload and timeline work, only search does
-	// not. Then create the index in the Atlas UI.
-	if status, err := db.CreateVectorIndex(ctx); err != nil {
-		slog.Warn("vector index missing, POST /questions only works after creating it in Atlas (backend/README.md, section vector index)",
-			"index", store.VectorIndexName, "error", err)
-	} else {
-		slog.Info("vector index", "index", store.VectorIndexName, "status", status)
-	}
+	// fatal: without the index, upload and timeline work, only questions do
+	// not. Then create or edit the index in the Atlas UI.
+	searchReady := watchVectorIndex(ctx, db)
 
 	// The model provider is chosen here. Another provider = another package
 	// under internal/llm that implements Reader, Embedder and Answerer.
@@ -91,19 +87,29 @@ func run() error {
 	accounts := service.NewAccounts(db, auth.NewLimiter(time.Now), store.NewID)
 	slog.Info("client IP for failed-attempt limits", "x_forwarded_for", len(c.TrustedProxies) > 0)
 
+	// Daily limits per user, counted in MongoDB (docs/API.md, daily limits).
+	usage := service.NewUsage(db, service.Limits{
+		Uploads:        c.LimitUploadsPerDay,
+		Questions:      c.LimitQuestionsPerDay,
+		Transcriptions: c.LimitTranscriptionsPerDay,
+	})
+	slog.Info("daily limits per user", "uploads", c.LimitUploadsPerDay, "questions", c.LimitQuestionsPerDay,
+		"transcriptions", c.LimitTranscriptionsPerDay)
+
 	server := &http.Server{
 		Addr: c.ListenAddress(),
 		Handler: api.NewRouter(api.Dependencies{
 			DB:        db,
 			Entries:   db,
-			Uploader:  service.NewUploader(db, g, g, recognizer, store.NewID),
-			Asker:     service.NewAsker(db, g, g),
+			Uploader:  service.NewUploader(db, g, g, recognizer, usage, store.NewID),
+			Asker:     service.NewAsker(db, g, g, usage, searchReady.Load),
 			Corrector: service.NewCorrector(db),
 			Deleter:   service.NewDeleter(db),
 
 			Transcriber: transcriber,
 
 			Accounts:       accounts,
+			Usage:          usage,
 			TrustedProxies: c.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -135,6 +141,67 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// vectorIndexPoll: how often the server asks Atlas whether a new or updated
+// vector index is READY.
+const vectorIndexPoll = 15 * time.Second
+
+// watchVectorIndex makes sure the vector index exists with the current
+// definition (store.CreateVectorIndex) and returns a flag that tells
+// whether questions can be answered (POST /questions, docs/API.md 3.6).
+//
+//   - READY at start: the flag is set at once.
+//   - Created, updated or still building: questions answer 503 until Atlas
+//     reports READY. A goroutine asks every 15 s, logs once when it is, and
+//     sets the flag. Upload and timeline work meanwhile.
+//   - Atlas cannot be asked (e.g. no permission): the flag is set anyway,
+//     so questions are never blocked for good; if the index really has the
+//     old definition, the search itself fails and answers 503 too
+//     (store.SimilarChunks).
+func watchVectorIndex(ctx context.Context, db *store.Store) *atomic.Bool {
+	ready := &atomic.Bool{}
+	status, err := db.CreateVectorIndex(ctx)
+	switch {
+	case err != nil:
+		slog.Warn("vector index could not be checked or changed; questions only work once it has the definition of internal/store/chunks_vector.json (backend/README.md, section vector index)",
+			"index", store.VectorIndexName, "error", err)
+		ready.Store(true)
+		return ready
+	case status == store.VectorIndexReady:
+		slog.Info("vector index", "index", store.VectorIndexName, "status", status)
+		ready.Store(true)
+		return ready
+	case status == store.VectorIndexUpdated:
+		slog.Warn("vector index updated (filter userId added); questions work again once the vector index is READY (until then POST /questions answers 503)",
+			"index", store.VectorIndexName)
+	default:
+		slog.Warn("vector index not ready; questions work again once the vector index is READY (until then POST /questions answers 503)",
+			"index", store.VectorIndexName, "status", status)
+	}
+
+	go func() {
+		t := time.NewTicker(vectorIndexPoll)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			status, found, err := db.VectorIndexStatus(ctx)
+			if err != nil {
+				slog.Warn("vector index status unknown", "error", err)
+				continue
+			}
+			if found && status == store.VectorIndexReady {
+				ready.Store(true)
+				slog.Info("vector index READY, questions work again", "index", store.VectorIndexName)
+				return
+			}
+		}
+	}()
+	return ready
 }
 
 // newRecognizer builds the second reader for the verification (docs/API.md,

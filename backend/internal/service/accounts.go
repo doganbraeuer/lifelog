@@ -20,6 +20,7 @@ type AccountStore interface {
 	DeleteOtherSessions(ctx context.Context, userID, keepID string) (int64, error)
 	SetPassword(ctx context.Context, id, passwordHash string, mustChange bool) (found bool, err error)
 	SetDisplayName(ctx context.Context, id, displayName string) (found bool, err error)
+	SetConsent(ctx context.Context, id, version string, at time.Time) (found bool, err error)
 }
 
 // accountWriteTimeout: time for the writes of a password change. They keep
@@ -215,6 +216,27 @@ func (a *Accounts) ChangePassword(ctx context.Context, user core.User, sessionID
 		return err
 	}
 	slog.Info("password changed", "user", user.ID, "other_sessions_ended", ended)
+	return nil
+}
+
+// RecordConsent stores the version of the consent text the user agreed to,
+// with the server time (API.md 3.15).
+//
+// Errors: core.ErrInvalidConsentVersion, core.ErrUnauthorized (account
+// deleted meanwhile) or an internal error.
+func (a *Accounts) RecordConsent(ctx context.Context, user core.User, version string) error {
+	v, err := core.NormalizeConsentVersion(version)
+	if err != nil {
+		return err
+	}
+	found, err := a.store.SetConsent(ctx, user.ID, v, a.now().UTC().Truncate(time.Millisecond))
+	if err != nil {
+		return err
+	}
+	if !found {
+		return core.ErrUnauthorized
+	}
+	slog.Info("consent recorded", "user", user.ID)
 	return nil
 }
 

@@ -10,6 +10,12 @@
 //	go run ./cmd/users revoke-sessions --all
 //	go run ./cmd/users list
 //	go run ./cmd/users delete --username tester01
+//	go run ./cmd/users assign-orphans --username admin2
+//
+// delete removes the account with its sessions and all its data (entries,
+// chunks, OCR words, originals, usage counters) and checks that nothing is
+// left. assign-orphans gives data from before 2026-11-18, which has no
+// owner yet, to one account.
 //
 // Role user gets a generated start password (12 characters) and must change
 // it at the first login. Role admin gets a generated password of 24
@@ -55,6 +61,7 @@ const usage = `Manage Lifelog accounts in the database from .env.
   go run ./cmd/users revoke-sessions (--username NAME | --all)
   go run ./cmd/users list
   go run ./cmd/users delete --username NAME
+  go run ./cmd/users assign-orphans --username NAME
 `
 
 // maxBatch: add-batch creates at most this many accounts at once.
@@ -99,6 +106,8 @@ func run(command string, args []string) error {
 		return cmdList(args)
 	case "delete":
 		return cmdDelete(args)
+	case "assign-orphans":
+		return cmdAssignOrphans(args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return nil
@@ -570,14 +579,57 @@ func cmdList(args []string) error {
 	}
 	fmt.Printf("%d user(s) in database %q:\n\n", len(users), s.database)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	// Never the hash.
-	fmt.Fprintln(tw, "username\tdisplayName\trole\tdisabled\tmustChangePassword\tcreatedAt")
+	// Never the hash. entries: how many entries the account owns.
+	fmt.Fprintln(tw, "username\tdisplayName\trole\tdisabled\tmustChangePassword\tentries\tcreatedAt")
 	for _, u := range users {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%t\t%t\t%s\n", u.Username, u.DisplayName, u.Role,
-			u.Disabled, u.MustChangePassword, u.CreatedAt.UTC().Format(time.RFC3339))
+		n, err := s.db.CountEntries(s.ctx, u.ID)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%t\t%t\t%d\t%s\n", u.Username, u.DisplayName, u.Role,
+			u.Disabled, u.MustChangePassword, n, u.CreatedAt.UTC().Format(time.RFC3339))
 	}
 	tw.Flush()
 	return s.audit(core.AuditList, "")
+}
+
+// cmdAssignOrphans gives all data without an owner (entries, chunks, OCR
+// words, originals from before 2026-11-18) to one account. Until then such
+// data is visible to nobody. Data that already has an owner is never
+// touched, so running it again changes nothing and shows 0 everywhere.
+func cmdAssignOrphans(args []string) error {
+	fs := flag.NewFlagSet("assign-orphans", flag.ContinueOnError)
+	usernameArg := fs.String("username", "", "the account that gets the data without an owner")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	username, err := usernameFlag(*usernameArg)
+	if err != nil {
+		return err
+	}
+
+	s, closeAll, err := open()
+	if err != nil {
+		return err
+	}
+	defer closeAll()
+
+	u, err := s.findUser(username)
+	if err != nil {
+		return err
+	}
+	c, err := s.db.AssignOrphans(s.ctx, u.ID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Assigned to %s (database %q): %d entries, %d chunks, %d OCR documents, %d originals.\n",
+		username, s.database, c.Entries, c.Chunks, c.OCR, c.Files)
+	if c.Total() == 0 {
+		fmt.Println("Nothing without an owner was left.")
+	} else {
+		fmt.Println("Run it again to check: it must show 0 everywhere.")
+	}
+	return s.audit(core.AuditAssignOrphans, username)
 }
 
 func cmdDelete(args []string) error {
@@ -601,18 +653,31 @@ func cmdDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Sessions first: if deleting the user fails, nobody is logged in with
-	// a half-deleted account.
+	// Sessions first: if a later step fails, nobody is logged in with a
+	// half-deleted account.
 	ended, err := s.db.DeleteSessionsOfUser(s.ctx, u.ID)
 	if err != nil {
 		return err
 	}
-	// TODO(data separation PR): entries have no userId yet. Once they have,
-	// delete the user's entries with their chunks, OCR data and originals
-	// here too, before the user.
+	// Then all data of the account: chunks, OCR words, originals, entries,
+	// usage counters. If this fails, the account stays, and running delete
+	// again cleans up the rest.
+	deleted, err := s.db.DeleteUserData(s.ctx, u.ID)
+	if err != nil {
+		return fmt.Errorf("deleting the data of %s stopped (run delete again): %w", username, err)
+	}
+	left, err := s.db.CountUserData(s.ctx, u.ID)
+	if err != nil {
+		return err
+	}
+	if left.Total() != 0 {
+		return fmt.Errorf("data of %s is left after deleting (%+v); the account was kept, run delete again", username, left)
+	}
 	if _, err := s.db.DeleteUser(s.ctx, u.ID); err != nil {
 		return err
 	}
 	fmt.Printf("User %s deleted with %d session(s) (database %q).\n", username, ended, s.database)
+	fmt.Printf("Deleted data: %d entries, %d chunks, %d OCR documents, %d originals, %d usage counters; remaining: 0.\n",
+		deleted.Entries, deleted.Chunks, deleted.OCR, deleted.Files, deleted.Usage)
 	return s.audit(core.AuditDelete, username)
 }

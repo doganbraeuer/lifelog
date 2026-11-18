@@ -26,12 +26,12 @@ type fakeUploader struct {
 	textUpload *service.TextUpload
 }
 
-func (u *fakeUploader) Upload(_ context.Context, up service.Upload) (core.Entry, error) {
+func (u *fakeUploader) Upload(_ context.Context, _ string, up service.Upload) (core.Entry, error) {
 	u.upload = &up
 	return u.entry, u.err
 }
 
-func (u *fakeUploader) UploadText(_ context.Context, up service.TextUpload) (core.Entry, error) {
+func (u *fakeUploader) UploadText(_ context.Context, _ string, up service.TextUpload) (core.Entry, error) {
 	u.textUpload = &up
 	return u.entry, u.err
 }

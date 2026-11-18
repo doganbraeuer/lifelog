@@ -11,11 +11,14 @@
 // there twice, it stops before the first embedding. It only reads from the
 // database.
 //
-//	go run ./cmd/calibrate                    # with the threshold core.MinScore
-//	go run ./cmd/calibrate -threshold 0.82    # compute another threshold
+//	go run ./cmd/calibrate --username admin2                    # with the threshold core.MinScore
+//	go run ./cmd/calibrate --username admin2 -threshold 0.82    # compute another threshold
 //
-// It searches the module health across all chunks. The table names type
-// and document date (MM-DD) of the best hit.
+// Since 2026-11-18 every entry belongs to an account (docs/API.md, per-user
+// data): --username names the account whose entries are measured, as
+// POST /questions would search them. It searches the module health across
+// all chunks of that account. The table names type and document date
+// (MM-DD) of the best hit.
 package main
 
 import (
@@ -37,17 +40,21 @@ import (
 
 func main() {
 	threshold := flag.Float64("threshold", core.MinScore, "threshold to evaluate with (Atlas score 0 … 1)")
+	username := flag.String("username", "", "account whose entries are measured (required)")
 	flag.Parse()
 
-	if err := run(*threshold); err != nil {
+	if err := run(*threshold, *username); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(threshold float64) error {
+func run(threshold float64, username string) error {
 	if threshold <= 0 || threshold > 1 {
 		return fmt.Errorf("-threshold must be between 0 and 1")
+	}
+	if strings.TrimSpace(username) == "" {
+		return errors.New("--username is required: entries belong to an account since 2026-11-18, e.g. go run ./cmd/calibrate --username admin2")
 	}
 	if err := config.LoadDotenv(); err != nil {
 		return err
@@ -67,6 +74,14 @@ func run(threshold float64) error {
 		return err
 	}
 	defer db.Disconnect(context.Background())
+
+	user, found, err := db.UserByUsername(ctx, core.NormalizeUsername(username))
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("no user %q in database %q", username, c.MongoDB)
+	}
 
 	status, found, err := db.VectorIndexStatus(ctx)
 	if err != nil {
@@ -90,13 +105,13 @@ func run(threshold float64) error {
 	// Read only: resolve targets (seed ID or file name) to IDs before the
 	// first embedding costs quota. The short form has no file name, so each
 	// entry is read once.
-	list, err := db.ListSummaries(ctx, "health")
+	list, err := db.ListSummaries(ctx, user.ID, "health")
 	if err != nil {
 		return err
 	}
 	candidates := make([]candidate, 0, len(list))
 	for _, s := range list {
-		e, found, err := db.GetEntry(ctx, s.ID)
+		e, found, err := db.GetEntry(ctx, user.ID, s.ID)
 		if err != nil {
 			return err
 		}
@@ -119,8 +134,8 @@ func run(threshold float64) error {
 		names[e.ID] = shortName(e)
 	}
 
-	fmt.Printf("%d questions, %d entries, embedding model %s, database %q, top %d\n\n",
-		len(qs), len(list), c.GeminiEmbeddingModel, c.MongoDB, core.MaxHits)
+	fmt.Printf("%d questions, %d entries of %s, embedding model %s, database %q, top %d\n\n",
+		len(qs), len(list), user.Username, c.GeminiEmbeddingModel, c.MongoDB, core.MaxHits)
 	fmt.Println(" No  Group      Best    Hit                 Right          Question")
 
 	measurements := make([]measurement, 0, len(qs))
@@ -132,7 +147,7 @@ func run(threshold float64) error {
 			}
 			return fmt.Errorf("question %d: %w", i+1, err)
 		}
-		hits, err := db.SimilarChunks(ctx, vector, "health", core.MaxHits)
+		hits, err := db.SimilarChunks(ctx, user.ID, vector, "health", core.MaxHits)
 		if err != nil {
 			return fmt.Errorf("question %d: %w", i+1, err)
 		}

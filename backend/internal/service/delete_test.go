@@ -17,7 +17,7 @@ const throwawayFile = "bbbbbbbbbbbbbbbbbbbbbbbb"
 // fakeDeleteStore holds an entry with chunks and file, records every call
 // with its argument and can fail in one step.
 type fakeDeleteStore struct {
-	entry  *core.Entry // nil: the entry does not exist (anymore)
+	entry  *core.Entry // nil: the entry does not exist (anymore); owned by testUser
 	chunks bool
 	ocr    bool
 	file   bool
@@ -27,12 +27,14 @@ type fakeDeleteStore struct {
 	afterRead func() // runs after GetEntry, e.g. to cancel ctx
 	ctxErrs   []error
 	log       []string
+	users     []string // user ID of every call
 }
 
 var errDB = errors.New("database gone")
 
-func (s *fakeDeleteStore) step(ctx context.Context, name, arg string) error {
+func (s *fakeDeleteStore) step(ctx context.Context, name, userID, arg string) error {
 	s.log = append(s.log, name+"("+arg+")")
+	s.users = append(s.users, userID)
 	s.ctxErrs = append(s.ctxErrs, ctx.Err())
 	if s.failsAt == name {
 		if s.err != nil {
@@ -43,11 +45,15 @@ func (s *fakeDeleteStore) step(ctx context.Context, name, arg string) error {
 	return nil
 }
 
-func (s *fakeDeleteStore) GetEntry(ctx context.Context, id string) (core.Entry, bool, error) {
-	if err := s.step(ctx, "GetEntry", id); err != nil {
+// owns: the data of the fake belongs to testUser; like the store, every
+// method acts only for the owner.
+func (s *fakeDeleteStore) owns(userID string) bool { return userID == testUser }
+
+func (s *fakeDeleteStore) GetEntry(ctx context.Context, userID, id string) (core.Entry, bool, error) {
+	if err := s.step(ctx, "GetEntry", userID, id); err != nil {
 		return core.Entry{}, false, err
 	}
-	if s.entry == nil || s.entry.ID != id {
+	if s.entry == nil || s.entry.ID != id || !s.owns(userID) {
 		return core.Entry{}, false, nil
 	}
 	e := *s.entry
@@ -57,36 +63,42 @@ func (s *fakeDeleteStore) GetEntry(ctx context.Context, id string) (core.Entry, 
 	return e, true, nil
 }
 
-func (s *fakeDeleteStore) DeleteChunks(ctx context.Context, id string) error {
-	if err := s.step(ctx, "DeleteChunks", id); err != nil {
+func (s *fakeDeleteStore) DeleteChunks(ctx context.Context, userID, id string) error {
+	if err := s.step(ctx, "DeleteChunks", userID, id); err != nil {
 		return err
 	}
-	s.chunks = false
+	if s.owns(userID) {
+		s.chunks = false
+	}
 	return nil
 }
 
-func (s *fakeDeleteStore) DeleteOCR(ctx context.Context, id string) error {
-	if err := s.step(ctx, "DeleteOCR", id); err != nil {
+func (s *fakeDeleteStore) DeleteOCR(ctx context.Context, userID, id string) error {
+	if err := s.step(ctx, "DeleteOCR", userID, id); err != nil {
 		return err
 	}
-	s.ocr = false
+	if s.owns(userID) {
+		s.ocr = false
+	}
 	return nil
 }
 
 // DeleteFile behaves like store: if the file is missing, no error.
-func (s *fakeDeleteStore) DeleteFile(ctx context.Context, id string) error {
-	if err := s.step(ctx, "DeleteFile", id); err != nil {
+func (s *fakeDeleteStore) DeleteFile(ctx context.Context, userID, id string) error {
+	if err := s.step(ctx, "DeleteFile", userID, id); err != nil {
 		return err
 	}
-	s.file = false
+	if s.owns(userID) {
+		s.file = false
+	}
 	return nil
 }
 
-func (s *fakeDeleteStore) DeleteEntry(ctx context.Context, id string) (bool, error) {
-	if err := s.step(ctx, "DeleteEntry", id); err != nil {
+func (s *fakeDeleteStore) DeleteEntry(ctx context.Context, userID, id string) (bool, error) {
+	if err := s.step(ctx, "DeleteEntry", userID, id); err != nil {
 		return false, err
 	}
-	if s.entry == nil || s.entry.ID != id {
+	if s.entry == nil || s.entry.ID != id || !s.owns(userID) {
 		return false, nil
 	}
 	s.entry = nil
@@ -117,7 +129,7 @@ var allSteps = []string{
 
 func TestDelete_SuccessInThisOrder(t *testing.T) {
 	s := deleteData()
-	if err := NewDeleter(s).Delete(context.Background(), idLab); err != nil {
+	if err := NewDeleter(s).Delete(context.Background(), testUser, idLab); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(s.log, allSteps) {
@@ -137,7 +149,7 @@ func TestDelete_FailsInOneStep(t *testing.T) {
 			s.failsAt = step
 			d := NewDeleter(s)
 
-			err := d.Delete(context.Background(), idLab)
+			err := d.Delete(context.Background(), testUser, idLab)
 			if !errors.Is(err, errDB) {
 				t.Fatalf("error %v, want %v", err, errDB)
 			}
@@ -150,13 +162,13 @@ func TestDelete_FailsInOneStep(t *testing.T) {
 
 			// Repeating cleans up the rest.
 			s.failsAt, s.log = "", nil
-			if err := d.Delete(context.Background(), idLab); err != nil {
+			if err := d.Delete(context.Background(), testUser, idLab); err != nil {
 				t.Fatalf("second call: %v", err)
 			}
 			if s.entry != nil || s.chunks || s.ocr || s.file {
 				t.Error("second call did not delete everything")
 			}
-			if err := d.Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+			if err := d.Delete(context.Background(), testUser, idLab); !errors.Is(err, core.ErrEntryNotFound) {
 				t.Errorf("third call: %v, want ErrEntryNotFound", err)
 			}
 		})
@@ -166,11 +178,11 @@ func TestDelete_FailsInOneStep(t *testing.T) {
 func TestDelete_TwiceGivesNotFound(t *testing.T) {
 	s := deleteData()
 	d := NewDeleter(s)
-	if err := d.Delete(context.Background(), idLab); err != nil {
+	if err := d.Delete(context.Background(), testUser, idLab); err != nil {
 		t.Fatal(err)
 	}
 	s.log = nil
-	if err := d.Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+	if err := d.Delete(context.Background(), testUser, idLab); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Fatalf("second call: %v", err)
 	}
 	// Only read, nothing deleted.
@@ -182,7 +194,7 @@ func TestDelete_TwiceGivesNotFound(t *testing.T) {
 func TestDelete_InvalidIDWithoutStore(t *testing.T) {
 	s := deleteData()
 	for _, id := range []string{"", "abc", strings.Repeat("z", 24)} {
-		if err := NewDeleter(s).Delete(context.Background(), id); !errors.Is(err, core.ErrInvalidID) {
+		if err := NewDeleter(s).Delete(context.Background(), testUser, id); !errors.Is(err, core.ErrInvalidID) {
 			t.Errorf("%q: %v, want ErrInvalidID", id, err)
 		}
 	}
@@ -195,7 +207,7 @@ func TestDelete_InvalidIDWithoutStore(t *testing.T) {
 func TestDelete_FileAlreadyMissing(t *testing.T) {
 	s := deleteData()
 	s.file, s.chunks = false, false
-	if err := NewDeleter(s).Delete(context.Background(), idLab); err != nil {
+	if err := NewDeleter(s).Delete(context.Background(), testUser, idLab); err != nil {
 		t.Fatal(err)
 	}
 	if s.entry != nil {
@@ -207,7 +219,7 @@ func TestDelete_FileAlreadyMissing(t *testing.T) {
 func TestDelete_DeletedSimultaneously(t *testing.T) {
 	s := deleteData()
 	s.afterRead = func() { s.entry = nil }
-	if err := NewDeleter(s).Delete(context.Background(), idLab); !errors.Is(err, core.ErrEntryNotFound) {
+	if err := NewDeleter(s).Delete(context.Background(), testUser, idLab); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Errorf("%v, want ErrEntryNotFound", err)
 	}
 	if !reflect.DeepEqual(s.log, allSteps) {
@@ -222,7 +234,7 @@ func TestDelete_CancelAfterStartRunsToCompletion(t *testing.T) {
 	s := deleteData()
 	s.afterRead = cancel
 
-	if err := NewDeleter(s).Delete(ctx, idLab); err != nil {
+	if err := NewDeleter(s).Delete(ctx, testUser, idLab); err != nil {
 		t.Fatal(err)
 	}
 	if s.entry != nil {
@@ -240,7 +252,7 @@ func TestDelete_CancelBeforeStart(t *testing.T) {
 	s := deleteData()
 	s.failsAt, s.err = "GetEntry", context.Canceled
 
-	err := NewDeleter(s).Delete(context.Background(), idLab)
+	err := NewDeleter(s).Delete(context.Background(), testUser, idLab)
 	if !errors.Is(err, context.Canceled) || s.entry == nil {
 		t.Errorf("error %v, entry still there: %v", err, s.entry != nil)
 	}
@@ -252,7 +264,7 @@ func TestDelete_LogOnlyID(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(old) })
 
-	if err := NewDeleter(deleteData()).Delete(context.Background(), idLab); err != nil {
+	if err := NewDeleter(deleteData()).Delete(context.Background(), testUser, idLab); err != nil {
 		t.Fatal(err)
 	}
 	text := log.String()
@@ -263,5 +275,44 @@ func TestDelete_LogOnlyID(t *testing.T) {
 		if strings.Contains(text, content) {
 			t.Errorf("log contains %q: %s", content, text)
 		}
+	}
+}
+
+// Another user deleting testUser's entry: "not found", nothing is deleted,
+// and no delete step runs at all.
+func TestDelete_OtherUserIsNotFound(t *testing.T) {
+	s := deleteData()
+	err := NewDeleter(s).Delete(context.Background(), otherUser, idLab)
+	if !errors.Is(err, core.ErrEntryNotFound) {
+		t.Fatalf("err = %v, want ErrEntryNotFound", err)
+	}
+	if s.entry == nil || !s.chunks || !s.ocr || !s.file {
+		t.Error("something of testUser was deleted by another user")
+	}
+	if !reflect.DeepEqual(s.log, []string{"GetEntry(" + idLab + ")"}) {
+		t.Errorf("calls = %v, want only GetEntry", s.log)
+	}
+	onlyUser(t, "store", s.users, otherUser)
+}
+
+// Every store call carries the user of the request.
+func TestDelete_PassesTheUserToEveryStep(t *testing.T) {
+	s := deleteData()
+	if err := NewDeleter(s).Delete(context.Background(), testUser, idLab); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.users) != len(allSteps) {
+		t.Fatalf("%d calls, want %d", len(s.users), len(allSteps))
+	}
+	onlyUser(t, "store", s.users, testUser)
+}
+
+func TestDelete_WithoutUser(t *testing.T) {
+	s := deleteData()
+	if err := NewDeleter(s).Delete(context.Background(), "", idLab); !errors.Is(err, core.ErrNoUser) {
+		t.Errorf("err = %v, want ErrNoUser", err)
+	}
+	if len(s.log) != 0 {
+		t.Errorf("store called without a user: %v", s.log)
 	}
 }

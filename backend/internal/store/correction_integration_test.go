@@ -15,7 +15,7 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 
 	e := testEntry(NewID(), NewID(), strings.Repeat("cd", 32))
 	e.Facts = append(e.Facts, core.Fact{ID: "f2", Name: "Befundart", Value: "Blutbild klein"})
-	if err := s.SaveEntry(ctx, e); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, e); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,12 +36,12 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 		t.Fatalf("Correct: %v, changed %v", err, changed)
 	}
 
-	found, err := s.SaveCorrection(ctx, updated)
+	found, err := s.SaveCorrection(ctx, testOwner, updated)
 	if err != nil || !found {
 		t.Fatalf("SaveCorrection: found %v, %v", found, err)
 	}
 
-	read, _, err := s.GetEntry(ctx, e.ID)
+	read, _, err := s.GetEntry(ctx, testOwner, e.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +59,11 @@ func TestIntegration_SaveCorrection(t *testing.T) {
 	// creating a new one.
 	other := updated
 	other.ID = NewID()
-	found, err = s.SaveCorrection(ctx, other)
+	found, err = s.SaveCorrection(ctx, testOwner, other)
 	if err != nil || found {
 		t.Errorf("unknown entry: found %v, %v", found, err)
 	}
-	if _, exists, _ := s.GetEntry(ctx, other.ID); exists {
+	if _, exists, _ := s.GetEntry(ctx, testOwner, other.ID); exists {
 		t.Error("SaveCorrection created a new entry")
 	}
 }

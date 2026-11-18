@@ -14,16 +14,21 @@ const (
 )
 
 // EntryStore is what the entry handlers need from the database. Implemented
-// by store.Store, in tests by a fake.
+// by store.Store, in tests by a fake. Every method filters by the user.
 type EntryStore interface {
-	ListSummaries(ctx context.Context, module string) ([]core.EntrySummary, error)
-	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
-	OpenFile(ctx context.Context, fileID string) (content io.ReadCloser, length int64, err error)
+	ListSummaries(ctx context.Context, userID, module string) ([]core.EntrySummary, error)
+	GetEntry(ctx context.Context, userID, id string) (e core.Entry, found bool, err error)
+	OpenFile(ctx context.Context, userID, fileID string) (content io.ReadCloser, length int64, err error)
 }
 
-// listEntriesHandler answers GET /api/v1/entries (API.md, 3.2).
+// listEntriesHandler answers GET /api/v1/entries (API.md, 3.2): only the
+// user's own entries.
 func listEntriesHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
 		q := r.URL.Query()
 
 		module, err := core.CheckModule(q.Get("module"))
@@ -45,7 +50,7 @@ func listEntriesHandler(s EntryStore) http.HandlerFunc {
 			return
 		}
 
-		list, err := s.ListSummaries(r.Context(), module)
+		list, err := s.ListSummaries(r.Context(), user.ID, module)
 		if err != nil {
 			writeInternalError(w, r, err)
 			return

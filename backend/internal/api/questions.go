@@ -21,9 +21,10 @@ const (
 // 64 KiB leave plenty of room and still limit what the server reads.
 const maxQuestionBody = 64 << 10
 
-// Asker answers questions. Implemented by service.Asker.
+// Asker answers questions about the user's own documents. Implemented by
+// service.Asker.
 type Asker interface {
-	Ask(ctx context.Context, question, module string) (core.Answer, error)
+	Ask(ctx context.Context, userID, question, module string) (core.Answer, error)
 }
 
 type questionRequest struct {
@@ -61,6 +62,10 @@ func answerToJSON(a core.Answer) answerJSON {
 // questionsHandler answers POST /api/v1/questions (API.md 3.6).
 func questionsHandler(a Asker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
 		var req questionRequest
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxQuestionBody))
 		// Unknown fields are an error (API.md 1): a typo like "qustion" should
@@ -72,7 +77,7 @@ func questionsHandler(a Asker) http.HandlerFunc {
 			return
 		}
 
-		answer, err := a.Ask(r.Context(), req.Question, req.Module)
+		answer, err := a.Ask(r.Context(), user.ID, req.Question, req.Module)
 		if err != nil {
 			writeQuestionError(w, r, err, req.Module)
 			return
@@ -82,7 +87,14 @@ func questionsHandler(a Asker) http.HandlerFunc {
 }
 
 func writeQuestionError(w http.ResponseWriter, r *http.Request, err error, module string) {
+	var limit *core.LimitReachedError
 	switch {
+	case errors.As(err, &limit):
+		writeLimitReached(w, limit)
+	case errors.Is(err, core.ErrSearchUpdating):
+		// The vector index is rebuilt (e.g. after adding the userId filter):
+		// 503, never a 500 and never "nothing found" (API.md 3.6).
+		writeError(w, http.StatusServiceUnavailable, CodeModelUnavailable, messageSearchUpdating, nil)
 	case errors.Is(err, core.ErrQuestionMissing):
 		writeError(w, http.StatusBadRequest, CodeQuestionMissing, "Bitte stelle eine Frage.", nil)
 	case errors.Is(err, core.ErrQuestionTooLong):

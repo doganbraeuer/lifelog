@@ -118,7 +118,7 @@ func TestTextImport_CheckThroughTheService(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// Service without store and models: the check comes before anything else.
-			u := service.NewUploader(nil, nil, nil, nil, nil)
+			u := service.NewUploader(nil, nil, nil, nil, noLimits{}, nil)
 			router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Uploader: u}))
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, authorized(textForm(t, c.fields...)))

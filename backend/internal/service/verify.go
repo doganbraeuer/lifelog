@@ -12,11 +12,12 @@ import (
 )
 
 // VerifyStore is what filling in the verification needs from the database.
-// Implemented by store.Store.
+// Implemented by store.Store. Every method filters by the owner of the
+// entry (core.Entry.UserID).
 type VerifyStore interface {
-	OpenFile(ctx context.Context, fileID string) (content io.ReadCloser, length int64, err error)
-	SaveOCR(ctx context.Context, entryID string, r core.OCRResult) error
-	SaveVerification(ctx context.Context, entryID string, v core.Verification) (found bool, err error)
+	OpenFile(ctx context.Context, userID, fileID string) (content io.ReadCloser, length int64, err error)
+	SaveOCR(ctx context.Context, userID, entryID string, r core.OCRResult) error
+	SaveVerification(ctx context.Context, userID, entryID string, v core.Verification) (found bool, err error)
 }
 
 // Verifier checks entries that are already stored, e.g. those from before
@@ -45,7 +46,7 @@ func NeedsCheck(e core.Entry) bool {
 // an unchecked verification, as on upload.
 func (v *Verifier) Check(ctx context.Context, e core.Entry) (core.Verification, *core.OCRResult, error) {
 	now := v.now().UTC().Truncate(time.Millisecond)
-	data, err := v.readFile(ctx, e.File.ID)
+	data, err := v.readFile(ctx, e.UserID, e.File.ID)
 	if err != nil {
 		return core.Verification{}, nil, err
 	}
@@ -63,15 +64,15 @@ func (v *Verifier) Check(ctx context.Context, e core.Entry) (core.Verification, 
 	return ver, words, nil
 }
 
-// Save stores the words (if any) and then the verification, in this order:
-// an entry that names a check always has its words.
-func (v *Verifier) Save(ctx context.Context, entryID string, ver core.Verification, words *core.OCRResult) error {
+// Save stores the words (if any) and then the verification of the entry, in
+// this order: an entry that names a check always has its words.
+func (v *Verifier) Save(ctx context.Context, e core.Entry, ver core.Verification, words *core.OCRResult) error {
 	if words != nil {
-		if err := v.store.SaveOCR(ctx, entryID, *words); err != nil {
+		if err := v.store.SaveOCR(ctx, e.UserID, e.ID, *words); err != nil {
 			return err
 		}
 	}
-	found, err := v.store.SaveVerification(ctx, entryID, ver)
+	found, err := v.store.SaveVerification(ctx, e.UserID, e.ID, ver)
 	if err != nil {
 		return err
 	}
@@ -81,8 +82,8 @@ func (v *Verifier) Save(ctx context.Context, entryID string, ver core.Verificati
 	return nil
 }
 
-func (v *Verifier) readFile(ctx context.Context, fileID string) ([]byte, error) {
-	r, _, err := v.store.OpenFile(ctx, fileID)
+func (v *Verifier) readFile(ctx context.Context, userID, fileID string) ([]byte, error) {
+	r, _, err := v.store.OpenFile(ctx, userID, fileID)
 	if err != nil {
 		return nil, err
 	}
