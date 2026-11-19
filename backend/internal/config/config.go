@@ -64,6 +64,12 @@ const (
 	SpeechEngineNone    = "none"
 	DefaultSpeechEngine = SpeechEngineWhisper
 	DefaultWhisperURL   = "http://127.0.0.1:8178"
+
+	// Daily limits per user (docs/API.md, daily limits). They protect the
+	// model budget: the free tier allows only a few requests per day.
+	DefaultLimitUploadsPerDay        = 30
+	DefaultLimitQuestionsPerDay      = 60
+	DefaultLimitTranscriptionsPerDay = 30
 )
 
 // renamedVariables maps the German variable names used until 2026-11-09 to
@@ -99,6 +105,12 @@ type Config struct {
 	// limits, docs/API.md 3.10). Empty = the address of the connection
 	// counts. Behind Caddy on the same machine: 127.0.0.1,::1.
 	TrustedProxies []netip.Prefix
+
+	// Daily limits per user: LIMIT_UPLOADS_PER_DAY, LIMIT_QUESTIONS_PER_DAY,
+	// LIMIT_TRANSCRIPTIONS_PER_DAY.
+	LimitUploadsPerDay        int
+	LimitQuestionsPerDay      int
+	LimitTranscriptionsPerDay int
 }
 
 // ListenAddress returns e.g. "127.0.0.1:8080". net.JoinHostPort puts IPv6
@@ -225,6 +237,22 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c.TrustedProxies = proxies
+
+	for _, l := range []struct {
+		name   string
+		def    int
+		target *int
+	}{
+		{"LIMIT_UPLOADS_PER_DAY", DefaultLimitUploadsPerDay, &c.LimitUploadsPerDay},
+		{"LIMIT_QUESTIONS_PER_DAY", DefaultLimitQuestionsPerDay, &c.LimitQuestionsPerDay},
+		{"LIMIT_TRANSCRIPTIONS_PER_DAY", DefaultLimitTranscriptionsPerDay, &c.LimitTranscriptionsPerDay},
+	} {
+		n, err := strconv.Atoi(withDefault(getenv(l.name), strconv.Itoa(l.def)))
+		if err != nil || n < 1 {
+			return Config{}, fmt.Errorf("%s must be a whole number ≥ 1", l.name)
+		}
+		*l.target = n
+	}
 
 	return c, nil
 }

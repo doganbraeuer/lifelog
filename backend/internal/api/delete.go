@@ -8,16 +8,20 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Deleter deletes an entry. Implemented by service.Deleter.
+// Deleter deletes an entry of the user. Implemented by service.Deleter.
 type Deleter interface {
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, userID, id string) error
 }
 
 // deleteHandler answers DELETE /api/v1/entries/{id} (API.md 3.7): 204
-// without a body.
+// without a body. An entry of another user is 404, and nothing is deleted.
 func deleteHandler(d Deleter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := d.Delete(r.Context(), r.PathValue("id"))
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
+		err := d.Delete(r.Context(), user.ID, r.PathValue("id"))
 		switch {
 		case err == nil:
 			w.WriteHeader(http.StatusNoContent)

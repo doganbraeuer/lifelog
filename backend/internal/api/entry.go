@@ -20,7 +20,7 @@ const (
 // entryHandler answers GET /api/v1/entries/{id} (API.md 3.3).
 func entryHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		e, ok := loadEntry(w, r, s)
+		_, e, ok := loadEntry(w, r, s)
 		if !ok {
 			return
 		}
@@ -29,15 +29,17 @@ func entryHandler(s EntryStore) http.HandlerFunc {
 }
 
 // fileHandler answers GET /api/v1/entries/{id}/file (API.md 3.4): the
-// original file as binary data. Errors still come as JSON.
+// original file as binary data. Errors still come as JSON. Only if the entry
+// is the user's (loadEntry), and the store checks the owner of the file
+// again.
 func fileHandler(s EntryStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		e, ok := loadEntry(w, r, s)
+		user, e, ok := loadEntry(w, r, s)
 		if !ok {
 			return
 		}
 
-		content, length, err := s.OpenFile(r.Context(), e.File.ID)
+		content, length, err := s.OpenFile(r.Context(), user.ID, e.File.ID)
 		if err != nil {
 			if errors.Is(err, core.ErrOriginalMissing) {
 				// Must not happen: an entry without a file is a data error.
@@ -66,24 +68,29 @@ func fileHandler(s EntryStore) http.HandlerFunc {
 	}
 }
 
-// loadEntry checks the ID from the path and loads the entry. On an error
-// the response is already written and ok is false.
-func loadEntry(w http.ResponseWriter, r *http.Request, s EntryStore) (core.Entry, bool) {
+// loadEntry checks the ID from the path and loads the user's entry. An entry
+// of another user is "not found" (404), exactly like a missing one. On an
+// error the response is already written and ok is false.
+func loadEntry(w http.ResponseWriter, r *http.Request, s EntryStore) (core.User, core.Entry, bool) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return core.User{}, core.Entry{}, false
+	}
 	id := r.PathValue("id")
 	if err := core.CheckID(id); err != nil {
 		writeError(w, http.StatusBadRequest, CodeInvalidID, "Diese Eintrag-ID ist ungültig.", nil)
-		return core.Entry{}, false
+		return core.User{}, core.Entry{}, false
 	}
-	e, found, err := s.GetEntry(r.Context(), id)
+	e, found, err := s.GetEntry(r.Context(), user.ID, id)
 	if err != nil {
 		writeInternalError(w, r, err)
-		return core.Entry{}, false
+		return core.User{}, core.Entry{}, false
 	}
 	if !found {
 		writeError(w, http.StatusNotFound, CodeEntryNotFound, "Diesen Eintrag gibt es nicht.", nil)
-		return core.Entry{}, false
+		return core.User{}, core.Entry{}, false
 	}
-	return e, true
+	return user, e, true
 }
 
 // inlineWithName builds the Content-Disposition header.

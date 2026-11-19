@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,10 +20,13 @@ import (
 )
 
 // fakeStore records all calls in order and can fail for single methods.
+// Like the real store, the duplicate check only sees the user's own
+// entries.
 type fakeStore struct {
-	hashes  map[string]string // sha256 → entry ID (existing entries)
+	hashes  map[string]string // user ID + "/" + sha256 → entry ID (existing entries)
 	errs    map[string]error  // method name → error
 	log     []string
+	users   []string // user ID of every call
 	entries []core.Entry
 	chunks  []core.Chunk
 	files   map[string][]byte
@@ -33,8 +38,18 @@ func newFakeStore() *fakeStore {
 		ocr: map[string]core.OCRResult{}}
 }
 
-func (s *fakeStore) SaveOCR(_ context.Context, entryID string, r core.OCRResult) error {
-	s.log = append(s.log, "SaveOCR")
+func (s *fakeStore) call(name, userID string) {
+	s.log = append(s.log, name)
+	s.users = append(s.users, userID)
+}
+
+// addExisting stores an entry of the user with this hash.
+func (s *fakeStore) addExisting(userID, sha, entryID string) {
+	s.hashes[userID+"/"+sha] = entryID
+}
+
+func (s *fakeStore) SaveOCR(_ context.Context, userID, entryID string, r core.OCRResult) error {
+	s.call("SaveOCR", userID)
 	if err := s.errs["SaveOCR"]; err != nil {
 		return err
 	}
@@ -42,23 +57,23 @@ func (s *fakeStore) SaveOCR(_ context.Context, entryID string, r core.OCRResult)
 	return nil
 }
 
-func (s *fakeStore) DeleteOCR(_ context.Context, entryID string) error {
-	s.log = append(s.log, "DeleteOCR")
+func (s *fakeStore) DeleteOCR(_ context.Context, userID, entryID string) error {
+	s.call("DeleteOCR", userID)
 	delete(s.ocr, entryID)
 	return nil
 }
 
-func (s *fakeStore) EntryByHash(_ context.Context, sha string) (string, bool, error) {
-	s.log = append(s.log, "EntryByHash")
+func (s *fakeStore) EntryByHash(_ context.Context, userID, sha string) (string, bool, error) {
+	s.call("EntryByHash", userID)
 	if err := s.errs["EntryByHash"]; err != nil {
 		return "", false, err
 	}
-	id, ok := s.hashes[sha]
+	id, ok := s.hashes[userID+"/"+sha]
 	return id, ok, nil
 }
 
-func (s *fakeStore) SaveFile(_ context.Context, id, _, _ string, data []byte) error {
-	s.log = append(s.log, "SaveFile")
+func (s *fakeStore) SaveFile(_ context.Context, userID, id, _, _ string, data []byte) error {
+	s.call("SaveFile", userID)
 	if err := s.errs["SaveFile"]; err != nil {
 		return err
 	}
@@ -66,14 +81,14 @@ func (s *fakeStore) SaveFile(_ context.Context, id, _, _ string, data []byte) er
 	return nil
 }
 
-func (s *fakeStore) DeleteFile(_ context.Context, id string) error {
-	s.log = append(s.log, "DeleteFile")
+func (s *fakeStore) DeleteFile(_ context.Context, userID, id string) error {
+	s.call("DeleteFile", userID)
 	delete(s.files, id)
 	return nil
 }
 
-func (s *fakeStore) SaveChunks(_ context.Context, c []core.Chunk) error {
-	s.log = append(s.log, "SaveChunks")
+func (s *fakeStore) SaveChunks(_ context.Context, userID string, c []core.Chunk) error {
+	s.call("SaveChunks", userID)
 	if err := s.errs["SaveChunks"]; err != nil {
 		return err
 	}
@@ -81,18 +96,18 @@ func (s *fakeStore) SaveChunks(_ context.Context, c []core.Chunk) error {
 	return nil
 }
 
-func (s *fakeStore) DeleteChunks(_ context.Context, entryID string) error {
-	s.log = append(s.log, "DeleteChunks")
+func (s *fakeStore) DeleteChunks(_ context.Context, userID, entryID string) error {
+	s.call("DeleteChunks", userID)
 	s.chunks = slices.DeleteFunc(s.chunks, func(c core.Chunk) bool { return c.EntryID == entryID })
 	return nil
 }
 
-func (s *fakeStore) SaveEntry(_ context.Context, e core.Entry) error {
-	s.log = append(s.log, "SaveEntry")
+func (s *fakeStore) SaveEntry(_ context.Context, userID string, e core.Entry) error {
+	s.call("SaveEntry", userID)
 	if err := s.errs["SaveEntry"]; err != nil {
 		if errors.Is(err, core.ErrDuplicate) {
 			// As with a simultaneous upload: now the other one exists.
-			s.hashes[e.File.Sha256] = "aaaaaaaaaaaaaaaaaaaaaaaa"
+			s.addExisting(userID, e.File.Sha256, "aaaaaaaaaaaaaaaaaaaaaaaa")
 		}
 		return err
 	}
@@ -141,6 +156,7 @@ type setup struct {
 	reader   *fake.Reader
 	embedder *fake.Embedder
 	ocr      *ocrfake.Recognizer
+	usage    *fakeUsage
 	uploader *Uploader
 }
 
@@ -150,10 +166,11 @@ func newSetup() setup {
 		reader:   &fake.Reader{Extraction: extraction()},
 		embedder: &fake.Embedder{},
 		// The original says what the model read, except the CRP unit.
-		ocr: &ocrfake.Recognizer{Result: ocrResult("Labor Muster GmbH\nBefund vom 14.10.2026\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/l")},
+		ocr:   &ocrfake.Recognizer{Result: ocrResult("Labor Muster GmbH\nBefund vom 14.10.2026\nHämoglobin 14,2 g/dl\nCRP <0,5 mg/l")},
+		usage: newFakeUsage(),
 	}
 	n := 0
-	s.uploader = NewUploader(s.store, s.reader, s.embedder, s.ocr, func() string {
+	s.uploader = NewUploader(s.store, s.reader, s.embedder, s.ocr, s.usage, func() string {
 		n++
 		return fmt.Sprintf("%024d", n) // 000…001, 000…002: valid ObjectId form
 	})
@@ -163,7 +180,7 @@ func newSetup() setup {
 
 func TestUpload_Success(t *testing.T) {
 	s := newSetup()
-	e, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,14 +231,14 @@ func TestUpload_Success(t *testing.T) {
 
 func TestUpload_DuplicateBeforeModelCall(t *testing.T) {
 	s := newSetup()
-	if _, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)}); err != nil {
+	if _, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)}); err != nil {
 		t.Fatal(err)
 	}
 	existing := s.store.entries[0]
-	s.store.hashes[existing.File.Sha256] = existing.ID
+	s.store.addExisting(testUser, existing.File.Sha256, existing.ID)
 	readerBefore, embedderBefore := s.reader.Calls(), s.embedder.Calls()
 
-	_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
+	_, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
 
 	var de *DuplicateError
 	if !errors.As(err, &de) || de.EntryID != existing.ID {
@@ -252,7 +269,7 @@ func TestUpload_ChecksBeforeAnyCall(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			s := newSetup()
-			_, err := s.uploader.Upload(context.Background(), c.upload)
+			_, err := s.uploader.Upload(context.Background(), testUser, c.upload)
 			if !errors.Is(err, c.err) {
 				t.Errorf("want %v, got %v", c.err, err)
 			}
@@ -286,7 +303,7 @@ func TestUpload_ErrorsBeforeSaving(t *testing.T) {
 			s := newSetup()
 			s.uploader.reader, s.uploader.embedder = c.reader, c.embedder
 
-			_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
+			_, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
 
 			if !errors.Is(err, c.err) {
 				t.Errorf("want %v, got %v", c.err, err)
@@ -319,7 +336,7 @@ func TestUpload_CleanupOnStoreErrors(t *testing.T) {
 			s := newSetup()
 			s.store.errs[c.fails] = dbErr
 
-			_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
+			_, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
 
 			if !errors.Is(err, dbErr) {
 				t.Errorf("err = %v", err)
@@ -340,7 +357,7 @@ func TestUpload_SimultaneousDuplicate(t *testing.T) {
 	s := newSetup()
 	s.store.errs["SaveEntry"] = core.ErrDuplicate
 
-	_, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
+	_, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
 
 	var de *DuplicateError
 	if !errors.As(err, &de) || de.EntryID != "aaaaaaaaaaaaaaaaaaaaaaaa" {
@@ -361,7 +378,7 @@ func TestUpload_CleanupAlsoAfterCancel(t *testing.T) {
 
 	// The fakes ignore the context; what matters is that it cleans up and
 	// the cancellation stays recognizable.
-	_, err := s.uploader.Upload(ctx, Upload{Data: []byte(pdf)})
+	_, err := s.uploader.Upload(ctx, testUser, Upload{Data: []byte(pdf)})
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
 	}
@@ -381,7 +398,7 @@ func TestUpload_DroppedFactsOnlyAsFieldInLog(t *testing.T) {
 	s := newSetup()
 	s.uploader.reader = &fake.Reader{Extraction: x}
 
-	entry, err := s.uploader.Upload(context.Background(), Upload{Data: []byte(pdf)})
+	entry, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,4 +429,105 @@ func TestSafeFileName(t *testing.T) {
 			t.Errorf("safeFileName(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// Everything an upload stores carries the user, and the entry knows its owner.
+func TestUpload_PassesTheUserToEveryCall(t *testing.T) {
+	s := newSetup()
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.UserID != testUser {
+		t.Errorf("entry owner = %q, want %q", e.UserID, testUser)
+	}
+	onlyUser(t, "store", s.store.users, testUser)
+	onlyUser(t, "usage", s.usage.users, testUser)
+}
+
+// A duplicate only exists within the own account: another user uploading
+// the same file gets a new entry, not 409.
+func TestUpload_SameFileOtherUserIsNoDuplicate(t *testing.T) {
+	s := newSetup()
+	if _, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)}); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(pdf))
+	s.store.addExisting(testUser, hex.EncodeToString(sum[:]), "aaaaaaaaaaaaaaaaaaaaaaaa")
+
+	if _, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)}); !errors.Is(err, core.ErrDuplicate) {
+		t.Errorf("same user: err = %v, want duplicate", err)
+	}
+	e, err := s.uploader.Upload(context.Background(), otherUser, Upload{Data: []byte(pdf)})
+	if err != nil {
+		t.Fatalf("other user: %v, want a new entry", err)
+	}
+	if e.UserID != otherUser {
+		t.Errorf("owner = %q, want %q", e.UserID, otherUser)
+	}
+}
+
+// A duplicate costs no model call and therefore does not count.
+func TestUpload_DuplicateDoesNotCount(t *testing.T) {
+	s := newSetup()
+	sum := sha256.Sum256([]byte(pdf))
+	s.store.addExisting(testUser, hex.EncodeToString(sum[:]), "aaaaaaaaaaaaaaaaaaaaaaaa")
+	_, _ = s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)})
+	_, _ = s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: "   "}) // invalid input
+	if len(s.usage.users) != 0 {
+		t.Errorf("counted %d uploads that cost nothing", len(s.usage.users))
+	}
+}
+
+func TestUpload_DailyLimit(t *testing.T) {
+	s := newSetup()
+	s.usage.limit = 1
+	if _, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: "erster Text"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: "zweiter Text"})
+	var le *core.LimitReachedError
+	if !errors.As(err, &le) || le.Limit != core.LimitUploads {
+		t.Fatalf("err = %v, want LimitReachedError uploads", err)
+	}
+	if calls, _ := s.reader.TextCalls(); calls != 1 {
+		t.Errorf("model calls = %d, want 1: at the limit the model is not called", calls)
+	}
+	if len(s.store.entries) != 1 {
+		t.Errorf("entries = %d, want 1", len(s.store.entries))
+	}
+}
+
+// If counting fails (database down), the upload stops before the model.
+func TestUpload_UsageErrorStopsBeforeTheModel(t *testing.T) {
+	s := newSetup()
+	s.usage.err = errDB
+	if _, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf)}); !errors.Is(err, errDB) {
+		t.Errorf("err = %v, want the database error", err)
+	}
+	if s.reader.Calls() != 0 {
+		t.Error("model called without a counted request")
+	}
+}
+
+func TestUpload_WithoutUser(t *testing.T) {
+	s := newSetup()
+	if _, err := s.uploader.Upload(context.Background(), "", Upload{Data: []byte(pdf)}); !errors.Is(err, core.ErrNoUser) {
+		t.Errorf("file: err = %v, want ErrNoUser", err)
+	}
+	if _, err := s.uploader.UploadText(context.Background(), "", TextUpload{Text: "x"}); !errors.Is(err, core.ErrNoUser) {
+		t.Errorf("text: err = %v, want ErrNoUser", err)
+	}
+	if len(s.store.log) != 0 {
+		t.Errorf("store called without a user: %v", s.store.log)
+	}
+}
+
+func TestNewUploader_RequiresUsage(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("NewUploader without a UsageCounter must panic: no upload without a limit")
+		}
+	}()
+	NewUploader(newFakeStore(), &fake.Reader{}, &fake.Embedder{}, nil, nil, func() string { return "" })
 }

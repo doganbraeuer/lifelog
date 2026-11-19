@@ -76,6 +76,7 @@ const (
 	AuditRevokeAllSessions = "revoke_all_sessions"
 	AuditList              = "list"
 	AuditDelete            = "delete"
+	AuditAssignOrphans     = "assign_orphans"
 )
 
 // SessionLifetime: a token is valid for 30 days from the login and is not

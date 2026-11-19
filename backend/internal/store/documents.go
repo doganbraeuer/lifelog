@@ -22,7 +22,10 @@ import (
 // The BSON field names are the same as the JSON names of the API.
 
 type entryDoc struct {
-	ID           bson.ObjectID   `bson:"_id"`
+	ID bson.ObjectID `bson:"_id"`
+	// UserID is the owner. omitempty: a forgotten owner leaves the field out
+	// (the entry is then visible to nobody) instead of storing a zero ID.
+	UserID       bson.ObjectID   `bson:"userId,omitempty"`
 	Module       string          `bson:"module"`
 	Type         string          `bson:"type"`
 	DocumentDate *string         `bson:"documentDate"`
@@ -133,6 +136,7 @@ func (d entryDoc) toCore() core.Entry {
 	}
 	return core.Entry{
 		ID:           d.ID.Hex(),
+		UserID:       hexOrEmpty(d.UserID),
 		Module:       d.Module,
 		Type:         d.Type,
 		DocumentDate: d.DocumentDate,
@@ -152,6 +156,14 @@ func (d entryDoc) toCore() core.Entry {
 	}
 }
 
+// hexOrEmpty: "" for a missing owner instead of 24 zeros.
+func hexOrEmpty(id bson.ObjectID) string {
+	if id.IsZero() {
+		return ""
+	}
+	return id.Hex()
+}
+
 func (d entrySummaryDoc) toCore() core.EntrySummary {
 	return core.EntrySummary{
 		ID:           d.ID.Hex(),
@@ -166,10 +178,11 @@ func (d entrySummaryDoc) toCore() core.EntrySummary {
 // chunkDoc is a chunk in the collection "chunks".
 //
 // The embedding is stored as a plain array of numbers (768 numbers). Atlas
-// Vector Search reads exactly this field (path "embedding"), and "module" is
-// registered there as a filter field.
+// Vector Search reads exactly this field (path "embedding"); "userId" and
+// "module" are registered there as filter fields.
 type chunkDoc struct {
 	ID        bson.ObjectID `bson:"_id"`
+	UserID    bson.ObjectID `bson:"userId,omitempty"`
 	EntryID   bson.ObjectID `bson:"entryId"`
 	Module    string        `bson:"module"`
 	Position  int           `bson:"position"`

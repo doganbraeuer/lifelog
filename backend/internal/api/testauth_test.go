@@ -30,11 +30,20 @@ const (
 )
 
 // withTestUser adds Accounts with the test user (tester01, password
-// already changed) to deps.
+// already changed) to deps, and daily limits that never refuse unless the
+// test set its own Usage.
 func withTestUser(deps Dependencies) Dependencies {
 	deps.Accounts = newTestAccounts().accounts
+	if deps.Usage == nil {
+		deps.Usage = noLimits{}
+	}
 	return deps
 }
+
+// noLimits: a Usage that allows every request.
+type noLimits struct{}
+
+func (noLimits) Use(context.Context, string, core.LimitKind) error { return nil }
 
 // authorized sets the test user's token on the request.
 func authorized(r *http.Request) *http.Request {
@@ -87,6 +96,9 @@ func (ta *testAccounts) router(deps Dependencies) http.Handler {
 	deps.Accounts = ta.accounts
 	if deps.DB == nil {
 		deps.DB = fakePinger{}
+	}
+	if deps.Usage == nil {
+		deps.Usage = noLimits{}
 	}
 	return NewRouter(deps)
 }
@@ -183,6 +195,19 @@ func (m *memAccountStore) SetDisplayName(_ context.Context, id, name string) (bo
 		return false, nil
 	}
 	u.DisplayName = name
+	m.users[id] = u
+	return true, nil
+}
+
+func (m *memAccountStore) SetConsent(_ context.Context, id, version string, at time.Time) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	u, ok := m.users[id]
+	if !ok {
+		return false, nil
+	}
+	u.ConsentVersion, u.ConsentAt = &version, &at
 	m.users[id] = u
 	return true, nil
 }

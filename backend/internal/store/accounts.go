@@ -218,6 +218,15 @@ func (s *Store) SetDisplayName(ctx context.Context, id, displayName string) (fou
 	return s.updateUser(ctx, id, bson.D{{Key: "displayName", Value: displayName}})
 }
 
+// SetConsent stores the version of the consent text the user agreed to and
+// when (API.md 3.15). found is false if the user does not exist (anymore).
+func (s *Store) SetConsent(ctx context.Context, id, version string, at time.Time) (found bool, err error) {
+	return s.updateUser(ctx, id, bson.D{
+		{Key: "consentVersion", Value: version},
+		{Key: "consentAt", Value: at.UTC()},
+	})
+}
+
 // SetDisabled disables or enables an account. Disabling does not delete the
 // sessions; the caller does that (DeleteSessionsOfUser). Even without that,
 // a disabled account is refused on the next request.

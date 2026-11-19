@@ -166,21 +166,29 @@ func imageNote(o ocr.ImageOptions) string {
 	return "turned upright, " + up + ", " + down + ", as RGB PNG; Tesseract with --dpi 300"
 }
 
-// allEntries reads every entry of every module, in full.
+// allEntries reads every entry of every module of every account, in full.
+// Since 2026-11-18 entries are read per owner; entries without an owner are
+// skipped until cmd/users assign-orphans gives them one.
 func allEntries(ctx context.Context, db *store.Store) ([]core.Entry, error) {
+	users, err := db.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []core.Entry
-	for _, module := range core.Modules() {
-		list, err := db.ListSummaries(ctx, module)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range list {
-			e, found, err := db.GetEntry(ctx, s.ID)
+	for _, u := range users {
+		for _, module := range core.Modules() {
+			list, err := db.ListSummaries(ctx, u.ID, module)
 			if err != nil {
 				return nil, err
 			}
-			if found {
-				out = append(out, e)
+			for _, s := range list {
+				e, found, err := db.GetEntry(ctx, u.ID, s.ID)
+				if err != nil {
+					return nil, err
+				}
+				if found {
+					out = append(out, e)
+				}
 			}
 		}
 	}
@@ -224,7 +232,7 @@ func fillIn(ctx context.Context, v *service.Verifier, entries []core.Entry, rech
 		}
 		fmt.Printf("  %s  %-13s %-10s %-45s %s\n", e.ID, e.Type, deref(e.DocumentDate), e.File.FileName, line)
 		if write {
-			if err := v.Save(ctx, e.ID, ver, words); err != nil {
+			if err := v.Save(ctx, e, ver, words); err != nil {
 				return fmt.Errorf("entry %s: %w", e.ID, err)
 			}
 		}
@@ -250,9 +258,17 @@ func result(v core.Verification) string {
 
 // orphans reports stored words whose entry no longer exists.
 func orphans(ctx context.Context, db *store.Store, entries []core.Entry) error {
-	ids, err := db.OCRIDs(ctx)
+	users, err := db.ListUsers(ctx)
 	if err != nil {
 		return err
+	}
+	var ids []string
+	for _, u := range users {
+		own, err := db.OCRIDs(ctx, u.ID)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, own...)
 	}
 	known := map[string]bool{}
 	for _, e := range entries {

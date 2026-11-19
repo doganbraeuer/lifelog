@@ -24,35 +24,39 @@ type fakeCorrectionStore struct {
 	ocr      *core.OCRResult // stored words; nil: none
 	ocrErr   error
 	ocrReads int
+	users    []string // user ID of every call; the data belongs to testUser
 }
 
-func (s *fakeCorrectionStore) GetOCR(_ context.Context, id string) (core.OCRResult, bool, error) {
+func (s *fakeCorrectionStore) GetOCR(_ context.Context, userID, id string) (core.OCRResult, bool, error) {
 	s.ocrReads++
+	s.users = append(s.users, userID)
 	if s.ocrErr != nil {
 		return core.OCRResult{}, false, s.ocrErr
 	}
-	if s.ocr == nil {
+	if s.ocr == nil || userID != testUser {
 		return core.OCRResult{}, false, nil
 	}
 	return *s.ocr, true, nil
 }
 
-func (s *fakeCorrectionStore) GetEntry(_ context.Context, id string) (core.Entry, bool, error) {
+func (s *fakeCorrectionStore) GetEntry(_ context.Context, userID, id string) (core.Entry, bool, error) {
 	s.reads++
+	s.users = append(s.users, userID)
 	if s.readErr != nil {
 		return core.Entry{}, false, s.readErr
 	}
-	if s.entry == nil || s.entry.ID != id {
+	if s.entry == nil || s.entry.ID != id || userID != testUser {
 		return core.Entry{}, false, nil
 	}
 	return *s.entry, true, nil
 }
 
-func (s *fakeCorrectionStore) SaveCorrection(_ context.Context, e core.Entry) (bool, error) {
+func (s *fakeCorrectionStore) SaveCorrection(_ context.Context, userID string, e core.Entry) (bool, error) {
+	s.users = append(s.users, userID)
 	if s.saveErr != nil {
 		return false, s.saveErr
 	}
-	if s.gone {
+	if s.gone || userID != testUser {
 		return false, nil
 	}
 	s.saved = append(s.saved, e)
@@ -80,7 +84,7 @@ func newFixedCorrector(s CorrectionStore) *Corrector {
 
 func TestCorrect_Success(t *testing.T) {
 	s := correctionData()
-	e, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	e, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Facts: []core.FactChange{{ID: "f2", Value: ptr("6,8")}}})
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +103,7 @@ func TestCorrect_Success(t *testing.T) {
 
 func TestCorrect_NoChangeNoWrite(t *testing.T) {
 	s := correctionData()
-	e, err := newFixedCorrector(s).Correct(context.Background(), idLab,
+	e, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
 		core.Change{Issuer: core.Nullable{Set: true, Value: ptr("Labor Muster GmbH")}})
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +140,7 @@ func TestCorrect_Errors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := newFixedCorrector(c.s).Correct(context.Background(), c.id, c.c)
+			_, err := newFixedCorrector(c.s).Correct(context.Background(), testUser, c.id, c.c)
 			if !errors.Is(err, c.err) {
 				t.Errorf("err = %v, want %v", err, c.err)
 			}
@@ -156,7 +160,7 @@ func TestCorrect_LogWithoutValues(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(old) })
 
-	_, err := newFixedCorrector(correctionData()).Correct(context.Background(), idLab, core.Change{
+	_, err := newFixedCorrector(correctionData()).Correct(context.Background(), testUser, idLab, core.Change{
 		Issuer: core.Nullable{Set: true, Value: ptr("Dr. Geheim")},
 		Facts:  []core.FactChange{{ID: "f2", Value: ptr("7,7")}},
 	})
@@ -170,5 +174,38 @@ func TestCorrect_LogWithoutValues(t *testing.T) {
 		if strings.Contains(log.String(), value) {
 			t.Errorf("value %q in the log: %s", value, log.String())
 		}
+	}
+}
+
+// Another user correcting testUser's entry: "not found", nothing is saved.
+func TestCorrect_OtherUserIsNotFound(t *testing.T) {
+	s := correctionData()
+	_, err := newFixedCorrector(s).Correct(context.Background(), otherUser, idLab,
+		core.Change{Issuer: core.Nullable{Set: true, Value: ptr("Fremd")}})
+	if !errors.Is(err, core.ErrEntryNotFound) {
+		t.Fatalf("err = %v, want ErrEntryNotFound", err)
+	}
+	if len(s.saved) != 0 || *s.entry.Issuer != "Labor Muster GmbH" {
+		t.Error("testUser's entry was changed by another user")
+	}
+	onlyUser(t, "store", s.users, otherUser)
+}
+
+func TestCorrect_PassesTheUserToEveryCall(t *testing.T) {
+	s := correctionData()
+	if _, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
+		core.Change{Issuer: core.Nullable{Set: true, Value: ptr("Labor Neu")}}); err != nil {
+		t.Fatal(err)
+	}
+	onlyUser(t, "store", s.users, testUser)
+}
+
+func TestCorrect_WithoutUser(t *testing.T) {
+	s := correctionData()
+	if _, err := newFixedCorrector(s).Correct(context.Background(), "", idLab, core.Change{}); !errors.Is(err, core.ErrNoUser) {
+		t.Errorf("err = %v, want ErrNoUser", err)
+	}
+	if s.reads != 0 {
+		t.Error("store called without a user")
 	}
 }

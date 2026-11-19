@@ -14,6 +14,8 @@ double scaleOf(WidgetTester tester, String moduleId) =>
 void main() {
   testWidgets('tiles fade in on start', (tester) async {
     await tester.pumpWidget(testApp(fastMock()));
+    // One frame for the session start (token, GET /me).
+    await tester.pump();
 
     // Not fully visible in the first frame yet ...
     expect(opacityOf(tester, 'health'), lessThan(1));
@@ -30,6 +32,8 @@ void main() {
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 
     await tester.pumpWidget(testApp(fastMock()));
+    // One frame for the session start (token, GET /me), one for the tiles.
+    await tester.pump();
     await tester.pump();
 
     for (final id in ['health', 'nutrition', 'recipes', 'sport']) {

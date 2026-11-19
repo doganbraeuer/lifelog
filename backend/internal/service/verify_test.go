@@ -20,14 +20,16 @@ type fakeVerifyStore struct {
 	missing bool // SaveVerification finds no entry
 	ocrErr  error
 	log     []string
+	users   []string // user ID of every call
 }
 
 func newFakeVerifyStore() *fakeVerifyStore {
 	return &fakeVerifyStore{files: map[string][]byte{}, ocr: map[string]core.OCRResult{}, saved: map[string]core.Verification{}}
 }
 
-func (s *fakeVerifyStore) OpenFile(_ context.Context, id string) (io.ReadCloser, int64, error) {
+func (s *fakeVerifyStore) OpenFile(_ context.Context, userID, id string) (io.ReadCloser, int64, error) {
 	s.log = append(s.log, "OpenFile")
+	s.users = append(s.users, userID)
 	data, ok := s.files[id]
 	if !ok {
 		return nil, 0, core.ErrOriginalMissing
@@ -35,8 +37,9 @@ func (s *fakeVerifyStore) OpenFile(_ context.Context, id string) (io.ReadCloser,
 	return io.NopCloser(bytes.NewReader(data)), int64(len(data)), nil
 }
 
-func (s *fakeVerifyStore) SaveOCR(_ context.Context, id string, r core.OCRResult) error {
+func (s *fakeVerifyStore) SaveOCR(_ context.Context, userID, id string, r core.OCRResult) error {
 	s.log = append(s.log, "SaveOCR")
+	s.users = append(s.users, userID)
 	if s.ocrErr != nil {
 		return s.ocrErr
 	}
@@ -44,8 +47,9 @@ func (s *fakeVerifyStore) SaveOCR(_ context.Context, id string, r core.OCRResult
 	return nil
 }
 
-func (s *fakeVerifyStore) SaveVerification(_ context.Context, id string, v core.Verification) (bool, error) {
+func (s *fakeVerifyStore) SaveVerification(_ context.Context, userID, id string, v core.Verification) (bool, error) {
 	s.log = append(s.log, "SaveVerification")
+	s.users = append(s.users, userID)
 	if s.missing {
 		return false, nil
 	}
@@ -53,10 +57,11 @@ func (s *fakeVerifyStore) SaveVerification(_ context.Context, id string, v core.
 	return true, nil
 }
 
-// oldEntry is an entry from before 2026-11-11: never checked.
+// oldEntry is an entry from before 2026-11-11: never checked. It belongs to
+// testUser, and the Verifier must use exactly that owner.
 func oldEntry(mime string) core.Entry {
 	return core.Entry{
-		ID: idLab, Module: "health", Type: "lab_report", DocumentDate: ptr("2026-10-14"),
+		ID: idLab, UserID: testUser, Module: "health", Type: "lab_report", DocumentDate: ptr("2026-10-14"),
 		Issuer: ptr("Labor Muster GmbH"), FullText: "Labor Muster GmbH\nBefund vom 14.10.2026\nHämoglobin 14,2 g/dl",
 		Facts:        []core.Fact{{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")}},
 		File:         core.File{ID: throwawayFile, MimeType: mime},
@@ -97,7 +102,7 @@ func TestVerifier_File(t *testing.T) {
 		t.Errorf("Check wrote something: %v", s.log)
 	}
 
-	if err := v.Save(context.Background(), e.ID, ver, words); err != nil {
+	if err := v.Save(context.Background(), e, ver, words); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"OpenFile", "SaveOCR", "SaveVerification"}; !slices.Equal(s.log, want) {
@@ -149,7 +154,7 @@ func TestVerifier_Errors(t *testing.T) {
 	s = newFakeVerifyStore()
 	s.missing = true
 	v := newTestVerifier(s, &ocrfake.Recognizer{})
-	if err := v.Save(context.Background(), idLab, core.Unchecked(core.ReasonOCRFailed), nil); !errors.Is(err, core.ErrEntryNotFound) {
+	if err := v.Save(context.Background(), oldEntry(core.MimePDF), core.Unchecked(core.ReasonOCRFailed), nil); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Errorf("entry gone: %v", err)
 	}
 
@@ -157,7 +162,7 @@ func TestVerifier_Errors(t *testing.T) {
 	s.ocrErr = errDB
 	v = newTestVerifier(s, &ocrfake.Recognizer{})
 	words := ocrResult("x")
-	if err := v.Save(context.Background(), idLab, core.Verification{Status: core.VerificationChecked}, &words); !errors.Is(err, errDB) {
+	if err := v.Save(context.Background(), oldEntry(core.MimePDF), core.Verification{Status: core.VerificationChecked}, &words); !errors.Is(err, errDB) {
 		t.Errorf("words fail: %v", err)
 	}
 	if slices.Contains(s.log, "SaveVerification") {
@@ -179,4 +184,20 @@ func TestNeedsCheck(t *testing.T) {
 			t.Errorf("%+v: %v, want %v", tt.v, got, tt.want)
 		}
 	}
+}
+
+// The Verifier reads and writes with the entry's owner.
+func TestVerifier_UsesTheOwner(t *testing.T) {
+	s := newFakeVerifyStore()
+	s.files[throwawayFile] = []byte(pdf)
+	v := newTestVerifier(s, &ocrfake.Recognizer{Result: ocrResult("Hämoglobin 14,2 g/dl")})
+	e := oldEntry(core.MimePDF)
+	ver, words, err := v.Check(context.Background(), e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Save(context.Background(), e, ver, words); err != nil {
+		t.Fatal(err)
+	}
+	onlyUser(t, "store", s.users, testUser)
 }

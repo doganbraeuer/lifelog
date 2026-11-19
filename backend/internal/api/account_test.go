@@ -36,6 +36,7 @@ func TestLogin_Success(t *testing.T) {
 		MustChangePassword *bool  `json:"mustChangePassword"`
 		User               struct {
 			ID, Username, DisplayName string
+			ConsentVersion            *string `json:"consentVersion"`
 		} `json:"user"`
 	}
 	dec := json.NewDecoder(rec.Body)
@@ -198,10 +199,70 @@ func TestMe(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	want := `{"id":"` + ta.user.ID + `","username":"tester01","displayName":"tester01","mustChangePassword":false}`
+	want := `{"id":"` + ta.user.ID + `","username":"tester01","displayName":"tester01","mustChangePassword":false,"consentVersion":null}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
+}
+
+func TestConsent(t *testing.T) {
+	ta := newTestAccounts()
+	router := ta.router(Dependencies{})
+	rec := request(router, http.MethodPut, "/api/v1/me/consent", "Bearer "+testToken, `{"version": " 2026-11-18 "}`)
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("PUT /me/consent: %d %s", rec.Code, rec.Body)
+	}
+	u := ta.store.users[ta.user.ID]
+	if u.ConsentVersion == nil || *u.ConsentVersion != "2026-11-18" || u.ConsentAt == nil {
+		t.Errorf("stored consent = %v / %v", u.ConsentVersion, u.ConsentAt)
+	}
+	// GET /me and the login response show it.
+	if me := request(router, http.MethodGet, "/api/v1/me", "Bearer "+testToken, ""); !strings.Contains(me.Body.String(), `"consentVersion":"2026-11-18"`) {
+		t.Errorf("GET /me: %s", me.Body)
+	}
+	if l := login(router, "tester01", testPassword); !strings.Contains(l.Body.String(), `"consentVersion":"2026-11-18"`) {
+		t.Errorf("login: %s", l.Body)
+	}
+}
+
+func TestConsent_Errors(t *testing.T) {
+	cases := map[string]struct {
+		body, field string
+	}{
+		"empty":         {`{"version": "  "}`, "version"},
+		"null":          {`{"version": null}`, "version"},
+		"number":        {`{"version": 1}`, "version"},
+		"missing":       {`{}`, "version"},
+		"too long":      {`{"version": "` + strings.Repeat("x", 101) + `"}`, "version"},
+		"control":       {`{"version": "v1\nv2"}`, "version"},
+		"unknown field": {`{"version": "v1", "consentAt": "2020-01-01"}`, "consentAt"},
+		"not an object": {`"v1"`, "version"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			ta := newTestAccounts()
+			router := ta.router(Dependencies{})
+			rec := request(router, http.MethodPut, "/api/v1/me/consent", "Bearer "+testToken, c.body)
+			a := checkError(t, rec, http.StatusBadRequest, CodeInvalidRequest)
+			if got, _ := a.Error.Details["field"].(string); got != c.field {
+				t.Errorf("details.field = %q, want %q", got, c.field)
+			}
+			if ta.store.users[ta.user.ID].ConsentVersion != nil {
+				t.Error("consent stored")
+			}
+		})
+	}
+}
+
+// While the start password is unchanged, consent is not one of the allowed
+// routes (API.md 3.15).
+func TestConsent_RequiresPasswordChange(t *testing.T) {
+	ta := newTestAccounts()
+	u := ta.addUser("tester02", "Startpasswort1", true)
+	ta.addSession(u.ID, "start-token", time.Now().Add(time.Hour))
+	router := ta.router(Dependencies{})
+	rec := request(router, http.MethodPut, "/api/v1/me/consent", "Bearer start-token", `{"version": "v1"}`)
+	checkError(t, rec, http.StatusForbidden, CodePasswordChangeRequired)
 }
 
 func TestUpdateMe(t *testing.T) {

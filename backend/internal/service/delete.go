@@ -9,14 +9,14 @@ import (
 )
 
 // DeleteStore is what deleting needs from the database. Implemented by
-// store.Store. DeleteChunks, DeleteOCR and DeleteFile must not return an
-// error if there is nothing (left) to delete.
+// store.Store. Every method filters by the user. DeleteChunks, DeleteOCR and
+// DeleteFile must not return an error if there is nothing (left) to delete.
 type DeleteStore interface {
-	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
-	DeleteChunks(ctx context.Context, entryID string) error
-	DeleteOCR(ctx context.Context, entryID string) error
-	DeleteFile(ctx context.Context, id string) error
-	DeleteEntry(ctx context.Context, id string) (found bool, err error)
+	GetEntry(ctx context.Context, userID, id string) (e core.Entry, found bool, err error)
+	DeleteChunks(ctx context.Context, userID, entryID string) error
+	DeleteOCR(ctx context.Context, userID, entryID string) error
+	DeleteFile(ctx context.Context, userID, id string) error
+	DeleteEntry(ctx context.Context, userID, id string) (found bool, err error)
 }
 
 // deleteTimeout: time for the four delete steps. They keep running without
@@ -35,11 +35,15 @@ func NewDeleter(s DeleteStore) *Deleter {
 
 // Delete:
 //
-//  1. Check the ID, load the entry (it names the ID of the original file).
+//  1. Check the user and the ID, load the user's entry (it names the ID of
+//     the original file). An entry of another user is "not found".
 //  2. Delete the chunks: from now on search no longer finds the entry.
 //  3. Delete the words read from the original (collection ocr).
 //  4. Delete the original file. If it is already missing, that is no error.
 //  5. Delete the entry last.
+//
+// Every step filters by the user, so even a wrong ID can never delete
+// something of someone else.
 //
 // If a step fails, Delete stops. The entry is then still visible, and
 // calling again cleans up the rest.
@@ -49,13 +53,17 @@ func NewDeleter(s DeleteStore) *Deleter {
 // chunks could be left behind, which the timeline shows but whose original
 // can no longer be opened.
 //
-// Errors: core.ErrInvalidID, core.ErrEntryNotFound (also when deleting a
-// second time) or an internal error.
-func (d *Deleter) Delete(ctx context.Context, id string) error {
+// Errors: core.ErrNoUser, core.ErrInvalidID, core.ErrEntryNotFound (also
+// when deleting a second time, and for entries of other users) or an
+// internal error.
+func (d *Deleter) Delete(ctx context.Context, userID, id string) error {
+	if userID == "" {
+		return core.ErrNoUser
+	}
 	if err := core.CheckID(id); err != nil {
 		return err
 	}
-	e, found, err := d.store.GetEntry(ctx, id)
+	e, found, err := d.store.GetEntry(ctx, userID, id)
 	if err != nil {
 		return err
 	}
@@ -66,16 +74,16 @@ func (d *Deleter) Delete(ctx context.Context, id string) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deleteTimeout)
 	defer cancel()
 
-	if err := d.store.DeleteChunks(ctx, id); err != nil {
+	if err := d.store.DeleteChunks(ctx, userID, id); err != nil {
 		return err
 	}
-	if err := d.store.DeleteOCR(ctx, id); err != nil {
+	if err := d.store.DeleteOCR(ctx, userID, id); err != nil {
 		return err
 	}
-	if err := d.store.DeleteFile(ctx, e.File.ID); err != nil {
+	if err := d.store.DeleteFile(ctx, userID, e.File.ID); err != nil {
 		return err
 	}
-	found, err = d.store.DeleteEntry(ctx, id)
+	found, err = d.store.DeleteEntry(ctx, userID, id)
 	if err != nil {
 		return err
 	}
@@ -83,7 +91,7 @@ func (d *Deleter) Delete(ctx context.Context, id string) error {
 		// A simultaneous call was faster.
 		return core.ErrEntryNotFound
 	}
-	// Only the ID, never content.
-	slog.Info("entry deleted", "entry", id)
+	// Only IDs, never content.
+	slog.Info("entry deleted", "entry", id, "user", userID)
 	return nil
 }

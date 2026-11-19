@@ -69,9 +69,12 @@ void main() {
   });
 
   testWidgets('show an error and retry', (tester) async {
-    final mock = fastMock()..simulateError = true;
+    final mock = fastMock();
     await tester.pumpWidget(testApp(mock));
     await tester.pumpAndSettle();
+    // Only after the start: otherwise already GET /me fails, and the app
+    // shows the error of the session instead of the modules.
+    mock.simulateError = true;
     await openHealth(tester);
 
     expect(find.textContaining('Fehler aufgetreten'), findsOneWidget);

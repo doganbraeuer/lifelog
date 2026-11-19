@@ -109,6 +109,7 @@ func (d *verificationDoc) toCore() core.Verification {
 // ocrDoc holds the words read from one original.
 type ocrDoc struct {
 	EntryID bson.ObjectID `bson:"_id"`
+	UserID  bson.ObjectID `bson:"userId,omitempty"` // owner, as on the entry
 	Engine  string        `bson:"engine"`
 	Pages   []ocrPageDoc  `bson:"pages"`
 	Words   []ocrWordDoc  `bson:"words"`
@@ -167,31 +168,43 @@ func (d ocrDoc) toCore() core.OCRResult {
 	return r
 }
 
-// SaveOCR stores the words read from the entry's original. The upload
-// calls it before SaveEntry (file → chunks → words → entry).
-func (s *Store) SaveOCR(ctx context.Context, entryID string, r core.OCRResult) error {
+// SaveOCR stores the words read from the user's original. The upload calls
+// it before SaveEntry (file → chunks → words → entry).
+func (s *Store) SaveOCR(ctx context.Context, userID, entryID string, r core.OCRResult) error {
+	uid, err := ownerID(userID)
+	if err != nil {
+		return err
+	}
 	doc, err := toOCRDoc(entryID, r)
 	if err != nil {
 		return err
 	}
+	doc.UserID = uid
 	// Replace instead of insert: a repeated upload step must not fail
-	// because of a leftover document with the same _id.
-	if _, err := s.ocr.ReplaceOne(ctx, bson.D{{Key: "_id", Value: doc.EntryID}}, doc,
+	// because of a leftover document with the same _id. The filter contains
+	// the owner: a document of another user with this _id is never
+	// replaced (the upsert then fails on the duplicate _id).
+	if _, err := s.ocr.ReplaceOne(ctx, bson.D{{Key: "_id", Value: doc.EntryID}, {Key: "userId", Value: uid}}, doc,
 		options.Replace().SetUpsert(true)); err != nil {
 		return fmt.Errorf("save ocr words: %w", err)
 	}
 	return nil
 }
 
-// GetOCR returns the stored words. found is false if there are none (text
-// import, unchecked entry, or an entry from before verification existed).
-func (s *Store) GetOCR(ctx context.Context, entryID string) (r core.OCRResult, found bool, err error) {
+// GetOCR returns the stored words of the user's entry. found is false if
+// there are none (text import, unchecked entry, or an entry from before
+// verification existed).
+func (s *Store) GetOCR(ctx context.Context, userID, entryID string) (r core.OCRResult, found bool, err error) {
+	uid, err := ownerID(userID)
+	if err != nil {
+		return core.OCRResult{}, false, err
+	}
 	id, err := bson.ObjectIDFromHex(entryID)
 	if err != nil {
 		return core.OCRResult{}, false, core.ErrInvalidID
 	}
 	var doc ocrDoc
-	err = s.ocr.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&doc)
+	err = s.ocr.FindOne(ctx, bson.D{{Key: "_id", Value: id}, {Key: "userId", Value: uid}}).Decode(&doc)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return core.OCRResult{}, false, nil
 	}
@@ -201,28 +214,37 @@ func (s *Store) GetOCR(ctx context.Context, entryID string) (r core.OCRResult, f
 	return doc.toCore(), true, nil
 }
 
-// DeleteOCR removes the stored words. If there are none, that is not an
-// error (text import, or a delete that is repeated).
-func (s *Store) DeleteOCR(ctx context.Context, entryID string) error {
+// DeleteOCR removes the stored words of the user's entry. If there are
+// none, that is not an error (text import, or a delete that is repeated).
+func (s *Store) DeleteOCR(ctx context.Context, userID, entryID string) error {
+	uid, err := ownerID(userID)
+	if err != nil {
+		return err
+	}
 	id, err := bson.ObjectIDFromHex(entryID)
 	if err != nil {
 		return fmt.Errorf("invalid entry ID: %w", err)
 	}
-	if _, err := s.ocr.DeleteOne(ctx, bson.D{{Key: "_id", Value: id}}); err != nil {
+	if _, err := s.ocr.DeleteOne(ctx, bson.D{{Key: "_id", Value: id}, {Key: "userId", Value: uid}}); err != nil {
 		return fmt.Errorf("delete ocr words: %w", err)
 	}
 	return nil
 }
 
-// SaveVerification sets only the verification of an entry (cmd/ocrcheck
-// fills it in for entries stored before 2026-11-11). Nothing else is
-// touched. found is false if the entry does not exist (anymore).
-func (s *Store) SaveVerification(ctx context.Context, entryID string, v core.Verification) (found bool, err error) {
+// SaveVerification sets only the verification of the user's entry
+// (cmd/ocrcheck fills it in for entries stored before 2026-11-11). Nothing
+// else is touched. found is false if the entry does not exist (anymore) or
+// is not the user's.
+func (s *Store) SaveVerification(ctx context.Context, userID, entryID string, v core.Verification) (found bool, err error) {
+	uid, err := ownerID(userID)
+	if err != nil {
+		return false, err
+	}
 	id, err := bson.ObjectIDFromHex(entryID)
 	if err != nil {
 		return false, fmt.Errorf("invalid entry ID: %w", err)
 	}
-	res, err := s.entries.UpdateOne(ctx, bson.D{{Key: "_id", Value: id}},
+	res, err := s.entries.UpdateOne(ctx, bson.D{{Key: "_id", Value: id}, {Key: "userId", Value: uid}},
 		bson.D{{Key: "$set", Value: bson.D{{Key: "verification", Value: toVerificationDoc(v)}}}})
 	if err != nil {
 		return false, fmt.Errorf("save verification: %w", err)
@@ -230,10 +252,14 @@ func (s *Store) SaveVerification(ctx context.Context, entryID string, v core.Ver
 	return res.MatchedCount > 0, nil
 }
 
-// OCRIDs returns the entry IDs of all stored words, so cmd/ocrcheck can
-// find words whose entry no longer exists.
-func (s *Store) OCRIDs(ctx context.Context) ([]string, error) {
-	cur, err := s.ocr.Find(ctx, bson.D{}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}))
+// OCRIDs returns the entry IDs of all stored words of the user, so
+// cmd/ocrcheck can find words whose entry no longer exists.
+func (s *Store) OCRIDs(ctx context.Context, userID string) ([]string, error) {
+	uid, err := ownerID(userID)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.ocr.Find(ctx, bson.D{{Key: "userId", Value: uid}}, options.Find().SetProjection(bson.D{{Key: "_id", Value: 1}}))
 	if err != nil {
 		return nil, fmt.Errorf("list ocr words: %w", err)
 	}

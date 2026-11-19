@@ -10,7 +10,8 @@
 #   cd backend && go run ./cmd/calibrate
 #
 # Since 2026-11-18 every upload needs a token (docs/API.md 3.10). Log in
-# once and put the token into LIFELOG_TOKEN (see demo/README.md):
+# once and put the token into LIFELOG_TOKEN (see demo/README.md); seed
+# entries and uploads belong to that account:
 #   export LIFELOG_TOKEN=...
 #
 # Usage (from anywhere; the backend must be running):
@@ -34,7 +35,7 @@ seed=1
 for arg in "$@"; do
   case "$arg" in
     --no-seed) seed=0 ;;
-    -h|--help) sed -n '2,23p' "$(basename "$0")" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$(basename "$0")" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -55,14 +56,6 @@ if [ -z "${LIFELOG_TOKEN:-}" ]; then
   exit 1
 fi
 
-if [ "$seed" = 1 ]; then
-  echo "== Seed entries"
-  if ! (cd ../backend && go run ./cmd/seed); then
-    echo "Seed failed, stopping before the uploads." >&2
-    exit 1
-  fi
-fi
-
 created=0 existing=0 failed=0
 body=$(mktemp)
 # The Authorization header goes to curl as a file (-H @file), so the token
@@ -71,6 +64,24 @@ auth=$(mktemp)
 trap 'rm -f "$body" "$auth"' EXIT
 chmod 600 "$auth"
 printf 'Authorization: Bearer %s\n' "$LIFELOG_TOKEN" > "$auth"
+
+# The account of the token: the seed entries and the uploads belong to it
+# (per-user data since 2026-11-18). cmd/seed needs its username.
+me_code=$(curl -s -o "$body" -w "%{http_code}" --max-time 10 -H @"$auth" "$BASE/me")
+username=$(sed -n 's/.*"username": *"\([a-z0-9]*\)".*/\1/p' "$body")
+if [ "$me_code" != 200 ] || [ -z "$username" ]; then
+  echo "GET $BASE/me answered $me_code: LIFELOG_TOKEN is unknown or expired, or the start password is not changed yet." >&2
+  exit 1
+fi
+echo "== Account: $username"
+
+if [ "$seed" = 1 ]; then
+  echo "== Seed entries"
+  if ! (cd ../backend && go run ./cmd/seed --username "$username"); then
+    echo "Seed failed, stopping before the uploads." >&2
+    exit 1
+  fi
+fi
 
 # upload <curl form argument> <label>
 upload() {

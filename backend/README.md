@@ -104,19 +104,70 @@ A single account: `go run ./cmd/users add --username tester11
 ### Managing accounts
 
 ```sh
-go run ./cmd/users list                                 # username, displayName, role, disabled, mustChangePassword, createdAt (never hashes)
+go run ./cmd/users list                                 # username, displayName, role, disabled, mustChangePassword, entries, createdAt (never hashes)
 go run ./cmd/users reset-password --username tester03   # new start password (admin: 24 characters), ends all sessions
 go run ./cmd/users disable --username tester03          # locked at once: every session ends, login refused
 go run ./cmd/users enable --username tester03
 go run ./cmd/users revoke-sessions --username tester03  # log out every device of one account
 go run ./cmd/users revoke-sessions --all                # log out everybody
-go run ./cmd/users delete --username tester03           # the account and its sessions
+go run ./cmd/users delete --username tester03           # the account, its sessions and ALL its data
+go run ./cmd/users assign-orphans --username admin2     # give data without an owner to this account (see below)
 ```
 
 Every action writes an entry to the collection `auditLog`: time, action,
 target username and operator (operating system user and computer name),
-never passwords. `delete` does not yet delete the account's entries;
-entries have no owner until the PR for the per-user separation of data.
+never passwords. `delete` removes the account with its sessions and all
+its data: entries, chunks, OCR words, original files and daily counters.
+It then counts what is left and only deletes the account itself if
+nothing is; it prints the numbers and "remaining: 0".
+
+### Per-user data
+
+Since 2026-11-18 every entry belongs to the account that uploaded it
+(docs/API.md, section 1 "Per-user data"). The owner `userId` is stored on
+the entry, its chunks, its OCR words and in the metadata of its original
+file. Every store function that reads, changes or deletes them takes the
+user as a required parameter and filters by it; an empty user is an error,
+never "all users". Another user's entry answers 404, questions only search
+the user's own documents (the vector search filters by `userId` and
+`module`), and a duplicate only counts within the own account. Admins have
+no additional rights through the API.
+
+**Data from before 2026-11-18 has no owner and is visible to nobody**
+until an administrator gives it to an account:
+
+```sh
+go run ./cmd/users assign-orphans --username admin2
+```
+
+It gives every entry, chunk, OCR document and original without an owner to
+this account and prints the numbers; run it a second time to check that it
+shows 0 everywhere. Data that already has an owner is never touched.
+
+> **Dogan:** run this once for your database `lifelog` with your own
+> account (in the `backend/` folder with your `.env`), otherwise you no
+> longer see your demo data in the app:
+> `go run ./cmd/users assign-orphans --username <your account>`.
+> `go run ./cmd/users list` then shows the number of entries per account.
+
+### Daily limits
+
+Each user may make a limited number of costly requests per calendar day
+(Europe/Vienna, the day starts at 00:00 local time); see docs/API.md,
+"Daily limits". Admins have the same limits.
+
+| Limit | Requests | Default | Variable |
+|---|---|---|---|
+| `uploads` | `POST /entries` | 30 | `LIMIT_UPLOADS_PER_DAY` |
+| `questions` | `POST /questions` | 60 | `LIMIT_QUESTIONS_PER_DAY` |
+| `transcriptions` | `POST /transcriptions` | 30 | `LIMIT_TRANSCRIPTIONS_PER_DAY` |
+
+A request counts once its input has been checked and before any model is
+called; whether it succeeds afterwards does not matter. A duplicate upload
+does not count. At the limit the answer is `429 LIMIT_REACHED`. The
+counters are in the collection `usage` (one document per user, day and
+limit, counted atomically), so a restart does not reset them; MongoDB
+deletes old counters two days after their day ends.
 
 ### Failed attempts
 
@@ -336,21 +387,39 @@ go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech   # plus own record
 Search (`POST /api/v1/questions`) needs the Atlas Vector Search index
 `chunks_vector` on the collection `chunks`. The definition is in
 [`internal/store/chunks_vector.json`](internal/store/chunks_vector.json):
-`embedding` as vector (768 dimensions, cosine), `module` as filter field.
+`embedding` as vector (768 dimensions, cosine), `userId` and `module` as
+filter fields (`userId` since 2026-11-18).
 
 **Option A (automatic):** the server creates the index on start if it is
-missing and logs its status. Atlas builds it in the background (about 30 s in
-our tests); until it is `READY`, search finds nothing. Tested on the free
-tier (M0) on 2026-11-04.
+missing, and **updates** it if it lacks a filter field (an index from
+before 2026-11-18 has no `userId`); it logs this once. Atlas builds a new
+or updated index in the background (about 30 s to a few minutes in our
+tests). **Questions only work again once the index is `READY`:** until
+then `POST /questions` answers `503 MODEL_UNAVAILABLE` with „Die Suche wird
+gerade aktualisiert. Bitte versuche es in ein paar Minuten erneut.“, it does
+not just find nothing. The server asks Atlas every 15 s and logs
+`vector index READY, questions work again`. Upload, timeline and everything
+else work normally meanwhile. Creating was tested on the free tier (M0) on
+2026-11-04, updating on 2026-11-18.
+
+While Atlas rebuilds, it still serves the old definition, and a search
+with the `userId` filter fails ("Path 'userId' needs to be indexed as
+filter"). The backend knows this from the index status and answers 503
+before any model call, so such a question costs nothing and does not count
+against the daily limit. If the status cannot be read (e.g. missing
+permission), the search itself reports it and the answer is the same 503;
+the embedding of the question has then already been computed.
 
 **Option B (Atlas UI),** if option A fails (warning on start):
 
 1. Open the cluster in Atlas, tab "Atlas Search" (depending on the UI
-   "Search & Vector Search"), "Create Search Index".
+   "Search & Vector Search"), "Create Search Index" (or "Edit" on an
+   existing `chunks_vector`).
 2. Choose "Atlas Vector Search" and "JSON Editor".
 3. Database = value of `MONGODB_DB`, collection `chunks`, name
    `chunks_vector`.
-4. Paste the content of `internal/store/chunks_vector.json`, save.
+4. Paste the content of `internal/store/chunks_vector.json` (with the
+   filter field `userId`), save.
 5. Wait until the status is "Active"/`READY`.
 
 The free tier allows only a few search indexes per cluster. Indexes of
@@ -370,22 +439,23 @@ server running:
 ```
 
 Only the seed entries, so that timeline and search show something without
-upload and without the vision LLM:
+upload and without the vision LLM. `--username` is required since
+2026-11-18: it names the account that owns them.
 
 ```sh
-go run ./cmd/seed              # 4 invented entries with chunks and embeddings (can be run again)
-go run ./cmd/seed -no-chunks   # the same without Gemini; search does not find them then
-go run ./cmd/seed -remove      # delete them again, with their chunks
+go run ./cmd/seed --username admin2              # 4 invented entries with chunks and embeddings (can be run again)
+go run ./cmd/seed --username admin2 -no-chunks   # the same without Gemini; search does not find them then
+go run ./cmd/seed --username admin2 -remove      # delete them again, with their chunks
 ```
 
-The seed entries (`internal/sampledata`) have fixed IDs. Other entries stay
-untouched. The chunks are created as on upload: same splitting, same
-embedding model.
+The seed entries (`internal/sampledata`) have fixed IDs, so only one
+account per database can hold them. Other entries stay untouched. The
+chunks are created as on upload: same splitting, same embedding model.
 
 To try out `DELETE /entries/{id}` (e.g. from the app):
 
 ```sh
-go run ./cmd/seed -throwaway                            # creates a throwaway entry with a new ID and prints the ID
+go run ./cmd/seed --username admin2 -throwaway          # creates a throwaway entry with a new ID and prints the ID
 curl -i -X DELETE -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/entries/<ID>   # 204, a second time 404
 ```
 
@@ -396,10 +466,14 @@ not the fixed seed entries or real uploads.
 ## Calibrate the threshold
 
 ```sh
-../demo/upload.sh                       # once: seed entries and demo uploads
-go run ./cmd/calibrate                  # evaluates with core.MinScore
-go run ./cmd/calibrate -threshold 0.82
+../demo/upload.sh                                         # once: seed entries and demo uploads
+go run ./cmd/calibrate --username admin2                  # evaluates with core.MinScore
+go run ./cmd/calibrate --username admin2 -threshold 0.82
 ```
+
+`--username` (required since 2026-11-18) names the account whose entries
+are measured, as `POST /questions` would search them; use the account that
+`demo/upload.sh` filled.
 
 Asks 45 fixed questions (`cmd/calibrate/questions.go`): 30 relevant ones (6
 of them with the answer in two entries), 7 health questions whose answer is
@@ -453,5 +527,5 @@ sips -s format png lab_report.pdf --out lab_report.png
 | `internal/speech/ffmpeg`, `internal/speech/whisper` | Implementations: ffmpeg (one temporary file, deleted right after), whisper-server over HTTP |
 | `internal/speech/fake` | Fake transcriber for tests |
 | `internal/service` | Use cases: upload, text import, question, correction, delete, login and account |
-| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), users, sessions, audit log, indexes |
+| `internal/store` | MongoDB: entries, chunks with embeddings, words read from the originals (`ocr`), original files (GridFS), all filtered by owner; users, sessions, audit log, daily counters (`usage`), indexes |
 | `internal/api` | Router, auth middleware, handlers, error format, JSON types |

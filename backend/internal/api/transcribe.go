@@ -42,8 +42,15 @@ const messageSpeechUnavailable = "Die Spracherkennung ist gerade nicht erreichba
 // with maxMemory as large as the request, so Go writes no temporary
 // file), and only the text goes back. The log gets size, length and
 // result, never the text.
-func transcribeHandler(t Transcriber) http.HandlerFunc {
+//
+// The daily limit "transcriptions" counts after the checks of size and
+// format and before ffmpeg and Whisper (API.md, daily limits).
+func transcribeHandler(t Transcriber, usage Usage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
 		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formOverhead)
 		if err := r.ParseMultipartForm(core.MaxFileBytes + formOverhead); err != nil {
 			var tooLarge *http.MaxBytesError
@@ -83,6 +90,15 @@ func transcribeHandler(t Transcriber) http.HandlerFunc {
 		if t == nil {
 			slog.Info("transcription", "result", "off")
 			writeError(w, http.StatusServiceUnavailable, CodeModelUnavailable, messageSpeechUnavailable, nil)
+			return
+		}
+		if err := usage.Use(r.Context(), user.ID, core.LimitTranscriptions); err != nil {
+			var limit *core.LimitReachedError
+			if errors.As(err, &limit) {
+				writeLimitReached(w, limit)
+				return
+			}
+			writeInternalError(w, r, err)
 			return
 		}
 

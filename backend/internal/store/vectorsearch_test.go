@@ -21,7 +21,7 @@ func TestVectorIndexDefinition(t *testing.T) {
 	if err := json.Unmarshal(vectorIndexDefinition, &d); err != nil {
 		t.Fatalf("chunks_vector.json is not valid JSON: %v", err)
 	}
-	var vector, moduleFilter bool
+	var vector, moduleFilter, userFilter bool
 	for _, f := range d.Fields {
 		switch {
 		case f.Type == "vector" && f.Path == "embedding":
@@ -34,9 +34,13 @@ func TestVectorIndexDefinition(t *testing.T) {
 			}
 		case f.Type == "filter" && f.Path == "module":
 			moduleFilter = true
+		case f.Type == "filter" && f.Path == "userId":
+			// Without it, $vectorSearch cannot filter by owner.
+			userFilter = true
 		}
 	}
-	if !vector || !moduleFilter {
-		t.Errorf("vector field embedding: %v, filter field module: %v", vector, moduleFilter)
+	if !vector || !moduleFilter || !userFilter {
+		t.Errorf("vector field embedding: %v, filter field module: %v, filter field userId: %v",
+			vector, moduleFilter, userFilter)
 	}
 }

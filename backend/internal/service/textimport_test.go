@@ -41,7 +41,7 @@ func textSetup() setup {
 
 func TestTextImport_Success(t *testing.T) {
 	s := textSetup()
-	e, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+	e, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +87,9 @@ func TestTextImport_Success(t *testing.T) {
 func TestTextImport_DuplicateBeforeModelCall(t *testing.T) {
 	s := textSetup()
 	sum := sha256.Sum256([]byte(enteredText))
-	s.store.hashes[hex.EncodeToString(sum[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
+	s.store.addExisting(testUser, hex.EncodeToString(sum[:]), "bbbbbbbbbbbbbbbbbbbbbbbb")
 
-	_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+	_, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
 
 	var dup *DuplicateError
 	if !errors.As(err, &dup) || dup.EntryID != "bbbbbbbbbbbbbbbbbbbbbbbb" {
@@ -104,8 +104,8 @@ func TestTextImport_DuplicateBeforeModelCall(t *testing.T) {
 func TestTextImport_SpaceIsNoDuplicate(t *testing.T) {
 	s := textSetup()
 	sum := sha256.Sum256([]byte(enteredText))
-	s.store.hashes[hex.EncodeToString(sum[:])] = "bbbbbbbbbbbbbbbbbbbbbbbb"
-	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText + " "}); err != nil {
+	s.store.addExisting(testUser, hex.EncodeToString(sum[:]), "bbbbbbbbbbbbbbbbbbbbbbbb")
+	if _, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText + " "}); err != nil {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -124,7 +124,7 @@ func TestTextImport_ChecksBeforeAnyCall(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			s := textSetup()
-			_, err := s.uploader.UploadText(context.Background(), c.upload)
+			_, err := s.uploader.UploadText(context.Background(), testUser, c.upload)
 			if !errors.Is(err, c.err) {
 				t.Errorf("err = %v, want %v", err, c.err)
 			}
@@ -139,7 +139,7 @@ func TestTextImport_ChecksBeforeAnyCall(t *testing.T) {
 func TestTextImport_LimitInCharacters(t *testing.T) {
 	s := textSetup()
 	text := strings.Repeat("ü", core.MaxTextChars)
-	e, err := s.uploader.UploadText(context.Background(), TextUpload{Text: text})
+	e, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestTextImport_ModelErrorStoresNothing(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			s := textSetup()
 			s.uploader.reader = &fake.Reader{Err: c.err}
-			_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+			_, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
 			if !errors.Is(err, c.err) {
 				t.Errorf("err = %v", err)
 			}
@@ -176,7 +176,7 @@ func TestTextImport_TypeNotAllowed(t *testing.T) {
 	x := textExtraction()
 	x.Type = "kochrezept"
 	s.reader.Extraction = x
-	_, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText})
+	_, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
 	if !errors.Is(err, core.ErrInvalidExtraction) || errors.Is(err, core.ErrUnreadable) {
 		t.Errorf("err = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestTextImport_CleanupOnStoreError(t *testing.T) {
 	s := textSetup()
 	dbErr := errors.New("connection lost")
 	s.store.errs["SaveEntry"] = dbErr
-	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText}); !errors.Is(err, dbErr) {
+	if _, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText}); !errors.Is(err, dbErr) {
 		t.Errorf("err = %v", err)
 	}
 	if !s.store.isEmpty() {
@@ -204,7 +204,7 @@ func TestTextImport_TextNotInLog(t *testing.T) {
 	x := textExtraction()
 	x.Facts = append(x.Facts, core.ExtractedFact{Name: "Dosis", Value: ""}) // dropped and logged
 	s.reader.Extraction = x
-	if _, err := s.uploader.UploadText(context.Background(), TextUpload{Text: enteredText}); err != nil {
+	if _, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText}); err != nil {
 		t.Fatal(err)
 	}
 	for _, content := range []string{"Hausarztpraxis", "Rückenschmerzen", "Überweisung", "Dosis"} {

@@ -22,18 +22,23 @@ const (
 // limits for single values yet (API.md 4, length limits).
 const maxCorrectionBody = 64 << 10
 
-// Corrector corrects an entry. Implemented by service.Corrector.
+// Corrector corrects an entry of the user. Implemented by service.Corrector.
 type Corrector interface {
-	Correct(ctx context.Context, id string, c core.Change) (core.Entry, error)
+	Correct(ctx context.Context, userID, id string, c core.Change) (core.Entry, error)
 }
 
 // Fields of the entry that exist but must not be corrected. They get
 // FIELD_NOT_CORRECTABLE instead of "unknown field".
 var notCorrectableFields = []string{"corrections", "file", "fullText", "id", "importedAt", "module"}
 
-// correctHandler answers PATCH /api/v1/entries/{id} (API.md 3.5).
+// correctHandler answers PATCH /api/v1/entries/{id} (API.md 3.5). An entry
+// of another user is 404, and nothing is changed.
 func correctHandler(c Corrector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
 		id := r.PathValue("id")
 		// Check the ID before the body: "/entries/abc" is always INVALID_ID.
 		if err := core.CheckID(id); err != nil {
@@ -53,7 +58,7 @@ func correctHandler(c Corrector) http.HandlerFunc {
 			return
 		}
 
-		e, err := c.Correct(r.Context(), id, change)
+		e, err := c.Correct(r.Context(), user.ID, id, change)
 		if err != nil {
 			writeCorrectionError(w, r, err)
 			return

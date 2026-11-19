@@ -34,19 +34,23 @@ type loginUserJSON struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
+	// Without omitempty: null stays visible (API.md 3.10).
+	ConsentVersion *string `json:"consentVersion"`
 }
 
 // meJSON is the user as GET /me and PATCH /me return it (API.md 3.12).
-// Deliberately without passwordHash, role and disabled.
+// Deliberately without passwordHash, role, disabled and consentAt.
 type meJSON struct {
-	ID                 string `json:"id"`
-	Username           string `json:"username"`
-	DisplayName        string `json:"displayName"`
-	MustChangePassword bool   `json:"mustChangePassword"`
+	ID                 string  `json:"id"`
+	Username           string  `json:"username"`
+	DisplayName        string  `json:"displayName"`
+	MustChangePassword bool    `json:"mustChangePassword"`
+	ConsentVersion     *string `json:"consentVersion"` // null until the consent is recorded
 }
 
 func meToJSON(u core.User) meJSON {
-	return meJSON{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, MustChangePassword: u.MustChangePassword}
+	return meJSON{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName,
+		MustChangePassword: u.MustChangePassword, ConsentVersion: u.ConsentVersion}
 }
 
 type passwordRequest struct {
@@ -106,9 +110,10 @@ func loginHandler(deps Dependencies) http.HandlerFunc {
 			ExpiresAt:          timeJSON(res.ExpiresAt),
 			MustChangePassword: res.User.MustChangePassword,
 			User: loginUserJSON{
-				ID:          res.User.ID,
-				Username:    res.User.Username,
-				DisplayName: res.User.DisplayName,
+				ID:             res.User.ID,
+				Username:       res.User.Username,
+				DisplayName:    res.User.DisplayName,
+				ConsentVersion: res.User.ConsentVersion,
 			},
 		})
 	}
@@ -191,6 +196,55 @@ func updateMeHandler(a Accounts) http.HandlerFunc {
 			writeInternalError(w, r, err)
 		}
 	}
+}
+
+// consentHandler answers PUT /api/v1/me/consent (API.md 3.15): stores the
+// version of the consent text the user agreed to, with the server time.
+// Like PATCH /me, the body is read as raw JSON, so an unknown field can be
+// named and null is told apart from a string.
+func consentHandler(a Accounts) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAccountBody))
+		var fields map[string]json.RawMessage
+		if err != nil || json.Unmarshal(body, &fields) != nil || fields == nil {
+			writeInvalidConsentVersion(w)
+			return
+		}
+		for _, name := range sortedKeys(fields) {
+			if name != "version" {
+				writeError(w, http.StatusBadRequest, CodeInvalidRequest,
+					"Unbekanntes Feld: "+name+".", map[string]any{"field": name})
+				return
+			}
+		}
+		version, isString := asString(fields["version"])
+		if !isString {
+			writeInvalidConsentVersion(w)
+			return
+		}
+
+		err = a.RecordConsent(r.Context(), user, version)
+		switch {
+		case err == nil:
+			w.WriteHeader(http.StatusNoContent)
+		case errors.Is(err, core.ErrInvalidConsentVersion):
+			writeInvalidConsentVersion(w)
+		case errors.Is(err, core.ErrUnauthorized):
+			writeUnauthorized(w)
+		case errors.Is(err, context.Canceled):
+		default:
+			writeInternalError(w, r, err)
+		}
+	}
+}
+
+func writeInvalidConsentVersion(w http.ResponseWriter) {
+	writeError(w, http.StatusBadRequest, CodeInvalidRequest,
+		"Bitte die Version des Hinweises schicken.", map[string]any{"field": "version"})
 }
 
 func writeInvalidDisplayName(w http.ResponseWriter) {

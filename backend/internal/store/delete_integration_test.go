@@ -15,16 +15,16 @@ import (
 func create(t *testing.T, s *Store, ctx context.Context, hash string) core.Entry {
 	t.Helper()
 	e := testEntry(NewID(), NewID(), hash)
-	if err := s.SaveFile(ctx, e.File.ID, e.File.FileName, e.File.MimeType, []byte("%PDF-1.7 synthetic")); err != nil {
+	if err := s.SaveFile(ctx, testOwner, e.File.ID, e.File.FileName, e.File.MimeType, []byte("%PDF-1.7 synthetic")); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveChunks(ctx, []core.Chunk{
+	if err := s.SaveChunks(ctx, testOwner, []core.Chunk{
 		{EntryID: e.ID, Module: "health", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
 		{EntryID: e.ID, Module: "health", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveEntry(ctx, e); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, e); err != nil {
 		t.Fatal(err)
 	}
 	return e
@@ -33,7 +33,7 @@ func create(t *testing.T, s *Store, ctx context.Context, hash string) core.Entry
 // checkFile: exists is true if the file can be opened.
 func checkFile(t *testing.T, s *Store, ctx context.Context, fileID string, exists bool) {
 	t.Helper()
-	content, _, err := s.OpenFile(ctx, fileID)
+	content, _, err := s.OpenFile(ctx, testOwner, fileID)
 	switch {
 	case err == nil:
 		content.Close()
@@ -58,30 +58,30 @@ func TestIntegration_DeleteEntry(t *testing.T) {
 	a := create(t, s, ctx, strings.Repeat("a1", 32))
 	b := create(t, s, ctx, strings.Repeat("b2", 32))
 
-	if err := d.Delete(ctx, a.ID); err != nil {
+	if err := d.Delete(ctx, testOwner, a.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// A is completely gone.
-	if _, exists, err := s.GetEntry(ctx, a.ID); err != nil || exists {
+	if _, exists, err := s.GetEntry(ctx, testOwner, a.ID); err != nil || exists {
 		t.Errorf("entry A: exists %v, %v", exists, err)
 	}
 	checkChunkCount(t, s, ctx, a.ID, 0)
 	checkFile(t, s, ctx, a.File.ID, false)
 	// The hash is free: the same file could be uploaded again.
-	if _, exists, err := s.EntryByHash(ctx, a.File.Sha256); err != nil || exists {
+	if _, exists, err := s.EntryByHash(ctx, testOwner, a.File.Sha256); err != nil || exists {
 		t.Errorf("hash of A still found: %v, %v", exists, err)
 	}
 
 	// B is untouched.
-	if _, exists, err := s.GetEntry(ctx, b.ID); err != nil || !exists {
+	if _, exists, err := s.GetEntry(ctx, testOwner, b.ID); err != nil || !exists {
 		t.Errorf("entry B: exists %v, %v", exists, err)
 	}
 	checkChunkCount(t, s, ctx, b.ID, 2)
 	checkFile(t, s, ctx, b.File.ID, true)
 
 	// Second delete: 404.
-	if err := d.Delete(ctx, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
+	if err := d.Delete(ctx, testOwner, a.ID); !errors.Is(err, core.ErrEntryNotFound) {
 		t.Errorf("second delete: %v, want ErrEntryNotFound", err)
 	}
 }
@@ -91,17 +91,17 @@ func TestIntegration_DeleteEntry(t *testing.T) {
 func TestIntegration_DeleteAfterInterruption(t *testing.T) {
 	s, ctx := testStore(t)
 	e := create(t, s, ctx, strings.Repeat("c3", 32))
-	if err := s.DeleteChunks(ctx, e.ID); err != nil {
+	if err := s.DeleteChunks(ctx, testOwner, e.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteFile(ctx, e.File.ID); err != nil {
+	if err := s.DeleteFile(ctx, testOwner, e.File.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := service.NewDeleter(s).Delete(ctx, e.ID); err != nil {
+	if err := service.NewDeleter(s).Delete(ctx, testOwner, e.ID); err != nil {
 		t.Fatalf("delete with missing file: %v", err)
 	}
-	if _, exists, err := s.GetEntry(ctx, e.ID); err != nil || exists {
+	if _, exists, err := s.GetEntry(ctx, testOwner, e.ID); err != nil || exists {
 		t.Errorf("entry: exists %v, %v", exists, err)
 	}
 }

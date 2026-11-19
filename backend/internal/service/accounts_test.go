@@ -116,6 +116,19 @@ func (f *fakeAccountStore) SetDisplayName(_ context.Context, id, name string) (b
 	return true, nil
 }
 
+func (f *fakeAccountStore) SetConsent(_ context.Context, id, version string, at time.Time) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	u, ok := f.users[id]
+	if !ok {
+		return false, nil
+	}
+	u.ConsentVersion, u.ConsentAt = &version, &at
+	f.users[id] = u
+	return true, nil
+}
+
 // fastHash: bcrypt with the lowest cost, so the tests stay fast. The cost
 // of real hashes (12) is tested in internal/auth.
 func fastHash(t *testing.T, password string) string {
@@ -521,6 +534,29 @@ func TestUpdateDisplayName(t *testing.T) {
 	}
 	delete(f.store.users, f.user.ID)
 	if _, err := f.accounts.UpdateDisplayName(ctx, f.user, "Erika"); !errors.Is(err, core.ErrUnauthorized) {
+		t.Errorf("deleted user: err = %v, want ErrUnauthorized", err)
+	}
+}
+
+func TestRecordConsent(t *testing.T) {
+	f := newAccountsFixture(t)
+	ctx := context.Background()
+	if err := f.accounts.RecordConsent(ctx, f.user, "  2026-11-18 "); err != nil {
+		t.Fatal(err)
+	}
+	u := f.store.users[f.user.ID]
+	if u.ConsentVersion == nil || *u.ConsentVersion != "2026-11-18" {
+		t.Errorf("consentVersion = %v", u.ConsentVersion)
+	}
+	// Server time, truncated to milliseconds, in UTC.
+	if u.ConsentAt == nil || !u.ConsentAt.Equal(f.clock.UTC()) || u.ConsentAt.Location() != time.UTC {
+		t.Errorf("consentAt = %v, want %v", u.ConsentAt, *f.clock)
+	}
+	if err := f.accounts.RecordConsent(ctx, f.user, "   "); !errors.Is(err, core.ErrInvalidConsentVersion) {
+		t.Errorf("empty: err = %v, want ErrInvalidConsentVersion", err)
+	}
+	delete(f.store.users, f.user.ID)
+	if err := f.accounts.RecordConsent(ctx, f.user, "v1"); !errors.Is(err, core.ErrUnauthorized) {
 		t.Errorf("deleted user: err = %v, want ErrUnauthorized", err)
 	}
 }

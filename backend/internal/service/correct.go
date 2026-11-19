@@ -9,11 +9,11 @@ import (
 )
 
 // CorrectionStore is what correcting needs from the database. Implemented
-// by store.Store.
+// by store.Store. Every method filters by the user.
 type CorrectionStore interface {
-	GetEntry(ctx context.Context, id string) (e core.Entry, found bool, err error)
-	GetOCR(ctx context.Context, entryID string) (r core.OCRResult, found bool, err error)
-	SaveCorrection(ctx context.Context, e core.Entry) (found bool, err error)
+	GetEntry(ctx context.Context, userID, id string) (e core.Entry, found bool, err error)
+	GetOCR(ctx context.Context, userID, entryID string) (r core.OCRResult, found bool, err error)
+	SaveCorrection(ctx context.Context, userID string, e core.Entry) (found bool, err error)
 }
 
 // Corrector corrects recognized values of an entry (docs/API.md 3.5).
@@ -28,7 +28,8 @@ func NewCorrector(s CorrectionStore) *Corrector {
 
 // Correct:
 //
-//  1. Check the ID, load the entry.
+//  1. Check the user and the ID, load the user's entry. An entry of another
+//     user is "not found", and nothing is changed.
 //  2. core.Correct: check everything, then apply rules 1–4.
 //  3. If nothing changed: write nothing, return the entry unchanged
 //     (API.md 3.5).
@@ -39,13 +40,16 @@ func NewCorrector(s CorrectionStore) *Corrector {
 // Without a lock: two simultaneous corrections of the same entry can
 // overwrite each other (API.md 4, concurrent corrections).
 //
-// Errors: core.ErrInvalidID, core.ErrEntryNotFound, the errors of
-// core.Correct (*core.CorrectionError) or an internal error.
-func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (core.Entry, error) {
+// Errors: core.ErrNoUser, core.ErrInvalidID, core.ErrEntryNotFound, the
+// errors of core.Correct (*core.CorrectionError) or an internal error.
+func (c *Corrector) Correct(ctx context.Context, userID, id string, ch core.Change) (core.Entry, error) {
+	if userID == "" {
+		return core.Entry{}, core.ErrNoUser
+	}
 	if err := core.CheckID(id); err != nil {
 		return core.Entry{}, err
 	}
-	e, found, err := c.store.GetEntry(ctx, id)
+	e, found, err := c.store.GetEntry(ctx, userID, id)
 	if err != nil {
 		return core.Entry{}, err
 	}
@@ -61,16 +65,16 @@ func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (cor
 		return core.Entry{}, err
 	}
 	if len(changed) == 0 {
-		slog.Info("correction without change", "entry", id)
+		slog.Info("correction without change", "entry", id, "user", userID)
 		return updated, nil
 	}
 
-	updated.Verification, err = c.reverify(ctx, updated, now)
+	updated.Verification, err = c.reverify(ctx, userID, updated, now)
 	if err != nil {
 		return core.Entry{}, err
 	}
 
-	found, err = c.store.SaveCorrection(ctx, updated)
+	found, err = c.store.SaveCorrection(ctx, userID, updated)
 	if err != nil {
 		return core.Entry{}, err
 	}
@@ -79,7 +83,7 @@ func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (cor
 		return core.Entry{}, core.ErrEntryNotFound
 	}
 	// Only field names and counts, never values.
-	slog.Info("correction saved", "entry", id, "fields", changed,
+	slog.Info("correction saved", "entry", id, "user", userID, "fields", changed,
 		"confirmed", updated.Verification.Confirmed, "corrected", updated.Verification.Corrected)
 	return updated, nil
 }
@@ -94,7 +98,7 @@ func (c *Corrector) Correct(ctx context.Context, id string, ch core.Change) (cor
 // If the words of a checked entry are missing (must not happen: the upload
 // stores them before the entry), the old verification is kept and a
 // warning logged; the correction itself is still saved.
-func (c *Corrector) reverify(ctx context.Context, e core.Entry, now time.Time) (core.Verification, error) {
+func (c *Corrector) reverify(ctx context.Context, userID string, e core.Entry, now time.Time) (core.Verification, error) {
 	old := e.Verification
 	if old.Status != core.VerificationChecked {
 		return old, nil
@@ -102,7 +106,7 @@ func (c *Corrector) reverify(ctx context.Context, e core.Entry, now time.Time) (
 	if old.Source == core.SourceText {
 		return core.VerifyText(e, now), nil
 	}
-	words, found, err := c.store.GetOCR(ctx, e.ID)
+	words, found, err := c.store.GetOCR(ctx, userID, e.ID)
 	if err != nil {
 		return core.Verification{}, err
 	}

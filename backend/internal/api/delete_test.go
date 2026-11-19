@@ -16,7 +16,7 @@ type fakeDeleter struct {
 	ids []string
 }
 
-func (d *fakeDeleter) Delete(_ context.Context, id string) error {
+func (d *fakeDeleter) Delete(_ context.Context, _ string, id string) error {
 	d.ids = append(d.ids, id)
 	return d.err
 }

@@ -33,17 +33,21 @@ demo/upload.sh
 Without `LIFELOG_TOKEN` the script stops before the seed entries. The token
 is valid for 30 days; on a `401` log in again.
 
-The script checks `GET /api/v1/status`, runs `go run ./cmd/seed` (4 entries
-with embeddings) and uploads the same 11 files as in the calibration
-baseline (`docs/calibration/2026-11-11-baseline.md`). On 503 (model
-overloaded) it waits and retries; files that already exist answer 409 and
-are skipped, so running it again is harmless. Another backend:
+The script checks `GET /api/v1/status`, asks `GET /api/v1/me` which account
+the token belongs to, runs `go run ./cmd/seed --username <that account>`
+(4 entries with embeddings) and uploads the same 11 files as in the
+calibration baseline (`docs/calibration/2026-11-11-baseline.md`). Since
+2026-11-18 everything belongs to that account; other accounts do not see
+it. On 503 (model overloaded) it waits and retries; files that already
+exist in the account answer 409 and are skipped, so running it again is
+harmless. Each upload counts against the account's daily limit (30 by
+default, `LIMIT_UPLOADS_PER_DAY`). Another backend:
 `LIFELOG_URL=http://192.168.0.10:8080 demo/upload.sh`.
 
 Afterwards wait about a minute until Atlas has indexed the chunks and run
-`cd backend && go run ./cmd/calibrate`. It finds the uploaded entries by file
-name, so do not rename the uploaded files without changing
-`backend/cmd/calibrate/questions.go` (a test checks this).
+`cd backend && go run ./cmd/calibrate --username <the same account>`. It
+finds the uploaded entries by file name, so do not rename the uploaded files
+without changing `backend/cmd/calibrate/questions.go` (a test checks this).
 
 ## Contents
 

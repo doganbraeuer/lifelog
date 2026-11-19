@@ -27,7 +27,11 @@ import (
 )
 
 var ownCollections = []string{collEntries, collChunks, collOCR, bucketFiles + ".files", bucketFiles + ".chunks",
-	collUsers, collSessions, collAuditLog}
+	collUsers, collSessions, collAuditLog, collUsage}
+
+// testOwner owns the entries of the tests that are about one user only.
+// The tests about separation use their own users (separation_integration_test.go).
+const testOwner = "6730aaaaaaaaaaaaaaaaaaaa"
 
 func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
@@ -110,7 +114,7 @@ func TestIntegration_SaveFindDelete(t *testing.T) {
 	data := []byte("%PDF-1.7 synthetic")
 
 	// 1. File in GridFS, with metadata.
-	if err := s.SaveFile(ctx, fileID, "befund.pdf", core.MimePDF, data); err != nil {
+	if err := s.SaveFile(ctx, testOwner, fileID, "befund.pdf", core.MimePDF, data); err != nil {
 		t.Fatal(err)
 	}
 	oid, _ := bson.ObjectIDFromHex(fileID)
@@ -132,39 +136,39 @@ func TestIntegration_SaveFindDelete(t *testing.T) {
 		{EntryID: entryID, Module: "health", Position: 1, Text: "Teil 1", Embedding: []float32{0.1, 0.2}},
 		{EntryID: entryID, Module: "health", Position: 2, Text: "Teil 2", Embedding: []float32{0.3, 0.4}},
 	}
-	if err := s.SaveChunks(ctx, chunks); err != nil {
+	if err := s.SaveChunks(ctx, testOwner, chunks); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveChunks(ctx, nil); err != nil {
+	if err := s.SaveChunks(ctx, testOwner, nil); err != nil {
 		t.Errorf("empty list: %v", err)
 	}
 	checkChunkCount(t, s, ctx, entryID, 2)
 
 	// 3. Entry last, then findable via the hash and in the list.
-	if _, found, err := s.EntryByHash(ctx, hash); err != nil || found {
+	if _, found, err := s.EntryByHash(ctx, testOwner, hash); err != nil || found {
 		t.Fatalf("before saving: found=%v, err=%v", found, err)
 	}
-	if err := s.SaveEntry(ctx, testEntry(entryID, fileID, hash)); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, testEntry(entryID, fileID, hash)); err != nil {
 		t.Fatal(err)
 	}
-	id, found, err := s.EntryByHash(ctx, hash)
+	id, found, err := s.EntryByHash(ctx, testOwner, hash)
 	if err != nil || !found || id != entryID {
 		t.Fatalf("EntryByHash = %q, %v, %v", id, found, err)
 	}
-	list, err := s.ListSummaries(ctx, "health")
+	list, err := s.ListSummaries(ctx, testOwner, "health")
 	if err != nil || len(list) != 1 || list[0].ID != entryID {
 		t.Fatalf("ListSummaries = %+v, %v", list, err)
 	}
 
 	// Read the full entry and open the file through the store.
-	e, found, err := s.GetEntry(ctx, entryID)
+	e, found, err := s.GetEntry(ctx, testOwner, entryID)
 	if err != nil || !found || e.FullText != "Hämoglobin 14,2 g/dl" || len(e.Facts) != 1 || e.File.ID != fileID {
 		t.Fatalf("GetEntry = %+v, %v, %v", e, found, err)
 	}
-	if _, found, err := s.GetEntry(ctx, NewID()); err != nil || found {
+	if _, found, err := s.GetEntry(ctx, testOwner, NewID()); err != nil || found {
 		t.Errorf("unknown ID: found=%v, err=%v", found, err)
 	}
-	content, length, err := s.OpenFile(ctx, fileID)
+	content, length, err := s.OpenFile(ctx, testOwner, fileID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,22 +180,22 @@ func TestIntegration_SaveFindDelete(t *testing.T) {
 
 	// 4. Delete in the order of API.md 3.7, every step repeatable.
 	for round := 1; round <= 2; round++ {
-		if err := s.DeleteChunks(ctx, entryID); err != nil {
+		if err := s.DeleteChunks(ctx, testOwner, entryID); err != nil {
 			t.Fatalf("round %d, chunks: %v", round, err)
 		}
-		if err := s.DeleteFile(ctx, fileID); err != nil {
+		if err := s.DeleteFile(ctx, testOwner, fileID); err != nil {
 			t.Fatalf("round %d, file: %v", round, err)
 		}
-		found, err := s.DeleteEntry(ctx, entryID)
+		found, err := s.DeleteEntry(ctx, testOwner, entryID)
 		if err != nil || found != (round == 1) {
 			t.Fatalf("round %d, entry: found=%v, err=%v", round, found, err)
 		}
 	}
 	checkChunkCount(t, s, ctx, entryID, 0)
-	if _, _, err := s.OpenFile(ctx, fileID); !errors.Is(err, core.ErrOriginalMissing) {
+	if _, _, err := s.OpenFile(ctx, testOwner, fileID); !errors.Is(err, core.ErrOriginalMissing) {
 		t.Errorf("after deleting: want ErrOriginalMissing, got %v", err)
 	}
-	if _, found, _ := s.EntryByHash(ctx, hash); found {
+	if _, found, _ := s.EntryByHash(ctx, testOwner, hash); found {
 		t.Error("hash still present after deleting: the same file could not be uploaded again")
 	}
 }
@@ -200,18 +204,18 @@ func TestIntegration_DuplicateViaIndex(t *testing.T) {
 	s, ctx := testStore(t)
 	hash := strings.Repeat("cd", 32)
 
-	if err := s.SaveEntry(ctx, testEntry(NewID(), NewID(), hash)); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, testEntry(NewID(), NewID(), hash)); err != nil {
 		t.Fatal(err)
 	}
 	// Second entry with another ID but the same hash: the unique index must
 	// reject it, even without a prior check.
-	err := s.SaveEntry(ctx, testEntry(NewID(), NewID(), hash))
+	err := s.SaveEntry(ctx, testOwner, testEntry(NewID(), NewID(), hash))
 	if !errors.Is(err, core.ErrDuplicate) {
 		t.Fatalf("want ErrDuplicate, got %v", err)
 	}
 
 	// Another hash works.
-	if err := s.SaveEntry(ctx, testEntry(NewID(), NewID(), strings.Repeat("ef", 32))); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, testEntry(NewID(), NewID(), strings.Repeat("ef", 32))); err != nil {
 		t.Errorf("another hash: %v", err)
 	}
 }

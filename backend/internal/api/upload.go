@@ -34,8 +34,8 @@ const formOverhead = 1 << 20 // 1 MiB
 
 // Uploader runs the upload or text import. Implemented by service.Uploader.
 type Uploader interface {
-	Upload(ctx context.Context, u service.Upload) (core.Entry, error)
-	UploadText(ctx context.Context, u service.TextUpload) (core.Entry, error)
+	Upload(ctx context.Context, userID string, u service.Upload) (core.Entry, error)
+	UploadText(ctx context.Context, userID string, u service.TextUpload) (core.Entry, error)
 }
 
 // uploadKind: file upload or text import. Only decides the error messages.
@@ -46,9 +46,14 @@ const (
 	kindText
 )
 
-// uploadHandler answers POST /api/v1/entries (API.md 3.1).
+// uploadHandler answers POST /api/v1/entries (API.md 3.1). Everything is
+// stored for the logged-in user.
 func uploadHandler(u Uploader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := requireUser(w, r)
+		if !ok {
+			return
+		}
 		r.Body = http.MaxBytesReader(w, r.Body, core.MaxFileBytes+formOverhead)
 
 		// maxMemory as large as the allowed request: the whole form stays in
@@ -84,7 +89,7 @@ func uploadHandler(u Uploader) http.HandlerFunc {
 			return
 		case hasText:
 			// The text goes on unchanged, not trimmed.
-			entry, err := u.UploadText(r.Context(), service.TextUpload{Text: texts[0], Module: module})
+			entry, err := u.UploadText(r.Context(), user.ID, service.TextUpload{Text: texts[0], Module: module})
 			writeUploadResult(w, r, entry, err, kindText, module)
 			return
 		case len(files) == 0 && len(texts) == 1:
@@ -103,7 +108,7 @@ func uploadHandler(u Uploader) http.HandlerFunc {
 			writeInternalError(w, r, err)
 			return
 		}
-		entry, err := u.Upload(r.Context(), service.Upload{
+		entry, err := u.Upload(r.Context(), user.ID, service.Upload{
 			Data: data, FileName: files[0].Filename, Module: module,
 		})
 		writeUploadResult(w, r, entry, err, kindFile, module)
@@ -124,7 +129,10 @@ func writeUploadResult(w http.ResponseWriter, r *http.Request, entry core.Entry,
 // API.md 3.1.
 func writeUploadError(w http.ResponseWriter, r *http.Request, err error, kind uploadKind, module string) {
 	var duplicate *service.DuplicateError
+	var limit *core.LimitReachedError
 	switch {
+	case errors.As(err, &limit):
+		writeLimitReached(w, limit)
 	case kind == kindText && errors.Is(err, core.ErrFileEmpty):
 		writeError(w, http.StatusBadRequest, CodeFileMissing, "Bitte einen Text eingeben.", nil)
 	case errors.Is(err, core.ErrTextNotUTF8):

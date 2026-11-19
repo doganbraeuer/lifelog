@@ -33,7 +33,7 @@ func TestIntegration_VectorSearch(t *testing.T) {
 		// Same vector as A, but another module: the filter must exclude it.
 		{EntryID: entrySport, Module: "sport", Position: 1, Text: "Lauf 10 km", Embedding: unitVector(0)},
 	}
-	if err := s.SaveChunks(ctx, chunks); err != nil {
+	if err := s.SaveChunks(ctx, testOwner, chunks); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +55,7 @@ func TestIntegration_VectorSearch(t *testing.T) {
 			t.Fatal(err)
 		}
 		if status == "READY" {
-			hits, err = s.SimilarChunks(ctx, unitVector(0), "health", core.MaxHits)
+			hits, err = s.SimilarChunks(ctx, testOwner, unitVector(0), "health", core.MaxHits)
 			if err != nil {
 				t.Fatalf("vector search: %v", err)
 			}
@@ -86,7 +86,7 @@ func TestIntegration_VectorSearch(t *testing.T) {
 	}
 
 	// In module sport there is only the one chunk.
-	sport, err := s.SimilarChunks(ctx, unitVector(0), "sport", core.MaxHits)
+	sport, err := s.SimilarChunks(ctx, testOwner, unitVector(0), "sport", core.MaxHits)
 	if err != nil || len(sport) != 1 || sport[0].EntryID != entrySport {
 		t.Errorf("module sport: %+v, %v", sport, err)
 	}
@@ -95,12 +95,12 @@ func TestIntegration_VectorSearch(t *testing.T) {
 func TestIntegration_SummariesByIDs(t *testing.T) {
 	s, ctx := testStore(t)
 	a := testEntry(NewID(), NewID(), strings.Repeat("12", 32))
-	if err := s.SaveEntry(ctx, a); err != nil {
+	if err := s.SaveEntry(ctx, testOwner, a); err != nil {
 		t.Fatal(err)
 	}
 	missing := NewID()
 
-	m, err := s.SummariesByIDs(ctx, []string{a.ID, missing})
+	m, err := s.SummariesByIDs(ctx, testOwner, []string{a.ID, missing})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestIntegration_SummariesByIDs(t *testing.T) {
 	if _, ok := m[missing]; ok {
 		t.Error("missing entry in the map")
 	}
-	if empty, err := s.SummariesByIDs(ctx, nil); err != nil || empty == nil || len(empty) != 0 {
+	if empty, err := s.SummariesByIDs(ctx, testOwner, nil); err != nil || empty == nil || len(empty) != 0 {
 		t.Errorf("empty list: %#v, %v", empty, err)
 	}
 }
