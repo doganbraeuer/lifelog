@@ -27,11 +27,11 @@ func (a *fakeAsker) Ask(_ context.Context, question, module string) (core.Answer
 
 func ask(t *testing.T, a *fakeAsker, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Asker: a})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Asker: a}))
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/questions", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, r)
+	router.ServeHTTP(rec, authorized(r))
 	return rec
 }
 

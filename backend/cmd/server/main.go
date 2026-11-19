@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"lifelog/backend/internal/api"
+	"lifelog/backend/internal/auth"
 	"lifelog/backend/internal/config"
 	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/ocr"
@@ -83,6 +84,13 @@ func run() error {
 	recognizer := newRecognizer(c)
 	transcriber := newTranscriber(ctx, c)
 
+	// Login and tokens (docs/API.md, section 1). Failed attempts are
+	// counted in memory; a restart resets the counters. Behind a reverse
+	// proxy (Caddy) TRUSTED_PROXIES must name it, otherwise every client
+	// counts as 127.0.0.1 and one IP lock would hit everybody.
+	accounts := service.NewAccounts(db, auth.NewLimiter(time.Now), store.NewID)
+	slog.Info("client IP for failed-attempt limits", "x_forwarded_for", len(c.TrustedProxies) > 0)
+
 	server := &http.Server{
 		Addr: c.ListenAddress(),
 		Handler: api.NewRouter(api.Dependencies{
@@ -94,6 +102,9 @@ func run() error {
 			Deleter:   service.NewDeleter(db),
 
 			Transcriber: transcriber,
+
+			Accounts:       accounts,
+			TrustedProxies: c.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,  // upload up to 10 MB, also over a slow mobile network

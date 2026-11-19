@@ -59,9 +59,9 @@ func form(t *testing.T, files map[string][]byte, fields map[string]string) *http
 
 func upload(t *testing.T, u *fakeUploader, r *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Uploader: u})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Uploader: u}))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, r)
+	router.ServeHTTP(rec, authorized(r))
 	return rec
 }
 

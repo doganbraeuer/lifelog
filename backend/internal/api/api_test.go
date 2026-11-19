@@ -15,8 +15,9 @@ type fakePinger struct{ err error }
 
 func (p fakePinger) Ping(context.Context) error { return p.err }
 
+// /status is public: no token in these requests.
 func TestStatus_DatabaseReachable(t *testing.T) {
-	router := NewRouter(Dependencies{DB: fakePinger{}})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}}))
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
@@ -35,7 +36,7 @@ func TestStatus_DatabaseReachable(t *testing.T) {
 }
 
 func TestStatus_DatabaseUnreachable(t *testing.T) {
-	router := NewRouter(Dependencies{DB: fakePinger{err: errors.New("timeout")}})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{err: errors.New("timeout")}}))
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
@@ -117,11 +118,13 @@ func TestRecover_PanicBecomes500(t *testing.T) {
 	}
 }
 
+// With a token, a wrong method is 405. Without one it is 401: a wrong method
+// is not a public route (see auth_test.go).
 func TestRouter_WrongMethod(t *testing.T) {
-	router := NewRouter(Dependencies{DB: fakePinger{}})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}}))
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/status", nil))
+	router.ServeHTTP(rec, authorized(httptest.NewRequest(http.MethodPost, "/api/v1/status", nil)))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rec.Code)

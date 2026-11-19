@@ -27,9 +27,9 @@ func storeWithEntry() *fakeStore {
 
 func get(t *testing.T, s *fakeStore, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: s})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Entries: s}))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	router.ServeHTTP(rec, authorized(httptest.NewRequest(http.MethodGet, path, nil)))
 	return rec
 }
 

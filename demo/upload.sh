@@ -9,6 +9,10 @@
 # Afterwards: wait about a minute, then measure with
 #   cd backend && go run ./cmd/calibrate
 #
+# Since 2026-11-18 every upload needs a token (docs/API.md 3.10). Log in
+# once and put the token into LIFELOG_TOKEN (see demo/README.md):
+#   export LIFELOG_TOKEN=...
+#
 # Usage (from anywhere; the backend must be running):
 #   demo/upload.sh              seed + uploads
 #   demo/upload.sh --no-seed    uploads only
@@ -30,7 +34,7 @@ seed=1
 for arg in "$@"; do
   case "$arg" in
     --no-seed) seed=0 ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$(basename "$0")" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -44,6 +48,13 @@ if ! echo "$status" | grep -Eq '"database": *"ok"'; then
   exit 1
 fi
 
+# Checked before the seed, so nothing happens without a token.
+if [ -z "${LIFELOG_TOKEN:-}" ]; then
+  echo "LIFELOG_TOKEN is not set. Every upload needs a token since 2026-11-18:" >&2
+  echo "log in with POST $BASE/auth/login and export LIFELOG_TOKEN (see demo/README.md)." >&2
+  exit 1
+fi
+
 if [ "$seed" = 1 ]; then
   echo "== Seed entries"
   if ! (cd ../backend && go run ./cmd/seed); then
@@ -54,14 +65,19 @@ fi
 
 created=0 existing=0 failed=0
 body=$(mktemp)
-trap 'rm -f "$body"' EXIT
+# The Authorization header goes to curl as a file (-H @file), so the token
+# does not show up in the process list.
+auth=$(mktemp)
+trap 'rm -f "$body" "$auth"' EXIT
+chmod 600 "$auth"
+printf 'Authorization: Bearer %s\n' "$LIFELOG_TOKEN" > "$auth"
 
 # upload <curl form argument> <label>
 upload() {
   local attempt code type
   printf "%-48s " "$2"
   for attempt in $(seq 1 "$RETRIES"); do
-    code=$(curl -s -o "$body" -w "%{http_code}" --max-time 120 -F "$1" "$BASE/entries")
+    code=$(curl -s -o "$body" -w "%{http_code}" --max-time 120 -H @"$auth" -F "$1" "$BASE/entries")
     [ "$code" = 503 ] && [ "$attempt" -lt "$RETRIES" ] || break
     printf "503, retry in %ss … " "$RETRY_WAIT"
     sleep "$RETRY_WAIT"
@@ -74,6 +90,12 @@ upload() {
     409)
       echo "409 already there"
       existing=$((existing + 1)) ;;
+    401)
+      echo "401: LIFELOG_TOKEN is unknown or expired. Log in again and export the new token." >&2
+      exit 1 ;;
+    403)
+      echo "403: this account still has its start password. Change it first (POST $BASE/me/password)." >&2
+      exit 1 ;;
     *)
       echo "$code failed: $(grep -Eo '"message": *"[^"]*"' "$body" | cut -d '"' -f 4)"
       failed=$((failed + 1)) ;;

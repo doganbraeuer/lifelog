@@ -67,9 +67,9 @@ func summary(id, date string, importMinute int) core.EntrySummary {
 
 func list(t *testing.T, s *fakeStore, query string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(Dependencies{DB: fakePinger{}, Entries: s})
+	router := NewRouter(withTestUser(Dependencies{DB: fakePinger{}, Entries: s}))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/entries"+query, nil))
+	router.ServeHTTP(rec, authorized(httptest.NewRequest(http.MethodGet, "/api/v1/entries"+query, nil)))
 	return rec
 }
 

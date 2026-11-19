@@ -26,7 +26,8 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-var ownCollections = []string{collEntries, collChunks, collOCR, bucketFiles + ".files", bucketFiles + ".chunks"}
+var ownCollections = []string{collEntries, collChunks, collOCR, bucketFiles + ".files", bucketFiles + ".chunks",
+	collUsers, collSessions, collAuditLog}
 
 func testStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()

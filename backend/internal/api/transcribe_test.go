@@ -44,7 +44,7 @@ func serve(t Transcriber, req *http.Request) *httptest.ResponseRecorder {
 		deps.Transcriber = t
 	}
 	rec := httptest.NewRecorder()
-	NewRouter(deps).ServeHTTP(rec, req)
+	NewRouter(withTestUser(deps)).ServeHTTP(rec, authorized(req))
 	return rec
 }
 
