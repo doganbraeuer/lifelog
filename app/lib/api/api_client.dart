@@ -5,6 +5,7 @@ import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
+import '../model/user.dart';
 
 /// Sort field of the timeline. The names are the values of the query
 /// parameter `sort`.
@@ -82,8 +83,42 @@ abstract interface class ApiClient {
   Future<Transcript> transcribe(Uint8List bytes, String fileName);
 
   /// `GET /status`: whether the backend, the database and the speech
-  /// recognition work. Calls no model.
+  /// recognition work. Calls no model. Needs no token.
   Future<ServerStatus> getStatus();
+
+  // -----------------------------------------------------------------------
+  // Accounts and login (docs/API.md section 1 "Login and tokens", 3.10–3.15)
+  //
+  // Every call except [getStatus] and [login] sends the token as
+  // `Authorization: Bearer <token>`. The client only keeps the token in
+  // memory; storing it is the job of the session (lib/session/).
+  // -----------------------------------------------------------------------
+
+  /// Sets the token for all further calls, e.g. the one restored from secure
+  /// storage at start. `null` forgets it.
+  void useToken(String? token);
+
+  /// `POST /auth/login`. Needs no token. On success the client uses the new
+  /// token right away. The password is only sent, never kept.
+  Future<LoginResult> login(String username, String password);
+
+  /// `POST /auth/logout`: ends the token of this device. The client forgets
+  /// the token in any case, also if the call fails.
+  Future<void> logout();
+
+  /// `GET /me`: the logged-in user.
+  Future<User> me();
+
+  /// `PATCH /me`: change the display name (1–50 characters after trimming).
+  Future<User> updateDisplayName(String displayName);
+
+  /// `POST /me/password`: replace the password. Ends all other tokens of the
+  /// account; the token of this device stays valid.
+  Future<void> changePassword(String currentPassword, String newPassword);
+
+  /// `PUT /me/consent`: record that the user agreed to the consent text
+  /// with this version.
+  Future<void> recordConsent(String version);
 
   /// Releases resources (e.g. the HTTP connection).
   void close();

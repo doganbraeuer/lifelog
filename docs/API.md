@@ -1698,8 +1698,8 @@ Planned behaviour:
 - **Concurrent corrections:** `PATCH /entries/{id}` reads the entry,
   changes it and writes it back without a lock. If two corrections of the
   same entry arrive at the same time, the second wins and the first can be
-  lost. With one user and one dialog per correction this is hardly
-  reachable in the prototype. Later: a version counter in the entry, and
+  lost. Each entry belongs to one user and is corrected in one dialog at a
+  time, so this is hardly reachable in the prototype. Later: a version counter in the entry, and
   `409` on a conflict.
 - **Length limits for corrections:** `issuer`, `value` and `unit` have no
   maximum length of their own, only the limit for the whole body (64 KiB).

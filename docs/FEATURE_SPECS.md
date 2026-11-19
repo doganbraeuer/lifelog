@@ -111,3 +111,17 @@ On „Fragen“ the user asks a question in natural language about the module's 
 - Screen reader labels such as „Quelle 1 anzeigen“, and clear labels for opening and expanding.
 Done when: tests cover answers with gaps in the numbering, the no-result sentence, the [n] links and the error case.
 ```
+
+## 13. Accounts and login
+
+```text
+Every request except GET /status and POST /auth/login needs a token (docs/API.md, section 1 "Login and tokens", 3.10–3.15). Security comes first: the token is a secret, the password is never stored.
+- Keep only the token and expiresAt, in flutter_secure_storage (exact version pinned), behind a small SessionStore interface with a fake for tests. Set android:allowBackup="false" and exclude cloud backup and device transfer. Send "Authorization: Bearer <token>" with every JSON, multipart and file request; never log tokens, passwords or the header. Add login, logout, me, updateDisplayName, changePassword and recordConsent to the ApiClient, and the error codes of 3.10–3.15 including details.retryAfterSeconds.
+- A session controller above the MaterialApp shows: login without a valid token; on start GET /me (401 deletes the token, a network error keeps it and offers „Erneut versuchen“); „Eigenes Passwort festlegen“ while mustChangePassword; the consent notice while consentVersion differs from the app's constant; otherwise the modules. A 401 anywhere logs out with „Bitte melde dich erneut an.“, a 403 PASSWORD_CHANGE_REQUIRED opens the password screen, both handled in one place.
+- Login: username without autocorrect or capitals, password hidden with an eye icon. Wrong data: „Benutzername oder Passwort stimmt nicht.“ Lockout: the server message plus „Bitte warte etwa 1 Minute.“ / „… 3 Minuten.“ (rounded up). No „Passwort vergessen“, only „Passwort vergessen? Melde dich bei uns.“
+- Password: current, new, repeat; check in the app first (at least 10 characters, at most 72 bytes with umlauts counting double, different from the current one, both equal), then show WRONG_PASSWORD and WEAK_PASSWORD with the server message. Success: „Passwort geändert. Andere Geräte wurden abgemeldet.“
+- Consent: the fixed German text with its version as a constant, scrollable, „Zustimmen“ (PUT /me/consent) and „Nicht jetzt“ (logout).
+- Settings behind a large gear icon on the module overview: „Angemeldet als <Anzeigename> (<Benutzername>)“, change the display name (1–50 characters), change the password, read the privacy notice, log out. Logout calls POST /auth/logout (errors ignored), deletes the token, temporary files and the image cache and closes every page.
+- The mock simulates all of it with documented test accounts, including the lockout after 5 failed attempts.
+Done when: a table test shows that every ApiClient method sends the header (and /status and login do not), and widget tests cover login, lockout, start with an invalid token or without network, the password rules, consent, a 401 in the middle of use, logout and the settings icon.
+```
