@@ -92,6 +92,73 @@ void main() {
     );
   });
 
+  group('review after the upload (16.11.)', () {
+    /// Uploads a PDF; afterwards the new entry is open for review.
+    Future<MockApiClient> uploadPdf(WidgetTester tester) async {
+      final mock = fastMock();
+      final chooser = FakeFileChooser()..pdf = testPdf('befund.pdf');
+      await goToUpload(tester, mock, chooser);
+      await tester.tap(find.text('PDF auswählen'));
+      await tester.pumpAndSettle();
+      await tester.tap(uploadButton());
+      await tester.pumpAndSettle();
+      return mock;
+    }
+
+    testWidgets('the entry opens with Speichern and Verwerfen, no delete '
+        'icon', (tester) async {
+      await uploadPdf(tester);
+
+      expect(find.text('Erkannte Angaben'), findsOneWidget);
+      expect(find.byKey(const Key('reviewSave')), findsOneWidget);
+      expect(find.byKey(const Key('reviewDiscard')), findsOneWidget);
+      expect(find.textContaining('speichern oder verwerfen'), findsOneWidget);
+      expect(find.byTooltip('Eintrag löschen'), findsNothing);
+    });
+
+    testWidgets('Speichern keeps the entry and goes to the timeline', (
+      tester,
+    ) async {
+      final mock = await uploadPdf(tester);
+
+      await tester.tap(find.byKey(const Key('reviewSave')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Gespeichert.'), findsOneWidget);
+      expect(find.byKey(const Key('reviewSave')), findsNothing);
+      expect(find.text('Mock-Praxis Beispiel'), findsOneWidget);
+      expect(
+        await mock.listEntries(module: 'health'),
+        hasLength(sampleCount + 1),
+      );
+    });
+
+    testWidgets('Verwerfen deletes the entry at once', (tester) async {
+      final mock = await uploadPdf(tester);
+
+      await tester.tap(find.byKey(const Key('reviewDiscard')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verworfen.'), findsOneWidget);
+      expect(find.text('Mock-Praxis Beispiel'), findsNothing);
+      expect(await mock.listEntries(module: 'health'), hasLength(sampleCount));
+    });
+
+    testWidgets('an entry opened from the timeline has no review bar', (
+      tester,
+    ) async {
+      await uploadPdf(tester);
+      await tester.tap(find.byKey(const Key('reviewSave')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Mock-Praxis Beispiel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('reviewSave')), findsNothing);
+      expect(find.byTooltip('Eintrag löschen'), findsOneWidget);
+    });
+  });
+
   testWidgets('a WebP image gets an image preview and can be uploaded', (
     tester,
   ) async {

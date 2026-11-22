@@ -16,16 +16,20 @@ import '../widgets/quantity_highlight.dart';
 import '../widgets/scan_animation.dart';
 import 'voice_note_view.dart';
 
-/// Privacy notice, always at the top of the screen.
+/// Privacy notice, always at the top of the screen. Matches the consent
+/// text (session/consent_text.dart): what goes where, without forbidding
+/// real documents, which the consent allows.
 const cloudNotice =
-    'Dokumente werden zur Auswertung an einen Cloud-Dienst gesendet. '
-    'Bitte nur Testdokumente verwenden.';
+    'Dokumente und Sprachnotizen werden zur Auswertung an Google Gemini '
+    'gesendet (bezahlte Version). Mehr dazu in der Einwilligung unter '
+    'Einstellungen.';
 
 /// Take a photo, choose an image or PDF and upload it, or enter the
 /// document content as text.
 ///
-/// Flow: choose a file → check the preview → „Hochladen“. The preview
-/// prevents the wrong file from going to the cloud by accident.
+/// Flow: choose a file → check the preview → „Hochladen“ → the entry opens
+/// for review with „Speichern“ / „Verwerfen“ (EntryScreen.review). The
+/// preview prevents the wrong file from going to the cloud by accident.
 /// For text: type, paste or dictate (microphone in the field) →
 /// „Importieren“ or „Speichern“.
 class UploadScreen extends StatefulWidget {
@@ -194,8 +198,8 @@ class _UploadScreenState extends State<UploadScreen> {
         _uploading = false;
         _file = null;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Dokument gespeichert.')));
+      // No „gespeichert“ message here: the entry opens for review, where
+      // the user decides between „Speichern“ and „Verwerfen“.
       HapticFeedback.lightImpact(); // Make success noticeable
       widget.uploaded(entry);
     } on ApiException catch (error) {
@@ -251,8 +255,7 @@ class _UploadScreenState extends State<UploadScreen> {
         _textFromSpeech = false;
         _text.clear();
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Text gespeichert.')));
+      // The entry opens for review („Speichern“ / „Verwerfen“).
       HapticFeedback.lightImpact(); // Make success noticeable
       widget.uploaded(entry);
     } on ApiException catch (error) {
@@ -542,8 +545,12 @@ class _UploadScreenState extends State<UploadScreen> {
             TextField(
               controller: _text,
               enabled: !_uploading,
+              // Grows with the text (no maxLines), so the page scrolls and
+              // the whole of a long spoken note can be read and reached.
+              // With a fixed maximum the field scrolled inside the page,
+              // which on a phone could not be scrolled down (16.11.).
               minLines: 6,
-              maxLines: 14,
+              maxLines: null,
               maxLength: maxTextLength,
               keyboardType: TextInputType.multiline,
               decoration: InputDecoration(

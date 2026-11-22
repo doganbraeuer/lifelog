@@ -278,7 +278,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsOneWidget);
-    expect(find.text('Text gespeichert.'), findsOneWidget);
+    // Opens for review: „Speichern“ / „Verwerfen“ (no message yet).
+    expect(find.byKey(const Key('reviewSave')), findsOneWidget);
+    expect(find.byKey(const Key('reviewDiscard')), findsOneWidget);
     final entries = await mock.listEntries(module: 'health');
     expect(entries, hasLength(sampleCount + 1));
     final created = entries.firstWhere(

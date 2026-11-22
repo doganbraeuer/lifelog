@@ -39,7 +39,7 @@ Done when: grouping tests pass for both sort fields, including entries without a
 ## 5. Upload a document
 
 ```text
-On „Hochladen“ the user takes a photo or picks an image (including WebP) or a PDF. Scale photos down to at most 3000 px so that small print stays readable. Before sending, show a preview with an X in the top right corner to discard it, hidden during the upload. Always show the notice „Dokumente werden zur Auswertung an einen Cloud-Dienst gesendet. Bitte nur Testdokumente verwenden.“
+On „Hochladen“ the user takes a photo or picks an image (including WebP) or a PDF. Scale photos down to at most 3000 px so that small print stays readable. Before sending, show a preview with an X in the top right corner to discard it, hidden during the upload. Always show the notice „Dokumente und Sprachnotizen werden zur Auswertung an Google Gemini gesendet (bezahlte Version). Mehr dazu in der Einwilligung unter Einstellungen.“ After a successful upload, open the new entry for review with a fixed bar „Verwerfen“ (deletes at once) / „Speichern“ (since 2026-11-22).
 During the upload show a calm scan animation over a document icon and no invented progress; fade between picking, preview, loading and error. If the document already exists (DUPLICATE), show a message with a link to the existing entry. After success, switch to the timeline, reload it and open the new entry.
 Done when: the upload, duplicate and error paths are tested against the mock.
 ```
@@ -77,7 +77,7 @@ Done when: tests cover the corrections, the date bounds and deleting from an ope
 ```text
 The backend checks whether each extracted value really appears in the original (verification in docs/API.md). Show this in the entry:
 - At the top a summary such as „5 von 6 Werten im Original gefunden (83 %)“ with the source in plain German (text layer of the PDF, text recognition in the photo, typed text). Without a percentage, show only the sentence.
-- A small, calm mark per value. Unconfirmed means "not found in the original", not "wrong", so use no red warning colours. Show corrected values together with the correction mark, not twice.
+- Since 2026-11-22 (wish of 16.11.): no mark for found values; an unconfirmed value gets a red line „Bitte prüfen: nicht im Original gefunden“ (careful wording: not found ≠ wrong); if all are found, the summary says „Alle N Werte im Original gefunden“. Show corrected values together with the correction mark, not twice.
 - Unchecked entries stay neutral, with a short German sentence per reason, for example „Die Prüfung ist auf diesem Server nicht eingerichtet.“ An entry without verification counts as unchecked.
 - A short explanation behind an info icon. After a correction, show the new verification from the response.
 Done when: the mock covers every source, field status and reason, and tests cover the model, the mock and the display.

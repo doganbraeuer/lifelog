@@ -102,16 +102,17 @@ class _ModuleShellState extends State<ModuleShell> {
 
   /// Switches to the timeline and opens the entry there. That way „Zurück“
   /// (back) leads from the entry into the (reloaded) timeline.
-  void _openEntry(String entryId) {
+  void _openEntry(String entryId, {bool review = false}) {
     _dropFocus();
     _showPage(0, haptics: false);
-    _timeline.currentState?.openEntry(entryId);
+    _timeline.currentState?.openEntry(entryId, review: review);
   }
 
   void _uploaded(Entry entry) {
     // The timeline starts at the top, so that the new entry is visible.
     _timeline.currentState?.reload(toTop: true);
-    _openEntry(entry.id);
+    // Opens for review: „Speichern“ or „Verwerfen“ (wish of 16.11.).
+    _openEntry(entry.id, review: true);
   }
 
   /// Opens an entry on top of the current page without switching to the

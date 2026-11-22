@@ -210,16 +210,26 @@ Tab „Hochladen“ → „Bild auswählen“ (photo library) or „PDF auswähl
    size. The preview prevents the wrong file from going to the cloud.
 3. Tap „Hochladen“. A calm scan animation shows „Das Dokument wird
    ausgewertet. Das kann bis zu einer Minute dauern.“
-4. On success the app says „Dokument gespeichert.“, switches to the
-   timeline (scrolled to the top) and opens the new entry.
+4. On success the app switches to the timeline (scrolled to the top) and
+   opens the new entry **for review** (since 2026-11-22, wish of 16.11.):
+   a card „Bitte die erkannten Angaben prüfen und bei Bedarf mit dem
+   Stift korrigieren. Dann speichern oder verwerfen.“ and a fixed bar with
+   „Verwerfen“ and „Speichern“. „Verwerfen“ deletes the entry with its
+   original file at once („Verworfen.“); „Speichern“ keeps it and goes back
+   to the timeline („Gespeichert.“). The backend has stored the entry
+   already, so „Zurück“ keeps it as well. In the review the delete icon of
+   the app bar is hidden. A text import (also a spoken note) opens the same
+   way. Categories to tick will join this step (phase B).
 5. On an error a card explains it. For temporary errors (no connection,
    model overloaded, server error) the button becomes „Erneut versuchen“
    and the file stays; otherwise the file is discarded so another can be
    chosen.
 
-The note at the top of the screen is always visible: „Dokumente werden zur
-Auswertung an einen Cloud-Dienst gesendet. Bitte nur Testdokumente
-verwenden.“
+The note at the top of the screen is always visible: „Dokumente und
+Sprachnotizen werden zur Auswertung an Google Gemini gesendet (bezahlte
+Version). Mehr dazu in der Einwilligung unter Einstellungen.“ (Until
+2026-11-22: „… an einen Cloud-Dienst gesendet. Bitte nur Testdokumente
+verwenden.“; the consent allows real documents.)
 
 ### Behind the scenes
 
@@ -599,11 +609,17 @@ Angaben“ carry a mark. The timeline shows nothing, because the short form
 has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
 „Typ“ and „Importiert“ are never checked and have no mark.
 
-- **Confirmed** (`confirmed`): a small check mark right after the value.
-  Screen readers read it as „Im Original gefunden“.
-- **Unconfirmed** (`unconfirmed`): a grey line „Nicht im Original
-  gefunden“ under the value. On purpose without a warning color: the value
-  could not be found in the original, which does not mean it is wrong.
+Since 2026-11-22 (wish of Prof. Pree, 16.11.) only what does not match is
+marked:
+
+- **Confirmed** (`confirmed`): no mark. If all values are confirmed, the
+  card says „Alle 6 Werte im Original gefunden“ („Der Wert wurde im
+  Original gefunden“ for one).
+- **Unconfirmed** (`unconfirmed`): a red line „Bitte prüfen: nicht im
+  Original gefunden“ under the value, and the card's icon turns red. The
+  wording stays careful: the value could not be found in the original,
+  which does not mean it is wrong. (Until 2026-11-22: a check mark per
+  found value and a grey line without warning color.)
 - **Corrected** (`corrected_confirmed`, `corrected_unconfirmed`): no
   second mark; the result is added to the existing correction hint, e.g.
   „Wert korrigiert, erkannt: 6,3 · im Original gefunden“ or „Wert
@@ -637,7 +653,7 @@ has no verification (see [Timeline](#10-timeline-with-sorting), Limits).
    explanation, „So prüft Lifelog die Werte“: what found and not found
    mean, that type and import date are not checked, that the check is no
    medical assessment, and which program checked when.
-3. Look at the values without a check mark in the original („Originaldatei
+3. Look at the values marked „Bitte prüfen“ in the original („Originaldatei
    öffnen“). If one is wrong, correct it with the pencil
    ([Correction](#9-correction)). The app shows the check from the
    backend's response right away: the card and the mark of the value
@@ -845,8 +861,8 @@ From top to bottom:
 between the original and „Angaben“ a card sums up the check („5 von 6
 Werten im Original gefunden (83 %)“, or „Nicht geprüft“ with the reason) and has
 an info button for the explanation. „Dokumentdatum“, „Quelle“ and every
-fact carry a small check mark if the value was found in the original, or
-the grey line „Nicht im Original gefunden“ if not. A corrected value shows
+fact found in the original carries no mark (since 2026-11-22); one not
+found gets the red line „Bitte prüfen: nicht im Original gefunden“. A corrected value shows
 the result in its correction hint („… · im Original gefunden“). After a
 correction both come from the backend's response.
 
@@ -1375,8 +1391,9 @@ improve its products; there only synthetic data is used. The test server for
 real testers runs with the paid tier, where Google does not use the content
 to improve its products but keeps it for a limited time. The paid tier is a
 precondition for the [consent](#153-consent) notice. The upload screen
-always shows: „Dokumente werden zur Auswertung an einen Cloud-Dienst
-gesendet. Bitte nur Testdokumente verwenden.“
+always shows: „Dokumente und Sprachnotizen werden zur Auswertung an Google
+Gemini gesendet (bezahlte Version). Mehr dazu in der Einwilligung unter
+Einstellungen.“
 
 ### What stays local
 

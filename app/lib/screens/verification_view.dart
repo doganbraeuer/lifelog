@@ -2,8 +2,11 @@
 // an explanation behind an info button. The marks per value are drawn by
 // the rows of the entry view (entry_screen.dart).
 //
-// Important (Dogan): "not found" means the value could not be found in the
-// original, not that it is wrong. So no warning colors.
+// Since 16.11. (wish of Prof. Pree): no check marks for found values; only
+// what does not match is marked, in red, as „Bitte prüfen: nicht im
+// Original gefunden“, and a fully confirmed entry says so at the top. The
+// wording stays careful on purpose: "not found" means the value could not
+// be found in the original, not that it is wrong.
 
 import 'package:flutter/material.dart';
 
@@ -11,14 +14,14 @@ import '../model/entry.dart';
 import '../model/verification.dart';
 import '../widgets/format.dart';
 
-/// Mark next to a confirmed value, also read out by screen readers.
-const foundLabel = 'Im Original gefunden';
+/// Meaning of a value without a mark (explanation sheet).
+const foundLabel = 'Ohne Markierung: im Original gefunden';
 
 /// What tapping a value with a location does; read out by screen readers.
 const showInOriginalHint = 'Im Original zeigen';
 
-/// Line under an unconfirmed value.
-const notFoundLabel = 'Nicht im Original gefunden';
+/// Red line under an unconfirmed value.
+const notFoundLabel = 'Bitte prüfen: nicht im Original gefunden';
 
 /// Tooltip of the info button.
 const explanationTooltip = 'Was bedeutet die Prüfung?';
@@ -30,6 +33,11 @@ String verificationTitle(Verification verification) {
   if (!verification.isChecked) return 'Nicht geprüft';
   final total = verification.total;
   if (total == 0) return 'Keine Werte zum Prüfen';
+  if (verification.confirmed == total) {
+    return total == 1
+        ? 'Der Wert wurde im Original gefunden'
+        : 'Alle $total Werte im Original gefunden';
+  }
   final values = total == 1 ? 'Wert' : 'Werten';
   final sentence =
       '${verification.confirmed} von $total $values im Original gefunden';
@@ -96,6 +104,8 @@ class VerificationSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final checked = verification.isChecked;
+    // Something to check: red, like the lines under those values.
+    final open = checked && verification.confirmed < verification.total;
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       elevation: 0,
@@ -103,8 +113,16 @@ class VerificationSummary extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.only(left: 16, right: 4),
         leading: Icon(
-          checked ? Icons.fact_check_outlined : Icons.remove_done,
-          color: checked ? colors.primary : colors.onSurfaceVariant,
+          !checked
+              ? Icons.remove_done
+              : open
+              ? Icons.error_outline
+              : Icons.fact_check_outlined,
+          color: !checked
+              ? colors.onSurfaceVariant
+              : open
+              ? colors.error
+              : colors.primary,
         ),
         title: Text(verificationTitle(verification)),
         subtitle: Text(verificationDetail(verification, file)),
@@ -161,8 +179,8 @@ Future<void> showVerificationExplanation(
                 text: 'Der Wert steht so im Original.',
               ),
               _Meaning(
-                icon: Icons.search_off,
-                color: theme.colorScheme.onSurfaceVariant,
+                icon: Icons.error_outline,
+                color: theme.colorScheme.error,
                 title: notFoundLabel,
                 text:
                     'Der Wert ließ sich im Original nicht wiederfinden. Das '
