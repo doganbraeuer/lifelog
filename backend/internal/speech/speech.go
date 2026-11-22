@@ -1,15 +1,16 @@
 // Package speech turns a spoken recording into text (docs/API.md, 3.9).
-// It runs locally and costs no model call. Nothing is stored: the recording
-// only exists in memory and, for a few seconds, in one temporary file for
-// ffmpeg.
+// With whisper it runs locally and costs no model call; with
+// SPEECH_ENGINE=gemini the language model writes the text (subpackage
+// llmengine). Nothing is stored: the recording only exists in memory and,
+// for a few seconds, in one temporary file for ffmpeg.
 //
 // Two interfaces keep the programs replaceable, as in packages llm and ocr:
 //
 //   - Converter turns any allowed recording into 16 kHz mono PCM, the format
 //     Whisper needs. Today ffmpeg (subpackage ffmpeg).
-//   - Engine recognizes the speech in such a recording. Today whisper.cpp,
-//     running as its own local server (subpackage whisper); another engine
-//     would be a new subpackage and one line in cmd/server.
+//   - Engine recognizes the speech in such a recording: whisper.cpp,
+//     running as its own local server (subpackage whisper), or a language
+//     model that takes audio (subpackage llmengine).
 //
 // Pipeline combines them with the checks against invented text: length,
 // loudness, and core.CleanTranscript. The rest of the backend only knows

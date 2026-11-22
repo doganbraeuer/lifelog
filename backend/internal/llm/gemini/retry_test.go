@@ -184,10 +184,11 @@ func testGemini(n *fakeNetwork, fallback string) *Gemini {
 			APIKey: "SECRET", Model: "main", FallbackModel: fallback, EmbeddingModel: "embed",
 			FallbackReserve: 20 * time.Second,
 		},
-		generate:      n.generate,
-		embedAPI:      n.embed,
-		readTimeout:   readTimeout,
-		answerTimeout: answerTimeout,
+		generate:          n.generate,
+		embedAPI:          n.embed,
+		readTimeout:       readTimeout,
+		answerTimeout:     answerTimeout,
+		transcribeTimeout: transcribeTimeout,
 		newRetrier: func(label string) retrier {
 			r := defaultRetrier(label)
 			r.sleep = func(context.Context, time.Duration) error { return nil } // do not really wait

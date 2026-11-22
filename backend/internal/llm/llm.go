@@ -50,6 +50,15 @@ type Answerer interface {
 	Answer(ctx context.Context, question string, sources []core.Source) (string, error)
 }
 
+// AudioTranscriber writes down the speech in a recording (docs/API.md,
+// 3.9), with SPEECH_ENGINE=gemini. wav is 16 kHz mono 16-bit PCM in a WAV
+// file. The result is the spoken words, word for word, without summary or
+// correction; "" if nobody speaks. vocabulary lists spellings the recording
+// may contain: a hint, never text to insert.
+type AudioTranscriber interface {
+	TranscribeAudio(ctx context.Context, wav []byte, vocabulary string) (string, error)
+}
+
 // Kinds of errors. Every implementation translates its own errors into
 // these, so the HTTP layer can choose the right code, whatever the provider.
 var (

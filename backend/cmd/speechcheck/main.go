@@ -1,14 +1,19 @@
 // speechcheck measures the transcription (docs/API.md, 3.9) on known
 // sentences: how many words and key terms (numbers, units, dates, names,
 // medication) are recognized, how fast, and whether silence and noise give
-// NO_SPEECH instead of invented text. It never calls a language model and
-// stores nothing. Start whisper-server first (backend/scripts/whisper-server.sh),
-// then from backend/:
+// NO_SPEECH instead of invented text. It stores nothing. With the default
+// engine whisper it calls no language model: start whisper-server first
+// (backend/scripts/whisper-server.sh), then from backend/:
 //
 //	go run ./cmd/speechcheck                                        # synthetic voice and generated audio only
 //	go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech    # plus own recordings 01.m4a … 10.m4a
 //	go run ./cmd/speechcheck -own … -out ../docs/speech/2026-11-12-whisper.md
 //	go run ./cmd/speechcheck -vocabulary=false                      # without the list of medical terms as prompt
+//	go run ./cmd/speechcheck -engine gemini                         # GEMINI_MODEL instead of whisper (SPEECH_ENGINE=gemini)
+//
+// With -engine gemini every recording goes to Gemini with GEMINI_API_KEY.
+// Use a key of a paid project (the free tier may use the content to improve
+// Google's products), and own recordings only if that is fine for you.
 //
 // What it measures (docs/speech/README.md):
 //
@@ -22,7 +27,8 @@
 //   - Per voice, sentences 01–08 joined into one longer recording, for the
 //     speed of a spoken doctor's letter of a few minutes.
 //
-// Needs ffmpeg and a running whisper-server (backend/README.md, speech).
+// Needs ffmpeg and a running whisper-server, or GEMINI_API_KEY for -engine
+// gemini (backend/README.md, speech).
 package main
 
 import (
@@ -39,8 +45,10 @@ import (
 	"time"
 
 	"lifelog/backend/internal/config"
+	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/speech"
 	"lifelog/backend/internal/speech/ffmpeg"
+	"lifelog/backend/internal/speech/llmengine"
 	"lifelog/backend/internal/speech/whisper"
 )
 
@@ -49,15 +57,16 @@ func main() {
 	own := flag.String("own", "", "folder with own recordings 01.m4a … 10.m4a (outside the repository); empty = skip them")
 	out := flag.String("out", "", "also write the measurement as Markdown to this file, e.g. ../docs/speech/2026-11-12-whisper.md")
 	vocabulary := flag.Bool("vocabulary", true, "send the list of medical terms (whisper.Vocabulary) as prompt, as the backend does")
+	engineName := flag.String("engine", config.SpeechEngineWhisper, "whisper (local whisper-server) or gemini (GEMINI_MODEL, needs GEMINI_API_KEY)")
 	flag.Parse()
 
-	if err := run(*demo, *own, *out, *vocabulary); err != nil {
+	if err := run(*demo, *own, *out, *vocabulary, *engineName); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(demoDir, ownDir, out string, vocabulary bool) error {
+func run(demoDir, ownDir, out string, vocabulary bool, engineName string) error {
 	if err := config.LoadDotenv(); err != nil {
 		return err
 	}
@@ -75,12 +84,9 @@ func run(demoDir, ownDir, out string, vocabulary bool) error {
 	if err != nil {
 		return fmt.Errorf("%w (see backend/README.md, speech)", err)
 	}
-	engine := whisper.New(url)
-	if !vocabulary {
-		engine.Prompt = ""
-	}
-	if err := engine.Ping(ctx); err != nil {
-		return fmt.Errorf("whisper-server does not answer at %s; start it with backend/scripts/whisper-server.sh: %w", url, err)
+	engine, prompt, where, err := newEngine(ctx, engineName, url, vocabulary)
+	if err != nil {
+		return err
 	}
 	pipeline := &speech.Pipeline{Converter: conv, Engine: engine}
 
@@ -93,7 +99,7 @@ func run(demoDir, ownDir, out string, vocabulary bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d recordings. Engine: %s at %s, %s. No language model is called.\n", len(recs), engine.Name(), url, conv.Name())
+	fmt.Printf("%d recordings. Engine: %s%s, %s.\n", len(recs), engine.Name(), where, conv.Name())
 	if ownDir == "" {
 		fmt.Println("No own recordings (-own): only the synthetic voice and generated audio.")
 	}
@@ -113,7 +119,7 @@ func run(demoDir, ownDir, out string, vocabulary bool) error {
 		Engine:    engine.Name(),
 		Converter: conv.Name(),
 		Machine:   machine(),
-		Prompt:    engine.Prompt,
+		Prompt:    prompt,
 		Vocab:     vocabularyInSentences(whisper.VocabularyTerms(), refs),
 		Rows:      rows,
 	}
@@ -168,4 +174,41 @@ func vocabularyInSentences(vocab []string, refs map[string]string) []vocabTerm {
 		}
 	}
 	return out
+}
+
+// newEngine builds the engine to measure. prompt is the vocabulary sent
+// with every recording ("" with -vocabulary=false), where is shown after
+// the engine name.
+func newEngine(ctx context.Context, name, url string, vocabulary bool) (engine speech.Engine, prompt, where string, err error) {
+	switch name {
+	case config.SpeechEngineWhisper:
+		w := whisper.New(url)
+		if !vocabulary {
+			w.Prompt = ""
+		}
+		if err := w.Ping(ctx); err != nil {
+			return nil, "", "", fmt.Errorf("whisper-server does not answer at %s; start it with backend/scripts/whisper-server.sh: %w", url, err)
+		}
+		return w, w.Prompt, " at " + url + " (no language model is called)", nil
+	case config.SpeechEngineGemini:
+		key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+		if key == "" {
+			return nil, "", "", errors.New("-engine gemini needs GEMINI_API_KEY (.env)")
+		}
+		model := strings.TrimSpace(os.Getenv("GEMINI_MODEL"))
+		if model == "" {
+			model = config.DefaultGeminiModel
+		}
+		g, err := gemini.New(ctx, gemini.Settings{APIKey: key, Model: model})
+		if err != nil {
+			return nil, "", "", err
+		}
+		e := llmengine.New(g, "Gemini "+model)
+		if !vocabulary {
+			e.Vocabulary = ""
+		}
+		return e, e.Vocabulary, " (every recording goes to Gemini)", nil
+	default:
+		return nil, "", "", fmt.Errorf("-engine must be %s or %s", config.SpeechEngineWhisper, config.SpeechEngineGemini)
+	}
 }

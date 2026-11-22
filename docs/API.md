@@ -1299,6 +1299,12 @@ least 130 seconds and shows a loading indicator.
    decoded), language fixed to German, temperature 0, and a list of
    general medical terms as prompt (`whisper.Vocabulary`, since
    2026-11-12; see docs/speech/README.md).
+   With `SPEECH_ENGINE=gemini` (since 2026-11-20, for servers without a
+   GPU, where Whisper needs about 40 s per 30-second window) the read
+   model (`GEMINI_MODEL`, paid tier) writes the text instead, word for
+   word, with the same list as a hint for spellings. Steps 1–3 and 5 stay
+   the same, so silence still costs no model call. `engine` is then e.g.
+   `"Gemini gemini-3.8-flash"`.
 5. Remove known phantom sentences and repeated identical segments; if
    nothing is left, `NO_SPEECH`.
 
