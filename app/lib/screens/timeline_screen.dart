@@ -118,11 +118,12 @@ class TimelineScreenState extends State<TimelineScreen> {
   }
 
   /// Opens an entry. Public, so that the upload can show the entry right
-  /// after uploading (or for a duplicate).
-  Future<void> openEntry(String entryId) async {
+  /// after uploading (or for a duplicate). [review]: right after an upload,
+  /// with „Speichern“ / „Verwerfen“ (EntryScreen.review).
+  Future<void> openEntry(String entryId, {bool review = false}) async {
     await openPage<void>(
       context,
-      EntryScreen(api: widget.api, entryId: entryId),
+      EntryScreen(api: widget.api, entryId: entryId, review: review),
     );
     // After a correction e.g. the date may have changed.
     if (mounted) reload();

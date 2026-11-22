@@ -70,7 +70,7 @@ void main() {
       );
       expect(
         verificationTitle(checked(confirmed: 1, total: 1)),
-        '1 von 1 Wert im Original gefunden',
+        'Der Wert wurde im Original gefunden',
       );
       expect(
         verificationTitle(checked(confirmed: 0, total: 1)),
@@ -93,7 +93,7 @@ void main() {
       );
       expect(
         verificationTitle(checked(confirmed: 6, matchPercent: 100)),
-        '6 von 6 Werten im Original gefunden (100 %)',
+        'Alle 6 Werte im Original gefunden',
       );
       expect(
         verificationTitle(checked(confirmed: 0, total: 1, matchPercent: 0)),
@@ -304,17 +304,16 @@ void main() {
   });
 
   group('marks per value', () {
-    Finder foundMarks() => find.byTooltip(foundLabel);
+    // Since 16.11. found values carry no mark at all.
+    Finder foundMarks() => find.byIcon(Icons.check_circle_outline);
     Finder notFoundLines() => find.text(notFoundLabel);
 
-    testWidgets('found: check mark, not found: calm line, corrected: hint', (
+    testWidgets('found: no mark, not found: red line, corrected: hint', (
       tester,
     ) async {
       await openEntryNamed(tester, fastMock(), labIssuer);
 
-      // Date, issuer, Hämoglobin and Befundart; not type and import date,
-      // and not the corrected Leukozyten.
-      expect(foundMarks(), findsNWidgets(4));
+      expect(foundMarks(), findsNothing);
       // CRP: the text layer says „unter 0,5“.
       expect(notFoundLines(), findsOneWidget);
       expect(
@@ -322,20 +321,17 @@ void main() {
         findsOneWidget,
       );
 
-      // No warning colors for „not found“.
+      // „Bitte prüfen“ in red.
       final colors = Theme.of(tester.element(notFoundLines())).colorScheme;
-      final icon = tester.widget<Icon>(find.byIcon(Icons.search_off));
-      expect(icon.color, colors.onSurfaceVariant);
       final line = tester.widget<Text>(notFoundLines());
-      expect(line.style?.color, colors.onSurfaceVariant);
-      expect(line.style?.color, isNot(colors.error));
+      expect(line.style?.color, colors.error);
     });
 
     testWidgets('photo and mixed PDF', (tester) async {
       await openEntryNamed(tester, fastMock(), 'Dr. Erika Beispiel');
       // Puls: OCR read „/mln“.
       expect(notFoundLines(), findsOneWidget);
-      expect(foundMarks(), findsNWidgets(5));
+      expect(foundMarks(), findsNothing);
       await tapBack(tester);
 
       await tester.tap(find.textContaining('Dr. Jonas Muster'));
@@ -344,7 +340,7 @@ void main() {
         find.text('Wert korrigiert, erkannt: 2 · nicht im Original gefunden'),
         findsOneWidget,
       );
-      expect(foundMarks(), findsNWidgets(5));
+      expect(foundMarks(), findsNothing);
       expect(notFoundLines(), findsNothing);
     });
 
@@ -373,7 +369,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(foundMarks(), findsNWidgets(3));
+      expect(foundMarks(), findsNothing);
     });
 
     testWidgets('back to the recognized value: the hint goes, a mark comes', (
@@ -391,7 +387,7 @@ void main() {
       expect(find.textContaining('korrigiert, erkannt'), findsNothing);
       // 6,3 is not in the PDF: Leukozyten and CRP are not found.
       expect(notFoundLines(), findsNWidgets(2));
-      expect(foundMarks(), findsNWidgets(4));
+      expect(foundMarks(), findsNothing);
       expect(
         find.text('4 von 6 Werten im Original gefunden (67 %)'),
         findsOneWidget,

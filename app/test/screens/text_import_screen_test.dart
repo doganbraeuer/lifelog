@@ -63,7 +63,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(EntryScreen), findsOneWidget);
-    expect(find.text('Text gespeichert.'), findsOneWidget);
+    // Opens for review: „Speichern“ / „Verwerfen“ (no message yet).
+    expect(find.byKey(const Key('reviewSave')), findsOneWidget);
+    expect(find.byKey(const Key('reviewDiscard')), findsOneWidget);
     expect(find.text('Hausarztpraxis Beispiel'), findsOneWidget); // issuer
     expect(find.text('21.10.2026'), findsOneWidget);
     expect(find.textContaining('· Text'), findsOneWidget);

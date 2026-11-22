@@ -22,16 +22,27 @@ import 'verification_view.dart';
 ///
 /// Every correction is its own PATCH. Afterwards the screen always shows
 /// the backend's response; the app does not recompute anything itself.
+///
+/// With [review] (right after an upload or a text import, wish of
+/// 16.11.) a fixed bar at the bottom asks „Speichern“ or „Verwerfen“:
+/// „Verwerfen“ deletes the entry at once, „Speichern“ keeps it and goes
+/// back to the timeline. The backend has already stored the entry when
+/// this screen opens, so leaving with „Zurück“ keeps it, like „Speichern“.
+/// Categories to tick will join this bar later (phase B).
 class EntryScreen extends StatefulWidget {
   const EntryScreen({
     super.key,
     required this.api,
     required this.entryId,
+    this.review = false,
     this.pdfViewer = const PdfxViewer(),
   });
 
   final ApiClient api;
   final String entryId;
+
+  /// `true` right after an upload: shows „Speichern“ / „Verwerfen“.
+  final bool review;
 
   /// Shows and renders PDFs; replaced by a fake viewer in tests.
   final PdfViewer pdfViewer;
@@ -234,6 +245,37 @@ class _EntryScreenState extends State<EntryScreen> {
   }
 
   // -------------------------------------------------------------------------
+  // Review after an upload
+  // -------------------------------------------------------------------------
+
+  /// „Speichern“: the entry is already stored; close and confirm.
+  void _keep() {
+    final message = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    HapticFeedback.lightImpact();
+    message.showSnackBar(const SnackBar(content: Text('Gespeichert.')));
+  }
+
+  /// „Verwerfen“: deletes the entry with its original file and chunks,
+  /// without asking again (the button says what it does, and the entry
+  /// was created a moment ago).
+  Future<void> _discard() async {
+    final navigator = Navigator.of(context);
+    final message = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      await widget.api.deleteEntry(widget.entryId);
+      navigator.pop();
+      HapticFeedback.lightImpact();
+      message.showSnackBar(const SnackBar(content: Text('Verworfen.')));
+    } on ApiException catch (error) {
+      // Nothing deleted: the entry stays on screen with its buttons.
+      message.showSnackBar(SnackBar(content: Text(error.message)));
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Display
   // -------------------------------------------------------------------------
 
@@ -249,11 +291,13 @@ class _EntryScreenState extends State<EntryScreen> {
         ),
         actions: [
           MockBanner(visible: widget.api.isMock),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Eintrag löschen',
-            onPressed: entry == null || _saving ? null : _delete,
-          ),
+          // In the review, „Verwerfen“ below does the deleting.
+          if (!widget.review)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Eintrag löschen',
+              onPressed: entry == null || _saving ? null : _delete,
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
@@ -264,6 +308,53 @@ class _EntryScreenState extends State<EntryScreen> {
         ),
       ),
       body: _content(context),
+      bottomNavigationBar: widget.review && entry != null
+          ? _reviewBar(context)
+          : null,
+    );
+  }
+
+  /// Fixed bar of the review: „Verwerfen“ and „Speichern“.
+  Widget _reviewBar(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('reviewDiscard'),
+                  onPressed: _saving ? null : _discard,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text(
+                    'Verwerfen',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Same width for both: with 1:2 „Verwerfen“ was cut off on
+              // a Pixel 9 (2026-11-22).
+              Expanded(
+                child: FilledButton.icon(
+                  key: const Key('reviewSave'),
+                  onPressed: _saving ? null : _keep,
+                  icon: const Icon(Icons.check),
+                  label: const Text(
+                    'Speichern',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -286,6 +377,7 @@ class _EntryScreenState extends State<EntryScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        if (widget.review) const _ReviewNotice(),
         _OriginalFileCard(
           file: entry.file,
           image: _image,
@@ -393,6 +485,36 @@ extension on String {
   String? get nullIfEmpty => isEmpty ? null : this;
 }
 
+/// At the top of the review: what to do now.
+class _ReviewNotice extends StatelessWidget {
+  const _ReviewNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      color: colors.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.rate_review_outlined, color: colors.onSecondaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Bitte die erkannten Angaben prüfen und bei Bedarf mit dem '
+                'Stift korrigieren. Dann speichern oder verwerfen.',
+                style: TextStyle(color: colors.onSecondaryContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Header of a section.
 class _Section extends StatelessWidget {
   const _Section(this.title);
@@ -415,9 +537,10 @@ class _Section extends StatelessWidget {
 /// A row with label, value, correction hint if any, verification mark if
 /// any, and pencil button.
 ///
-/// Marks of the verification, calm on purpose (not found ≠ wrong):
-/// - found: a small check mark after the value;
-/// - not found: a grey line „Nicht im Original gefunden“;
+/// Marks of the verification (since 16.11., wish of Prof. Pree):
+/// - found: no mark; the summary at the top says how many were found;
+/// - not found: a red line „Bitte prüfen: nicht im Original gefunden“
+///   (careful wording: not found ≠ wrong);
 /// - corrected: the result is added to the correction hint instead.
 ///
 /// A value with a location in the original can be tapped (the whole row
@@ -487,18 +610,6 @@ class _FieldRow extends StatelessWidget {
                   textWidthBasis: TextWidthBasis.longestLine,
                 ),
               ),
-              if (found && correction == null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: Tooltip(
-                    message: foundLabel,
-                    child: Icon(
-                      Icons.check_circle_outline,
-                      size: 16,
-                      color: colors.primary,
-                    ),
-                  ),
-                ),
               if (showInOriginal != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
@@ -520,9 +631,9 @@ class _FieldRow extends StatelessWidget {
             )
           else if (notFound)
             _Hint(
-              icon: Icons.search_off,
+              icon: Icons.error_outline,
               text: notFoundLabel,
-              color: colors.onSurfaceVariant,
+              color: colors.error,
             ),
         ],
       ),
