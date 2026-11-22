@@ -337,8 +337,9 @@ class _EntryScreenState extends State<EntryScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              // Same width for both: with 1:2 „Verwerfen“ was cut off on
+              // a Pixel 9 (2026-11-22).
               Expanded(
-                flex: 2,
                 child: FilledButton.icon(
                   key: const Key('reviewSave'),
                   onPressed: _saving ? null : _keep,
