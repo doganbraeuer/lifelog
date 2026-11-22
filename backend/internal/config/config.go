@@ -58,9 +58,13 @@ const (
 	DefaultTesseractLang = "deu"
 
 	// Speech recognition (docs/API.md, 3.9): "whisper" converts recordings
-	// with ffmpeg and asks the local whisper-server at WHISPER_URL; "none"
-	// switches transcription off (/status says "off").
+	// with ffmpeg and asks the local whisper-server at WHISPER_URL;
+	// "gemini" converts them with ffmpeg and sends them to GEMINI_MODEL
+	// (for servers without a GPU, where whisper is too slow, see
+	// docs/speech/README.md); "none" switches transcription off (/status
+	// says "off").
 	SpeechEngineWhisper = "whisper"
+	SpeechEngineGemini  = "gemini"
 	SpeechEngineNone    = "none"
 	DefaultSpeechEngine = SpeechEngineWhisper
 	DefaultWhisperURL   = "http://127.0.0.1:8178"
@@ -97,7 +101,7 @@ type Config struct {
 	Port                  string
 	OCREngine             string // OCREngineTesseract or OCREngineNone
 	TesseractLang         string // language pack, e.g. "deu" or "deu+eng"
-	SpeechEngine          string // SpeechEngineWhisper or SpeechEngineNone
+	SpeechEngine          string // SpeechEngineWhisper, SpeechEngineGemini or SpeechEngineNone
 	WhisperURL            string // base URL of the local whisper-server
 
 	// TrustedProxies (TRUSTED_PROXIES): reverse proxies whose
@@ -216,8 +220,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.OCREngine != OCREngineTesseract && c.OCREngine != OCREngineNone {
 		return Config{}, errors.New("OCR_ENGINE must be tesseract or none")
 	}
-	if c.SpeechEngine != SpeechEngineWhisper && c.SpeechEngine != SpeechEngineNone {
-		return Config{}, errors.New("SPEECH_ENGINE must be whisper or none")
+	if c.SpeechEngine != SpeechEngineWhisper && c.SpeechEngine != SpeechEngineGemini && c.SpeechEngine != SpeechEngineNone {
+		return Config{}, errors.New("SPEECH_ENGINE must be whisper, gemini or none")
 	}
 	if u, err := url.Parse(c.WhisperURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return Config{}, errors.New("WHISPER_URL must be a URL like http://127.0.0.1:8178")

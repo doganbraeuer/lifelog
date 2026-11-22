@@ -352,6 +352,21 @@ If ffmpeg is missing or whisper-server is not running, the backend still
 starts, `/status` says `"speech": "unavailable"` and transcriptions answer
 503. `SPEECH_ENGINE=none` switches it off (`"speech": "off"`).
 
+**Servers without a GPU: `SPEECH_ENGINE=gemini`** (since 2026-11-20). On
+the test server (4 vCPUs AMD EPYC Rome, no AVX-512) whisper large-v3-turbo
+needs about 43 s for a 2.6-second recording, the quantized q5_0 about 37 s:
+the encoder always works on 30-second windows, and turbo only shortened
+the decoder. Recordings over about 1.5 minutes would hit the 120 s limit.
+With `SPEECH_ENGINE=gemini` ffmpeg still converts the recording and the
+length and loudness checks still run (silence costs no model call), but
+the read model (`GEMINI_MODEL`, same retries and fallback model as
+reading) writes the text, word for word, with `whisper.Vocabulary` as a
+hint for spellings (`internal/speech/llmengine`, `TranscribeAudio` in
+`internal/llm/gemini/transcribe.go`). whisper-server is not needed then.
+Use it only with a paid Gemini project: the recording goes to Google, as
+photos and PDFs do for reading (consent text in the app). Measure it with
+`go run ./cmd/speechcheck -engine gemini`.
+
 The start scripts keep whisper-server running: after the start they send
 `scripts/warmup.wav` once (a synthetic voice: „Guten Tag, das ist ein
 kurzer Test.“), and if whisper-server stops, they start it again after 2 s

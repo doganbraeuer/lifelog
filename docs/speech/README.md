@@ -9,6 +9,10 @@ backend/scripts/whisper-server.sh        # in its own terminal
 cd backend && go run ./cmd/speechcheck -own ~/Projekte/lifelog-demo/speech -out ../docs/speech/<date>-whisper.md
 ```
 
+With `-engine gemini` the same recordings go to `GEMINI_MODEL` instead
+(`SPEECH_ENGINE=gemini`, since 2026-11-20); use a paid key, e.g. on the
+test server, where the server key works.
+
 Without `-own`, only the synthetic voice and the generated audio are
 measured; everybody can run that. The command sends every recording through
 the same pipeline as `POST /api/v1/transcriptions`, calls no language model
@@ -213,3 +217,22 @@ Voice memos of iOS 27 contain, besides the audio, a time stamp, a UUID and
 backend ignores all of them (ffmpeg only reads the audio track), and the
 own recordings stay outside the repository. The synthetic recordings in
 `demo/speech/` carry no metadata.
+
+## Whisper on the test server (2026-11-20)
+
+The test server (netcup VPS 1000 G12.5: 4 vCPUs AMD EPYC Rome with AVX2 but
+no AVX-512, 8 GB RAM, no GPU) runs whisper.cpp 1.9.5, built there with
+`-march=native`, `--threads 4`. `scripts/warmup.wav` (2.6 s, „Guten Tag, das
+ist ein kurzer Test.“), recognized correctly every time:
+
+| Model | Size | Time per request |
+|---|---|---|
+| large-v3-turbo | 1.6 GB | 44.4 s, 43.2 s |
+| large-v3-turbo-q5_0 | 0.55 GB | 38.8 s, 36.8 s |
+
+The encoder always processes a 30-second window, so a short recording costs
+as much as 30 seconds of speech; a 5-minute note would need about 7
+minutes, the backend gives up after 120 s. Quantizing barely helps: the
+CPU is the limit, not memory. The test server therefore uses
+`SPEECH_ENGINE=gemini`; whisper stays the engine for development on a Mac
+with Metal.

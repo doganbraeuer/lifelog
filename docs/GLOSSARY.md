@@ -290,7 +290,7 @@ Every place where the app talks to the backend:
 | `LIFELOG_LIVE`, `LIFELOG_MONGO_TEST`, `LIFELOG_DIAGNOSE`, `LIFELOG_DIAGNOSE_THINKING` | unchanged |
 | `LIFELOG_DIAGNOSE_DATEI` / `_MODELL` / `_VARIANTE` | `LIFELOG_DIAGNOSE_FILE` / `_MODEL` / `_VARIANT` |
 | `API_BASE_URL` (app) | unchanged |
-| – | `SPEECH_ENGINE`, `WHISPER_URL` (since 2026-11-12, see "Speech") |
+| – | `SPEECH_ENGINE`, `WHISPER_URL` (since 2026-11-12, see "Speech"; value `gemini` since 2026-11-20) |
 | – | `TRUSTED_PROXIES` (since 2026-11-18, see "Accounts and login") |
 | – | `LIFELOG_TOKEN` (since 2026-11-18, `demo/upload.sh` only: the token it sends) |
 | – | `LIMIT_UPLOADS_PER_DAY`, `LIMIT_QUESTIONS_PER_DAY`, `LIMIT_TRANSCRIPTIONS_PER_DAY` (since 2026-11-18, daily limits, defaults 30, 60, 30) |
@@ -467,6 +467,7 @@ text import (docs/API.md, 3.9).
 | Abschnitt der Erkennung (mit Start und Ende) | segment | `core.Segment` |
 | Umwandeln in 16 kHz mono PCM | convert | `speech.Converter` (ffmpeg) |
 | Spracherkennungsprogramm (whisper.cpp) | engine | `speech.Engine`, `Recognize` |
+| Spracherkennung durch das Sprachmodell | LLM engine | `SPEECH_ENGINE=gemini` (since 2026-11-20); `llm.AudioTranscriber`, `TranscribeAudio`; package `internal/speech/llmengine` |
 | Ablauf Umwandeln → Prüfen → Erkennen → Bereinigen | pipeline | `speech.Pipeline` |
 | Sprachaktivitätserkennung | voice activity detection (VAD) | whisper.cpp `--vad` (Silero) |
 | hörbarer Anteil (Pegelprüfung) | speech seconds | `core.SpeechSeconds` |

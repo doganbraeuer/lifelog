@@ -215,6 +215,10 @@ func TestLoad_Speech(t *testing.T) {
 	if err != nil || c.SpeechEngine != "none" || c.WhisperURL != "http://192.168.0.20:9000" {
 		t.Errorf("set: %q, %q, %v", c.SpeechEngine, c.WhisperURL, err)
 	}
+	e["SPEECH_ENGINE"] = "gemini"
+	if c, err = Load(env(e)); err != nil || c.SpeechEngine != "gemini" {
+		t.Errorf("gemini: %q, %v", c.SpeechEngine, err)
+	}
 	for name, v := range map[string][2]string{
 		"unknown engine":   {"vosk", ""},
 		"no scheme":        {"", "127.0.0.1:8178"},

@@ -56,12 +56,13 @@ type (
 
 // Gemini is the connection to the Gemini API.
 type Gemini struct {
-	s             Settings
-	generate      generateFunc
-	embedAPI      embedFunc
-	newRetrier    func(label string) retrier
-	readTimeout   time.Duration // fields instead of constants, so tests do not wait 50 s
-	answerTimeout time.Duration
+	s                 Settings
+	generate          generateFunc
+	embedAPI          embedFunc
+	newRetrier        func(label string) retrier
+	readTimeout       time.Duration // fields instead of constants, so tests do not wait 50 s
+	answerTimeout     time.Duration
+	transcribeTimeout time.Duration
 }
 
 var (
@@ -90,12 +91,13 @@ func New(ctx context.Context, s Settings) (*Gemini, error) {
 			int(maxFallbackReserve.Seconds()), readTimeout, answerTimeout, minMainTime)
 	}
 	return &Gemini{
-		s:             s,
-		generate:      client.Models.GenerateContent,
-		embedAPI:      client.Models.EmbedContent,
-		newRetrier:    defaultRetrier,
-		readTimeout:   readTimeout,
-		answerTimeout: answerTimeout,
+		s:                 s,
+		generate:          client.Models.GenerateContent,
+		embedAPI:          client.Models.EmbedContent,
+		newRetrier:        defaultRetrier,
+		readTimeout:       readTimeout,
+		answerTimeout:     answerTimeout,
+		transcribeTimeout: transcribeTimeout,
 	}, nil
 }
 

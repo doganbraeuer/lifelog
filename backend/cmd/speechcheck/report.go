@@ -91,8 +91,13 @@ func (rep report) Markdown() string {
 	p("# Speech recognition: %s\n\n", rep.Engine)
 	p("Generated on %s by `go run ./cmd/speechcheck` (docs/speech/README.md). ", rep.Date)
 	p("Every recording goes through the same pipeline as `POST /api/v1/transcriptions` ")
-	p("(conversion, length and loudness check, Whisper, cleaning). No language model is called, nothing is stored.\n\n")
-	p("- Engine: %s, started with `backend/scripts/whisper-server.sh`\n", rep.Engine)
+	if strings.HasPrefix(rep.Engine, "Gemini") {
+		p("(conversion, length and loudness check, Gemini, cleaning). Every recording is sent to Gemini, nothing is stored.\n\n")
+		p("- Engine: %s (`SPEECH_ENGINE=gemini`); the columns called Whisper show this engine\n", rep.Engine)
+	} else {
+		p("(conversion, length and loudness check, Whisper, cleaning). No language model is called, nothing is stored.\n\n")
+		p("- Engine: %s, started with `backend/scripts/whisper-server.sh`\n", rep.Engine)
+	}
 	p("- Converter: %s\n", rep.Converter)
 	p("- Machine: %s\n", rep.Machine)
 	if rep.Prompt != "" {

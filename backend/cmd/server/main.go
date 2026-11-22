@@ -16,6 +16,7 @@ import (
 	"lifelog/backend/internal/api"
 	"lifelog/backend/internal/auth"
 	"lifelog/backend/internal/config"
+	"lifelog/backend/internal/llm"
 	"lifelog/backend/internal/llm/gemini"
 	"lifelog/backend/internal/ocr"
 	"lifelog/backend/internal/ocr/poppler"
@@ -23,6 +24,7 @@ import (
 	"lifelog/backend/internal/service"
 	"lifelog/backend/internal/speech"
 	"lifelog/backend/internal/speech/ffmpeg"
+	"lifelog/backend/internal/speech/llmengine"
 	"lifelog/backend/internal/speech/whisper"
 	"lifelog/backend/internal/store"
 )
@@ -78,7 +80,7 @@ func run() error {
 		"reserve", c.GeminiFallbackReserve, "embedding", c.GeminiEmbeddingModel)
 
 	recognizer := newRecognizer(c)
-	transcriber := newTranscriber(ctx, c)
+	transcriber := newTranscriber(ctx, c, g)
 
 	// Login and tokens (docs/API.md, section 1). Failed attempts are
 	// counted in memory; a restart resets the counters. Behind a reverse
@@ -240,21 +242,30 @@ func newRecognizer(c config.Config) ocr.Recognizer {
 // nothing is fatal: without ffmpeg or with whisper-server not running, the
 // server starts, /status says speech "unavailable" and transcriptions
 // answer 503. whisper-server may also be started later. nil if
-// SPEECH_ENGINE=none.
-func newTranscriber(ctx context.Context, c config.Config) api.Transcriber {
+// SPEECH_ENGINE=none. With SPEECH_ENGINE=gemini the read model writes the
+// text instead of whisper (servers without a GPU, docs/speech/README.md).
+func newTranscriber(ctx context.Context, c config.Config, model llm.AudioTranscriber) api.Transcriber {
 	if c.SpeechEngine == config.SpeechEngineNone {
 		slog.Info("speech recognition switched off (SPEECH_ENGINE=none)")
 		return nil
 	}
-	p := &speech.Pipeline{Engine: whisper.New(c.WhisperURL)}
+	var engine speech.Engine
+	if c.SpeechEngine == config.SpeechEngineGemini {
+		engine = llmengine.New(model, "Gemini "+c.GeminiModel)
+	} else {
+		engine = whisper.New(c.WhisperURL)
+	}
+	p := &speech.Pipeline{Engine: engine}
 	if conv, err := ffmpeg.New(); err != nil {
 		slog.Warn("ffmpeg missing, transcription unavailable (backend/README.md, section speech)", "error", err)
 	} else {
 		p.Converter = conv
-		slog.Info("speech recognition", "converter", conv.Name(), "engine", p.Engine.Name(), "url", c.WhisperURL)
+		slog.Info("speech recognition", "converter", conv.Name(), "engine", engine.Name())
 	}
-	if err := p.Engine.Ping(ctx); err != nil {
-		slog.Warn("whisper-server not reachable yet; start it with backend/scripts/whisper-server.sh", "url", c.WhisperURL)
+	if c.SpeechEngine == config.SpeechEngineWhisper {
+		if err := engine.Ping(ctx); err != nil {
+			slog.Warn("whisper-server not reachable yet; start it with backend/scripts/whisper-server.sh", "url", c.WhisperURL)
+		}
 	}
 	return p
 }
