@@ -18,6 +18,7 @@ import (
 
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm/fake"
+	"lifelog/backend/internal/routinetest"
 	"lifelog/backend/internal/service"
 	speechfake "lifelog/backend/internal/speech/fake"
 )
@@ -273,15 +274,20 @@ func (u *recordingUsage) mark() int {
 }
 
 // twoUsers: A = tester01 (testToken), B = admin (tokenB), the real services
-// on one memData.
+// on one memData and one in-memory routine store.
 type twoUsers struct {
 	data     *memData
+	routines *routinetest.Store
 	usage    *recordingUsage
 	router   http.Handler
 	userA    core.User
 	userB    core.User
 	answerer *fake.Answerer
 }
+
+// separationNow is the server clock of the separation tests: Monday
+// 2026-11-23, 10:15 in Vienna.
+var separationNow = time.Date(2026, 11, 23, 9, 15, 0, 0, time.UTC)
 
 func newTwoUsers(t *testing.T) *twoUsers {
 	t.Helper()
@@ -292,6 +298,7 @@ func newTwoUsers(t *testing.T) *twoUsers {
 	ta.addSession(b.ID, tokenB, time.Now().Add(time.Hour))
 
 	data := newMemData()
+	routines := routinetest.New()
 	usage := &recordingUsage{}
 	reader := &fake.Reader{Extraction: core.Extraction{
 		Readable: true, Type: "lab_report", DocumentDate: ptr("2026-11-12"), Issuer: ptr("Labor A"),
@@ -307,9 +314,45 @@ func newTwoUsers(t *testing.T) *twoUsers {
 		Corrector:   service.NewCorrector(data),
 		Deleter:     service.NewDeleter(data),
 		Transcriber: &speechfake.Transcriber{Result: core.Transcript{Text: "Notiz", Language: "de"}},
+		Routines:    service.NewRoutines(routines, newID, func() time.Time { return separationNow }),
 		Usage:       usage,
 	}
-	return &twoUsers{data: data, usage: usage, router: ta.router(deps), userA: ta.user, userB: b, answerer: answerer}
+	return &twoUsers{data: data, routines: routines, usage: usage, router: ta.router(deps), userA: ta.user, userB: b, answerer: answerer}
+}
+
+// usersSince returns the user IDs of all store and usage calls since the
+// marks.
+func (s *twoUsers) usersSince(markData, markRoutines, markUsage int) []string {
+	users := append(s.data.usersOfCalls(markData), s.usage.since(markUsage)...)
+	for _, c := range s.routines.Calls(markRoutines) {
+		users = append(users, c.UserID)
+	}
+	return users
+}
+
+// routineOfA creates a routine of A with a log for today's 08:00 and
+// returns both IDs.
+func (s *twoUsers) routineOfA(t *testing.T, name string) (routineID, logID string) {
+	t.Helper()
+	rec := s.do(jsonRequest(http.MethodPost, "/api/v1/routines", `{"name": "`+name+`", "amount": 2, "unit": "Stück",
+		"schedule": {"frequency": "daily", "interval": 1, "times": ["08:00", "20:00"]}, "startDate": "2026-11-18"}`), testToken)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("A's routine: %d %s", rec.Code, rec.Body)
+	}
+	var r struct{ ID string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	rec = s.do(jsonRequest(http.MethodPost, "/api/v1/routines/"+r.ID+"/logs",
+		`{"dueAt": "2026-11-23T07:00:00Z", "status": "done", "source": "notification"}`), testToken)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("A's log: %d %s", rec.Code, rec.Body)
+	}
+	var l struct{ ID string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &l); err != nil {
+		t.Fatal(err)
+	}
+	return r.ID, l.ID
 }
 
 func (s *twoUsers) do(r *http.Request, token string) *httptest.ResponseRecorder {
@@ -449,11 +492,15 @@ func TestSeparation_DuplicateOnlyWithinOwnAccount(t *testing.T) {
 	}
 }
 
-// Every route of the API is classified. Routes that touch entries are
-// called as B and must pass B's user ID on to every store and usage call;
-// routes that do not touch entries are listed explicitly. A new route that
-// is in neither list makes this test fail, so nobody can add a route
-// without thinking about the owner filter.
+// dataOfA: the IDs of A's entry, routine and log that the routes are
+// called on as B.
+type dataOfA struct{ entry, routine, log string }
+
+// Every route of the API is classified. Routes that touch user data
+// (entries, routines, logs) are called as B and must pass B's user ID on
+// to every store and usage call; routes that do not touch user data are
+// listed explicitly. A new route that is in neither list makes this test
+// fail, so nobody can add a route without thinking about the owner filter.
 func TestSeparation_EveryRoutePassesTheUser(t *testing.T) {
 	notTouchingEntries := map[string]bool{
 		"GET /api/v1/status":       true,
@@ -464,56 +511,94 @@ func TestSeparation_EveryRoutePassesTheUser(t *testing.T) {
 		"POST /api/v1/me/password": true,
 		"PUT /api/v1/me/consent":   true,
 	}
-	type entryRoute struct {
-		request func(t *testing.T, entryID string) *http.Request
-		status  int // expected status for B on A's entry or own data
+	type dataRoute struct {
+		request func(t *testing.T, a dataOfA) *http.Request
+		status  int // expected status for B on A's data or own data
 	}
-	touchingEntries := map[string]entryRoute{
-		"GET /api/v1/entries": {func(*testing.T, string) *http.Request {
+	routinePath := func(a dataOfA) string { return "/api/v1/routines/" + a.routine }
+	touchingUserData := map[string]dataRoute{
+		"GET /api/v1/entries": {func(*testing.T, dataOfA) *http.Request {
 			return jsonRequest(http.MethodGet, "/api/v1/entries", "")
 		}, http.StatusOK},
-		"POST /api/v1/entries": {func(t *testing.T, _ string) *http.Request {
+		"POST /api/v1/entries": {func(t *testing.T, _ dataOfA) *http.Request {
 			return textForm(t, [2]string{"text", "Notiz von B"})
 		}, http.StatusCreated},
-		"GET /api/v1/entries/{id}": {func(_ *testing.T, id string) *http.Request {
-			return jsonRequest(http.MethodGet, "/api/v1/entries/"+id, "")
+		"GET /api/v1/entries/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, "/api/v1/entries/"+a.entry, "")
 		}, http.StatusNotFound},
-		"PATCH /api/v1/entries/{id}": {func(_ *testing.T, id string) *http.Request {
-			return jsonRequest(http.MethodPatch, "/api/v1/entries/"+id, `{"issuer": "B"}`)
+		"PATCH /api/v1/entries/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodPatch, "/api/v1/entries/"+a.entry, `{"issuer": "B"}`)
 		}, http.StatusNotFound},
-		"DELETE /api/v1/entries/{id}": {func(_ *testing.T, id string) *http.Request {
-			return jsonRequest(http.MethodDelete, "/api/v1/entries/"+id, "")
+		"DELETE /api/v1/entries/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodDelete, "/api/v1/entries/"+a.entry, "")
 		}, http.StatusNotFound},
-		"GET /api/v1/entries/{id}/file": {func(_ *testing.T, id string) *http.Request {
-			return jsonRequest(http.MethodGet, "/api/v1/entries/"+id+"/file", "")
+		"GET /api/v1/entries/{id}/file": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, "/api/v1/entries/"+a.entry+"/file", "")
 		}, http.StatusNotFound},
-		"POST /api/v1/questions": {func(*testing.T, string) *http.Request {
+		"POST /api/v1/questions": {func(*testing.T, dataOfA) *http.Request {
 			return jsonRequest(http.MethodPost, "/api/v1/questions", `{"question": "Hämoglobin?"}`)
 		}, http.StatusOK},
-		"POST /api/v1/transcriptions": {func(t *testing.T, _ string) *http.Request {
+		"POST /api/v1/transcriptions": {func(t *testing.T, _ dataOfA) *http.Request {
 			return audioForm(t, "audio", m4a)
 		}, http.StatusOK},
+
+		// Routines: B's own list and new routine, and A's routine and log.
+		"GET /api/v1/routines": {func(*testing.T, dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, "/api/v1/routines", "")
+		}, http.StatusOK},
+		"POST /api/v1/routines": {func(*testing.T, dataOfA) *http.Request {
+			return jsonRequest(http.MethodPost, "/api/v1/routines",
+				`{"name": "Routine von B", "schedule": {"frequency": "daily", "interval": 1, "times": ["09:00"]}, "startDate": "2026-11-23"}`)
+		}, http.StatusCreated},
+		"GET /api/v1/routines/occurrences": {func(*testing.T, dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, "/api/v1/routines/occurrences", "")
+		}, http.StatusOK},
+		"GET /api/v1/routines/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, routinePath(a), "")
+		}, http.StatusNotFound},
+		"PATCH /api/v1/routines/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodPatch, routinePath(a), `{"name": "Von B"}`)
+		}, http.StatusNotFound},
+		"DELETE /api/v1/routines/{id}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodDelete, routinePath(a), "")
+		}, http.StatusNotFound},
+		"POST /api/v1/routines/{id}/pause": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodPost, routinePath(a)+"/pause", "")
+		}, http.StatusNotFound},
+		"POST /api/v1/routines/{id}/resume": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodPost, routinePath(a)+"/resume", "")
+		}, http.StatusNotFound},
+		"GET /api/v1/routines/{id}/logs": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodGet, routinePath(a)+"/logs", "")
+		}, http.StatusNotFound},
+		"POST /api/v1/routines/{id}/logs": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodPost, routinePath(a)+"/logs", `{"status": "done", "source": "manual"}`)
+		}, http.StatusNotFound},
+		"DELETE /api/v1/routines/{id}/logs/{logId}": {func(_ *testing.T, a dataOfA) *http.Request {
+			return jsonRequest(http.MethodDelete, routinePath(a)+"/logs/"+a.log, "")
+		}, http.StatusNotFound},
 	}
 
 	s := newTwoUsers(t)
-	idOfA := s.uploadAsA(t)
+	a := dataOfA{entry: s.uploadAsA(t)}
+	a.routine, a.log = s.routineOfA(t, "Vitamin D")
 
 	for _, rt := range routes(Dependencies{}) {
 		t.Run(rt.pattern, func(t *testing.T) {
 			if notTouchingEntries[rt.pattern] {
 				return
 			}
-			er, ok := touchingEntries[rt.pattern]
+			er, ok := touchingUserData[rt.pattern]
 			if !ok {
-				t.Fatalf("route %s is not classified: add it to the routes touching entries "+
+				t.Fatalf("route %s is not classified: add it to the routes touching user data "+
 					"(with a check that it passes the user on) or to the routes that do not", rt.pattern)
 			}
-			markData, markUsage := s.data.mark(), s.usage.mark()
-			rec := s.do(er.request(t, idOfA), tokenB)
+			markData, markRoutines, markUsage := s.data.mark(), s.routines.Mark(), s.usage.mark()
+			rec := s.do(er.request(t, a), tokenB)
 			if rec.Code != er.status {
 				t.Fatalf("status %d, want %d: %s", rec.Code, er.status, rec.Body)
 			}
-			users := append(s.data.usersOfCalls(markData), s.usage.since(markUsage)...)
+			users := s.usersSince(markData, markRoutines, markUsage)
 			if len(users) == 0 {
 				t.Fatal("no store or usage call recorded: the route must pass the user on")
 			}
