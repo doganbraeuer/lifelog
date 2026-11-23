@@ -18,6 +18,10 @@ type Occurrence struct {
 	// (03:30 instead of 02:30).
 	Date Date
 	Time ClockTime
+	// Status and LogID are only set by RoutineOccurrences
+	// (routine_progress.go); "" otherwise.
+	Status OccurrenceStatus
+	LogID  string
 }
 
 // DueLocal is the occurrence's local date and time, "YYYY-MM-DDTHH:MM". A
