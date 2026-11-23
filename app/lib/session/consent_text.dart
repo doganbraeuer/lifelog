@@ -25,11 +25,11 @@ const consentParagraphs = [
       'nicht. Wir nutzen die bezahlte Version: Google verwendet die Inhalte '
       'dort nicht zum Verbessern seiner Produkte, speichert sie aber für '
       'begrenzte Zeit.',
-  'Wer deine Daten sehen kann: Andere Nutzer sehen deine Dokumente nie. '
-      'Technisch haben nur Dylan und Dogan Zugriff auf Server und Datenbank, '
-      'dazu die genannten Dienste. Wir haben vereinbart, nicht in deine '
-      'Daten zu schauen. Falls das für die Fehlersuche nötig wäre, fragen wir '
-      'dich vorher.',
+  'Wer deine Daten sehen kann: Deine Dokumente sind nur für dich sichtbar, '
+      'andere Nutzer haben keinen Zugriff. Auf Server und Datenbank haben nur '
+      'die für den Betrieb Verantwortlichen und die genannten Dienstleister '
+      'Zugriff. Deine Inhalte sehen wir uns nur an, wenn es zur Fehlerbehebung '
+      'nötig ist und du vorher zugestimmt hast.',
   'Wie lange: Nach der Testphase löschen wir alles, außer du möchtest dein '
       'Konto behalten. Es gibt keine Sicherungskopie. Bei einem technischen '
       'Fehler können Daten verloren gehen.',
