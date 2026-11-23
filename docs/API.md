@@ -3,6 +3,15 @@
 Status: 2026-11-18 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
+**Proposal of 2026-11-23, not agreed yet:** routines
+([3.16](#316-routines-overview-and-data-model-proposal-stage-1)–3.29), routine
+suggestions on entries ([section 2](#routine-suggestions-proposal-stage-2)) and the
+user's time zone ([3.12](#312-get-the-logged-in-user),
+[3.13](#313-change-the-display-name)). Every part of it is marked
+"(proposal)". Nothing of it is implemented. It comes in two stages: stage 1
+are routines, occurrences, logs, pauses, reminders and the time zone;
+stage 2 (later) are the routine suggestions.
+
 This document defines the interface between the Flutter app (`app/`) and the
 Go backend (`backend/`). Both sides build against this contract. Changes to
 the API are made here first.
@@ -81,6 +90,12 @@ with its original file, its chunks and the words read from the original.
   user has the same file; another user uploading the same file gets `201`.
 - Admins (role `admin`) have no additional rights through the API, also no
   access to entries of other users.
+- **(proposal, 2026-11-23)** Routines, their logs and the routine
+  suggestions on entries are separated the same way
+  ([3.16](#316-routines-overview-and-data-model-proposal-stage-1)): a routine or log
+  of another user answers `404 ROUTINE_NOT_FOUND` or
+  `404 ROUTINE_LOG_NOT_FOUND`, a suggestion on another user's entry
+  `404 ENTRY_NOT_FOUND`. The model only ever gets the user's own routines.
 
 ### Daily limits
 
@@ -159,7 +174,7 @@ depends on the code.
 
 | HTTP | Code | When |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | JSON not readable, required field missing, wrong format, unknown field, unknown `module`, upload with both `file` and `text`, `displayName` not 1–50 characters |
+| 400 | `INVALID_REQUEST` | JSON not readable, required field missing, wrong format, unknown field, unknown `module`, upload with both `file` and `text`, `displayName` not 1–50 characters; (proposal) unknown `timeZone`, a rule for routines or logs broken (3.16–3.29) |
 | 400 | `INVALID_PARAMETER` | Unknown value for a query parameter |
 | 400 | `INVALID_ID` | ID is not a valid ObjectId |
 | 400 | `FILE_MISSING` | Upload without `file` and without `text`, or the content is empty; transcription without `audio` |
@@ -173,7 +188,13 @@ depends on the code.
 | 403 | `PASSWORD_CHANGE_REQUIRED` | `mustChangePassword` is `true` and the endpoint is not `GET /me`, `POST /me/password` or `POST /auth/logout` (since 2026-11-18). `message`: „Bitte ändere zuerst dein Startpasswort.“ |
 | 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user (see [per-user data](#per-user-data)) |
 | 404 | `FACT_NOT_FOUND` | Correction refers to an unknown fact ID |
+| 404 | `ROUTINE_NOT_FOUND` | (proposal, stage 1) No routine with this ID, or it belongs to another user. `message`: „Diese Routine gibt es nicht.“ |
+| 404 | `ROUTINE_LOG_NOT_FOUND` | (proposal, stage 1) No log with this ID in this routine, or it belongs to another user. `message`: „Diesen Verlaufseintrag gibt es nicht.“ |
+| 404 | `ROUTINE_SUGGESTION_NOT_FOUND` | (proposal, stage 2) No suggestion with this ID on the entry, e.g. already confirmed or rejected; `details.suggestionId`. `message`: „Diesen Vorschlag gibt es nicht mehr.“ |
 | 409 | `DUPLICATE` | Exactly this file (or exactly this text) was already uploaded by the same user |
+| 409 | `ROUTINE_LOG_EXISTS` | (proposal, stage 1) The occurrence already has a log; `details.logId`. `message`: „Dieser Termin ist schon eingetragen.“ |
+| 409 | `ROUTINE_NAME_TAKEN` | (proposal, stage 1) The user already has a routine with this name in the module; `details.routineId`. `message`: „Eine Routine mit diesem Namen gibt es schon.“ |
+| 409 | `ROUTINE_LIMIT_REACHED` | (proposal, stage 1) Too many routines, pauses or logs (3.16); `details.limit` (`routines`, `pauses`, `logs`) and `details.max`. `message` e.g.: „Du hast schon 50 Routinen. Lösche eine, bevor du eine neue anlegst.“ |
 | 413 | `FILE_TOO_LARGE` | File or recording larger than 10 MB, or text longer than 100,000 characters |
 | 413 | `AUDIO_TOO_LONG` | Recording longer than 5 minutes (since 2026-11-12) |
 | 415 | `UNSUPPORTED_FILE_TYPE` | Upload: not JPEG, PNG, HEIC, WebP or PDF. Transcription: not one of the audio formats in 3.9 |
@@ -280,6 +301,7 @@ return an entry:
 | `file` | Object | Reference to the original file |
 | `corrections` | List | Corrected fields with the originally recognized value |
 | `verification` | Object | Check of the recognized values by a second reader (PDF text layer or OCR), see [verification](#verification). Always present. |
+| `routineSuggestions` | List | (proposal, stage 2, 2026-11-23) Intakes or activities of the user's routines that the model found in the document, not yet confirmed, see [routine suggestions](#routine-suggestions-proposal-stage-2). Always present, `[]` if there are none. |
 
 **`facts`**
 
@@ -465,6 +487,156 @@ field back to the recognized value removes the correction (section 2,
 rule 3), and the field is `confirmed` or `unconfirmed` again. A field set to
 `null` is no longer checked.
 
+### Routine suggestions (proposal, stage 2)
+
+> **Proposal of 2026-11-23 (Dylan), to be agreed with Dogan. Not
+> implemented. Stage 2:** comes after routines
+> ([3.16](#316-routines-overview-and-data-model-proposal-stage-1), stage 1).
+> It changes the read prompt for every document (run `cmd/calibrate`
+> again) and sends routine names to Gemini (update the consent text
+> first).
+
+If the user has active routines in the module, the model that reads the
+upload also looks for intakes or activities of these routines, **in the same
+call** (vision LLM for a file, language model for a text import or a voice
+note). There is no extra model call, and the upload counts once against the
+daily limit `uploads` as before. What it finds is stored on the entry as
+suggestions. A suggestion counts for nothing until the user confirms it in
+the review ([3.28](#328-confirm-a-routine-suggestion-proposal-stage-2)); only then
+does the backend create a log with `source: entry`. Rejecting
+([3.29](#329-reject-a-routine-suggestion-proposal-stage-2)) removes it.
+
+```json
+{
+  "routineSuggestions": [
+    {
+      "id": "s1",
+      "routineId": "6742bf10a1b2c3d4e5f6a7b8",
+      "amount": 2,
+      "takenAt": "2026-11-23T06:30:00Z",
+      "timeStated": true,
+      "quote": "heute um 7:30 zwei Vitamin-D-Tabletten genommen"
+    }
+  ]
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | String | Stable ID within the entry (`s1`, `s2`, …), assigned on upload without gaps. Confirming or rejecting removes the suggestion; the IDs of the others stay. |
+| `routineId` | String | ID of one of the user's routines |
+| `amount` | Number or `null` | Amount in the routine's `unit` as stated in the text. `null` if the text names none or the routine has no `amount`; confirming then uses the routine's `amount`. |
+| `takenAt` | String | When it was taken or done (RFC 3339, UTC), see "How the backend builds `takenAt`" |
+| `timeStated` | Boolean | `true` if the text names the time of day. `false` if the backend completed it; the app then asks for the time before confirming. |
+| `quote` | String | The passage of `fullText` the suggestion rests on, verbatim, at most 200 characters |
+
+**What the model gets and returns**
+
+The read and text prompts get, for each active routine of the module
+(status `active`, at most 50): a short key (`r1`, `r2`, …), its `name`,
+`amount` and `unit`. They also get the current date, weekday and time in
+the user's time zone (`timeZone`, [3.12](#312-get-the-logged-in-user)).
+IDs, schedules and logs are not sent. The short keys spare the model from
+copying 24-digit IDs. If the user has no active routine, the prompt part is
+left out and nothing changes.
+
+The model answers per suggestion with the key, `amount`, `takenDate`
+(`YYYY-MM-DD` or `null`), `takenTime` (`HH:MM` or `null`) and `quote`.
+
+**Rules for the model**
+
+1. Only a concrete intake or activity that has happened: „genommen“,
+   „eingenommen“, „gemessen“, „getrunken“, „war eisbaden“. Not prescribed
+   or recommended („verordnet“, „verschrieben“, a prescription, „empfohlen“,
+   „soll … nehmen“), not planned or in the future („ab morgen“, „werde“),
+   not a general statement („nimmt seit drei Wochen“, „regelmäßig“). Wish
+   of Prof. Pree (2026-11-16): taken is not prescribed.
+2. One suggestion per completed occurrence in the text: „morgens und abends
+   gemessen“ gives two.
+3. **The time must be determinable.** A suggestion only arises if
+   1. the text names the date (with or without time), or
+   2. the text uses a relative expression („gerade“, „heute früh“, „gestern
+      Abend“). In a text import or a voice note it refers to the current
+      date and time; in a photo or PDF to the document's date
+      (`documentDate`), or
+   3. the entry is a text import or a voice note: it is written now, so
+      without any statement the upload moment applies.
+
+   A photo or PDF without a date for the intake and without `documentDate`
+   gives no suggestion.
+4. Only a routine the text clearly means. When in doubt, no suggestion.
+5. `amount` only if the text names it in the routine's unit or an
+   equivalent one („zwei Tabletten“ for `Stück`), otherwise `null`.
+
+Examples (synthetic). The routines are „Vitamin D“ (2 Stück, daily 08:00),
+„Blutdruck messen“ (daily 08:00 and 20:00), „Eisbaden“ (weekly, no amount)
+and „Wasser“ (250 ml, hourly 08:00–20:00), all started on 2026-11-18. The
+upload is on 2026-11-23 at 18:42 in Europe/Vienna.
+
+| Input | Suggestion |
+|---|---|
+| Voice note: „Heute um 7:30 zwei Vitamin-D-Tabletten genommen.“ | Vitamin D, `amount` 2, `takenAt` 2026-11-23 07:30, `timeStated: true` |
+| Text import: „Vitamin D genommen.“ | Vitamin D, `amount` `null`, `takenAt` = upload moment (18:42), `timeStated: false` (rule 3.3) |
+| Voice note: „Habe gerade ein Glas Wasser getrunken.“ | Wasser, `amount` `null` („ein Glas“ is no amount in ml), `takenAt` 18:42, `timeStated: true` („gerade“) |
+| Voice note: „Gestern Abend Blutdruck gemessen, 128/82.“ | Blutdruck messen, `takenAt` 2026-11-22 12:00, `timeStated: false` („Abend“ is no time of day; the app asks) |
+| Text import: „Eisbaden heute, drei Minuten.“ | Eisbaden, `amount` `null` (the routine has no amount), `takenAt` = upload moment, `timeStated: false` |
+| Photo of a lab report of 14.10.2026: „Vitamin D3 1000 IE täglich verordnet“ | none: prescribed, not taken |
+| PDF prescription „Vitamin D3 …, 1-0-0“ | none: a prescription |
+| Text import: „Ab morgen zweimal täglich Blutdruck messen.“ | none: a plan |
+| Doctor's letter: „Die Patientin nimmt seit drei Wochen Vitamin D.“ | none: a general statement |
+| Old doctor's letter without a date: „Blutdruck heute gemessen: 135/85.“ | none: photo or PDF without a determinable date |
+| Belatedly uploaded doctor's letter of 12.06.2025: „Blutdruck in der Praxis gemessen: 130/80.“ | none: even if the model suggests one, the backend drops it (before `startDate`, and more than 7 days before the upload) |
+
+**How the backend builds `takenAt`**
+
+In the user's time zone, then converted to UTC. Times that do not exist or
+exist twice are handled as for occurrences
+([3.16](#time-zone-and-points-in-time)).
+
+1. Date: `takenDate`. If it is `null`: for a text import the day of the
+   upload; for a photo or PDF the suggestion is dropped (rule 3).
+2. With `takenTime`: that date and time, `timeStated: true`.
+3. Without `takenTime`: if the date is the day of the upload, `takenAt` =
+   `importedAt`; otherwise 12:00 on that date. `timeStated: false` in both
+   cases.
+
+**Checks in the backend**
+
+The backend drops a suggestion, and never fails the upload because of one,
+if:
+
+- the key is not one of the routines sent;
+- `amount` is not a number greater than 0 (a missing amount becomes
+  `null`), or date or time have the wrong format;
+- `takenAt` is later than `importedAt`;
+- `takenAt` is more than 7 days before `importedAt` (value to be agreed,
+  see [open questions](#open-questions-on-routines-proposal-2026-11-23));
+- the day of `takenAt` is before the routine's `startDate` or after its
+  `endDate`;
+- `quote` is empty, longer than 200 characters, or not in `fullText` (same
+  normalization as the verification, whitespace ignored). This ties every
+  suggestion to the document;
+- it repeats another suggestion (same routine, same `takenAt`).
+
+At most 10 suggestions per entry, the first 10 in the model's order. As for
+facts, the log only names the field and the reason, never a value, a name
+or a quote.
+
+**Lifecycle**
+
+- Pending suggestions stay on the entry until they are confirmed or
+  rejected, also if the review is left with „Zurück“; the entry shows them
+  again.
+- Correcting the entry ([3.5](#35-correct-recognized-values)) does not
+  change them.
+- Deleting the entry ([3.7](#37-delete-an-entry)) deletes its pending
+  suggestions with it, and **also the logs confirmed from it**
+  (`source: entry` with this `entryId`). Who discards an upload in the
+  review („Verwerfen“) expects nothing of it to stay.
+- Deleting a routine ([3.23](#323-delete-a-routine-proposal-stage-1)) removes its
+  pending suggestions from all entries of the user.
+- Entries stored before have `"routineSuggestions": []`.
+
 ### Short form for the timeline
 
 The list only returns what the timeline needs. `fullText`, `facts`, `file`,
@@ -499,9 +671,22 @@ The list only returns what the timeline needs. `fullText`, `facts`, `file`,
 | `POST` | `/api/v1/auth/login` | Log in and get a token; no token needed (since 2026-11-18) |
 | `POST` | `/api/v1/auth/logout` | Log out this device (since 2026-11-18) |
 | `GET` | `/api/v1/me` | Get the logged-in user (since 2026-11-18) |
-| `PATCH` | `/api/v1/me` | Change the display name (since 2026-11-18) |
+| `PATCH` | `/api/v1/me` | Change the display name (since 2026-11-18); (proposal) also the time zone |
 | `POST` | `/api/v1/me/password` | Change the password (since 2026-11-18) |
 | `PUT` | `/api/v1/me/consent` | Record the consent (since 2026-11-18) |
+| `GET` | `/api/v1/routines` | (proposal, stage 1) All routines of a module with status and progress |
+| `POST` | `/api/v1/routines` | (proposal, stage 1) Create a routine |
+| `GET` | `/api/v1/routines/{id}` | (proposal, stage 1) Get one routine |
+| `PATCH` | `/api/v1/routines/{id}` | (proposal, stage 1) Change a routine |
+| `POST` | `/api/v1/routines/{id}/pause` | (proposal, stage 1) Pause a routine |
+| `POST` | `/api/v1/routines/{id}/resume` | (proposal, stage 1) Resume a routine |
+| `DELETE` | `/api/v1/routines/{id}` | (proposal, stage 1) Delete a routine with its logs |
+| `GET` | `/api/v1/routines/occurrences` | (proposal, stage 1) Occurrences of all routines in a date range, with status |
+| `GET` | `/api/v1/routines/{id}/logs` | (proposal, stage 1) Logs of a routine |
+| `POST` | `/api/v1/routines/{id}/logs` | (proposal, stage 1) Add a log: done or skipped |
+| `DELETE` | `/api/v1/routines/{id}/logs/{logId}` | (proposal, stage 1) Delete a log |
+| `POST` | `/api/v1/entries/{id}/routine-suggestions/{suggestionId}/confirm` | (proposal, stage 2) Confirm a routine suggestion; creates a log |
+| `DELETE` | `/api/v1/entries/{id}/routine-suggestions/{suggestionId}` | (proposal, stage 2) Reject a routine suggestion |
 
 ### 3.1 Upload and extract a file or text
 
@@ -597,6 +782,11 @@ Hausarztpraxis Beispiel
 8. Store the original file, the chunks with embeddings, the words read
    from the original (with positions) and the entry, each marked with the
    user.
+
+(Proposal, stage 2, 2026-11-23: if the user has active routines in the module,
+step 4 also returns routine suggestions in the same call, and step 5 checks
+them; a suggestion never fails the upload. See
+[routine suggestions](#routine-suggestions-proposal-stage-2).)
 
 If a step fails, the backend stores nothing. No half entry is left behind.
 Exception: if reading the original fails, the upload still succeeds and
@@ -1119,6 +1309,11 @@ No body. `{id}` is the ID of the entry.
 3. Delete the original file.
 4. Delete the entry.
 
+(Proposal, stage 2, 2026-11-23: before step 4 the backend also deletes the routine
+logs confirmed from this entry (`source: entry`, this `entryId`). Pending
+routine suggestions are part of the entry and go with it. See
+[routine suggestions](#routine-suggestions-proposal-stage-2).)
+
 The entry comes **last**. If a step fails, the backend responds with
 `500 INTERNAL_ERROR` and the entry stays visible. Calling again cleans up the
 rest. If the app drops the connection after deleting has started, it still
@@ -1476,6 +1671,7 @@ Authorization: Bearer q3Xv9LmT0bR7sYk2WcN8pZ4hJ6dF1gA5eU0iO3rK7tM
 | `displayName` | String | Name the app shows, e.g. in a greeting. Equal to the username unless the administrator gave one or the user changed it ([3.13](#313-change-the-display-name)). |
 | `mustChangePassword` | Boolean | `true` until the start password has been changed ([3.14](#314-change-the-password)) |
 | `consentVersion` | String or `null` | Version of the consent text the user last agreed to ([3.15](#315-record-the-consent)); `null` if they have not agreed yet. The app compares it with the version of its own text and shows the notice again if they differ. Since 2026-11-18. |
+| `timeZone` | String | (proposal, 2026-11-23) IANA name of the user's time zone, e.g. `"Europe/Vienna"`. `"Europe/Vienna"` until the app sets another one ([3.13](#313-change-the-display-name)). Routines compute in it ([3.16](#time-zone-and-points-in-time)). |
 
 **Errors**
 
@@ -1529,6 +1725,51 @@ The user as in [3.12](#312-get-the-logged-in-user), with the stored
   }
 }
 ```
+
+**Time zone (proposal, 2026-11-23).** `PATCH /me` also accepts
+`timeZone`:
+
+| Field | Type | Note |
+|---|---|---|
+| `timeZone` | String | IANA name, e.g. `"Europe/Lisbon"`, at most 64 characters. Must be a zone of the IANA time zone database (`Europe/Vienna`, `America/New_York`, `UTC`); abbreviations such as `CET`, offsets such as `+01:00`, `""` and `"Local"` are refused. |
+
+With it, `displayName` and `timeZone` are both optional, but at least one
+must be sent. The response is the user as in 3.12, including `timeZone`.
+
+```json
+{
+  "timeZone": "Europe/Lisbon"
+}
+```
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | `timeZone` is not a string or not a known IANA name (`details.field`: `timeZone`, `details.value`) | Unbekannte Zeitzone. |
+| 400 | `INVALID_REQUEST` | Neither `displayName` nor `timeZone` | Bitte einen Anzeigenamen oder eine Zeitzone schicken. |
+
+What the time zone changes and what it does not:
+
+- **Routines compute in it:** the wall-clock times of occurrences, "today",
+  the week and the period of the progress, pauses, start and end date, the
+  assignment of suggestions to occurrences, and the date and time the model
+  gets ([3.16](#time-zone-and-points-in-time)).
+- **Points in time stay UTC** (`importedAt`, `takenAt`, `dueAt`,
+  `createdAt`) and always come from the server clock, never from the phone.
+- **Daily limits** stay on Europe/Vienna for now (open question in
+  [section 4](#open-questions-on-routines-proposal-2026-11-23)).
+- After a change, "08:00" means 08:00 at the new place: occurrences move.
+  Existing logs stay unchanged and keep their occurrence
+  ([logs](#logs)).
+
+App: it reads the phone's IANA name with a package such as
+`flutter_timezone`; `DateTime.timeZoneName` only gives abbreviations such
+as `CET`. At start it compares the name with `timeZone` from `GET /me`,
+sends `PATCH /me` if they differ, and then plans its reminders again.
+
+Backend: check the name with `time.LoadLocation` and embed the zone
+database (`import _ "time/tzdata"`), so the result does not depend on the
+server's operating system. A user without the field counts as
+`Europe/Vienna`.
 
 ### 3.14 Change the password
 
@@ -1623,6 +1864,1062 @@ show `consentVersion` from then on.
 | 400 | `INVALID_REQUEST` | `version` missing, `null`, not a string, empty after trimming, longer than 100 characters, or with control characters (`details.field`: `version`) | Bitte die Version des Hinweises schicken. |
 | 400 | `INVALID_REQUEST` | Body is not a JSON object, or has an unknown field (`details.field` names it) | Unbekanntes Feld: … |
 | 500 | `INTERNAL_ERROR` | | |
+
+### 3.16 Routines: overview and data model (proposal, stage 1)
+
+> **Proposal of 2026-11-23 (Dylan), to be agreed with Dogan. Not
+> implemented.** Sections 3.16–3.29, the
+> [routine suggestions](#routine-suggestions-proposal-stage-2) in section 2 and the
+> time zone in 3.12/3.13 describe a feature that does not exist yet.
+> Neither backend nor app may rely on it until it is agreed; then the marks
+> "(proposal)" are removed. Wish of Prof. Pree of 2026-11-16
+> ([meeting](meetings/2026-11-16.md)), concept by Dylan, agreed in the team
+> on 2026-11-23. Open questions: [section 4](#open-questions-on-routines-proposal-2026-11-23).
+>
+> **Two stages** (Dogan's review, 2026-11-23):
+>
+> - **Stage 1:** routines, occurrences, logs, pauses, reminders and the
+>   time zone (3.16–3.27, 3.12/3.13).
+> - **Stage 2, later:** the routine suggestions (section 2, 3.28, 3.29).
+>   They change the read prompt for every document, so `cmd/calibrate` must
+>   run again, and they send routine names to Gemini, so the consent text
+>   must change first.
+>
+> Parts of 3.16–3.27 that only matter with suggestions (`source: entry`,
+> removing suggestions when a routine is deleted) are marked "stage 2".
+
+A routine is like an alarm clock for something the user wants to do
+regularly. It is a view of its own next to the timeline in module `health`
+(button „Neue Routine“). Examples:
+
+| Routine | Schedule |
+|---|---|
+| „Vitamin D“, 2 Stück | daily at 08:00 |
+| „Blutdruck messen“ | daily at 08:00 and 20:00, for 14 days |
+| „Eisbaden“ | weekly on Tuesday and Friday at 07:00 |
+| „Wasser“, 250 ml | hourly from 08:00 to 20:00 |
+| „Eiweiß“, 30 g | daily at 20:00, logged in portions |
+
+Terms:
+
+- **Routine:** name, optional target amount per occurrence, schedule,
+  start date and optional end date.
+- **Occurrence** („Termin“): a point in time the schedule plans, e.g.
+  2026-11-23 at 08:00.
+- **Log** („Verlaufseintrag“): the user did it (`done`) or skipped it
+  (`skipped`), for an occurrence or without one. It comes from the app
+  (`manual`), from a reminder (`notification`) or from a confirmed
+  suggestion on an entry (`entry`).
+- **Progress:** e.g. „heute 1 von 2“, „Woche 5 von 7“, „Tag 6 von 14“,
+  „heute 1.250 von 3.250 ml“.
+
+Who does what: the backend expands the schedule into occurrences, keeps the
+logs, and computes status and progress. The app shows them and plans the
+reminders locally from the occurrences ([reminders](#reminders-in-the-app)).
+There are no push messages from the server and no Firebase.
+
+#### The routine
+
+This is how every routine endpoint returns a routine:
+
+```json
+{
+  "id": "6742c0a1b2c3d4e5f6a7b8c9",
+  "module": "health",
+  "name": "Blutdruck messen",
+  "amount": null,
+  "unit": null,
+  "schedule": {
+    "frequency": "daily",
+    "interval": 1,
+    "times": ["08:00", "20:00"]
+  },
+  "startDate": "2026-11-18",
+  "endDate": "2026-12-01",
+  "status": "active",
+  "pauses": [],
+  "createdAt": "2026-11-18T07:02:11Z",
+  "progress": {
+    "today": { "done": 1, "skipped": 0, "due": 2, "amountDone": null, "amountTarget": null },
+    "week": { "done": 1, "skipped": 0, "due": 14, "amountDone": null, "amountTarget": null },
+    "period": { "day": 6, "days": 14, "done": 9, "skipped": 1, "due": 28, "amountDone": null, "amountTarget": null }
+  }
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | String | ObjectId of the routine |
+| `module` | String | See [modules](#modules); default `health`. Cannot be changed. |
+| `name` | String | Name the user gave, e.g. `"Vitamin D"`. Unique per user and module. |
+| `amount` | Number or `null` | Target amount per occurrence, e.g. `2` or `0.5`. `null`: no amount. |
+| `unit` | String or `null` | Unit of `amount`, e.g. `"Stück"`, `"ml"`, `"g"`. Only with an `amount`; an amount without a unit is allowed (20 push-ups). |
+| `schedule` | Object | When the occurrences are, see [schedule](#schedule) |
+| `startDate` | String | First day, `YYYY-MM-DD`, a plain date like `documentDate` |
+| `endDate` | String or `null` | Last day, inclusive. `null`: no end. |
+| `status` | String | `upcoming`, `active`, `paused` or `ended`, see [routine status](#routine-status) |
+| `pauses` | List | All pauses, oldest first, see [pauses](#pauses) |
+| `createdAt` | String | Time of creation (RFC 3339, UTC) |
+| `progress` | Object | Computed at the time of the request, see [progress](#routine-progress) |
+
+#### Schedule
+
+Three kinds, each with a whole number `interval` N:
+
+| `frequency` | Fields | Occurrences |
+|---|---|---|
+| `hourly` | `interval` (1–23), `windowStart`, `windowEnd` | Every day from `windowStart` every N hours up to `windowEnd`, which counts if it is hit. The window does not cross midnight: `windowStart` < `windowEnd`. |
+| `daily` | `interval` (1–365), `times` | At every time in `times` on every N-th day, counted from `startDate` (day 0). |
+| `weekly` | `interval` (1–52), `weekdays`, `times` | At every time in `times` on the given weekdays of every N-th week. Weeks run from Monday to Sunday; the week containing `startDate` is week 0. |
+
+- Times are `"HH:MM"`, 24 hours, `00:00` to `23:59`. `times` has 1 to 24
+  different values; the backend stores them sorted.
+- `weekdays` has 1 to 7 different values of `mon`, `tue`, `wed`, `thu`,
+  `fri`, `sat`, `sun`, stored in this order.
+- A field that does not belong to the `frequency` is an error (e.g.
+  `times` with `hourly`).
+- At most 24 occurrences per day. For `hourly` this follows from the rules
+  (at least one hour apart, within one day); for `daily` and `weekly` from
+  the at most 24 `times`.
+- No occurrences before `startDate` or after `endDate`.
+
+`{ "frequency": "hourly", "interval": 1, "windowStart": "08:00", "windowEnd": "20:00" }`
+gives 13 occurrences a day: 08:00, 09:00, …, 20:00. With `"interval": 3`:
+08:00, 11:00, 14:00, 17:00, 20:00.
+
+`{ "frequency": "daily", "interval": 2, "times": ["08:00"] }` with
+`startDate` 2026-11-23: 23, 25, 27 November, … at 08:00.
+
+`{ "frequency": "weekly", "interval": 2, "weekdays": ["tue", "fri"], "times": ["07:00"] }`
+with `startDate` 2026-11-23 (a Monday): 24 and 27 November, then 8 and
+11 December, at 07:00.
+
+This is deliberately a simple model of its own, not an iCalendar `RRULE`.
+It covers the wishes, is easy to check, and the app can explain it in one
+line („jeden 2. Tag um 08:00“).
+
+#### Time zone and points in time
+
+- Every wall-clock time (`times`, `windowStart`, `windowEnd`) and every
+  date (`startDate`, `endDate`, pauses, "today", the week) refers to the
+  user's time zone `timeZone` ([3.12](#312-get-the-logged-in-user),
+  default `Europe/Vienna`).
+- Points in time (`dueAt`, `takenAt`, `createdAt`) are RFC 3339 in UTC,
+  like `importedAt`. "Now" is always the server clock, never the phone's.
+- **Daylight saving time:** a time that does not exist on the day the
+  clocks go forward (02:30 on the last Sunday of March in Vienna) moves
+  forward by one hour (03:30). A time that exists twice on the day the
+  clocks go back takes the earlier one (still summer time). If two
+  occurrences fall on the same point in time this way, they become one.
+  These rules are covered by tests.
+- After a change of `timeZone`, "08:00" means 08:00 at the new place.
+  Occurrences are computed in the new zone from then on, also for past
+  days. Logs keep their occurrence (see [logs](#logs), rule 2).
+
+#### Occurrences
+
+The backend computes occurrences on request; they are not stored.
+`GET /routines/occurrences` ([3.24](#324-list-occurrences-proposal-stage-1))
+returns them:
+
+```json
+{
+  "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+  "dueAt": "2026-11-23T19:00:00Z",
+  "date": "2026-11-23",
+  "time": "20:00",
+  "status": "open",
+  "logId": null
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `routineId` | String | |
+| `dueAt` | String | Point in time (RFC 3339, UTC) |
+| `date`, `time` | String | Local date and time of `dueAt` in the user's time zone, so the app does not convert. After a forward shift `time` is the shifted time (`03:30`). |
+| `status` | String | `done` or `skipped`: there is a log. `paused`: the day is in a pause and there is no log. `open`: otherwise, before or after `dueAt`; the app sees from `dueAt` whether it is overdue. |
+| `logId` | String or `null` | The log for `done` and `skipped`, otherwise `null` |
+
+#### Pauses
+
+A routine can be paused, e.g. for a week, and resumed
+([3.21](#321-pause-a-routine-proposal-stage-1), [3.22](#322-resume-a-routine-proposal-stage-1)).
+Pauses are whole days in the user's time zone:
+
+```json
+{
+  "pauses": [
+    { "from": "2026-11-02", "until": "2026-11-08" },
+    { "from": "2026-11-23", "until": null }
+  ]
+}
+```
+
+- `from`, `until`: first and last paused day, inclusive. `until: null`:
+  paused until resumed.
+- Occurrences on paused days are not due: no reminder, and they do not
+  count in `due`. An occurrence with a log counts anyway, also on a paused
+  day.
+- A pause does not move `endDate`; the user can change it
+  ([3.20](#320-change-a-routine-proposal-stage-1)).
+- At most 100 pauses per routine.
+
+#### Routine status
+
+Computed by the backend for today in the user's time zone:
+
+| `status` | When |
+|---|---|
+| `ended` | `endDate` is before today |
+| `upcoming` | `startDate` is after today |
+| `paused` | a pause includes today |
+| `active` | none of the above |
+
+The first row that applies wins.
+
+#### Routine progress
+
+Example „Wasser“, 250 ml, hourly 08:00–20:00, on a Wednesday evening:
+
+```json
+{
+  "progress": {
+    "today": { "done": 5, "skipped": 0, "due": 13, "amountDone": 1250, "amountTarget": 3250 },
+    "week": { "done": 28, "skipped": 1, "due": 91, "amountDone": 7500, "amountTarget": 22750 },
+    "period": null
+  }
+}
+```
+
+The app shows „heute 1.250 von 3.250 ml“. On Tuesday two extra glasses
+were logged without an occurrence: they count in `amountDone` of the week
+(28 × 250 ml + 500 ml = 7,500 ml), but not in `done`.
+
+| Field | Note |
+|---|---|
+| `today` | Today in the user's time zone |
+| `week` | The current week, Monday to Sunday |
+| `period` | From `startDate` to `endDate`; `null` if the routine has no `endDate` |
+| `done`, `skipped` | Occurrences of the range with a log `done` or `skipped` |
+| `due` | Occurrences of the range, including those later today, without paused ones (unless they have a log). „heute 1 von 2“ is `done` of `due`. |
+| `amountDone` | Sum of `amount` of all `done` logs of the range, **also of logs without an occurrence**. A log counts for the day of its occurrence; a log without one (or whose occurrence no longer exists) for the day of its `takenAt`. A `done` log without `amount` counts with the routine's current `amount`. `null` if the routine has no `amount`. |
+| `amountTarget` | `amount` × `due`; `null` if the routine has no `amount` |
+| `day`, `days` | Only in `period`: day of the period (1 = `startDate`; 0 before the start; `days` after the end) and the number of days. „Tag 6 von 14“. |
+
+Logs without an occurrence count for the amount, but not for `done` and
+`due`.
+
+Example „Eiweiß“, 30 g, daily at 20:00, logged in portions: the user logs
+10 g at noon and 15 g in the afternoon, each without an occurrence
+(`dueAt: null`). `today` is then `done` 0 of `due` 1, `amountDone` 25 of
+`amountTarget` 30 („heute 25 von 30 g“). The reminder at 20:00 still comes.
+If the last portion of 5 g is logged for the occurrence, `today` is `done`
+1 of 1 and 30 of 30 g.
+
+**Decision: the backend computes occurrences, status and progress.**
+
+- The backend has to expand the schedule anyway, to check the `dueAt` of a
+  log and (stage 2) to assign suggestions to occurrences. If the app expanded it a
+  second time (in Dart, with daylight saving time and intervals), sooner or
+  later the two would differ: the app would remind of an occurrence that
+  the backend refuses with `400`.
+- It follows the rest of the contract: the app does not sort or check
+  itself (timeline, verification), it shows what the backend returns.
+- Statistics and questions about routines (phase C,
+  [roadmap](meetings/ROADMAP.md)) need the same numbers on the server.
+
+*Alternative:* the app computes occurrences and progress from the routine
+and its logs. For it: it works offline, updates at midnight without a
+request, and endpoint 3.24 is not needed. Against it: the rules exist twice
+(Go and Dart) and must stay equal, and the backend still needs them for its
+checks. Either way the app's mock (`MockApiClient`) needs the expansion,
+because it must follow this contract.
+
+#### Logs
+
+```json
+{
+  "id": "6742d3e4f5a6b7c8d9e0f1a2",
+  "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+  "dueAt": "2026-11-23T07:00:00Z",
+  "takenAt": "2026-11-23T07:04:12Z",
+  "status": "done",
+  "amount": null,
+  "source": "notification",
+  "entryId": null,
+  "timeZone": "Europe/Vienna",
+  "createdAt": "2026-11-23T07:04:12Z"
+}
+```
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | String | ObjectId of the log |
+| `routineId` | String | |
+| `dueAt` | String or `null` | The occurrence this log is for. `null`: without an occurrence, e.g. an extra glass of water or a portion. |
+| `takenAt` | String | When it was done or skipped (RFC 3339, UTC). The server time of the request, unless the user entered a time. |
+| `status` | String | `done` or `skipped` |
+| `amount` | Number or `null` | Amount actually taken, in the routine's `unit`. For `done` without an amount in the request: the routine's `amount`. Always `null` for `skipped`. |
+| `source` | String | `manual` (in the app), `notification` (from a reminder: a button, or the screen it opened), `entry` (stage 2: a confirmed suggestion, [3.28](#328-confirm-a-routine-suggestion-proposal-stage-2)). Not the `sources` of an answer, not the `source` of the verification. |
+| `entryId` | String or `null` | The entry for `source: entry`, otherwise `null` |
+| `timeZone` | String | The user's time zone when the log was created |
+| `createdAt` | String | Server time of the request |
+
+Rules:
+
+1. At most one log per occurrence. A second one is refused with
+   `409 ROUTINE_LOG_EXISTS` and `details.logId`. So a reminder button sent
+   twice over a bad network cannot create two logs. A unique index on the
+   occurrence's local date and time secures this.
+2. A log belongs to the occurrence whose local date and time equal those
+   of its `dueAt` in its `timeZone`. Usually that is exactly `dueAt`. If
+   the user's time zone changes, the occurrence gets a new `dueAt`, but the
+   log stays with it, unchanged.
+3. If the schedule changes ([3.20](#320-change-a-routine-proposal-stage-1)) and a
+   log's occurrence no longer exists, the log stays in the history; it then
+   counts only for `amountDone`, like a log without an occurrence.
+4. Logs are not changed. To correct one, delete it
+   ([3.27](#327-delete-a-log-proposal-stage-1)) and add a new one.
+
+#### Limits and validation
+
+| What | Rule | Error |
+|---|---|---|
+| Routines per user | at most 50, over all modules and statuses | `409 ROUTINE_LIMIT_REACHED`, `details.limit`: `routines` |
+| `name` | whitespace at the edges removed; 1–60 characters without control characters; unique per user and module, ignoring upper and lower case | `400 INVALID_REQUEST`; `409 ROUTINE_NAME_TAKEN` |
+| `amount` | number greater than 0 and at most 100,000, or `null` | `400 INVALID_REQUEST` |
+| `unit` | whitespace at the edges removed; 1–20 characters; only with an `amount`; empty counts as `null` | `400 INVALID_REQUEST` |
+| `interval` | whole number; `hourly` 1–23, `daily` 1–365, `weekly` 1–52 | `400 INVALID_REQUEST` |
+| Times | `HH:MM` from `00:00` to `23:59`; `windowStart` < `windowEnd`; `times` 1–24 different values | `400 INVALID_REQUEST` |
+| `weekdays` | 1–7 different values | `400 INVALID_REQUEST` |
+| `startDate`, `endDate` | valid calendar dates `YYYY-MM-DD`; `endDate` ≥ `startDate` | `400 INVALID_REQUEST` |
+| Pauses per routine | at most 100 | `409 ROUTINE_LIMIT_REACHED`, `details.limit`: `pauses` |
+| Logs per routine and day | at most 100, day of `takenAt` | `409 ROUTINE_LIMIT_REACHED`, `details.limit`: `logs` |
+| Range of occurrences (3.24) | at most 31 days | `400 INVALID_PARAMETER` |
+| Range of logs (3.25) | at most 366 days | `400 INVALID_PARAMETER` |
+
+The limits protect the database and the phone (iOS keeps at most 64
+planned notifications per app). There is no daily limit for routines,
+because no routine endpoint calls a model; suggestions come with the
+upload, which already counts.
+
+IDs of routines and logs are ObjectIds like entry IDs. Lists are always an
+array, here too: `routines`, `pauses`, `times`, `weekdays`, `occurrences`,
+`logs`, `routineSuggestions`.
+
+#### Per-user data and logging
+
+- Every routine and every log belongs to one user (`userId` in the
+  collections `routines` and `routineLogs`). Every endpoint only sees the
+  user's own. A routine or log of another user answers
+  `404 ROUTINE_NOT_FOUND` or `404 ROUTINE_LOG_NOT_FOUND`, exactly like one
+  that does not exist. Admins have no additional rights.
+- The model only gets the user's own active routines, and of them only
+  the short key, name, amount and unit.
+- Routines and logs are health data. The backend never logs a name, an
+  amount, a unit, a quote or the time of a log, only method, path, status,
+  durations and counts.
+- Deleting an account (`cmd/users delete`) also deletes its routines and
+  logs.
+- Backend: every new route goes into `routes()` and is classified in
+  `TestSeparation_EveryRoutePassesTheUser`
+  (`backend/internal/api/separation_test.go`): user B calls it on user A's
+  routine and gets `404`, and every store call carries B's user ID.
+
+#### Reminders in the app
+
+The app plans reminders as local notifications on the phone, e.g. with
+`flutter_local_notifications`. The server sends no push messages.
+
+1. The app loads `GET /routines/occurrences` for today and the next 6 days
+   and plans a notification for every occurrence with `status: open` and
+   `dueAt` in the future. It never reminds of `done`, `skipped` or
+   `paused`.
+2. It plans again at start, when it comes back to the foreground, after
+   every log, pause, resume or change of a routine, and after a change of
+   the time zone.
+3. **After the phone restarts**, Android has forgotten all planned
+   notifications. The app plans them again: with the permission
+   `RECEIVE_BOOT_COMPLETED` and the boot receiver of the notification
+   package from the last planned list, and in any case at the next app
+   start from `GET /routines/occurrences`.
+4. iOS keeps at most 64 planned notifications per app, so the app plans
+   the nearest ones first. Android 13 and later needs the permission
+   `POST_NOTIFICATIONS`. Battery savers (e.g. on the OnePlus test phone)
+   can delay notifications.
+5. **Approximate reminders are enough** (a deliberate decision, open
+   question in [section 4](#open-questions-on-routines-proposal-2026-11-23)).
+   Since Android 14, `SCHEDULE_EXACT_ALARM` is no longer granted by
+   default, and `USE_EXACT_ALARM` is only allowed for alarm clock and
+   calendar apps. The app therefore plans inexact notifications (e.g.
+   `AndroidScheduleMode.inexactAllowWhileIdle`), which can come a few
+   minutes late. For a routine that is fine; the occurrence keeps its
+   `dueAt`.
+6. A notification has three buttons:
+
+   | Button | Request |
+   |---|---|
+   | „Ja“ | `POST /routines/{id}/logs` with the occurrence's `dueAt`, `status: done`, `source: notification`, without `amount` (= the target amount) |
+   | „Nein“ | the same with `status: skipped` |
+   | „Andere Menge“ | opens the app at the occurrence; the user enters the amount, then the same request as „Ja“ with `amount` |
+
+   `409 ROUTINE_LOG_EXISTS` means the occurrence is already done, e.g. on
+   another device. The app treats it as success, not as an error, and
+   removes the reminder. There is no button „Schon erledigt“. If the request
+   fails otherwise (e.g. no network), the occurrence stays open and the app
+   offers it again when it is opened.
+7. **Lock screen:** a notification never shows a routine name there,
+   because it is health data. Android: `visibility: private` with a
+   neutral `publicVersion` („Lifelog: Erinnerung“). iOS shows previews on
+   the lock screen depending on the user's setting, so there the name is
+   in neither title nor text („Zeit für deine Routine · 08:00“).
+
+### 3.17 List routines (proposal, stage 1)
+
+```http
+GET /api/v1/routines?module=health
+```
+
+**Request**
+
+| Parameter | Values | Default |
+|---|---|---|
+| `module` | see [modules](#modules) | `health` |
+
+All of the user's routines of the module, in every status, sorted by
+`createdAt` ascending, then `id`. The app groups them by `status`.
+
+**Response `200 OK`**
+
+```json
+{
+  "routines": [
+    {
+      "id": "6742bf10a1b2c3d4e5f6a7b8",
+      "module": "health",
+      "name": "Vitamin D",
+      "amount": 2,
+      "unit": "Stück",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2026-11-18",
+      "endDate": null,
+      "status": "active",
+      "pauses": [],
+      "createdAt": "2026-11-18T06:55:40Z",
+      "progress": {
+        "today": { "done": 1, "skipped": 0, "due": 1, "amountDone": 2, "amountTarget": 2 },
+        "week": { "done": 1, "skipped": 0, "due": 7, "amountDone": 2, "amountTarget": 14 },
+        "period": null
+      }
+    }
+  ],
+  "count": 1
+}
+```
+
+No routines: `"routines": []` and `"count": 0`. No pagination; at most 50
+routines exist.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_PARAMETER` | Unknown `module` (`details.parameter`, `details.value`) |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.18 Create a routine (proposal, stage 1)
+
+```http
+POST /api/v1/routines
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `module` | String | Optional, default `health` |
+| `name` | String | Required |
+| `amount` | Number or `null` | Optional |
+| `unit` | String or `null` | Optional, only with `amount` |
+| `schedule` | Object | Required, see [schedule](#schedule) |
+| `startDate` | String | Required, `YYYY-MM-DD`; may be in the past |
+| `endDate` | String or `null` | Optional |
+
+Unknown fields are an error. The rules are in
+[limits and validation](#limits-and-validation).
+
+```json
+{
+  "name": "Wasser",
+  "amount": 250,
+  "unit": "ml",
+  "schedule": { "frequency": "hourly", "interval": 1, "windowStart": "08:00", "windowEnd": "20:00" },
+  "startDate": "2026-11-23"
+}
+```
+
+**Processing in the backend**
+
+1. Check the body. If any part is invalid, nothing is stored.
+2. Check the number of the user's routines (50) and whether the name is
+   taken in the module (unique index on user, module and the name in lower
+   case).
+3. Store the routine with `userId`, `createdAt` and `pauses: []`.
+
+**Response `201 Created`**
+
+```http
+Location: /api/v1/routines/6742c5d7e8f9a0b1c2d3e4f5
+```
+
+The full routine as in [3.16](#the-routine). For the example, created on
+Monday 2026-11-23 at 09:15:
+
+```json
+{
+  "id": "6742c5d7e8f9a0b1c2d3e4f5",
+  "module": "health",
+  "name": "Wasser",
+  "amount": 250,
+  "unit": "ml",
+  "schedule": { "frequency": "hourly", "interval": 1, "windowStart": "08:00", "windowEnd": "20:00" },
+  "startDate": "2026-11-23",
+  "endDate": null,
+  "status": "active",
+  "pauses": [],
+  "createdAt": "2026-11-23T08:15:03Z",
+  "progress": {
+    "today": { "done": 0, "skipped": 0, "due": 13, "amountDone": 0, "amountTarget": 3250 },
+    "week": { "done": 0, "skipped": 0, "due": 91, "amountDone": 0, "amountTarget": 22750 },
+    "period": null
+  }
+}
+```
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_REQUEST` | Body not a JSON object, unknown field, required field missing, wrong type, a rule broken, unknown `module`. `details.field` names the field (e.g. `schedule.times`), `details.value` the rejected value. | see below |
+| 409 | `ROUTINE_NAME_TAKEN` | `details.routineId` names the existing routine | Eine Routine mit diesem Namen gibt es schon. |
+| 409 | `ROUTINE_LIMIT_REACHED` | `details.limit`: `routines`, `details.max`: `50` | Du hast schon 50 Routinen. Lösche eine, bevor du eine neue anlegst. |
+| 500 | `INTERNAL_ERROR` | | |
+
+`message` for `INVALID_REQUEST`, by field:
+
+| `details.field` | `message` |
+|---|---|
+| `name` | Der Name muss 1 bis 60 Zeichen lang sein. |
+| `amount` | Die Menge muss größer als 0 und höchstens 100.000 sein. |
+| `unit` | Eine Einheit braucht eine Menge. / Die Einheit darf höchstens 20 Zeichen lang sein. |
+| `schedule.frequency` | Unbekannter Rhythmus. |
+| `schedule.interval` | Das Intervall muss zwischen 1 und 23 liegen. (the maximum of the `frequency`) |
+| `schedule.times`, `schedule.windowStart`, `schedule.windowEnd` | Uhrzeiten bitte im Format HH:MM angeben, z. B. 08:00. / Höchstens 24 Uhrzeiten pro Tag. / Jede Uhrzeit nur einmal. |
+| `schedule.windowEnd` | Das Ende des Zeitfensters muss nach dem Beginn liegen. |
+| `schedule.weekdays` | Bitte mindestens einen Wochentag wählen. |
+| `startDate`, `endDate` | Das Datum muss im Format JJJJ-MM-TT angegeben werden. / Das Enddatum darf nicht vor dem Startdatum liegen. |
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Uhrzeiten bitte im Format HH:MM angeben, z. B. 08:00.",
+    "details": { "field": "schedule.times", "value": "8 Uhr" }
+  }
+}
+```
+
+### 3.19 Get a routine (proposal, stage 1)
+
+```http
+GET /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9
+```
+
+No body. **Response `200 OK`:** the full routine as in
+[3.16](#the-routine).
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | `{id}` is not a valid ObjectId |
+| 404 | `ROUTINE_NOT_FOUND` | No routine with this ID, or it belongs to another user |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.20 Change a routine (proposal, stage 1)
+
+```http
+PATCH /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9
+Content-Type: application/json
+```
+
+**Request**
+
+The body contains only the fields that should change. A missing field
+stays unchanged; `null` clears it.
+
+| Field | Type | Note |
+|---|---|---|
+| `name` | String | `null` is not allowed |
+| `amount` | Number or `null` | `null` removes the amount, and with it the `unit` |
+| `unit` | String or `null` | `null` removes the unit |
+| `schedule` | Object | Replaced as a whole, never merged; `null` is not allowed |
+| `startDate` | String | `null` is not allowed |
+| `endDate` | String or `null` | `null` removes the end |
+
+`id`, `module`, `status`, `pauses`, `createdAt`, `progress` and unknown
+fields are an error (`400 INVALID_REQUEST`, `details.field`), as for
+`PATCH /me`. Pausing has endpoints of its own (3.21, 3.22). An empty body
+`{}` is an error. A request whose values already apply is valid: `200`
+with the unchanged routine. After the change the whole routine must follow
+the rules of [3.16](#limits-and-validation).
+
+```json
+{
+  "schedule": { "frequency": "daily", "interval": 1, "times": ["07:30", "20:00"] },
+  "endDate": "2026-12-07"
+}
+```
+
+**Processing in the backend**
+
+1. Check the request. If any part is invalid, nothing changes.
+2. Store the new values. The schedule applies to the whole plan, also to
+   past days; there are no plan versions in the prototype (open question).
+3. Logs are not changed. A log whose occurrence no longer exists counts
+   only for `amountDone` ([logs](#logs), rule 3). Pending suggestions are
+   not changed either.
+
+**Response `200 OK`:** the updated routine. The app plans its reminders
+again.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | |
+| 400 | `INVALID_REQUEST` | As in 3.18; also a field that cannot be changed, `null` where it is not allowed, an empty body |
+| 404 | `ROUTINE_NOT_FOUND` | Also for a routine of another user; nothing is changed |
+| 409 | `ROUTINE_NAME_TAKEN` | The new name is taken; `details.routineId` |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.21 Pause a routine (proposal, stage 1)
+
+```http
+POST /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9/pause
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `until` | String or `null` | Last paused day, inclusive, `YYYY-MM-DD`, not before today. `null` or missing: paused until resumed. |
+
+```json
+{
+  "until": "2026-11-30"
+}
+```
+
+**Processing in the backend** ("today" in the user's time zone)
+
+1. If no pause includes today, append `{ "from": today, "until": until }`.
+2. If a pause includes today, only its `until` changes (longer or
+   shorter); `from` stays.
+
+Also allowed for an `upcoming` or `ended` routine; the pause then only
+matters on days within the routine's period.
+
+**Response `200 OK`:** the full routine, for a running routine with
+`status: paused`. The app removes the reminders of the paused days.
+
+**Why an endpoint of its own and not a field for `PATCH`?**
+
+- Pausing is an action relative to today (server clock, user's time zone)
+  that adds to a history; it is not a value of the plan. The history is
+  needed so that paused days count neither in the progress nor as missed
+  in the occurrences, also after resuming.
+- `PATCH` stays "change the plan", and its rule "missing stays, `null`
+  clears" stays unambiguous. A field `pausedUntil` would need `null` for
+  "resume" and another value for "paused without an end".
+- The buttons „Pausieren“ and „Fortsetzen“ map to one request each.
+  Sending one twice changes nothing more.
+
+*Alternative:* a field `pausedUntil` for `PATCH`: one endpoint fewer, but
+the history would have to be derived, and "without an end" needs a value
+of its own.
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_ID` | | |
+| 400 | `INVALID_REQUEST` | `until` not a valid date, or before today (`details.field`: `until`); unknown field | Das Ende der Pause darf nicht vor heute liegen. |
+| 404 | `ROUTINE_NOT_FOUND` | | Diese Routine gibt es nicht. |
+| 409 | `ROUTINE_LIMIT_REACHED` | `details.limit`: `pauses`, `details.max`: `100` | Diese Routine wurde schon zu oft pausiert. |
+| 500 | `INTERNAL_ERROR` | | |
+
+### 3.22 Resume a routine (proposal, stage 1)
+
+```http
+POST /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9/resume
+```
+
+No body.
+
+**Processing in the backend**
+
+1. If a pause includes today: if it began today, it is removed; otherwise
+   its `until` becomes yesterday. Today's occurrences are due again, also
+   the earlier ones of today without a log.
+2. If no pause includes today, nothing changes.
+
+**Response `200 OK`:** the full routine. The app plans its reminders
+again.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | |
+| 404 | `ROUTINE_NOT_FOUND` | |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.23 Delete a routine (proposal, stage 1)
+
+```http
+DELETE /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9
+```
+
+No body.
+
+**Processing in the backend**
+
+1. (Stage 2) Remove the routine's pending suggestions from the user's
+   entries.
+2. Delete the routine's logs, including those confirmed from entries
+   (stage 2); the entries themselves stay.
+3. Delete the routine.
+
+The routine comes **last**. If a step fails, the backend answers
+`500 INTERNAL_ERROR` and the routine stays visible; calling again cleans up
+the rest. If the app drops the connection after deleting has started, it
+still runs to completion.
+
+**Response `204 No Content`.** The app cancels the routine's reminders.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | |
+| 404 | `ROUTINE_NOT_FOUND` | Also when deleting the same routine a second time, and for a routine of another user (nothing is deleted) |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.24 List occurrences (proposal, stage 1)
+
+The basis for the reminders and for the view of a day.
+
+```http
+GET /api/v1/routines/occurrences?from=2026-11-23&to=2026-11-29&module=health
+```
+
+**Request**
+
+| Parameter | Values | Default |
+|---|---|---|
+| `from` | `YYYY-MM-DD` | today (user's time zone) |
+| `to` | `YYYY-MM-DD`, not before `from`, at most 31 days including both | `from` + 6 days |
+| `module` | see [modules](#modules) | `health` |
+
+The list holds the occurrences of all the user's routines of the module on
+these days, in every status, sorted by `dueAt` ascending, then
+`routineId`. Logs without an occurrence are not in it (see 3.25).
+
+**Response `200 OK`** (for `from` = `to` = 2026-11-23)
+
+```json
+{
+  "from": "2026-11-23",
+  "to": "2026-11-23",
+  "occurrences": [
+    {
+      "routineId": "6742bf10a1b2c3d4e5f6a7b8",
+      "dueAt": "2026-11-23T07:00:00Z",
+      "date": "2026-11-23",
+      "time": "08:00",
+      "status": "done",
+      "logId": "6742d2b1c3d4e5f6a7b8c9d0"
+    },
+    {
+      "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+      "dueAt": "2026-11-23T07:00:00Z",
+      "date": "2026-11-23",
+      "time": "08:00",
+      "status": "done",
+      "logId": "6742d3e4f5a6b7c8d9e0f1a2"
+    },
+    {
+      "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+      "dueAt": "2026-11-23T19:00:00Z",
+      "date": "2026-11-23",
+      "time": "20:00",
+      "status": "open",
+      "logId": null
+    }
+  ],
+  "count": 3
+}
+```
+
+**Processing in the backend**
+
+1. Load the user's routines of the module and their logs on these days.
+2. Expand each schedule in the user's time zone ([3.16](#schedule)),
+   connect the logs ([logs](#logs), rule 2) and mark paused days.
+
+The path is fixed; Go's `ServeMux` gives `/routines/occurrences` precedence
+over `/routines/{id}` (`occurrences` is never a valid ObjectId).
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_PARAMETER` | `from` or `to` not a valid date, `to` before `from`, more than 31 days, or an unknown `module` (`details.parameter`, `details.value`) | e.g. Der Zeitraum darf höchstens 31 Tage umfassen. |
+| 500 | `INTERNAL_ERROR` | | |
+
+### 3.25 List the logs of a routine (proposal, stage 1)
+
+```http
+GET /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9/logs?from=2026-10-25&to=2026-11-23
+```
+
+**Request**
+
+| Parameter | Values | Default |
+|---|---|---|
+| `from` | `YYYY-MM-DD` | `to` − 29 days |
+| `to` | `YYYY-MM-DD`, not before `from`, at most 366 days including both | today |
+
+The day of a log is the day of its `takenAt` in the user's time zone. The
+list is sorted by `takenAt` descending, then `id` in the same order.
+
+**Response `200 OK`**
+
+```json
+{
+  "logs": [
+    {
+      "id": "6742d3e4f5a6b7c8d9e0f1a2",
+      "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+      "dueAt": "2026-11-23T07:00:00Z",
+      "takenAt": "2026-11-23T07:04:12Z",
+      "status": "done",
+      "amount": null,
+      "source": "notification",
+      "entryId": null,
+      "timeZone": "Europe/Vienna",
+      "createdAt": "2026-11-23T07:04:12Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+No logs: `"logs": []` and `"count": 0`.
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | |
+| 400 | `INVALID_PARAMETER` | `from` or `to` not a valid date, `to` before `from`, more than 366 days |
+| 404 | `ROUTINE_NOT_FOUND` | |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.26 Add a log (proposal, stage 1)
+
+```http
+POST /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9/logs
+Content-Type: application/json
+```
+
+**Request**
+
+| Field | Type | Note |
+|---|---|---|
+| `status` | String | Required: `done` or `skipped` |
+| `source` | String | Required: `manual` or `notification`. `entry` only arises through 3.28. |
+| `dueAt` | String or `null` | The occurrence, as `dueAt` from 3.24. Missing or `null`: without an occurrence. |
+| `takenAt` | String | RFC 3339; stored as UTC. Missing: the server time. The app only sends it if the user entered a time (logging afterwards), never the phone's clock as "now". |
+| `amount` | Number or `null` | Only for `done`; missing or `null`: the routine's `amount`. Must be missing or `null` for `skipped`. |
+
+```json
+{
+  "dueAt": "2026-11-23T07:00:00Z",
+  "status": "done",
+  "source": "notification"
+}
+```
+
+**Processing in the backend**
+
+1. Check the body:
+   - `dueAt` must be an occurrence of the routine, and its day must not be
+     after today. Occurrences on paused days may be logged.
+   - `takenAt` must not be later than the server time plus 5 minutes. The
+     5 minutes allow for a time picker that starts from the phone's clock.
+   - `amount` must follow the rules of 3.16.
+2. If the occurrence already has a log: `409 ROUTINE_LOG_EXISTS`.
+3. At most 100 logs per routine and day.
+4. Store the log with `userId`, the user's `timeZone` and `createdAt`.
+
+Logging works in every status of the routine (also paused, upcoming or
+ended), e.g. to add a log afterwards.
+
+**Response `201 Created`:** the log as in [3.16](#logs). There is no `GET`
+for a single log and therefore no `Location` header.
+
+**Errors**
+
+| HTTP | Code | Note | `message` |
+|---|---|---|---|
+| 400 | `INVALID_ID` | | |
+| 400 | `INVALID_REQUEST` | `dueAt` is no occurrence of the routine (`details.field`: `dueAt`) | Zu diesem Zeitpunkt ist kein Termin der Routine geplant. |
+| 400 | `INVALID_REQUEST` | `dueAt` after today | Termine in der Zukunft können noch nicht eingetragen werden. |
+| 400 | `INVALID_REQUEST` | `takenAt` in the future | Der Zeitpunkt darf nicht in der Zukunft liegen. |
+| 400 | `INVALID_REQUEST` | `amount` with `skipped` | Ausgelassene Termine haben keine Menge. |
+| 400 | `INVALID_REQUEST` | Other errors: unknown field, missing `status` or `source`, wrong value or type (`details.field`, `details.value`) | e.g. Unbekannter Status. |
+| 404 | `ROUTINE_NOT_FOUND` | | Diese Routine gibt es nicht. |
+| 409 | `ROUTINE_LOG_EXISTS` | The occurrence already has a log; `details.logId` names it. The app treats it as "already done" ([reminders](#reminders-in-the-app)). | Dieser Termin ist schon eingetragen. |
+| 409 | `ROUTINE_LIMIT_REACHED` | `details.limit`: `logs`, `details.max`: `100` | Für heute sind bei dieser Routine keine weiteren Einträge möglich. |
+| 500 | `INTERNAL_ERROR` | | |
+
+```json
+{
+  "error": {
+    "code": "ROUTINE_LOG_EXISTS",
+    "message": "Dieser Termin ist schon eingetragen.",
+    "details": { "logId": "6742d3e4f5a6b7c8d9e0f1a2" }
+  }
+}
+```
+
+### 3.27 Delete a log (proposal, stage 1)
+
+```http
+DELETE /api/v1/routines/6742c0a1b2c3d4e5f6a7b8c9/logs/6742d3e4f5a6b7c8d9e0f1a2
+```
+
+No body. Afterwards the occurrence is open again; the app plans its
+reminder again if it is still ahead. For a log from a suggestion, the
+suggestion does not come back.
+
+**Response `204 No Content`.**
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | `{id}` or `{logId}` is not a valid ObjectId |
+| 404 | `ROUTINE_NOT_FOUND` | |
+| 404 | `ROUTINE_LOG_NOT_FOUND` | No log with this ID in this routine; also when deleting it a second time |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.28 Confirm a routine suggestion (proposal, stage 2)
+
+In the review after an upload, or later in the entry, the user confirms a
+[routine suggestion](#routine-suggestions-proposal-stage-2). Only then does it
+count.
+
+```http
+POST /api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0/routine-suggestions/s1/confirm
+Content-Type: application/json
+```
+
+**Request**
+
+The body is optional. Without a body (or with `{}`) the suggestion is
+taken as it is.
+
+| Field | Type | Note |
+|---|---|---|
+| `amount` | Number or `null` | Missing: the suggestion's `amount`. `null` (or the suggestion has none): the routine's `amount`. |
+| `takenAt` | String | Missing: the suggestion's `takenAt`. The app sends it if the user changed the time; for `timeStated: false` it always asks. |
+| `dueAt` | String or `null` | Missing: the backend assigns the occurrence (below). `null`: without an occurrence. A value: rules as in 3.26. |
+
+```json
+{
+  "takenAt": "2026-11-22T19:30:00Z"
+}
+```
+
+**Assignment to an occurrence:** the occurrence of the routine on the same
+day as `takenAt` (user's time zone) that has no log yet and is nearest to
+`takenAt`, also on a paused day. On a tie, the earlier one. If there is
+none, the log has no occurrence (`dueAt: null`).
+
+**Processing in the backend**
+
+1. The entry must belong to the user (`404 ENTRY_NOT_FOUND`), the
+   suggestion must be on it (`404 ROUTINE_SUGGESTION_NOT_FOUND`).
+2. Check the body as in 3.26 (`takenAt`, `amount`, an explicit `dueAt`).
+3. Create the log with `status: done`, `source: entry`, `entryId`, then
+   remove the suggestion from the entry. If removing fails, the backend
+   deletes the log again and answers `500`; nothing is half done.
+
+**Response `201 Created`:** the log as in [3.16](#logs). The app removes
+the suggestion from the entry it shows (or loads `GET /entries/{id}`
+again) and plans its reminders again.
+
+```json
+{
+  "id": "6742e0a1b2c3d4e5f6a7b8c9",
+  "routineId": "6742c0a1b2c3d4e5f6a7b8c9",
+  "dueAt": "2026-11-22T19:00:00Z",
+  "takenAt": "2026-11-22T19:30:00Z",
+  "status": "done",
+  "amount": null,
+  "source": "entry",
+  "entryId": "6727a1f3c2b4e5d6f7a8b9c0",
+  "timeZone": "Europe/Vienna",
+  "createdAt": "2026-11-23T17:44:51Z"
+}
+```
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | `{id}` is not a valid ObjectId |
+| 400 | `INVALID_REQUEST` | As in 3.26 |
+| 404 | `ENTRY_NOT_FOUND` | No entry with this ID, or it belongs to another user |
+| 404 | `ROUTINE_SUGGESTION_NOT_FOUND` | No such suggestion on the entry, also when it was already confirmed or rejected; `details.suggestionId` |
+| 409 | `ROUTINE_LOG_EXISTS` | Only with an explicit `dueAt` that already has a log; `details.logId` |
+| 409 | `ROUTINE_LIMIT_REACHED` | `details.limit`: `logs` |
+| 500 | `INTERNAL_ERROR` | |
+
+### 3.29 Reject a routine suggestion (proposal, stage 2)
+
+```http
+DELETE /api/v1/entries/6727a1f3c2b4e5d6f7a8b9c0/routine-suggestions/s1
+```
+
+No body. Removes the suggestion from the entry; nothing else changes.
+
+**Response `204 No Content`.**
+
+**Errors**
+
+| HTTP | Code | Note |
+|---|---|---|
+| 400 | `INVALID_ID` | `{id}` is not a valid ObjectId |
+| 404 | `ENTRY_NOT_FOUND` | |
+| 404 | `ROUTINE_SUGGESTION_NOT_FOUND` | Also when rejecting it a second time; `details.suggestionId` |
+| 500 | `INTERNAL_ERROR` | |
 
 ---
 
@@ -1807,9 +3104,108 @@ same way with `start`/`end` in `fullText`.
   slower; the quantized model `ggml-large-v3-turbo-q5_0.bin` is an option
   (backend/README.md), not measured yet.
 
+### Open questions on routines (proposal, 2026-11-23)
+
+To be settled together with the proposal
+([3.16](#316-routines-overview-and-data-model-proposal-stage-1)–3.29).
+
+1. **Categories (phase B):** Should a routine get a category (e.g.
+   „Medikamente“, „Bewegung“), so that it can be filtered like the timeline
+   and grouped in statistics? Should logs also appear on the timeline?
+2. **Daily limit for routines:** proposed: none, because no routine
+   endpoint calls a model; the count limits of 3.16 protect the database.
+   To be confirmed.
+3. **Window of 7 days for suggestions:** a suggestion whose `takenAt` is
+   more than 7 days before the upload is dropped. Agree the value with
+   Prof. Pree.
+4. **Time zone:** solved in this proposal by `timeZone` per user (3.12,
+   3.13). Still open: the daily limits count in Europe/Vienna. Should they
+   follow `timeZone` too?
+5. **Statistics and time series (phase C):** routine amounts and logs as a
+   time series, together with facts such as blood pressure, and questions
+   about routines („Wie oft habe ich letzte Woche Vitamin D genommen?“).
+   Questions (3.6) only search text chunks; logs need a path of their own,
+   and the rule "relations, never causes" applies.
+6. **Measured value on a log:** „Blutdruck messen“ could store the value
+   (128/82) on the log, not only „erledigt“. How does that connect to
+   facts and time series?
+7. **Logs without an occurrence:** they count for `amountDone`, not for
+   `done` and `due`. Should they also count for `done`, e.g. for flexible
+   goals (8)?
+8. **Flexible weekly goals:** „2× pro Woche, egal an welchem Tag“, without
+   fixed weekdays.
+9. **Plan versions:** a change of the schedule also applies to past days.
+   Keep old occurrences with a field such as `effectiveFrom`?
+10. **Archive instead of delete:** deleting removes the history; an archive
+    would keep it for statistics.
+11. **Pauses that start in the future** („Urlaub ab Samstag“).
+12. **Motivation:** a second reminder if an occurrence stays open; streaks.
+13. **Consent (stage 2):** with suggestions, the names, amounts and units
+    of the active routines go to Google Gemini with every upload. Update
+    the consent text (new `consentVersion`) before stage 2 is switched on.
+14. **Changing a log:** today delete and add again; a `PATCH` would keep
+    `createdAt`.
+15. **Suggestions never reviewed** stay on the entry. Show an overview
+    („3 offene Vorschläge“) or let them expire?
+16. **Quote in the original:** mark the quote of a suggestion in the
+    original, like a verification location.
+17. **Prompt change (stage 2):** the read prompt determines `fullText`
+    and with it the chunks. After adding the suggestions, run
+    `cmd/calibrate` and the live tests again; `fullText` must not change.
+18. **Approximate reminders:** proposed deliberately, because exact alarms
+    are restricted since Android 14 (3.16, reminders). Is a delay of a few
+    minutes acceptable, also for medication? If not: ask for
+    `SCHEDULE_EXACT_ALARM` in the app settings, with a hint to the user.
+
 ---
 
 ## 5. Changes
+
+### 2026-11-23: Routines (proposal, Dylan, to be agreed with Dogan)
+
+**Proposal, nothing of it is implemented.** It is the basis for Dogan's
+review before anybody writes backend or app code. Additive, except for two
+existing endpoints (upload and delete of an entry) and `PATCH /me`.
+
+Two stages (Dogan's review): **stage 1** = points 1, 2 (without the
+suggestion endpoints), 4 and 5–8 as far as they concern routines and logs;
+**stage 2, later** = the routine suggestions (point 3, endpoints 3.28 and
+3.29, `ROUTINE_SUGGESTION_NOT_FOUND`), because they change the read prompt
+for every document (`cmd/calibrate` again) and send routine names to Gemini
+(consent text first).
+
+1. **Routines** ([3.16](#316-routines-overview-and-data-model-proposal-stage-1)):
+   a schedule model of their own (`hourly`, `daily`, `weekly` with
+   `interval`, start and end date, optional target amount), pauses as whole
+   days, `status`, `progress` (including `amountDone` and `amountTarget`),
+   and logs with `dueAt`, `takenAt`, `status`, `amount`, `source`,
+   `entryId` and `timeZone`. The backend computes occurrences and
+   progress; the app plans local reminders from them.
+2. **New endpoints** 3.17–3.29: routines (list, create, get, change,
+   pause, resume, delete), occurrences, logs (list, add, delete), confirm
+   and reject a routine suggestion.
+3. **Entry** ([section 2](#routine-suggestions-proposal-stage-2)): new field
+   `routineSuggestions`, always a list. Upload (3.1): with active routines
+   the existing read call also returns suggestions; there is no extra model
+   call. Delete (3.7): also deletes the logs confirmed from the entry.
+4. **User** (3.12, 3.13): new field `timeZone` (IANA name, default
+   `Europe/Vienna`), changeable with `PATCH /me`. Routines compute in it;
+   points in time stay UTC from the server clock.
+5. **New error codes:** `404 ROUTINE_NOT_FOUND`,
+   `404 ROUTINE_LOG_NOT_FOUND`, `404 ROUTINE_SUGGESTION_NOT_FOUND`,
+   `409 ROUTINE_LOG_EXISTS`, `409 ROUTINE_NAME_TAKEN`,
+   `409 ROUTINE_LIMIT_REACHED`. New `details` keys: `routineId`, `logId`,
+   `suggestionId`, `max`; new values of `details.limit`: `routines`,
+   `pauses`, `logs`.
+6. **Per-user data:** routines and logs carry `userId`; IDs of other users
+   answer `404`. Nothing of them goes into the log.
+7. **App:** a routines view next to the timeline, local reminders with
+   three buttons and no name on the lock screen (planned again after a
+   restart of the phone, approximate rather than exact), sending the time
+   zone; in stage 2 the suggestions in the review.
+8. **Backend:** collections `routines` and `routineLogs`; every new route
+   in the separation test; `cmd/users delete` also deletes routines and
+   logs; embed `time/tzdata`; calibrate again after the prompt change.
 
 ### 2026-11-18: Per-user data, daily limits, consent (Dylan, agreed with Dogan)
 
