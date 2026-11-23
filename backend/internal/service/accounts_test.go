@@ -21,6 +21,8 @@ type fakeAccountStore struct {
 	sessions map[string]core.Session // by ID
 	err      error
 	lookups  int // UserByUsername calls
+
+	setProfileCalls int
 }
 
 func newFakeAccountStore() *fakeAccountStore {
@@ -103,15 +105,21 @@ func (f *fakeAccountStore) SetPassword(_ context.Context, id, hash string, mustC
 	return true, nil
 }
 
-func (f *fakeAccountStore) SetDisplayName(_ context.Context, id, name string) (bool, error) {
+func (f *fakeAccountStore) SetProfile(_ context.Context, id string, name, zone *string) (bool, error) {
 	if f.err != nil {
 		return false, f.err
 	}
+	f.setProfileCalls++
 	u, ok := f.users[id]
 	if !ok {
 		return false, nil
 	}
-	u.DisplayName = name
+	if name != nil {
+		u.DisplayName = *name
+	}
+	if zone != nil {
+		u.TimeZone = *zone
+	}
 	f.users[id] = u
 	return true, nil
 }
@@ -521,21 +529,71 @@ func TestChangePassword_WrongCurrentCountsAsFailedAttempt(t *testing.T) {
 	}
 }
 
-func TestUpdateDisplayName(t *testing.T) {
-	f := newAccountsFixture(t)
+func TestUpdateMe(t *testing.T) {
 	ctx := context.Background()
 
-	u, err := f.accounts.UpdateDisplayName(ctx, f.user, "  Erika  ")
-	if err != nil || u.DisplayName != "Erika" || f.store.users[f.user.ID].DisplayName != "Erika" {
-		t.Errorf("UpdateDisplayName = %+v, %v", u, err)
+	t.Run("display name", func(t *testing.T) {
+		f := newAccountsFixture(t)
+		u, err := f.accounts.UpdateMe(ctx, f.user, core.ProfileChange{DisplayName: ptr("  Erika  ")})
+		if err != nil || u.DisplayName != "Erika" || f.store.users[f.user.ID].DisplayName != "Erika" {
+			t.Errorf("UpdateMe = %+v, %v", u, err)
+		}
+		if u.TimeZone != "" || f.store.users[f.user.ID].TimeZone != "" {
+			t.Errorf("time zone changed: %q", u.TimeZone)
+		}
+	})
+
+	t.Run("time zone", func(t *testing.T) {
+		f := newAccountsFixture(t)
+		u, err := f.accounts.UpdateMe(ctx, f.user, core.ProfileChange{TimeZone: ptr("Europe/Lisbon")})
+		if err != nil || u.TimeZone != "Europe/Lisbon" || f.store.users[f.user.ID].TimeZone != "Europe/Lisbon" {
+			t.Errorf("UpdateMe = %+v, %v", u, err)
+		}
+		if u.DisplayName != "tester01" {
+			t.Errorf("display name changed: %q", u.DisplayName)
+		}
+	})
+
+	t.Run("both in one update", func(t *testing.T) {
+		f := newAccountsFixture(t)
+		u, err := f.accounts.UpdateMe(ctx, f.user, core.ProfileChange{DisplayName: ptr("Erika"), TimeZone: ptr("UTC")})
+		if err != nil || u.DisplayName != "Erika" || u.TimeZone != "UTC" || f.store.setProfileCalls != 1 {
+			t.Errorf("UpdateMe = %+v, %v; %d writes", u, err, f.store.setProfileCalls)
+		}
+	})
+
+	// Every error is found before anything is written; the order is
+	// "at least one field", display name, time zone.
+	errorCases := map[string]struct {
+		change core.ProfileChange
+		want   error
+	}{
+		"nothing":              {core.ProfileChange{}, core.ErrEmptyProfileChange},
+		"empty display name":   {core.ProfileChange{DisplayName: ptr("   ")}, core.ErrInvalidDisplayName},
+		"abbreviation":         {core.ProfileChange{TimeZone: ptr("CET")}, core.ErrInvalidTimeZone},
+		"empty time zone":      {core.ProfileChange{TimeZone: ptr("")}, core.ErrInvalidTimeZone},
+		"both invalid":         {core.ProfileChange{DisplayName: ptr(""), TimeZone: ptr("CET")}, core.ErrInvalidDisplayName},
+		"valid name, bad zone": {core.ProfileChange{DisplayName: ptr("Erika"), TimeZone: ptr("Local")}, core.ErrInvalidTimeZone},
 	}
-	if _, err := f.accounts.UpdateDisplayName(ctx, f.user, "   "); !errors.Is(err, core.ErrInvalidDisplayName) {
-		t.Errorf("empty: err = %v, want ErrInvalidDisplayName", err)
+	for name, c := range errorCases {
+		t.Run(name, func(t *testing.T) {
+			f := newAccountsFixture(t)
+			if _, err := f.accounts.UpdateMe(ctx, f.user, c.change); !errors.Is(err, c.want) {
+				t.Errorf("err = %v, want %v", err, c.want)
+			}
+			if f.store.setProfileCalls != 0 {
+				t.Error("something was written")
+			}
+		})
 	}
-	delete(f.store.users, f.user.ID)
-	if _, err := f.accounts.UpdateDisplayName(ctx, f.user, "Erika"); !errors.Is(err, core.ErrUnauthorized) {
-		t.Errorf("deleted user: err = %v, want ErrUnauthorized", err)
-	}
+
+	t.Run("deleted user", func(t *testing.T) {
+		f := newAccountsFixture(t)
+		delete(f.store.users, f.user.ID)
+		if _, err := f.accounts.UpdateMe(ctx, f.user, core.ProfileChange{DisplayName: ptr("Erika")}); !errors.Is(err, core.ErrUnauthorized) {
+			t.Errorf("err = %v, want ErrUnauthorized", err)
+		}
+	})
 }
 
 func TestRecordConsent(t *testing.T) {

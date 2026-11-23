@@ -28,7 +28,7 @@ type Accounts interface {
 	Authenticate(ctx context.Context, token string) (user core.User, sessionID string, err error)
 	Logout(ctx context.Context, sessionID string) error
 	ChangePassword(ctx context.Context, user core.User, sessionID, current, newPassword, clientIP string) error
-	UpdateDisplayName(ctx context.Context, user core.User, displayName string) (core.User, error)
+	UpdateMe(ctx context.Context, user core.User, c core.ProfileChange) (core.User, error)
 	RecordConsent(ctx context.Context, user core.User, version string) error
 }
 

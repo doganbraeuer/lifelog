@@ -186,7 +186,7 @@ func (m *memAccountStore) SetPassword(_ context.Context, id, hash string, mustCh
 	return true, nil
 }
 
-func (m *memAccountStore) SetDisplayName(_ context.Context, id, name string) (bool, error) {
+func (m *memAccountStore) SetProfile(_ context.Context, id string, name, zone *string) (bool, error) {
 	if m.err != nil {
 		return false, m.err
 	}
@@ -194,7 +194,12 @@ func (m *memAccountStore) SetDisplayName(_ context.Context, id, name string) (bo
 	if !ok {
 		return false, nil
 	}
-	u.DisplayName = name
+	if name != nil {
+		u.DisplayName = *name
+	}
+	if zone != nil {
+		u.TimeZone = *zone
+	}
 	m.users[id] = u
 	return true, nil
 }

@@ -33,6 +33,9 @@ type userDoc struct {
 	// Stored as null until the consent is recorded (later PR).
 	ConsentVersion *string    `bson:"consentVersion"`
 	ConsentAt      *time.Time `bson:"consentAt"`
+	// Missing until the app sets a time zone; missing = Europe/Vienna
+	// (API.md 3.12). omitempty: a new account gets no field.
+	TimeZone string `bson:"timeZone,omitempty"`
 }
 
 type sessionDoc struct {
@@ -75,6 +78,7 @@ func toUserDoc(u core.User) (userDoc, error) {
 		CreatedAt:          u.CreatedAt.UTC(),
 		ConsentVersion:     u.ConsentVersion,
 		ConsentAt:          consentAt,
+		TimeZone:           u.TimeZone,
 	}, nil
 }
 
@@ -95,6 +99,7 @@ func (d userDoc) toCore() core.User {
 		CreatedAt:          d.CreatedAt.UTC(),
 		ConsentVersion:     d.ConsentVersion,
 		ConsentAt:          consentAt,
+		TimeZone:           d.TimeZone,
 	}
 }
 
@@ -213,9 +218,22 @@ func (s *Store) SetPassword(ctx context.Context, id, passwordHash string, mustCh
 	})
 }
 
-// SetDisplayName stores a new display name (already checked by core).
-func (s *Store) SetDisplayName(ctx context.Context, id, displayName string) (found bool, err error) {
-	return s.updateUser(ctx, id, bson.D{{Key: "displayName", Value: displayName}})
+// SetProfile stores a new display name and/or time zone (both already
+// checked by core) in one update (API.md 3.13). nil leaves a field
+// unchanged; at least one must be given. found is false if the user does
+// not exist (anymore).
+func (s *Store) SetProfile(ctx context.Context, id string, displayName, timeZone *string) (found bool, err error) {
+	var set bson.D
+	if displayName != nil {
+		set = append(set, bson.E{Key: "displayName", Value: *displayName})
+	}
+	if timeZone != nil {
+		set = append(set, bson.E{Key: "timeZone", Value: *timeZone})
+	}
+	if len(set) == 0 {
+		return false, errors.New("set profile: no field given")
+	}
+	return s.updateUser(ctx, id, set)
 }
 
 // SetConsent stores the version of the consent text the user agreed to and

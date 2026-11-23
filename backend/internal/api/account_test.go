@@ -199,7 +199,8 @@ func TestMe(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	want := `{"id":"` + ta.user.ID + `","username":"tester01","displayName":"tester01","mustChangePassword":false,"consentVersion":null}`
+	// Without a stored time zone GET /me names the default (API.md 3.12).
+	want := `{"id":"` + ta.user.ID + `","username":"tester01","displayName":"tester01","mustChangePassword":false,"consentVersion":null,"timeZone":"Europe/Vienna"}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("body =\n%s\nwant\n%s", got, want)
 	}
@@ -281,21 +282,66 @@ func TestUpdateMe(t *testing.T) {
 	}
 }
 
+func TestUpdateMe_TimeZone(t *testing.T) {
+	ta := newTestAccounts()
+	router := ta.router(Dependencies{})
+	rec := request(router, http.MethodPatch, "/api/v1/me", "Bearer "+testToken, `{"timeZone": "Europe/Lisbon"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"timeZone":"Europe/Lisbon"`) ||
+		!strings.Contains(rec.Body.String(), `"displayName":"tester01"`) {
+		t.Fatalf("PATCH /me: %d %s", rec.Code, rec.Body)
+	}
+	if u := ta.store.users[ta.user.ID]; u.TimeZone != "Europe/Lisbon" || u.DisplayName != "tester01" {
+		t.Errorf("stored: %q / %q", u.TimeZone, u.DisplayName)
+	}
+	if rec := request(router, http.MethodGet, "/api/v1/me", "Bearer "+testToken, ""); !strings.Contains(rec.Body.String(), `"timeZone":"Europe/Lisbon"`) {
+		t.Errorf("GET /me after PATCH: %s", rec.Body)
+	}
+
+	// Both fields in one request.
+	rec = request(router, http.MethodPatch, "/api/v1/me", "Bearer "+testToken, `{"displayName": "Erika", "timeZone": "UTC"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"displayName":"Erika"`) ||
+		!strings.Contains(rec.Body.String(), `"timeZone":"UTC"`) {
+		t.Errorf("both fields: %d %s", rec.Code, rec.Body)
+	}
+
+	// The login response stays as in 3.10, without timeZone.
+	if l := login(router, "tester01", testPassword); strings.Contains(l.Body.String(), "timeZone") {
+		t.Errorf("login response has timeZone: %s", l.Body)
+	}
+}
+
 func TestUpdateMe_Errors(t *testing.T) {
 	cases := map[string]struct {
-		body  string
-		field string // details.field; "" = no details
+		body    string
+		field   string // details.field; "" = no details
+		value   any    // details.value; nil = none
+		message string // checked if not empty
 	}{
-		"empty":         {`{"displayName": "   "}`, "displayName"},
-		"51 characters": {`{"displayName": "` + strings.Repeat("ä", 51) + `"}`, "displayName"},
-		"line break":    {`{"displayName": "Erika\nMuster"}`, "displayName"},
-		"null":          {`{"displayName": null}`, "displayName"},
-		"number":        {`{"displayName": 5}`, "displayName"},
-		"missing":       {`{}`, "displayName"},
-		"unknown field": {`{"displayName": "Erika", "username": "admin"}`, "username"},
-		"role":          {`{"role": "admin"}`, "role"},
-		"not JSON":      {`displayName=Erika`, ""},
-		"not an object": {`"Erika"`, ""},
+		"empty":         {body: `{"displayName": "   "}`, field: "displayName"},
+		"51 characters": {body: `{"displayName": "` + strings.Repeat("ä", 51) + `"}`, field: "displayName"},
+		"line break":    {body: `{"displayName": "Erika\nMuster"}`, field: "displayName"},
+		"null":          {body: `{"displayName": null}`, field: "displayName"},
+		"number":        {body: `{"displayName": 5}`, field: "displayName"},
+		"missing": {body: `{}`, field: "",
+			message: "Bitte einen Anzeigenamen oder eine Zeitzone schicken."},
+		"unknown field": {body: `{"displayName": "Erika", "username": "admin"}`, field: "username"},
+		"role":          {body: `{"role": "admin"}`, field: "role"},
+		"not JSON":      {body: `displayName=Erika`, field: ""},
+		"not an object": {body: `"Erika"`, field: ""},
+
+		"time zone abbreviation": {body: `{"timeZone": "CET"}`, field: "timeZone", value: "CET",
+			message: "Unbekannte Zeitzone."},
+		"time zone offset":  {body: `{"timeZone": "+01:00"}`, field: "timeZone", value: "+01:00"},
+		"time zone empty":   {body: `{"timeZone": ""}`, field: "timeZone", value: ""},
+		"time zone Local":   {body: `{"timeZone": "Local"}`, field: "timeZone", value: "Local"},
+		"time zone null":    {body: `{"timeZone": null}`, field: "timeZone"},
+		"time zone number":  {body: `{"timeZone": 1}`, field: "timeZone", value: float64(1)},
+		"time zone unknown": {body: `{"timeZone": "Europe/Atlantis"}`, field: "timeZone", value: "Europe/Atlantis"},
+		// Order: unknown field, display name, time zone. The valid display
+		// name is not stored either.
+		"unknown before both":    {body: `{"displayName": "", "timeZone": "CET", "zone": 1}`, field: "zone"},
+		"display name first":     {body: `{"displayName": "", "timeZone": 5}`, field: "displayName"},
+		"valid name, wrong zone": {body: `{"displayName": "Erika", "timeZone": "CET"}`, field: "timeZone", value: "CET"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -306,8 +352,14 @@ func TestUpdateMe_Errors(t *testing.T) {
 			if got, _ := a.Error.Details["field"].(string); got != c.field {
 				t.Errorf("details.field = %q, want %q", got, c.field)
 			}
-			if ta.store.users[ta.user.ID].DisplayName != "tester01" {
-				t.Error("display name changed")
+			if got := a.Error.Details["value"]; got != c.value {
+				t.Errorf("details.value = %#v, want %#v", got, c.value)
+			}
+			if c.message != "" && a.Error.Message != c.message {
+				t.Errorf("message = %q, want %q", a.Error.Message, c.message)
+			}
+			if u := ta.store.users[ta.user.ID]; u.DisplayName != "tester01" || u.TimeZone != "" {
+				t.Errorf("changed: %q / %q", u.DisplayName, u.TimeZone)
 			}
 		})
 	}

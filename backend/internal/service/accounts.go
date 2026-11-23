@@ -19,7 +19,7 @@ type AccountStore interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteOtherSessions(ctx context.Context, userID, keepID string) (int64, error)
 	SetPassword(ctx context.Context, id, passwordHash string, mustChange bool) (found bool, err error)
-	SetDisplayName(ctx context.Context, id, displayName string) (found bool, err error)
+	SetProfile(ctx context.Context, id string, displayName, timeZone *string) (found bool, err error)
 	SetConsent(ctx context.Context, id, version string, at time.Time) (found bool, err error)
 }
 
@@ -31,8 +31,8 @@ const accountWriteTimeout = 15 * time.Second
 // refused without asking the database.
 const maxTokenLength = 256
 
-// Accounts implements login, token check, logout, password change and the
-// display name (docs/API.md 3.10–3.14).
+// Accounts implements login, token check, logout, password change, display
+// name and time zone (docs/API.md 3.10–3.15).
 //
 // Logging: at most the user ID, never a username of a failed attempt (people
 // sometimes type their password into that field), never a password, token
@@ -240,23 +240,47 @@ func (a *Accounts) RecordConsent(ctx context.Context, user core.User, version st
 	return nil
 }
 
-// UpdateDisplayName stores a new display name (API.md 3.13) and returns the
-// user with it.
+// UpdateMe changes the display name and/or the time zone (API.md 3.13) and
+// returns the user with them.
 //
-// Errors: core.ErrInvalidDisplayName, core.ErrUnauthorized (account deleted
+// Everything is checked first, in this order: at least one field, display
+// name, time zone. Only then does a single update store both, so a request
+// with one invalid field changes nothing. The time zone is not logged.
+//
+// Errors: core.ErrEmptyProfileChange, core.ErrInvalidDisplayName,
+// core.ErrInvalidTimeZone, core.ErrUnauthorized (account deleted
 // meanwhile) or an internal error.
-func (a *Accounts) UpdateDisplayName(ctx context.Context, user core.User, displayName string) (core.User, error) {
-	name, err := core.NormalizeDisplayName(displayName)
-	if err != nil {
-		return core.User{}, err
+func (a *Accounts) UpdateMe(ctx context.Context, user core.User, c core.ProfileChange) (core.User, error) {
+	if c.DisplayName == nil && c.TimeZone == nil {
+		return core.User{}, core.ErrEmptyProfileChange
 	}
-	found, err := a.store.SetDisplayName(ctx, user.ID, name)
+	var name, zone *string
+	if c.DisplayName != nil {
+		n, err := core.NormalizeDisplayName(*c.DisplayName)
+		if err != nil {
+			return core.User{}, err
+		}
+		name = &n
+	}
+	if c.TimeZone != nil {
+		if _, err := core.CheckTimeZone(*c.TimeZone); err != nil {
+			return core.User{}, err
+		}
+		z := *c.TimeZone
+		zone = &z
+	}
+	found, err := a.store.SetProfile(ctx, user.ID, name, zone)
 	if err != nil {
 		return core.User{}, err
 	}
 	if !found {
 		return core.User{}, core.ErrUnauthorized
 	}
-	user.DisplayName = name
+	if name != nil {
+		user.DisplayName = *name
+	}
+	if zone != nil {
+		user.TimeZone = *zone
+	}
 	return user, nil
 }
