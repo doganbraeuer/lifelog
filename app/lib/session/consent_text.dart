@@ -3,7 +3,7 @@
 /// if they differ, the notice is shown again (docs/API.md 3.15).
 ///
 /// Change the version whenever the text changes in substance.
-const consentVersion = '2026-11-18';
+const consentVersion = '2026-11-23';
 
 /// Heading of the consent notice. German on purpose: the user reads it.
 const consentTitle = 'Bevor du startest';
@@ -17,11 +17,14 @@ const consentParagraphs = [
       'Prof. Pree). Es kann Fehler geben. Die Antworten der KI können falsch '
       'sein und sind kein ärztlicher Rat.',
   'Was mit deinen Dokumenten passiert: Was du hochlädst, eintippst oder '
-      'einsprichst, wird auf unserem Server in der EU verarbeitet und in '
-      'einer Datenbank bei MongoDB Atlas gespeichert. Zum Auslesen und für '
-      'Antworten schicken wir den Inhalt an Google Gemini. Wir nutzen die '
-      'bezahlte Version: Google verwendet die Inhalte dort nicht zum '
-      'Verbessern seiner Produkte, speichert sie aber für begrenzte Zeit.',
+      'einsprichst, wird auf unserem Server beim Anbieter netcup in '
+      'Deutschland verarbeitet und in einer Datenbank bei MongoDB Atlas in '
+      'Frankfurt gespeichert. Zum Auslesen und für Antworten schicken wir den '
+      'Inhalt an Google Gemini, bei Sprachnotizen auch die Tonaufnahme '
+      'selbst, damit sie in Text umgewandelt wird; die Aufnahme speichern wir '
+      'nicht. Wir nutzen die bezahlte Version: Google verwendet die Inhalte '
+      'dort nicht zum Verbessern seiner Produkte, speichert sie aber für '
+      'begrenzte Zeit.',
   'Wer deine Daten sehen kann: Andere Nutzer sehen deine Dokumente nie. '
       'Technisch haben nur Dylan und Dogan Zugriff auf Server und Datenbank, '
       'dazu die genannten Dienste. Wir haben vereinbart, nicht in deine '

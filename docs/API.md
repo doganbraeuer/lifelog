@@ -1842,11 +1842,11 @@ Content-Type: application/json
 
 | Field | Type | Note |
 |---|---|---|
-| `version` | String | Required. Version of the consent text the user agreed to, e.g. `"2026-11-18"`. Whitespace at the edges is removed; then 1 to 100 characters without control characters. |
+| `version` | String | Required. Version of the consent text the user agreed to, e.g. `"2026-11-23"`. Whitespace at the edges is removed; then 1 to 100 characters without control characters. |
 
 ```json
 {
-  "version": "2026-11-18"
+  "version": "2026-11-23"
 }
 ```
 

@@ -1307,14 +1307,22 @@ new version. Read-only under „Einstellungen“ → „Hinweis zum Datenschutz�
 #### How to use
 
 1. Read the notice (scrollable): who runs the test, where the data goes
-   (server in the EU, MongoDB Atlas, Google Gemini), who can see it, how
+   (our server at netcup in Germany, MongoDB Atlas in Frankfurt, Google
+   Gemini, for voice notes also the recording itself), who can see it, how
    long it is kept, how to withdraw.
 2. „Zustimmen“ opens the app. „Nicht jetzt“ logs out.
 
 #### Behind the scenes
 
-- The text and its version (`consentVersion = "2026-11-18"`) are constants
+- The text and its version (`consentVersion = "2026-11-23"`) are constants
   in `app/lib/session/consent_text.dart`.
+- Version 2026-11-23 (until then 2026-11-18) names the places precisely: the
+  server at netcup in Germany instead of "in the EU", MongoDB Atlas in
+  Frankfurt, and that voice notes send the recording itself to Google
+  Gemini (since PR #29 Gemini transcribes on servers without a GPU); the
+  recording is not stored. Everyone who agreed to 2026-11-18 sees the notice
+  once more after the update. The backend accepts any version
+  (API.md 3.15), so an older APK keeps working.
 - „Zustimmen“ sends `PUT /api/v1/me/consent` with the version. The backend
   stores it with the time; `GET /me` returns `consentVersion`.
 - If the stored version differs from the app's, the notice comes again. A

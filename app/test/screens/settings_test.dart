@@ -109,6 +109,24 @@ void main() {
     expect(find.text('Nicht jetzt'), findsNothing);
   });
 
+  testWidgets('privacy notice shows the text of version 2026-11-23', (
+    tester,
+  ) async {
+    await openSettings(tester, fastMock());
+    await tester.tap(find.text('Hinweis zum Datenschutz'));
+    await tester.pumpAndSettle();
+
+    for (final part in [
+      'beim Anbieter netcup in Deutschland',
+      'MongoDB Atlas in Frankfurt',
+      'bei Sprachnotizen auch die Tonaufnahme selbst',
+      'die Aufnahme speichern wir nicht',
+    ]) {
+      expect(find.textContaining(part), findsOneWidget, reason: part);
+    }
+    await tester.scrollUntilVisible(find.text('Version 2026-11-23'), 200);
+  });
+
   testWidgets('logout: token and local data deleted, back at the login', (
     tester,
   ) async {
