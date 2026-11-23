@@ -384,6 +384,14 @@ type Progress struct {
 	Period *ProgressRange
 }
 
+// RoutineView is a routine as the API returns it: with status and progress
+// for the moment of the request (API.md 3.16 "The routine").
+type RoutineView struct {
+	Routine
+	Status   RoutineStatus
+	Progress Progress
+}
+
 // ProgressSpan returns the local dates the progress of r covers on the day
 // today: the week, and the period if the routine has an endDate. The
 // service loads the logs whose occurrence (the date in dueLocal) or whose

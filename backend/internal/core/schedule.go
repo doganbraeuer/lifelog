@@ -171,6 +171,15 @@ func wallClockInstant(d Date, c ClockTime, loc *time.Location) time.Time {
 	return wall.Add(-time.Duration(before) * time.Second)
 }
 
+// DayStart returns the first point in time (UTC) of the local date d in
+// loc. Usually that is midnight; where the clocks go forward at midnight
+// (America/Santiago), the end of the gap. The local date d is the range
+// [DayStart(d), DayStart(d+1)); for a day a zone skipped (Pacific/Apia on
+// 2011-12-30) the range is empty.
+func DayStart(d Date, loc *time.Location) time.Time {
+	return wallClockInstant(d, 0, loc)
+}
+
 func offsetAt(t time.Time, loc *time.Location) int {
 	_, offset := t.In(loc).Zone()
 	return offset
