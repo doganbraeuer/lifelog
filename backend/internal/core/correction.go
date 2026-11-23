@@ -132,10 +132,25 @@ func Correct(e Entry, c Change, now time.Time) (updated Entry, changed []string,
 		updated.Corrections = []Correction{}
 	}
 	changed = []string{}
+
+	// A date set from the import day (DateSourceImport) was not recognized:
+	// the model found no date. A request that sets documentDate therefore
+	// starts from null and removes the mark; then the normal rules apply. A
+	// new date becomes a correction with recognized null; null removes the
+	// date without a correction (API.md 3.5).
+	importDateCleared := c.DocumentDate.Set && e.DocumentDateSource == DateSourceImport
+	if importDateCleared {
+		updated.DocumentDate = nil
+		updated.DocumentDateSource = DateSourceDocument
+	}
+
 	for _, u := range updates {
 		if apply(&updated, u.field, u.value, now.UTC()) {
 			changed = append(changed, u.field)
 		}
+	}
+	if importDateCleared && !slices.Contains(changed, "documentDate") {
+		changed = append(changed, "documentDate") // the stored entry still has the import day
 	}
 	return updated, changed, nil
 }

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm"
@@ -31,6 +32,14 @@ func textExtraction() core.Extraction {
 		Type:         "doctor_letter",
 		Facts:        []core.ExtractedFact{{Name: "Diagnose", Value: "Rückenschmerzen"}},
 	}
+}
+
+// deref shows an optional date for messages; "<null>" for nil.
+func deref(s *string) string {
+	if s == nil {
+		return "<null>"
+	}
+	return *s
 }
 
 func textSetup() setup {
@@ -81,6 +90,77 @@ func TestTextImport_Success(t *testing.T) {
 	// Chunks from the entered text.
 	if len(s.store.chunks) == 0 || !strings.Contains(s.store.chunks[0].Text, "Hausarztpraxis") {
 		t.Errorf("chunks %+v", s.store.chunks)
+	}
+}
+
+// The model gets the time of the import, so "gestern" can be resolved; a
+// date the model found counts as from the document (API.md 3.1).
+func TestTextImport_ModelGetsTodayAndDateFromText(t *testing.T) {
+	s := textSetup()
+	e, err := s.uploader.UploadText(context.Background(), testUser, TextUpload{Text: enteredText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := s.reader.TextNow(), s.uploader.now(); !got.Equal(want) {
+		t.Errorf("ReadText got %v, want the import time %v", got, want)
+	}
+	if deref(e.DocumentDate) != "2026-10-21" || e.DocumentDateSource != core.DateSourceDocument {
+		t.Errorf("date %v, source %q, want 2026-10-21 document", deref(e.DocumentDate), e.DocumentDateSource)
+	}
+	if !slices.ContainsFunc(e.Verification.Fields, func(f core.FieldCheck) bool { return f.Field == "documentDate" }) {
+		t.Error("a date from the text must be checked")
+	}
+}
+
+// Without a date in the text (e.g. a voice note) the entry gets the day of
+// its import in Europe/Vienna, marked "import", and that date is not checked.
+func TestTextImport_WithoutDateGetsTheImportDay(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		now  time.Time
+		want string
+	}{
+		{"afternoon", time.Date(2026, 11, 23, 9, 46, 0, 0, time.UTC), "2026-11-23"},
+		// 23:30 UTC is 00:30 on the next day in Vienna: that day counts.
+		{"after midnight in Vienna", time.Date(2026, 11, 23, 23, 30, 0, 0, time.UTC), "2026-11-24"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := textSetup()
+			s.reader.Extraction.DocumentDate = nil
+			s.uploader.now = func() time.Time { return c.now }
+
+			e, err := s.uploader.UploadText(context.Background(), testUser,
+				TextUpload{Text: "Blutdruck 130 zu 85, Puls 64"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if deref(e.DocumentDate) != c.want || e.DocumentDateSource != core.DateSourceImport {
+				t.Errorf("date %v, source %q, want %s import", deref(e.DocumentDate), e.DocumentDateSource, c.want)
+			}
+			stored := s.store.entries[0]
+			if deref(stored.DocumentDate) != c.want || stored.DocumentDateSource != core.DateSourceImport {
+				t.Errorf("stored: %v %q", deref(stored.DocumentDate), stored.DocumentDateSource)
+			}
+			// Not checked, so never "not found" in red.
+			for _, f := range e.Verification.Fields {
+				if f.Field == "documentDate" {
+					t.Errorf("import day checked: %+v", f)
+				}
+			}
+		})
+	}
+}
+
+// A file without a date keeps null: only entered texts are written today.
+func TestUpload_FileWithoutDateStaysNull(t *testing.T) {
+	s := newSetup()
+	s.reader.Extraction.DocumentDate = nil
+	e, err := s.uploader.Upload(context.Background(), testUser, Upload{Data: []byte(pdf), FileName: "befund.pdf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.DocumentDate != nil || e.DocumentDateSource != core.DateSourceDocument {
+		t.Errorf("date %v, source %q, want null document", deref(e.DocumentDate), e.DocumentDateSource)
 	}
 }
 

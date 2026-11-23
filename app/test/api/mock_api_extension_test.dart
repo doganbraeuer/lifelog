@@ -9,6 +9,7 @@ import 'package:lifelog/api/mock/mock_data.dart' show sampleCount;
 import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/mock_api_client.dart';
+import 'package:lifelog/model/entry.dart';
 import 'package:lifelog/model/plain_date.dart';
 import 'package:lifelog/model/entry_patch.dart';
 
@@ -133,9 +134,13 @@ void main() {
       expect(await mock.listEntries(module: g), hasLength(sampleCount + 1));
     });
 
-    test('without a date in the text: documentDate null', () async {
-      final entry = await fastMock().importText('Notiz ohne Datum', module: g);
-      expect(entry.documentDate, isNull);
+    test('without a date in the text: the import day, marked', () async {
+      final clock = DateTime.utc(2026, 11, 4, 9, 30);
+      final entry = await fastMock(clock: () => clock)
+          .importText('Notiz ohne Datum', module: g);
+      // Since 2026-11-23 (docs/API.md 3.1): no longer null.
+      expect(entry.documentDate, PlainDate.fromDateTime(clock.toLocal()));
+      expect(entry.documentDateSource, DocumentDateSource.importDay);
     });
 
     test('empty or only spaces: 400 FILE_MISSING', () async {

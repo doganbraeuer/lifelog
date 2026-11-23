@@ -9,6 +9,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"time"
 
 	"lifelog/backend/internal/core"
 )
@@ -25,8 +26,10 @@ type Reader interface {
 
 	// ReadText classifies an entered text (text import): date, issuer, type
 	// and facts. Readable is always true and FullText stays empty; the full
-	// text is the entered text, which the caller sets.
-	ReadText(ctx context.Context, text string, allowedTypes []string) (core.Extraction, error)
+	// text is the entered text, which the caller sets. now is the time of
+	// the import: relative dates such as "gestern" refer to its day in
+	// Europe/Vienna (core.LocalTime).
+	ReadText(ctx context.Context, text string, allowedTypes []string, now time.Time) (core.Extraction, error)
 }
 
 // Embedder computes embeddings: vectors whose distance expresses how similar

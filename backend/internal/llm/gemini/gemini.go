@@ -115,9 +115,10 @@ func (g *Gemini) ReadDocument(ctx context.Context, data []byte, mimeType string,
 // ReadText classifies an entered text (text import, API.md 3.1): date,
 // issuer, type and facts. FullText stays empty and Readable is true; the
 // full text is the entered text, which the caller sets. Same retries, same
-// fallback and same limit as ReadDocument.
-func (g *Gemini) ReadText(ctx context.Context, text string, allowedTypes []string) (core.Extraction, error) {
-	contents, cfg := textRequest(text, allowedTypes)
+// fallback and same limit as ReadDocument. now is the time of the import:
+// the instruction names its day for relative dates (textInstruction).
+func (g *Gemini) ReadText(ctx context.Context, text string, allowedTypes []string, now time.Time) (core.Extraction, error) {
+	contents, cfg := textRequest(text, allowedTypes, now)
 	resp, err := g.generateWithFallback(ctx, g.readTimeout, "read text", contents, cfg)
 	if err != nil {
 		return core.Extraction{}, err
@@ -211,13 +212,13 @@ func readRequest(data []byte, mimeType string, allowedTypes []string) ([]*genai.
 // textRequest builds the content and configuration for the text import. The
 // text is a separate part of the message, apart from the task; the system
 // instruction says that it is content and not an instruction.
-func textRequest(text string, allowedTypes []string) ([]*genai.Content, *genai.GenerateContentConfig) {
+func textRequest(text string, allowedTypes []string, now time.Time) ([]*genai.Content, *genai.GenerateContentConfig) {
 	contents := []*genai.Content{genai.NewContentFromParts([]*genai.Part{
 		genai.NewPartFromText("Classify the following text into JSON following the rules."),
 		genai.NewPartFromText(text),
 	}, genai.RoleUser)}
 	cfg := &genai.GenerateContentConfig{
-		SystemInstruction:  genai.NewContentFromText(textInstruction(allowedTypes), genai.RoleUser),
+		SystemInstruction:  genai.NewContentFromText(textInstruction(allowedTypes, now), genai.RoleUser),
 		ResponseMIMEType:   "application/json",
 		ResponseJsonSchema: textSchema(allowedTypes),
 		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevelLow},

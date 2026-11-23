@@ -81,7 +81,7 @@ func TestCorrect_SuccessExactlyAsAPIExample(t *testing.T) {
 		t.Errorf("change = %+v, want %+v", c.change, want)
 	}
 	wantBody := `{"id":"6727a1f3c2b4e5d6f7a8b9c0","module":"health","type":"lab_report","documentDate":"2026-10-15",` +
-		`"importedAt":"2026-11-03T18:42:07Z","issuer":"Labor Muster GmbH, Salzburg","fullText":"Leukozyten 6,3 G/l",` +
+		`"documentDateSource":"document","importedAt":"2026-11-03T18:42:07Z","issuer":"Labor Muster GmbH, Salzburg","fullText":"Leukozyten 6,3 G/l",` +
 		`"facts":[{"id":"f2","name":"Leukozyten","value":"6,8","unit":"G/l"}],` +
 		`"file":{"id":"6727a1f3c2b4e5d6f7a8b9c1","fileName":"befund_oktober.pdf","mimeType":"application/pdf","size":184320,"sha256":"3f8a"},` +
 		`"corrections":[{"field":"documentDate","recognized":"2026-10-14","corrected":"2026-10-15","correctedAt":"2026-11-03T19:05:31Z"},` +

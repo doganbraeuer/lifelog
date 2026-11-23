@@ -121,7 +121,9 @@ Map<String, dynamic> checkEntry(
   }
 
   final date = PlainDate.tryParse(entry['documentDate'] as String? ?? '');
-  if (date != null) {
+  // A date set from the import day is not in the text: not checked, as in
+  // the backend (docs/API.md, verification).
+  if (date != null && entry['documentDateSource'] != 'import') {
     add(
       'documentDate',
       reader.findDate(date),

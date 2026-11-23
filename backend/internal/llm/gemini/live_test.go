@@ -142,7 +142,7 @@ func TestLive_ReadText(t *testing.T) {
 	text := string(testFile(t, "lab_report.txt"))
 
 	start := time.Now()
-	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("health"))
+	x, err := g.ReadText(context.Background(), text, core.AllowedTypes("health"), time.Now())
 	duration := time.Since(start).Round(time.Millisecond)
 	if err != nil {
 		t.Fatalf("after %v: %v", duration, err)

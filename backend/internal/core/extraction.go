@@ -150,13 +150,14 @@ func CheckExtraction(x Extraction, module string) (entry Entry, dropped []string
 	}
 
 	return Entry{
-		Module:       module,
-		Type:         x.Type,
-		DocumentDate: date,
-		Issuer:       trimmedOrNil(x.Issuer),
-		FullText:     x.FullText,
-		Facts:        facts,
-		Corrections:  []Correction{},
+		Module:             module,
+		Type:               x.Type,
+		DocumentDate:       date,
+		DocumentDateSource: DateSourceDocument,
+		Issuer:             trimmedOrNil(x.Issuer),
+		FullText:           x.FullText,
+		Facts:              facts,
+		Corrections:        []Correction{},
 	}, dropped, nil
 }
 

@@ -16,13 +16,14 @@ func ptr(s string) *string { return &s }
 // sampleEntry is synthetic (see docs/API.md).
 func sampleEntry() core.Entry {
 	return core.Entry{
-		ID:           "6727a1f3c2b4e5d6f7a8b9c0",
-		Module:       "health",
-		Type:         "lab_report",
-		DocumentDate: ptr("2026-10-14"),
-		ImportedAt:   time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
-		Issuer:       ptr("Labor Muster GmbH, Salzburg"),
-		FullText:     "Hämoglobin 14,2 g/dl",
+		ID:                 "6727a1f3c2b4e5d6f7a8b9c0",
+		Module:             "health",
+		Type:               "lab_report",
+		DocumentDate:       ptr("2026-10-14"),
+		DocumentDateSource: core.DateSourceDocument,
+		ImportedAt:         time.Date(2026, 11, 3, 18, 42, 7, 0, time.UTC),
+		Issuer:             ptr("Labor Muster GmbH, Salzburg"),
+		FullText:           "Hämoglobin 14,2 g/dl",
 		Facts: []core.Fact{
 			{ID: "f1", Name: "Hämoglobin", Value: "14,2", Unit: ptr("g/dl")},
 			{ID: "f2", Name: "Befundart", Value: "Blutbild klein"},
@@ -150,6 +151,49 @@ func TestEntryDoc_RoundTrip(t *testing.T) {
 
 	if got := read.toCore(); !reflect.DeepEqual(got, original) {
 		t.Errorf("after BSON:\n%+v\nwant:\n%+v", got, original)
+	}
+}
+
+// documentDateSource survives BSON; an entry stored before 2026-11-23
+// without the field reads as "document", in the entry and the short form.
+func TestEntryDoc_DocumentDateSource(t *testing.T) {
+	e := sampleEntry()
+	e.DocumentDateSource = core.DateSourceImport
+	doc, err := toEntryDoc(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := bson.Marshal(doc)
+	var read entryDoc
+	if err := bson.Unmarshal(raw, &read); err != nil {
+		t.Fatal(err)
+	}
+	if got := read.toCore().DocumentDateSource; got != core.DateSourceImport {
+		t.Errorf("after BSON: %q, want import", got)
+	}
+	var summary entrySummaryDoc
+	if err := bson.Unmarshal(raw, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if got := summary.toCore().DocumentDateSource; got != core.DateSourceImport {
+		t.Errorf("short form: %q, want import", got)
+	}
+
+	// Old entry: the field is missing.
+	old, _ := bson.Marshal(bson.D{{Key: "_id", Value: bson.NewObjectID()}, {Key: "documentDate", Value: "2026-10-14"}})
+	var oldDoc entryDoc
+	if err := bson.Unmarshal(old, &oldDoc); err != nil {
+		t.Fatal(err)
+	}
+	if got := oldDoc.toCore().DocumentDateSource; got != core.DateSourceDocument {
+		t.Errorf("old entry: %q, want document", got)
+	}
+	var oldSummary entrySummaryDoc
+	if err := bson.Unmarshal(old, &oldSummary); err != nil {
+		t.Fatal(err)
+	}
+	if got := oldSummary.toCore().DocumentDateSource; got != core.DateSourceDocument {
+		t.Errorf("old short form: %q, want document", got)
 	}
 }
 

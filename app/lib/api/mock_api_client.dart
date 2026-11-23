@@ -447,10 +447,16 @@ class MockApiClient implements ApiClient {
         .map((z) => z.trim())
         .firstWhere((z) => z.isNotEmpty);
 
+    // Without a date in the text: the day of the import, marked as such
+    // (docs/API.md 3.1). The backend takes the day in Europe/Vienna; the
+    // mock the device's local day.
+    final importDay = date == null;
+
     return _store(
       module: moduleId,
       type: _typeFor(moduleId, 'other'),
-      documentDate: date,
+      documentDate: date ?? PlainDate.fromDateTime(_clock().toLocal()),
+      importDay: importDay,
       issuer: firstLine,
       fullText: text,
       facts: const [],
@@ -519,6 +525,7 @@ class MockApiClient implements ApiClient {
     required String mimeType,
     required Uint8List bytes,
     required String hash,
+    bool importDay = false,
   }) {
     final id = _newId();
     // The mock "reads" its own full text: a text layer for a PDF, OCR for
@@ -536,6 +543,7 @@ class MockApiClient implements ApiClient {
       'module': module,
       'type': type,
       'documentDate': documentDate?.iso,
+      'documentDateSource': importDay ? 'import' : 'document',
       'importedAt': formatTimestamp(_clock()),
       'issuer': issuer,
       'fullText': fullText,
@@ -617,6 +625,14 @@ class MockApiClient implements ApiClient {
     // 2. and 3. Write the values and maintain `corrections`.
     final timestamp = formatTimestamp(_clock());
     var changed = false;
+    // A date set from the import day was never recognized: a request with
+    // documentDate starts from null and removes the mark (docs/API.md 3.5).
+    if (json['documentDateSource'] == 'import' &&
+        changes.any((change) => change.$1 == 'documentDate')) {
+      json['documentDate'] = null;
+      json['documentDateSource'] = 'document';
+      changed = true;
+    }
     for (final (field, newValue) in changes) {
       if (_set(json, field, newValue, timestamp)) changed = true;
     }

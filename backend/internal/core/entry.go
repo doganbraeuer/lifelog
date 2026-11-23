@@ -39,22 +39,36 @@ func CheckID(id string) error {
 	return nil
 }
 
+// Where the document date comes from (docs/API.md, section 2,
+// documentDateSource).
+const (
+	// DateSourceDocument: the date is from the document or the text, or
+	// there is none. Also for entries stored before the field existed.
+	DateSourceDocument = "document"
+	// DateSourceImport: a text import named no date, so the backend set the
+	// day of the import (Europe/Vienna). This date is not in the text and
+	// is therefore never checked by the verification.
+	DateSourceImport = "import"
+)
+
 // Entry is a full entry as in docs/API.md, section 2.
 type Entry struct {
 	ID string // ObjectId as hex string (24 characters)
 	// UserID is the owner (docs/API.md, per-user data). The store fills it
 	// when reading; it is never part of the API response.
 	UserID       string
-	Module       string    // e.g. "health"
-	Type         string    // e.g. "lab_report", valid within the module
-	DocumentDate *string   // "YYYY-MM-DD" or nil if not recognized
-	ImportedAt   time.Time // UTC
-	Issuer       *string   // issuing body or nil
-	FullText     string
-	Facts        []Fact
-	File         File
-	Corrections  []Correction
-	Verification Verification // check by a second reader; zero value until the upload sets it
+	Module       string  // e.g. "health"
+	Type         string  // e.g. "lab_report", valid within the module
+	DocumentDate *string // "YYYY-MM-DD" or nil if not recognized
+	// DocumentDateSource is DateSourceDocument or DateSourceImport.
+	DocumentDateSource string
+	ImportedAt         time.Time // UTC
+	Issuer             *string   // issuing body or nil
+	FullText           string
+	Facts              []Fact
+	File               File
+	Corrections        []Correction
+	Verification       Verification // check by a second reader; zero value until the upload sets it
 }
 
 // Fact is an extracted fact. Value always stays a string, exactly as on the
@@ -86,12 +100,35 @@ type Correction struct {
 // EntrySummary is the short form for the timeline (without full text, facts
 // etc.).
 type EntrySummary struct {
-	ID           string
-	Module       string
-	Type         string
-	DocumentDate *string
-	ImportedAt   time.Time
-	Issuer       *string
+	ID                 string
+	Module             string
+	Type               string
+	DocumentDate       *string
+	DocumentDateSource string // DateSourceDocument or DateSourceImport
+	ImportedAt         time.Time
+	Issuer             *string
+}
+
+// DateSourceOrDocument: an entry stored before 2026-11-23 has no source; its
+// date always came from the document (or is null).
+func DateSourceOrDocument(source string) string {
+	if source == "" {
+		return DateSourceDocument
+	}
+	return source
+}
+
+// ImportDate gives a text import without a document date the day of its
+// import in Europe/Vienna and marks it (DateSourceImport). Entries with a
+// date are not changed. The caller only calls it for text imports; files
+// keep a missing date (API.md 3.1).
+func ImportDate(e *Entry) {
+	if e.DocumentDate != nil {
+		return
+	}
+	day := LocalDay(e.ImportedAt)
+	e.DocumentDate = &day
+	e.DocumentDateSource = DateSourceImport
 }
 
 // Chunk is a piece of the full text with its embedding, the basis of search

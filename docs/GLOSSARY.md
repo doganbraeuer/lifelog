@@ -28,6 +28,9 @@ agreed with Dogan yet; see [Routines (proposed)](#routines-proposed-2026-11-23).
 | Modul | module | `Module` |
 | Typ (Dokumenttyp) | type (document type) | `Type` |
 | Dokumentdatum | document date | `DocumentDate` |
+| Herkunft des Dokumentdatums: aus dem Dokument / Tag des Imports (since 2026-11-23) | document date source: `document` / `import` | `DocumentDateSource`; Go `core.DateSourceDocument`, `core.DateSourceImport`; Dart `DocumentDateSource.document`, `.importDay` (`import` is no valid name in Dart), `EntrySummary.hasImportDate`, time of the import `formatLocalTime`; app text „(Importdatum)“ |
+| Importtag einsetzen (Textimport ohne Datum) | import date | `core.ImportDate`; day in Europe/Vienna: `core.LocalDay`, `core.LocalTime` |
+| relatives Datumswort („heute“, „gestern“, „vorgestern“, Wochentag) | relative date word | `core.RelativeDateWords` (verification of text imports) |
 | Importdatum | imported at | `ImportedAt` |
 | Quelle (ausstellende Stelle) | issuer | `Issuer` |
 | Volltext | full text | `FullText` |
@@ -117,6 +120,7 @@ The stored file name for a text import stays `text.txt`.
 | `datei.id` / `dateiname` / `mimeTyp` / `groesse` / `sha256` | `file.id` / `fileName` / `mimeType` / `size` / `sha256` |
 | `korrekturen` | `corrections` |
 | `korrekturen[].feld` / `erkannt` / `korrigiert` / `zeitpunkt` | `corrections[].field` / `recognized` / `corrected` / `correctedAt` |
+| – | `documentDateSource`: `document`, `import` (since 2026-11-23; full entry and short form; BSON field of the same name, missing in older entries = `document`) |
 | – | `routineSuggestions` (proposed 2026-11-23, see "Routines") |
 
 List response: `eintraege` → `entries`, `anzahl` → `count`.
@@ -384,6 +388,8 @@ Until 2026-11-11 outside the repository in `lifelog-demo` and
 | Wiederholung | retry |
 | Lese-, Text-, Antwort-Anweisung | read, text, answer instruction (prompt) |
 | `lesbar` (schema field) | `readable` |
+| heutiges Datum im Text-Prompt (since 2026-11-23) | today in the text instruction | `textInstruction(allowedTypes, now)`; `Reader.ReadText(…, now)` |
+| Schutz des kalibrierten Datei-Prompts | read prompt guard | `readPromptSHA256`, `TestReadPrompt_Unchanged` (`internal/llm/gemini/prompt_guard_test.go`) |
 
 ## Verification (OCR)
 

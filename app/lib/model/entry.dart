@@ -4,6 +4,25 @@ import 'json_helpers.dart';
 import 'plain_date.dart';
 import 'verification.dart';
 
+/// Where the document date comes from (`documentDateSource`, docs/API.md,
+/// section 2).
+enum DocumentDateSource {
+  /// From the document or the entered text (or there is none).
+  document,
+
+  /// A text import named no date; the backend set the day of the import.
+  /// Shown as „(Importdatum)“ with the time of the import. (`import` cannot
+  /// be a name in Dart.)
+  importDay;
+
+  /// `"import"` → [importDay]; anything else, also a missing field (older
+  /// backend), → [document].
+  static DocumentDateSource fromJson(String? value) =>
+      value == 'import' ? importDay : document;
+
+  String get json => this == importDay ? 'import' : 'document';
+}
+
 /// Short form of an entry for the timeline (docs/API.md, section 2).
 class EntrySummary {
   const EntrySummary({
@@ -13,6 +32,7 @@ class EntrySummary {
     required this.documentDate,
     required this.importedAt,
     required this.issuer,
+    this.documentDateSource = DocumentDateSource.document,
   });
 
   factory EntrySummary.fromJson(Map<String, dynamic> json) => EntrySummary(
@@ -20,6 +40,9 @@ class EntrySummary {
     module: readString(json, 'module'),
     type: readString(json, 'type'),
     documentDate: readDateOrNull(json, 'documentDate'),
+    documentDateSource: DocumentDateSource.fromJson(
+      readStringOrNull(json, 'documentDateSource'),
+    ),
     importedAt: readTimestamp(json, 'importedAt'),
     issuer: readStringOrNull(json, 'issuer'),
   );
@@ -28,8 +51,18 @@ class EntrySummary {
   final String module;
   final String type;
 
-  /// `null` if the vision LLM recognized no date.
+  /// `null` if the vision LLM recognized no date. A text import always has
+  /// one: without a date in the text it is the day of the import
+  /// ([documentDateSource] is then [DocumentDateSource.importDay]).
   final PlainDate? documentDate;
+
+  /// Where [documentDate] comes from.
+  final DocumentDateSource documentDateSource;
+
+  /// The date is the day of the import, not from the document.
+  bool get hasImportDate =>
+      documentDate != null &&
+      documentDateSource == DocumentDateSource.importDay;
 
   /// Time of the upload in UTC.
   final DateTime importedAt;
@@ -47,6 +80,7 @@ class Entry extends EntrySummary {
     required super.documentDate,
     required super.importedAt,
     required super.issuer,
+    super.documentDateSource,
     required this.fullText,
     required this.facts,
     required this.file,
@@ -61,6 +95,7 @@ class Entry extends EntrySummary {
       module: summary.module,
       type: summary.type,
       documentDate: summary.documentDate,
+      documentDateSource: summary.documentDateSource,
       importedAt: summary.importedAt,
       issuer: summary.issuer,
       fullText: readString(json, 'fullText'),

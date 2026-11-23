@@ -17,3 +17,11 @@ String formatLocalTimestamp(DateTime timestamp) {
   return '${two(local.day)}.${two(local.month)}.${local.year}, '
       '${two(local.hour)}:${two(local.minute)}';
 }
+
+/// Time of day in the device's local time, e.g. `10:46`. For the time of
+/// the import next to a date set from the import day.
+String formatLocalTime(DateTime timestamp) {
+  final local = timestamp.toLocal();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(local.hour)}:${two(local.minute)}';
+}

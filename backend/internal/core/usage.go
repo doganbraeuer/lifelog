@@ -61,6 +61,19 @@ func UsageDay(t time.Time) string {
 	return t.In(usageZone).Format(time.DateOnly)
 }
 
+// LocalTime returns t in Europe/Vienna, the time zone of the users in the
+// prototype. Used for "today" in the text prompt and for the import day of a
+// text import (API.md 3.1).
+func LocalTime(t time.Time) time.Time {
+	return t.In(usageZone)
+}
+
+// LocalDay returns the calendar day of t in Europe/Vienna as "YYYY-MM-DD".
+// A text import without a date gets this day of its import (API.md 3.1).
+func LocalDay(t time.Time) string {
+	return LocalTime(t).Format(time.DateOnly)
+}
+
 // UsageDayEnd returns the first moment after the day of t in Europe/Vienna
 // (midnight local time, in UTC). Counters may be deleted some time after it.
 func UsageDayEnd(t time.Time) time.Time {

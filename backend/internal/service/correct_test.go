@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,52 @@ func TestCorrect_Success(t *testing.T) {
 	want := time.Date(2026, 11, 4, 19, 5, 31, 123_000_000, time.UTC)
 	if c := e.Corrections; len(c) != 1 || !c[0].CorrectedAt.Equal(want) || c[0].CorrectedAt.Location() != time.UTC {
 		t.Errorf("corrections = %+v, want CorrectedAt %v", c, want)
+	}
+}
+
+// A text import with the import day: a PATCH of documentDate removes the
+// mark, stores it and checks again (API.md 3.5).
+func TestCorrect_ImportDateMarkRemoved(t *testing.T) {
+	text := "Blutdruck gestern 130/85 mmHg"
+	importDated := func() *fakeCorrectionStore {
+		return &fakeCorrectionStore{entry: &core.Entry{
+			ID: idLab, Module: "health", Type: "other",
+			DocumentDate: ptr("2026-11-23"), DocumentDateSource: core.DateSourceImport,
+			ImportedAt: time.Date(2026, 11, 23, 8, 46, 0, 0, time.UTC),
+			FullText:   text, Corrections: []core.Correction{},
+			Verification: core.Verification{Status: core.VerificationChecked, Source: core.SourceText,
+				Fields: []core.FieldCheck{}},
+		}}
+	}
+
+	// A new date: correction from null, mark gone, checked against the text
+	// ("gestern" confirms 2026-11-22).
+	s := importDated()
+	e, err := newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
+		core.Change{DocumentDate: core.Nullable{Set: true, Value: ptr("2026-11-22")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.saved) != 1 || s.saved[0].DocumentDateSource != core.DateSourceDocument {
+		t.Fatalf("saved %+v, want one save with source document", s.saved)
+	}
+	if len(e.Corrections) != 1 || e.Corrections[0].Recognized != nil || deref(e.Corrections[0].Corrected) != "2026-11-22" {
+		t.Errorf("corrections %+v", e.Corrections)
+	}
+	i := slices.IndexFunc(e.Verification.Fields, func(f core.FieldCheck) bool { return f.Field == "documentDate" })
+	if i < 0 || e.Verification.Fields[i].Status != core.FieldCorrectedConfirmed {
+		t.Errorf("verification %+v, want documentDate corrected_confirmed", e.Verification.Fields)
+	}
+
+	// null: no date, no correction, but stored.
+	s = importDated()
+	e, err = newFixedCorrector(s).Correct(context.Background(), testUser, idLab,
+		core.Change{DocumentDate: core.Nullable{Set: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.saved) != 1 || e.DocumentDate != nil || e.DocumentDateSource != core.DateSourceDocument || len(e.Corrections) != 0 {
+		t.Errorf("saved %d, date %v, source %q, corrections %+v", len(s.saved), deref(e.DocumentDate), e.DocumentDateSource, e.Corrections)
 	}
 }
 

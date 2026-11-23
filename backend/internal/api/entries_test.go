@@ -130,6 +130,11 @@ func TestList_DefaultsAndFormat(t *testing.T) {
 		t.Errorf("documentDate = %v", first["documentDate"])
 	}
 
+	// The source of the date is never missing; without it, "document".
+	if first["documentDateSource"] != "document" {
+		t.Errorf("documentDateSource = %v, want document", first["documentDateSource"])
+	}
+
 	// null stays visible as null; the field is not missing.
 	last := a.Entries[2]
 	for _, field := range []string{"documentDate", "issuer"} {
@@ -142,6 +147,17 @@ func TestList_DefaultsAndFormat(t *testing.T) {
 		if _, ok := first[field]; ok {
 			t.Errorf("short form contains %s", field)
 		}
+	}
+}
+
+// A text import with the import day shows "import" in the short form, so
+// the timeline can show the time of the import (API.md, section 2).
+func TestList_ImportDateSource(t *testing.T) {
+	s := summary("aaaaaaaaaaaaaaaaaaaaaaaa", "2026-11-23", 30)
+	s.DocumentDateSource = core.DateSourceImport
+	rec := list(t, &fakeStore{list: []core.EntrySummary{s}}, "")
+	if !strings.Contains(rec.Body.String(), `"documentDate":"2026-11-23","documentDateSource":"import"`) {
+		t.Errorf("body = %s", rec.Body)
 	}
 }
 

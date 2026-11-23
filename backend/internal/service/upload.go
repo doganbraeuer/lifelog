@@ -159,8 +159,10 @@ func (u *Uploader) Upload(ctx context.Context, userID string, up Upload) (core.E
 //   - The UTF-8 bytes of the text are stored and hashed, as text.txt with
 //     text/plain; charset=utf-8.
 //   - The language model (Reader.ReadText) only returns date, issuer, type
-//     and facts. The full text is the entered text, unchanged, and a text
-//     always counts as readable.
+//     and facts; it gets today's date for relative dates. The full text is
+//     the entered text, unchanged, and a text always counts as readable.
+//     Without a date the entry gets the day of its import
+//     (core.ImportDate, documentDateSource "import").
 //
 // Errors: core.ErrNoUser, core.ErrUnknownModule, core.ErrFileEmpty,
 // core.ErrTextNotUTF8, core.ErrTextTooLong, *DuplicateError,
@@ -185,7 +187,9 @@ func (u *Uploader) UploadText(ctx context.Context, userID string, up TextUpload)
 		mimeType: core.MimeText,
 		text:     true,
 		read: func(ctx context.Context) (core.Extraction, error) {
-			x, err := u.reader.ReadText(ctx, up.Text, core.AllowedTypes(module))
+			// The model gets today's date, so "gestern" in a note can be
+			// resolved (API.md 3.1).
+			x, err := u.reader.ReadText(ctx, up.Text, core.AllowedTypes(module), u.now())
 			if err != nil {
 				return core.Extraction{}, err
 			}
@@ -258,6 +262,12 @@ func (u *Uploader) process(ctx context.Context, in input) (core.Entry, error) {
 	entry.ID = u.newID()
 	entry.UserID = in.userID
 	entry.ImportedAt = u.now().UTC().Truncate(time.Millisecond)
+	if in.text {
+		// A text without a date (e.g. a voice note "Blutdruck 130 zu 85")
+		// gets the day of its import, marked as such; a file keeps null
+		// (API.md 3.1). Before the verification, which skips this date.
+		core.ImportDate(&entry)
+	}
 
 	// Check the values. Only now wait for the second reader: it has had
 	// all the time of the model calls.

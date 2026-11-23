@@ -51,6 +51,27 @@ void main() {
     expect(mock.userForTest('admin').consentVersion, isNull);
   });
 
+  testWidgets('version 2026-11-23: who agreed to 2026-11-18 agrees again', (
+    tester,
+  ) async {
+    expect(consentVersion, '2026-11-23');
+    final mock = fastMock(signedIn: false);
+    mock.setConsentVersion('admin', '2026-11-18');
+    await startSignedOut(tester, mock);
+    await logIn(tester, 'admin', MockApiClient.mockAdminPassword);
+
+    // After the login the notice comes again, with the new paragraph.
+    expect(find.text(consentTitle), findsOneWidget);
+    expect(find.text('Gesundheit'), findsNothing);
+    expect(find.textContaining('netcup in Deutschland'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Zustimmen'));
+    await tester.pumpAndSettle();
+
+    expect(mock.userForTest('admin').consentVersion, '2026-11-23');
+    expect(find.text('Gesundheit'), findsOneWidget);
+  });
+
   testWidgets('an old version shows the notice again', (tester) async {
     final mock = fastMock();
     final store = signedInStore(mock);
