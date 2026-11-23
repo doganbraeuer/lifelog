@@ -27,7 +27,7 @@ import (
 )
 
 var ownCollections = []string{collEntries, collChunks, collOCR, bucketFiles + ".files", bucketFiles + ".chunks",
-	collUsers, collSessions, collAuditLog, collUsage}
+	collUsers, collSessions, collAuditLog, collUsage, collRoutines, collRoutineLogs}
 
 // testOwner owns the entries of the tests that are about one user only.
 // The tests about separation use their own users (separation_integration_test.go).

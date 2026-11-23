@@ -16,11 +16,15 @@ type DataCounts struct {
 	OCR     int64
 	Files   int64
 	Usage   int64
+	// Routines and RoutineLogs: only delete and count; assign-orphans does
+	// not touch them (they never existed without an owner).
+	Routines    int64
+	RoutineLogs int64
 }
 
 // Total of all counts.
 func (c DataCounts) Total() int64 {
-	return c.Entries + c.Chunks + c.OCR + c.Files + c.Usage
+	return c.Entries + c.Chunks + c.OCR + c.Files + c.Usage + c.Routines + c.RoutineLogs
 }
 
 // AssignOrphans gives every entry, chunk, OCR document and original file
@@ -79,11 +83,12 @@ func (s *Store) assignOrphanFiles(ctx context.Context, uid bson.ObjectID) (int64
 	return noMeta.ModifiedCount + withMeta.ModifiedCount, nil
 }
 
-// DeleteUserData deletes everything the user owns: chunks, OCR words,
-// original files (with their GridFS pieces), entries and usage counters.
-// In this order, like deleting one entry (API.md 3.7): the entries go last,
-// so an interrupted run leaves entries the user can still see and a second
-// run cleans up the rest. Account and sessions are not touched here.
+// DeleteUserData deletes everything the user owns: routine logs, routines,
+// chunks, OCR words, original files (with their GridFS pieces), entries
+// and usage counters. Logs before their routines and everything before the
+// entries, like deleting one routine or entry (API.md 3.7, 3.23): an
+// interrupted run leaves data the user can still see, and a second run
+// cleans up the rest. Account and sessions are not touched here.
 func (s *Store) DeleteUserData(ctx context.Context, userID string) (DataCounts, error) {
 	uid, err := ownerID(userID)
 	if err != nil {
@@ -92,7 +97,19 @@ func (s *Store) DeleteUserData(ctx context.Context, userID string) (DataCounts, 
 	owner := bson.D{{Key: "userId", Value: uid}}
 	var c DataCounts
 
-	res, err := s.chunks.DeleteMany(ctx, owner)
+	res, err := s.routineLogs.DeleteMany(ctx, owner)
+	if err != nil {
+		return c, fmt.Errorf("delete routine logs: %w", err)
+	}
+	c.RoutineLogs = res.DeletedCount
+
+	res, err = s.routines.DeleteMany(ctx, owner)
+	if err != nil {
+		return c, fmt.Errorf("delete routines: %w", err)
+	}
+	c.Routines = res.DeletedCount
+
+	res, err = s.chunks.DeleteMany(ctx, owner)
 	if err != nil {
 		return c, fmt.Errorf("delete chunks: %w", err)
 	}
@@ -160,6 +177,8 @@ func (s *Store) CountUserData(ctx context.Context, userID string) (DataCounts, e
 		return s.fileDocs.CountDocuments(ctx, bson.D{{Key: "metadata.userId", Value: uid}})
 	})
 	count(&c.Usage, func() (int64, error) { return s.usage.CountDocuments(ctx, owner) })
+	count(&c.Routines, func() (int64, error) { return s.routines.CountDocuments(ctx, owner) })
+	count(&c.RoutineLogs, func() (int64, error) { return s.routineLogs.CountDocuments(ctx, owner) })
 	if len(errs) > 0 {
 		return c, fmt.Errorf("count user data: %w", errs[0])
 	}

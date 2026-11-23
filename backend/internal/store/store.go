@@ -2,8 +2,9 @@
 // types, no BSON documents.
 //
 // Per-user data (docs/API.md, section 1): every function that reads,
-// changes or deletes entries, chunks, OCR words or original files takes the
-// user ID as a required parameter and always filters by it. An empty or
+// changes or deletes entries, chunks, OCR words, original files, routines
+// or routine logs takes the user ID as a required parameter and always
+// filters by it. An empty or
 // invalid user ID is a programming error (core.ErrNoUser); no function ever
 // falls back to "all users".
 package store
@@ -57,6 +58,9 @@ type Store struct {
 	auditLog *mongo.Collection
 	// Daily limits (usage.go).
 	usage *mongo.Collection
+	// Routines and their logs (routines.go).
+	routines    *mongo.Collection
+	routineLogs *mongo.Collection
 }
 
 // NewID creates a new ObjectId as hex string. The upload assigns the IDs in
@@ -104,6 +108,9 @@ func Connect(ctx context.Context, uri, database string) (*Store, error) {
 		sessions: db.Collection(collSessions),
 		auditLog: db.Collection(collAuditLog),
 		usage:    db.Collection(collUsage),
+
+		routines:    db.Collection(collRoutines),
+		routineLogs: db.Collection(collRoutineLogs),
 	}
 
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -188,11 +195,15 @@ func (s *Store) CreateIndexes(ctx context.Context) error {
 		return fmt.Errorf("create indexes: %w", err)
 	}
 
-	// users, sessions (accounts.go) and usage (usage.go).
+	// users, sessions (accounts.go), usage (usage.go), routines and
+	// routineLogs (routines.go).
 	if err := s.createAccountIndexes(ctx); err != nil {
 		return err
 	}
-	return s.createUsageIndexes(ctx)
+	if err := s.createUsageIndexes(ctx); err != nil {
+		return err
+	}
+	return s.createRoutineIndexes(ctx)
 }
 
 // dropIndexIfExists drops the index if the collection has it. A missing
