@@ -393,7 +393,16 @@ class _EntryScreenState extends State<EntryScreen> {
         ),
         _FieldRow(
           label: 'Dokumentdatum',
-          value: entry.documentDate?.display ?? 'nicht erkannt',
+          // A text without a date got the day of its import: say so, with
+          // the time, instead of „nicht erkannt“ (docs/API.md 3.1). The
+          // backend does not check this date, so it is never red.
+          value: entry.hasImportDate
+              ? '${entry.documentDate!.display} (Importdatum)'
+              : entry.documentDate?.display ?? 'nicht erkannt',
+          note: entry.hasImportDate
+              ? 'Im Text stand kein Datum. Importiert um '
+                    '${formatLocalTime(entry.importedAt)} Uhr.'
+              : null,
           correction: _correctionHint(
             entry.correctionFor('documentDate'),
             (iso) => PlainDate.tryParse(iso)?.display ?? iso,
@@ -499,7 +508,10 @@ class _ReviewNotice extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.rate_review_outlined, color: colors.onSecondaryContainer),
+            Icon(
+              Icons.rate_review_outlined,
+              color: colors.onSecondaryContainer,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -554,6 +566,7 @@ class _FieldRow extends StatelessWidget {
     this.edit,
     this.correctable = true,
     this.showInOriginal,
+    this.note,
   });
 
   final String label;
@@ -561,6 +574,10 @@ class _FieldRow extends StatelessWidget {
 
   /// Hint like „korrigiert, erkannt: 6,3“, otherwise `null`.
   final String? correction;
+
+  /// Neutral explanation under the value (grey, no warning), e.g. for a
+  /// date set from the import day; `null` for none.
+  final String? note;
 
   /// Check of this field; `null` if it was not checked.
   final FieldCheck? check;
@@ -634,6 +651,12 @@ class _FieldRow extends StatelessWidget {
               icon: Icons.error_outline,
               text: notFoundLabel,
               color: colors.error,
+            )
+          else if (note != null)
+            _Hint(
+              icon: Icons.info_outline,
+              text: note!,
+              color: colors.onSurfaceVariant,
             ),
         ],
       ),

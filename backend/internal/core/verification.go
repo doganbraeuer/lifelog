@@ -174,8 +174,19 @@ func (d *document) verify(e Entry, source, engine string, now time.Time) Verific
 		}
 		v.Fields = append(v.Fields, fc)
 	}
-	if e.DocumentDate != nil {
+	// A date the backend set from the import day is not in the text, so it is
+	// not checked at all (like a date set to null): no red "not found" for a
+	// value nobody read (API.md, verification).
+	if e.DocumentDate != nil && e.DocumentDateSource != DateSourceImport {
 		all := d.findDate(*e.DocumentDate)
+		if d.text {
+			// An entered text often says "gestern" instead of the date; the
+			// model resolves it against the import day (API.md 3.1).
+			for _, w := range RelativeDateWords(*e.DocumentDate, e.ImportedAt) {
+				all = append(all, d.find(normalizeKey(w))...)
+			}
+			all = sortedUnique(all)
+		}
 		add("documentDate", head(all), all)
 	}
 	if e.Issuer != nil {
@@ -456,6 +467,41 @@ var monthNames = [12][]string{
 	{"Oktober", "Okt"},
 	{"November", "Nov"},
 	{"Dezember", "Dez"},
+}
+
+// weekdayNames: German weekday names, indexed by time.Weekday (Sunday = 0).
+var weekdayNames = [7]string{"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"}
+
+// RelativeDateWords returns the German words with which an entered text can
+// name date, seen from the day of its import in Europe/Vienna: "heute" for
+// the import day, "gestern" one day before, "vorgestern" two days before,
+// and the weekday ("Montag") for one to seven days before ("letzten
+// Montag"). Only for text imports; a document on paper has its own date.
+// An invalid date or a date after the import day gives no words.
+func RelativeDateWords(date string, importedAt time.Time) []string {
+	d, err := time.Parse(time.DateOnly, date)
+	if err != nil || !isDateFormat(date) {
+		return nil
+	}
+	day, err := time.Parse(time.DateOnly, LocalDay(importedAt))
+	if err != nil {
+		return nil
+	}
+	// Both are midnight UTC, so the difference is whole days.
+	daysBefore := int(day.Sub(d).Hours() / 24)
+	var words []string
+	switch daysBefore {
+	case 0:
+		words = append(words, "heute")
+	case 1:
+		words = append(words, "gestern")
+	case 2:
+		words = append(words, "vorgestern")
+	}
+	if daysBefore >= 1 && daysBefore <= 7 {
+		words = append(words, weekdayNames[d.Weekday()])
+	}
+	return words
 }
 
 // DateForms returns the forms in which a date "YYYY-MM-DD" can appear on a

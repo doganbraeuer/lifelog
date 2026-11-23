@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 
@@ -35,17 +36,33 @@ Fields:
 }
 
 // textInstruction is the system instruction for the text import: the person
-// entered the text themselves (e.g. typed or pasted). The model only returns
-// the classification, not the text: the full text is the entered text
-// (API.md 3.1). There is no "readable"; entered text always counts as
-// readable.
-func textInstruction(allowedTypes []string) string {
-	return `You classify a text that a person entered for their personal archive (e.g. a typed letter, a pasted report or a note) into JSON following the given schema.
+// entered the text themselves (e.g. typed, pasted or dictated as a voice
+// note). The model only returns the classification, not the text: the full
+// text is the entered text (API.md 3.1). There is no "readable"; entered
+// text always counts as readable.
+//
+// Unlike a document on paper, a note is written now and often says "heute"
+// or "gestern". So the instruction names today's date in Europe/Vienna, and
+// relative dates refer to it. If the text names no date at all, the model
+// answers null; the backend then sets the import day itself and marks it
+// (core.ImportDate). The read instruction for files does not get the date:
+// a document has its own date, and its prompt is calibrated
+// (prompt_guard_test.go).
+func textInstruction(allowedTypes []string, now time.Time) string {
+	today := core.LocalTime(now)
+	date := today.Format(time.DateOnly)
+	yesterday := today.AddDate(0, 0, -1).Format(time.DateOnly)
+	return `You classify a text that a person entered for their personal archive (e.g. a typed letter, a pasted report or a dictated note) into JSON following the given schema.
 
 ` + baseRules("in the text") + `
 
 Fields:
-` + fieldRules(allowedTypes, "in the text", "written")
+` + fieldRules(allowedTypes, "in the text", "written") + `
+
+Today is ` + today.Weekday().String() + `, ` + date + ` (time zone Europe/Vienna). The text was entered today.
+- Relative dates in the text refer to today: "heute" is ` + date + `, "gestern" is ` + yesterday + `; likewise "vorgestern", "letzten Montag", "vor drei Tagen". Give documentDate as an absolute date in the format YYYY-MM-DD.
+- For a note without an issue date, documentDate is the day the note is about.
+- If the text names no date at all, not even a relative one, documentDate is null. Do not use today's date just because the text has no date.`
 }
 
 // baseRules apply to documents and texts alike.

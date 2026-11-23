@@ -433,8 +433,14 @@ class _EntryRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             isThreeLine: showImport,
+            // A date set from the import day shows the time of the import
+            // too, so it is clear that it is not from the document.
             trailing: date != null
-                ? Text(date.display)
+                ? Text(
+                    entry.hasImportDate
+                        ? '${date.display}, ${formatLocalTime(entry.importedAt)}'
+                        : date.display,
+                  )
                 : Text(
                     'ohne Datum',
                     style: TextStyle(fontStyle: FontStyle.italic, color: grey),

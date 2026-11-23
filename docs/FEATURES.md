@@ -310,6 +310,15 @@ Tab „Hochladen“ → „Text eingeben“.
   original file `text.txt` (`text/plain; charset=utf-8`), so duplicate
   detection, fetching the original and deleting work as for a file. The
   values are checked against the text itself (verification source `text`).
+- **Date** (since 2026-11-23, also for [voice notes](#5-voice-note)): the
+  model gets today's date in Europe/Vienna, so „heute“, „gestern“ or
+  „letzten Montag“ in a note become a date. If the text names no date at
+  all, the backend takes the day of the import (`documentDateSource:
+  "import"`); the entry shows „23.11.2026 (Importdatum)“ with „Im Text
+  stand kein Datum. Importiert um 10:46 Uhr.“, and the timeline shows the
+  date with the time („23.11.2026, 10:46“) instead of „ohne Datum“. Such a
+  date is not in the text and is therefore not checked, so it is never
+  marked red; „gestern“ in the text confirms the date resolved from it.
 
 ### Limits
 
@@ -473,6 +482,9 @@ after about 3 seconds; what was said is not evaluated.
   vocabulary prompt can also produce a plausible wrong unit („mL pro Liter“
   for „Milliunits pro Liter“).
 - A saved voice note looks like any text import; it is not marked as spoken.
+  It gets its date like a text import: a spoken „gestern“ becomes the
+  date, and without any date it is the day of the import, shown as
+  „(Importdatum)“ ([text import](#4-text-import)).
 - Speed: 3 minutes of speech take about 7 s on an M3 Pro with GPU. On a
   Windows machine without a graphics card it is much slower (not measured).
 - Silence and noise give `NO_SPEECH` (5 of 5 in the measurement), but this

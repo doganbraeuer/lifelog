@@ -1,6 +1,6 @@
 # Lifelog REST API (prototype)
 
-Status: 2026-11-18 · Version `v1` · Draft
+Status: 2026-11-23 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
 **Proposal of 2026-11-23, not agreed yet:** routines
@@ -146,7 +146,7 @@ defined.
 
 | Field | Format | Example | Note |
 |---|---|---|---|
-| `documentDate` | `YYYY-MM-DD` | `"2026-10-14"` | Plain date without time and without time zone. `null` if the vision LLM recognizes no date. |
+| `documentDate` | `YYYY-MM-DD` | `"2026-10-14"` | Plain date without time and without time zone. `null` if the vision LLM recognizes no date in a file. A text import always has one: without a date in the text, the day of the import in Europe/Vienna, marked by `documentDateSource: "import"` (since 2026-11-23, see 3.1). |
 | `importedAt` | RFC 3339, UTC | `"2026-11-03T18:42:07Z"` | Set by the backend on upload. Always present. |
 | `correctedAt` (correction) | RFC 3339, UTC | `"2026-11-03T19:05:31Z"` | Set by the backend when correcting. |
 
@@ -234,6 +234,7 @@ return an entry:
   "module": "health",
   "type": "lab_report",
   "documentDate": "2026-10-14",
+  "documentDateSource": "document",
   "importedAt": "2026-11-03T18:42:07Z",
   "issuer": "Labor Muster GmbH, Salzburg",
   "fullText": "Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\nLaborbefund vom 14.10.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\nHämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,8 G/l (Ref. 4,0-10,0)\nCRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
@@ -294,6 +295,7 @@ return an entry:
 | `module` | String | Required. Area the entry belongs to, see [modules](#modules). Comes from the upload (field `module`, default `health`), not from the vision LLM. |
 | `type` | String | Document type within the module. For `health` one of `doctor_letter`, `lab_report`, `prescription`, `other` |
 | `documentDate` | String or `null` | Date on the document, see section 1 |
+| `documentDateSource` | String | Since 2026-11-23. Where `documentDate` comes from: `document` (from the document or the entered text, or there is none) or `import` (a text import named no date, so the backend set the day of the import in Europe/Vienna, see 3.1). Always present, also in the short form. Entries stored before have `document`. The app shows an `import` date with the time of the import, e.g. „23.11.2026 (Importdatum)“. |
 | `importedAt` | String | Time of the upload |
 | `issuer` | String or `null` | Issuing body. `null` if not recognized |
 | `fullText` | String | Text of the document as read by the vision LLM. For a text import, the entered text, unchanged. |
@@ -433,6 +435,11 @@ A field confirmed on a photo looks like this:
 Which fields are checked:
 
 - `documentDate` and `issuer`, unless they are `null`.
+- Not `documentDate` if `documentDateSource` is `import` (since
+  2026-11-23): the backend set the day of the import because the text named
+  no date, so it cannot be found in the text. Like a `null` date, it has no
+  item in `fields` and does not count in `total`, so the app never shows it
+  as "not found".
 - Every fact: its `value`, and its `unit` if it has one. A fact with a unit
   only counts as `confirmed` if value and unit are both found.
 
@@ -448,7 +455,13 @@ all three sources):
 2. `documentDate` is searched in common German forms: `14.10.2026`,
    `14.10.26`, `2026-10-14`, `14/10/2026`, `14. Oktober 2026` (also
    Austrian `Jänner`, abbreviations like `Okt.`), with or without leading
-   zeros.
+   zeros. For a text import also as the word for it, seen from the day of
+   the import in Europe/Vienna (since 2026-11-23): „heute“ for the import
+   day, „gestern“ one day before, „vorgestern“ two days before, and the
+   weekday („Montag“) for one to seven days before. A note says „gestern“,
+   and the language model turns it into the date (3.1); without this rule
+   that date would never be found. A file is never searched for these
+   words: a document on paper has its own date.
 3. `issuer` is confirmed if it appears as a whole (also across line breaks),
    or if each of its comma-separated parts appears somewhere in the document
    (`Labor Muster GmbH, Salzburg`: the name in the letterhead, the city in
@@ -648,8 +661,26 @@ The list only returns what the timeline needs. `fullText`, `facts`, `file`,
   "module": "health",
   "type": "lab_report",
   "documentDate": "2026-10-14",
+  "documentDateSource": "document",
   "importedAt": "2026-11-03T18:42:07Z",
   "issuer": "Labor Muster GmbH, Salzburg"
+}
+```
+
+`documentDateSource` is in the short form too (since 2026-11-23), so the
+timeline can show a date from the import day with the time of the import
+(„23.11.2026, 10:46“). A spoken note without a date, imported on
+2026-11-23 at 10:46 in Vienna:
+
+```json
+{
+  "id": "6742c0a1b2c3d4e5f6a7b8c9",
+  "module": "health",
+  "type": "other",
+  "documentDate": "2026-11-23",
+  "documentDateSource": "import",
+  "importedAt": "2026-11-23T09:46:12Z",
+  "issuer": null
 }
 ```
 
@@ -734,6 +765,10 @@ For `text`:
   this text.
 - There is no `UNREADABLE` for text: entered text always counts as
   readable. If no type fits, it becomes `other`.
+- A text always gets a `documentDate` (since 2026-11-23): one named in the
+  text, also a relative one such as „gestern“, or else the day of the
+  import (steps 4 and 5). This also applies to voice notes, which the app
+  sends as text.
 - The backend stores the text as the original file: `fileName` `text.txt`,
   `mimeType` `text/plain; charset=utf-8`, `size` and `sha256` over the UTF-8
   bytes. Fetching (`GET …/file`), duplicate detection and deleting therefore
@@ -765,19 +800,31 @@ Hausarztpraxis Beispiel
 4. Send the file to the vision LLM. It returns `documentDate`, `issuer`,
    `type`, `fullText` and `facts` as JSON. For a text import the language
    model gets the text and returns the same fields except `fullText`;
-   `fullText` is the entered text.
+   `fullText` is the entered text. Since 2026-11-23 the instruction for a
+   text import names today's date with the weekday in Europe/Vienna
+   („Today is Monday, 2026-11-23“): a note is written now, and relative
+   dates such as „heute“, „gestern“ or „letzten Montag“ refer to that day.
+   If the text names no date at all, the model answers `null`. The
+   instruction for files is unchanged (a document on paper has its own
+   date, and the file prompt is calibrated).
 5. Check the JSON (required fields, date format, allowed `type` of the
    module) and set `module`. The backend **drops** a single fact without
    `name` or without `value` instead of rejecting the whole upload. It only
    logs which field was missing (e.g. `facts[2].value`), **never** a value.
    The remaining facts are numbered without gaps (`f1`, `f2`, …).
+   `documentDateSource` is `document`. Only for a text import without a
+   date: `documentDate` becomes the day of `importedAt` in Europe/Vienna
+   and `documentDateSource` becomes `import` (e.g. imported at
+   2026-11-23T23:30:00Z → `2026-11-24`). A file without a date keeps
+   `null`.
 6. Check the recognized values (see [verification](#verification)). For a
    file, reading the original runs **in parallel** to step 4, so the upload
    does not take longer: a PDF page with a text layer is read directly, a
    page without one and a photo go through OCR. A photo (JPEG, PNG, HEIC,
    WebP) is first prepared: turned upright and scaled to a long side
    between 2500 and 4096 pixels. For a text import the
-   values are compared against the entered text.
+   values are compared against the entered text; a date from the import
+   day is not checked.
 7. Split the full text into chunks and compute embeddings.
 8. Store the original file, the chunks with embeddings, the words read
    from the original (with positions) and the entry, each marked with the
@@ -812,6 +859,7 @@ list (`verification` shortened here, see section 2):
   "module": "health",
   "type": "lab_report",
   "documentDate": "2026-10-14",
+  "documentDateSource": "document",
   "importedAt": "2026-11-03T18:42:07Z",
   "issuer": "Labor Muster GmbH, Salzburg",
   "fullText": "Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\nLaborbefund vom 14.10.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\nHämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,3 G/l (Ref. 4,0-10,0)\nCRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
@@ -931,6 +979,7 @@ These rules are covered by tests in the backend.
       "module": "health",
       "type": "lab_report",
       "documentDate": "2026-10-14",
+      "documentDateSource": "document",
       "importedAt": "2026-11-03T18:42:07Z",
       "issuer": "Labor Muster GmbH, Salzburg"
     },
@@ -939,6 +988,7 @@ These rules are covered by tests in the backend.
       "module": "health",
       "type": "doctor_letter",
       "documentDate": "2026-09-02",
+      "documentDateSource": "document",
       "importedAt": "2026-11-03T18:50:12Z",
       "issuer": "Dr. Erika Beispiel, Allgemeinmedizin"
     },
@@ -947,6 +997,7 @@ These rules are covered by tests in the backend.
       "module": "health",
       "type": "other",
       "documentDate": null,
+      "documentDateSource": "document",
       "importedAt": "2026-11-03T19:01:44Z",
       "issuer": null
     }
@@ -1080,6 +1131,14 @@ Further rules:
 - **An empty body** (`{}`) is an error. A request whose values already
   apply, however, is valid: the response is `200` with the unchanged entry,
   and no correction is created.
+- **A date from the import day** (`documentDateSource: "import"`, since
+  2026-11-23): the model recognized no date, so a request that contains
+  `documentDate` first sets the date back to `null` and
+  `documentDateSource` to `document`; then the normal rules apply. A date,
+  also the import day itself, becomes a correction with
+  `"recognized": null`. `null` removes the date without a correction, and
+  the entry is stored (it no longer has the import day). A request without
+  `documentDate` keeps the mark.
 
 ```json
 {
@@ -1098,9 +1157,9 @@ Further rules:
    whose value does not change creates no correction. All corrections of
    one request get the same `correctedAt`.
 
-Corrections only change `type`, `documentDate`, `issuer` and `facts`. The
-chunks and embeddings for search stay unchanged because they are derived
-from `fullText`.
+Corrections only change `type`, `documentDate` (and with it
+`documentDateSource`), `issuer` and `facts`. The chunks and embeddings for
+search stay unchanged because they are derived from `fullText`.
 
 If at least one value changed, the backend checks the entry again
 ([verification](#verification)) against the words stored at upload (or
@@ -1119,6 +1178,7 @@ The updated full entry. Excerpt for the example above:
   "module": "health",
   "type": "lab_report",
   "documentDate": "2026-10-15",
+  "documentDateSource": "document",
   "importedAt": "2026-11-03T18:42:07Z",
   "issuer": "Labor Muster GmbH, Salzburg",
   "fullText": "Labor Muster GmbH\nMusterstraße 1, 5020 Salzburg\n\nLaborbefund vom 14.10.2026\nPatient: Max Mustermann, geb. 01.01.1990\n\nHämoglobin 14,2 g/dl (Ref. 13,5-17,5)\nLeukozyten 6,3 G/l (Ref. 4,0-10,0)\nCRP <0,5 mg/dl (Ref. <0,5)\nBefundart: Blutbild klein",
@@ -3160,6 +3220,38 @@ To be settled together with the proposal
 ---
 
 ## 5. Changes
+
+### 2026-11-23: Date for text imports and voice notes; consent v2
+
+Implemented (Dylan, App and backend with Dogan's approval; Dogan reviews).
+Additive: one new field, no new error code. An older app ignores the new
+field and keeps working.
+
+1. **Today's date in the text prompt** ([3.1](#31-upload-and-extract-a-file-or-text),
+   step 4): the instruction for a text import (also a voice note) names
+   today with the weekday in Europe/Vienna; „heute“, „gestern“ or „letzten
+   Montag“ become a date. The prompt for photos and PDFs is unchanged, so
+   no new calibration is needed; a test keeps its SHA-256.
+2. **Import day instead of null** (3.1, step 5): a text import without any
+   date gets the day of `importedAt` in Europe/Vienna. Files keep `null`.
+3. **New field `documentDateSource`** ([section 2](#fields)): `document` or
+   `import`, in the full entry and the short form; entries stored before
+   count as `document`.
+4. **Verification** ([section 2](#verification)): a date from the import
+   day is not checked (no item in `fields`, never "not found"). In a text
+   import, „heute“, „gestern“, „vorgestern“ and the weekday (one to seven
+   days before) also confirm the matching date.
+5. **Correction** ([3.5](#35-correct-recognized-values)): a `documentDate`
+   in the request removes the mark; the import day counts as not
+   recognized (`recognized: null`).
+6. **Consent** ([3.15](#315-record-the-consent)): the app's notice has
+   version `2026-11-23` (netcup in Germany, MongoDB Atlas in Frankfurt,
+   recordings of voice notes go to Google Gemini). The backend accepts any
+   version, so nothing changes in the API; users who agreed to
+   `2026-11-18` see the notice once more.
+7. **App:** shows a date from the import day as „23.11.2026 (Importdatum)“
+   with „Im Text stand kein Datum. Importiert um 10:46 Uhr.“, and in the
+   timeline with the time („23.11.2026, 10:46“).
 
 ### 2026-11-23: Routines (proposal, Dylan, to be agreed with Dogan)
 

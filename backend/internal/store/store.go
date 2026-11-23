@@ -467,10 +467,11 @@ func (s *Store) DeleteChunks(ctx context.Context, userID, entryID string) error 
 }
 
 // SaveCorrection writes the correctable fields of the user's entry back
-// (API.md 3.5): type, document date, issuer, facts and corrections, plus the
-// verification recomputed for them. Everything else (full text, file,
-// import time, module, owner) is not touched, not even by accident, because
-// only these six fields are in the $set.
+// (API.md 3.5): type, document date and its source (a correction removes the
+// mark "import"), issuer, facts and corrections, plus the verification
+// recomputed for them. Everything else (full text, file, import time,
+// module, owner) is not touched, not even by accident, because only these
+// seven fields are in the $set.
 //
 // found is false if the entry does not exist (anymore) or is not the
 // user's.
@@ -490,6 +491,7 @@ func (s *Store) SaveCorrection(ctx context.Context, userID string, e core.Entry)
 		bson.D{{Key: "$set", Value: bson.D{
 			{Key: "type", Value: doc.Type},
 			{Key: "documentDate", Value: doc.DocumentDate},
+			{Key: "documentDateSource", Value: doc.DocumentDateSource},
 			{Key: "issuer", Value: doc.Issuer},
 			{Key: "facts", Value: doc.Facts},
 			{Key: "corrections", Value: doc.Corrections},

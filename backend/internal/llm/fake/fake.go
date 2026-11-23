@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"sync"
+	"time"
 
 	"lifelog/backend/internal/core"
 	"lifelog/backend/internal/llm"
@@ -22,6 +23,7 @@ type Reader struct {
 	calls     int
 	textCalls int
 	lastText  string
+	lastNow   time.Time
 }
 
 var _ llm.Reader = (*Reader)(nil)
@@ -35,11 +37,12 @@ func (r *Reader) ReadDocument(_ context.Context, _ []byte, _ string, _ []string)
 
 // ReadText returns the same extraction or error as ReadDocument, but counts
 // separately.
-func (r *Reader) ReadText(_ context.Context, text string, _ []string) (core.Extraction, error) {
+func (r *Reader) ReadText(_ context.Context, text string, _ []string, now time.Time) (core.Extraction, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.textCalls++
 	r.lastText = text
+	r.lastNow = now
 	return r.Extraction, r.Err
 }
 
@@ -48,6 +51,13 @@ func (r *Reader) TextCalls() (int, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.textCalls, r.lastText
+}
+
+// TextNow: the time ReadText got last (the import time).
+func (r *Reader) TextNow() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastNow
 }
 
 // Calls: how often ReadDocument was called.

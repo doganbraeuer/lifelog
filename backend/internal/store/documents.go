@@ -25,16 +25,19 @@ type entryDoc struct {
 	ID bson.ObjectID `bson:"_id"`
 	// UserID is the owner. omitempty: a forgotten owner leaves the field out
 	// (the entry is then visible to nobody) instead of storing a zero ID.
-	UserID       bson.ObjectID   `bson:"userId,omitempty"`
-	Module       string          `bson:"module"`
-	Type         string          `bson:"type"`
-	DocumentDate *string         `bson:"documentDate"`
-	ImportedAt   time.Time       `bson:"importedAt"`
-	Issuer       *string         `bson:"issuer"`
-	FullText     string          `bson:"fullText"`
-	Facts        []factDoc       `bson:"facts"`
-	File         fileDoc         `bson:"file"`
-	Corrections  []correctionDoc `bson:"corrections"`
+	UserID       bson.ObjectID `bson:"userId,omitempty"`
+	Module       string        `bson:"module"`
+	Type         string        `bson:"type"`
+	DocumentDate *string       `bson:"documentDate"`
+	// DocumentDateSource is missing in entries stored before 2026-11-23;
+	// reading them gives core.DateSourceDocument.
+	DocumentDateSource string          `bson:"documentDateSource,omitempty"`
+	ImportedAt         time.Time       `bson:"importedAt"`
+	Issuer             *string         `bson:"issuer"`
+	FullText           string          `bson:"fullText"`
+	Facts              []factDoc       `bson:"facts"`
+	File               fileDoc         `bson:"file"`
+	Corrections        []correctionDoc `bson:"corrections"`
 	// Verification is missing in entries stored before 2026-11-11 and in
 	// seed entries; reading them gives unchecked/not_run.
 	Verification *verificationDoc `bson:"verification,omitempty"`
@@ -66,12 +69,13 @@ type correctionDoc struct {
 
 // entrySummaryDoc only reads the fields the timeline needs.
 type entrySummaryDoc struct {
-	ID           bson.ObjectID `bson:"_id"`
-	Module       string        `bson:"module"`
-	Type         string        `bson:"type"`
-	DocumentDate *string       `bson:"documentDate"`
-	ImportedAt   time.Time     `bson:"importedAt"`
-	Issuer       *string       `bson:"issuer"`
+	ID                 bson.ObjectID `bson:"_id"`
+	Module             string        `bson:"module"`
+	Type               string        `bson:"type"`
+	DocumentDate       *string       `bson:"documentDate"`
+	DocumentDateSource string        `bson:"documentDateSource,omitempty"`
+	ImportedAt         time.Time     `bson:"importedAt"`
+	Issuer             *string       `bson:"issuer"`
 }
 
 // summaryProjection tells MongoDB which fields to send for the list. Full
@@ -80,6 +84,7 @@ var summaryProjection = bson.D{
 	{Key: "module", Value: 1},
 	{Key: "type", Value: 1},
 	{Key: "documentDate", Value: 1},
+	{Key: "documentDateSource", Value: 1},
 	{Key: "importedAt", Value: 1},
 	{Key: "issuer", Value: 1},
 }
@@ -105,14 +110,15 @@ func toEntryDoc(e core.Entry) (entryDoc, error) {
 	}
 
 	return entryDoc{
-		ID:           id,
-		Module:       e.Module,
-		Type:         e.Type,
-		DocumentDate: e.DocumentDate,
-		ImportedAt:   e.ImportedAt.UTC(),
-		Issuer:       e.Issuer,
-		FullText:     e.FullText,
-		Facts:        facts,
+		ID:                 id,
+		Module:             e.Module,
+		Type:               e.Type,
+		DocumentDate:       e.DocumentDate,
+		DocumentDateSource: e.DocumentDateSource,
+		ImportedAt:         e.ImportedAt.UTC(),
+		Issuer:             e.Issuer,
+		FullText:           e.FullText,
+		Facts:              facts,
 		File: fileDoc{
 			ID:       fileID,
 			FileName: e.File.FileName,
@@ -135,15 +141,16 @@ func (d entryDoc) toCore() core.Entry {
 		corrections = append(corrections, core.Correction(c))
 	}
 	return core.Entry{
-		ID:           d.ID.Hex(),
-		UserID:       hexOrEmpty(d.UserID),
-		Module:       d.Module,
-		Type:         d.Type,
-		DocumentDate: d.DocumentDate,
-		ImportedAt:   d.ImportedAt.UTC(),
-		Issuer:       d.Issuer,
-		FullText:     d.FullText,
-		Facts:        facts,
+		ID:                 d.ID.Hex(),
+		UserID:             hexOrEmpty(d.UserID),
+		Module:             d.Module,
+		Type:               d.Type,
+		DocumentDate:       d.DocumentDate,
+		DocumentDateSource: core.DateSourceOrDocument(d.DocumentDateSource),
+		ImportedAt:         d.ImportedAt.UTC(),
+		Issuer:             d.Issuer,
+		FullText:           d.FullText,
+		Facts:              facts,
 		File: core.File{
 			ID:       d.File.ID.Hex(),
 			FileName: d.File.FileName,
@@ -166,12 +173,13 @@ func hexOrEmpty(id bson.ObjectID) string {
 
 func (d entrySummaryDoc) toCore() core.EntrySummary {
 	return core.EntrySummary{
-		ID:           d.ID.Hex(),
-		Module:       d.Module,
-		Type:         d.Type,
-		DocumentDate: d.DocumentDate,
-		ImportedAt:   d.ImportedAt.UTC(),
-		Issuer:       d.Issuer,
+		ID:                 d.ID.Hex(),
+		Module:             d.Module,
+		Type:               d.Type,
+		DocumentDate:       d.DocumentDate,
+		DocumentDateSource: core.DateSourceOrDocument(d.DocumentDateSource),
+		ImportedAt:         d.ImportedAt.UTC(),
+		Issuer:             d.Issuer,
 	}
 }
 

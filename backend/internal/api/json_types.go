@@ -16,8 +16,10 @@ type entrySummaryJSON struct {
 	Module       string  `json:"module"`
 	Type         string  `json:"type"`
 	DocumentDate *string `json:"documentDate"` // without omitempty: null stays visible
-	ImportedAt   string  `json:"importedAt"`
-	Issuer       *string `json:"issuer"`
+	// "document" or "import" (API.md, section 2); never missing.
+	DocumentDateSource string  `json:"documentDateSource"`
+	ImportedAt         string  `json:"importedAt"`
+	Issuer             *string `json:"issuer"`
 }
 
 type entryListJSON struct {
@@ -33,28 +35,30 @@ func timeJSON(t time.Time) string {
 
 func summaryToJSON(e core.EntrySummary) entrySummaryJSON {
 	return entrySummaryJSON{
-		ID:           e.ID,
-		Module:       e.Module,
-		Type:         e.Type,
-		DocumentDate: e.DocumentDate,
-		ImportedAt:   timeJSON(e.ImportedAt),
-		Issuer:       e.Issuer,
+		ID:                 e.ID,
+		Module:             e.Module,
+		Type:               e.Type,
+		DocumentDate:       e.DocumentDate,
+		DocumentDateSource: core.DateSourceOrDocument(e.DocumentDateSource),
+		ImportedAt:         timeJSON(e.ImportedAt),
+		Issuer:             e.Issuer,
 	}
 }
 
 // entryJSON is the full entry (API.md, section 2).
 type entryJSON struct {
-	ID           string           `json:"id"`
-	Module       string           `json:"module"`
-	Type         string           `json:"type"`
-	DocumentDate *string          `json:"documentDate"`
-	ImportedAt   string           `json:"importedAt"`
-	Issuer       *string          `json:"issuer"`
-	FullText     string           `json:"fullText"`
-	Facts        []factJSON       `json:"facts"`
-	File         fileJSON         `json:"file"`
-	Corrections  []correctionJSON `json:"corrections"`
-	Verification verificationJSON `json:"verification"`
+	ID                 string           `json:"id"`
+	Module             string           `json:"module"`
+	Type               string           `json:"type"`
+	DocumentDate       *string          `json:"documentDate"`
+	DocumentDateSource string           `json:"documentDateSource"`
+	ImportedAt         string           `json:"importedAt"`
+	Issuer             *string          `json:"issuer"`
+	FullText           string           `json:"fullText"`
+	Facts              []factJSON       `json:"facts"`
+	File               fileJSON         `json:"file"`
+	Corrections        []correctionJSON `json:"corrections"`
+	Verification       verificationJSON `json:"verification"`
 }
 
 // verificationJSON is entry.verification (API.md, section 2). Empty texts
@@ -127,14 +131,15 @@ func entryToJSON(e core.Entry) entryJSON {
 		})
 	}
 	return entryJSON{
-		ID:           e.ID,
-		Module:       e.Module,
-		Type:         e.Type,
-		DocumentDate: e.DocumentDate,
-		ImportedAt:   timeJSON(e.ImportedAt),
-		Issuer:       e.Issuer,
-		FullText:     e.FullText,
-		Facts:        facts,
+		ID:                 e.ID,
+		Module:             e.Module,
+		Type:               e.Type,
+		DocumentDate:       e.DocumentDate,
+		DocumentDateSource: core.DateSourceOrDocument(e.DocumentDateSource),
+		ImportedAt:         timeJSON(e.ImportedAt),
+		Issuer:             e.Issuer,
+		FullText:           e.FullText,
+		Facts:              facts,
 		File: fileJSON{
 			ID: e.File.ID, FileName: e.File.FileName, MimeType: e.File.MimeType,
 			Size: e.File.Size, Sha256: e.File.Sha256,
