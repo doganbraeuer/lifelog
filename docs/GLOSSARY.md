@@ -5,6 +5,9 @@ every German name used so far to its English replacement, so that the
 backend (Dogan) and the app (Dylan) use the same names. docs/API.md is the
 contract; this glossary only lists names.
 
+Names marked "proposed" (routines, 2026-11-23) are a proposal that is not
+agreed with Dogan yet; see [Routines (proposed)](#routines-proposed-2026-11-23).
+
 ## Conventions
 
 - JSON keys, BSON fields, query parameters: camelCase (`documentDate`).
@@ -72,6 +75,11 @@ Base path stays `/api/v1`.
 | – | `POST /auth/login`, `POST /auth/logout` (since 2026-11-18, see "Accounts and login") |
 | – | `GET /me`, `PATCH /me`, `POST /me/password` (since 2026-11-18) |
 | – | `PUT /me/consent` (since 2026-11-18) |
+| – | `GET /routines`, `POST /routines`, `GET /routines/{id}`, `PATCH /routines/{id}`, `DELETE /routines/{id}` (proposed 2026-11-23, see "Routines") |
+| – | `POST /routines/{id}/pause`, `POST /routines/{id}/resume` (proposed) |
+| – | `GET /routines/occurrences` (proposed) |
+| – | `GET /routines/{id}/logs`, `POST /routines/{id}/logs`, `DELETE /routines/{id}/logs/{logId}` (proposed) |
+| – | `POST /entries/{id}/routine-suggestions/{suggestionId}/confirm`, `DELETE /entries/{id}/routine-suggestions/{suggestionId}` (proposed) |
 
 ### Upload (multipart form fields)
 
@@ -109,6 +117,7 @@ The stored file name for a text import stays `text.txt`.
 | `datei.id` / `dateiname` / `mimeTyp` / `groesse` / `sha256` | `file.id` / `fileName` / `mimeType` / `size` / `sha256` |
 | `korrekturen` | `corrections` |
 | `korrekturen[].feld` / `erkannt` / `korrigiert` / `zeitpunkt` | `corrections[].field` / `recognized` / `corrected` / `correctedAt` |
+| – | `routineSuggestions` (proposed 2026-11-23, see "Routines") |
 
 List response: `eintraege` → `entries`, `anzahl` → `count`.
 
@@ -157,7 +166,11 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | `details.maxZeichen` | `details.maxChars` |
 | – | `details.maxSeconds` (since 2026-11-12, for `AUDIO_TOO_LONG`) |
 | – | `details.retryAfterSeconds` (since 2026-11-18, for `TOO_MANY_ATTEMPTS`; same value as the header `Retry-After`) |
-| – | `details.limit` (since 2026-11-18, for `LIMIT_REACHED`: `uploads`, `questions`, `transcriptions`) |
+| – | `details.limit` (since 2026-11-18, for `LIMIT_REACHED`: `uploads`, `questions`, `transcriptions`; proposed 2026-11-23 also for `ROUTINE_LIMIT_REACHED`: `routines`, `pauses`, `logs`) |
+| – | `details.max` (proposed 2026-11-23, for `ROUTINE_LIMIT_REACHED`: the maximum) |
+| – | `details.routineId` (proposed, for `ROUTINE_NAME_TAKEN`) |
+| – | `details.logId` (proposed, for `ROUTINE_LOG_EXISTS`) |
+| – | `details.suggestionId` (proposed, for `ROUTINE_SUGGESTION_NOT_FOUND`) |
 
 ### Error codes
 
@@ -188,6 +201,12 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 403 | – | `PASSWORD_CHANGE_REQUIRED` (since 2026-11-18) |
 | 429 | – | `TOO_MANY_ATTEMPTS` (since 2026-11-18) |
 | 429 | – | `LIMIT_REACHED` (since 2026-11-18) |
+| 404 | – | `ROUTINE_NOT_FOUND` (proposed 2026-11-23) |
+| 404 | – | `ROUTINE_LOG_NOT_FOUND` (proposed) |
+| 404 | – | `ROUTINE_SUGGESTION_NOT_FOUND` (proposed) |
+| 409 | – | `ROUTINE_LOG_EXISTS` (proposed) |
+| 409 | – | `ROUTINE_NAME_TAKEN` (proposed) |
+| 409 | – | `ROUTINE_LIMIT_REACHED` (proposed) |
 
 ### App-only error codes
 
@@ -276,6 +295,10 @@ Every place where the app talks to the backend:
 | – | field `userId` (owner, ObjectId) on `entries`, `chunks`, `ocr`, and `metadata.userId` on `originals.files` (since 2026-11-18, see "Accounts and login") |
 | – | index `user_module` on `entries` `(userId, module)`, `user_entry` on `chunks` `(userId, entryId)`, `userId` on `ocr`, `metadata_userId` on `originals.files` |
 | – | collection `usage` (daily limits): `userId`, `day`, `kind`, `count`, `expiresAt`; index `usage_unique` on `(userId, day, kind)`, TTL index `expires_at_ttl` on `expiresAt` |
+| – | collections `routines` and `routineLogs` (proposed 2026-11-23, fields see "Routines") |
+| – | `routines`: index `user_module` on `(userId, module)`; unique index `user_module_name_unique` on `(userId, module, nameKey)` (`nameKey`: the name in lower case, for the uniqueness check) (proposed) |
+| – | `routineLogs`: unique index `routine_due_unique` on `(userId, routineId, dueLocal)`, partial (only logs with an occurrence; `dueLocal`: local date and time of the occurrence in the log's `timeZone`, e.g. `2026-11-23T08:00`); index `user_routine_taken` on `(userId, routineId, takenAt)`; index `user_entry` on `(userId, entryId)` (deleting an entry) (proposed) |
+| – | field `timeZone` on `users` (proposed; missing = `Europe/Vienna`) |
 
 ## Environment variables
 
@@ -620,3 +643,69 @@ texts are German and quoted as they appear.
 | Anzeigename prüfen | check display name | `checkDisplayName`, `maxDisplayNameLength` (50) |
 | Testkonten des Mocks | mock accounts | `tester01` / `MockApiClient.mockStartPassword`, `admin` / `MockApiClient.mockAdminPassword` |
 | Auslöser Tageslimit im Mock | limit trigger | `limitreached` in file name, text, question or recording name |
+
+## Routines (proposed, 2026-11-23)
+
+**Proposed, not agreed with Dogan yet** (docs/API.md 3.16–3.29, section 2
+"Routine suggestions", `timeZone` in 3.12/3.13). These names become binding
+once the proposal is agreed. A routine is like an alarm clock for something
+done regularly; its occurrences are reminded locally by the app, and logs
+record what was done.
+
+Two stages: stage 2 (later) are the routine suggestions: `routineSuggestions`,
+`quote`, `timeStated`, `takenDate`, `takenTime`, the routine key, confirm and
+reject, `ROUTINE_SUGGESTION_NOT_FOUND`, `details.suggestionId`, `source: entry`.
+Everything else below is stage 1.
+
+| German | English | Go / Dart type, field | Display text in the app |
+|---|---|---|---|
+| Routine / Routinen | routine / routines | `core.Routine`; Dart `Routine`; collection `routines` | „Routine“, „Routinen“, „Neue Routine“ |
+| Zeitplan | schedule | `core.Schedule`; `schedule` | „Rhythmus“ |
+| Häufigkeit | frequency: `hourly`, `daily`, `weekly` | `core.Frequency`; `schedule.frequency` | „stündlich“, „täglich“, „wöchentlich“ |
+| Intervall (alle N Stunden, Tage, Wochen) | interval | `interval` | „alle 2 Stunden“, „jeden 2. Tag“, „jede 2. Woche“ |
+| Uhrzeiten | times (`HH:MM`) | `times` | „Uhrzeiten“ |
+| Wochentage | weekdays: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun` | `weekdays` | „Mo“, „Di“, „Mi“, „Do“, „Fr“, „Sa“, „So“ |
+| Zeitfenster (stündlich) | window start, window end | `windowStart`, `windowEnd` | „von 08:00 bis 20:00“ |
+| Startdatum, Enddatum | start date, end date | `startDate`, `endDate` | „Beginn“, „Ende“ |
+| Zielmenge pro Termin, Einheit | amount, unit | `amount`, `unit` | „Menge“, „Einheit“ |
+| Termin (geplanter Zeitpunkt) | occurrence | `core.Occurrence`; Dart `Occurrence` | „Termin“ |
+| fällig um | due at | `dueAt` (RFC 3339, UTC) | |
+| Ortsdatum und Ortszeit eines Termins | date, time | `date`, `time` (in the user's time zone) | |
+| Status eines Termins | `open`, `done`, `skipped`, `paused` | `status` | „offen“, „erledigt“, „ausgelassen“, „pausiert“ |
+| Verlaufseintrag (never just „Eintrag“: that is a document) | log (routine log) | `core.RoutineLog`; Dart `RoutineLog`; collection `routineLogs` | „Verlaufseintrag“; the list „Verlauf“ |
+| erledigt / ausgelassen | `done` / `skipped` | `status` | „erledigt“ / „ausgelassen“ |
+| Zeitpunkt der Erledigung | taken at | `takenAt` (RFC 3339, UTC) | |
+| tatsächliche Menge | amount | `amount` | |
+| Herkunft eines Verlaufseintrags | source: `manual`, `notification`, `entry` | `source` (not the `sources` of an answer, not the verification `source`) | |
+| Eintrag, aus dem ein Verlaufseintrag stammt | entry ID | `entryId` | |
+| Ortsschlüssel eines Termins (nur MongoDB) | local due key | `dueLocal` (`YYYY-MM-DDTHH:MM`) | |
+| Pause, pausieren, fortsetzen | pause, pause, resume | `pauses` (`from`, `until`); `POST …/pause`, `POST …/resume` | „Pausieren“, „Fortsetzen“, „pausiert bis …“ |
+| Status einer Routine | `upcoming`, `active`, `paused`, `ended` | `status` | „geplant“, „aktiv“, „pausiert“, „beendet“ |
+| Fortschritt: heute, Woche, Zeitraum | progress: `today`, `week`, `period` | `progress` | „heute 1 von 2“, „Woche 5 von 7“, „Tag 6 von 14“ |
+| erledigt, ausgelassen, fällig (Zähler) | `done`, `skipped`, `due` | | |
+| erledigte Menge, Zielmenge gesamt | amount done, amount target | `amountDone`, `amountTarget` | „heute 1.250 von 3.250 ml“ |
+| Tag des Zeitraums, Zahl der Tage | day, days | `day`, `days` (only in `period`) | |
+| Routinenvorschlag (am Eintrag) | routine suggestion | `routineSuggestions`; `core.RoutineSuggestion`; IDs `s1`, `s2`, … | „Vorschlag“ |
+| Zitat (Grundlage eines Vorschlags) | quote | `quote` | |
+| Uhrzeit im Text genannt | time stated | `timeStated` | „Uhrzeit nicht genannt“ |
+| Datum und Uhrzeit laut Text (only in the model's answer) | taken date, taken time | `takenDate`, `takenTime` | |
+| Kurzschlüssel einer Routine im Prompt | routine key | `r1`, `r2`, … | |
+| bestätigen / ablehnen | confirm / reject | `POST …/confirm`, `DELETE …/routine-suggestions/{suggestionId}` | „Übernehmen“, „Ablehnen“ |
+| Zuordnung eines Vorschlags zum Termin | assignment | | |
+| Erinnerung (lokal in der App) | reminder | | „Erinnerung“; buttons „Ja“, „Nein“, „Andere Menge“ |
+| Zeitzone des Nutzers | time zone | `timeZone` (IANA name, default `Europe/Vienna`) on the user and on each log | |
+
+| Item | Value |
+|---|---|
+| routine fields | `id`, `module`, `name`, `amount`, `unit`, `schedule`, `startDate`, `endDate`, `status`, `pauses`, `createdAt`, `progress` |
+| `schedule` fields | `frequency`, `interval`, `times`, `weekdays`, `windowStart`, `windowEnd` |
+| occurrence fields | `routineId`, `dueAt`, `date`, `time`, `status`, `logId` |
+| log fields | `id`, `routineId`, `dueAt`, `takenAt`, `status`, `amount`, `source`, `entryId`, `timeZone`, `createdAt` |
+| suggestion fields | `id`, `routineId`, `amount`, `takenAt`, `timeStated`, `quote` |
+| progress fields | `done`, `skipped`, `due`, `amountDone`, `amountTarget`; in `period` also `day`, `days` |
+| list responses | `routines` + `count`; `occurrences` + `count` + `from` + `to`; `logs` + `count` |
+| request fields | pause: `until`; log: `status`, `source`, `dueAt`, `takenAt`, `amount`; confirm: `amount`, `takenAt`, `dueAt`; `PATCH /me`: `timeZone` |
+| query parameters | `module`, `from`, `to` |
+| error codes | `ROUTINE_NOT_FOUND`, `ROUTINE_LOG_NOT_FOUND`, `ROUTINE_SUGGESTION_NOT_FOUND`, `ROUTINE_LOG_EXISTS`, `ROUTINE_NAME_TAKEN`, `ROUTINE_LIMIT_REACHED` |
+| `details` keys | `routineId`, `logId`, `suggestionId`, `max`; `limit`: `routines`, `pauses`, `logs` |
+| app packages (suggested) | `flutter_local_notifications` (reminders), `flutter_timezone` (IANA name of the phone; `DateTime.timeZoneName` only gives abbreviations) |
