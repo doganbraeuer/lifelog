@@ -8,6 +8,7 @@ import 'platform/device_time_zone.dart';
 import 'platform/file_chooser.dart';
 import 'platform/reminders.dart';
 import 'platform/voice_recorder.dart';
+import 'reminders/reminder_action.dart';
 import 'reminders/routine_sync.dart';
 import 'screens/change_password_screen.dart';
 import 'screens/consent_screen.dart';
@@ -19,16 +20,21 @@ import 'session/session_store.dart';
 import 'widgets/error_view.dart';
 
 void main() {
+  final api = createApiClient();
   runApp(
     LifelogApp(
-      api: createApiClient(),
+      api: api,
       fileChooser: PluginFileChooser(),
       voiceRecorder: PluginVoiceRecorder(),
       catalog: ModuleCatalog.defaults(),
       sessionStore: SecureSessionStore(),
       localData: PluginLocalData(),
       deviceTimeZone: PluginDeviceTimeZone(),
-      reminders: PluginReminders(),
+      // Reminder buttons in the background need the real backend; the mock
+      // lives only in this isolate's memory.
+      reminders: PluginReminders(
+        backgroundButtons: api.isMock ? null : reminderButtonInBackground,
+      ),
     ),
   );
 }

@@ -58,10 +58,20 @@ abstract interface class Reminders {
 /// - After a restart the package's boot receiver plans the last list again
 ///   (AndroidManifest.xml); the next start of the app plans anew anyway.
 class PluginReminders implements Reminders {
-  PluginReminders({FlutterLocalNotificationsPlugin? plugin})
-    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  PluginReminders({
+    FlutterLocalNotificationsPlugin? plugin,
+    this.backgroundButtons,
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
+
+  /// Path A: „Ja“ and „Nein“ send the log in the background, without
+  /// opening the app; the reminder stays until it worked. `null` (the
+  /// mock, whose data lives only in the app's memory): path B, the buttons
+  /// open the app, which sends the log.
+  final DidReceiveBackgroundNotificationResponseCallback? backgroundButtons;
+
+  bool get _inBackground => backgroundButtons != null;
 
   static const channelId = 'routine_reminders';
   static const _category = 'routine_reminder';
@@ -81,9 +91,17 @@ class PluginReminders implements Reminders {
 
   @override
   Future<void> initialize({required void Function(ReminderTap) onTap}) async {
+    // Without `foreground` iOS runs the button in the background.
+    final open = _inBackground
+        ? const <DarwinNotificationActionOption>{}
+        : {DarwinNotificationActionOption.foreground};
     final darwinActions = [
-      DarwinNotificationAction.plain(reminderActionDone, 'Ja'),
-      DarwinNotificationAction.plain(reminderActionSkipped, 'Nein'),
+      DarwinNotificationAction.plain(reminderActionDone, 'Ja', options: open),
+      DarwinNotificationAction.plain(
+        reminderActionSkipped,
+        'Nein',
+        options: open,
+      ),
     ];
     await _plugin.initialize(
       settings: InitializationSettings(
@@ -117,6 +135,7 @@ class PluginReminders implements Reminders {
         );
         if (tap != null) onTap(tap);
       },
+      onDidReceiveBackgroundNotificationResponse: backgroundButtons,
     );
   }
 
@@ -180,17 +199,20 @@ class PluginReminders implements Reminders {
       category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.private,
       actions: [
-        // Path B: the buttons open the app, which sends the log. Path A
-        // (sending without opening the app) is a separate step.
-        const AndroidNotificationAction(
+        // Path A: sent in the background; the reminder stays until the
+        // log worked (the handler removes it). Path B: the app opens and
+        // sends it.
+        AndroidNotificationAction(
           reminderActionDone,
           'Ja',
-          showsUserInterface: true,
+          showsUserInterface: !_inBackground,
+          cancelNotification: !_inBackground,
         ),
-        const AndroidNotificationAction(
+        AndroidNotificationAction(
           reminderActionSkipped,
           'Nein',
-          showsUserInterface: true,
+          showsUserInterface: !_inBackground,
+          cancelNotification: !_inBackground,
         ),
         if (reminder.withAmountButton)
           const AndroidNotificationAction(
