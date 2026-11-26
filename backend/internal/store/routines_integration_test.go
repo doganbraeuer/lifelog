@@ -80,8 +80,13 @@ func TestIntegrationRoutines_Indexes(t *testing.T) {
 	if !ok || due["unique"] != true {
 		t.Fatalf("routine_due_unique missing or not unique: %v", due)
 	}
-	partial, _ := due["partialFilterExpression"].(bson.M)
-	if typ, _ := partial["dueLocal"].(bson.M); typ["$type"] != "string" {
+	// Driver v2 decodes nested documents in a bson.M as bson.D, so read the
+	// filter as raw BSON instead of asserting a map type.
+	pfe, err := bson.Marshal(due["partialFilterExpression"])
+	if err != nil {
+		t.Fatalf("partial filter not marshalable: %v", err)
+	}
+	if typ, ok := bson.Raw(pfe).Lookup("dueLocal", "$type").StringValueOK(); !ok || typ != "string" {
 		t.Errorf("partial filter = %v, want {dueLocal: {$type: string}}", due["partialFilterExpression"])
 	}
 	if _, ok := names["user_routine_taken"]; !ok {
