@@ -10,6 +10,7 @@ import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'occurrence_sheet.dart';
 import 'routine_actions.dart';
+import 'routine_detail_screen.dart';
 import 'routine_form_screen.dart';
 
 /// Tab „Routinen“ of a module: today's occurrences with large buttons „Ja“,
@@ -158,6 +159,23 @@ class RoutinesScreenState extends State<RoutinesScreen> {
     );
   }
 
+  /// The routine's detail; reloads afterwards, since anything may have
+  /// changed there.
+  Future<void> _openDetail(Routine routine) async {
+    final deleted = await openPage<bool>(
+      context,
+      RoutineDetailScreen(
+        api: widget.api,
+        routineId: routine.id,
+        moduleId: widget.moduleId,
+        onChanged: widget.onChanged,
+      ),
+    );
+    if (!mounted) return;
+    if (deleted == true) _show('„${routine.name}“ gelöscht.');
+    reload();
+  }
+
   /// „Neue Routine“ (wish of 2026-11-16: a button at the bottom).
   Future<void> _newRoutine() async {
     final created = await openPage<Routine>(
@@ -284,6 +302,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
                 busy: _busy.contains(routine.id),
                 onLog: (o, status) => _log(routine, o, status),
                 onOtherAmount: (o) => _otherAmount(routine, o),
+                onOpen: () => _openDetail(routine),
               ),
           ],
           if (others.isNotEmpty) ...[
@@ -299,6 +318,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
                     .of(routine.id)
                     .where((o) => o.isOpen && o.date != today)
                     .firstOrNull,
+                onOpen: () => _openDetail(routine),
               ),
           ],
         ],
@@ -351,6 +371,7 @@ class _TodayCard extends StatelessWidget {
     required this.busy,
     required this.onLog,
     required this.onOtherAmount,
+    required this.onOpen,
   });
 
   final Routine routine;
@@ -360,6 +381,9 @@ class _TodayCard extends StatelessWidget {
   final bool busy;
   final void Function(Occurrence, LogStatus) onLog;
   final void Function(Occurrence) onOtherAmount;
+
+  /// Tap on the card: the routine's detail.
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -374,78 +398,94 @@ class _TodayCard extends StatelessWidget {
     };
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(routine.name, style: theme.textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(
-              amount ?? countText('heute', today),
-              style: theme.textTheme.titleMedium,
-            ),
-            if (amount != null)
-              Text(
-                '${countText('', today).trim()} Terminen erledigt',
-                style: theme.textTheme.bodyMedium,
-              ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: fraction.clamp(0.0, 1.0),
-                minHeight: 8,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (next == null)
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Row(
                 children: [
-                  Icon(Icons.check_circle, color: theme.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Für heute erledigt',
-                    style: theme.textTheme.titleMedium,
+                  Expanded(
+                    child: Text(
+                      routine.name,
+                      style: theme.textTheme.titleLarge,
+                    ),
                   ),
+                  const Icon(Icons.chevron_right),
                 ],
-              )
-            else ...[
+              ),
+              const SizedBox(height: 4),
               Text(
-                overdue
-                    ? 'Termin um ${next.time} – noch offen'
-                    : 'Nächster Termin: ${next.time}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: overdue ? theme.colorScheme.error : null,
+                amount ?? countText('heute', today),
+                style: theme.textTheme.titleMedium,
+              ),
+              if (amount != null)
+                Text(
+                  '${countText('', today).trim()} Terminen erledigt',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: fraction.clamp(0.0, 1.0),
+                  minHeight: 8,
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  FilledButton(
-                    style: largeFilled(context),
-                    onPressed: busy ? null : () => onLog(next, LogStatus.done),
-                    child: const Text('Ja'),
+              if (next == null)
+                Row(
+                  children: [
+                    Icon(Icons.check_circle, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Für heute erledigt',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ],
+                )
+              else ...[
+                Text(
+                  overdue
+                      ? 'Termin um ${next.time} – noch offen'
+                      : 'Nächster Termin: ${next.time}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: overdue ? theme.colorScheme.error : null,
                   ),
-                  OutlinedButton(
-                    style: largeOutlined(context),
-                    onPressed: busy
-                        ? null
-                        : () => onLog(next, LogStatus.skipped),
-                    child: const Text('Nein'),
-                  ),
-                  if (routine.hasAmount)
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton(
+                      style: largeFilled(context),
+                      onPressed: busy
+                          ? null
+                          : () => onLog(next, LogStatus.done),
+                      child: const Text('Ja'),
+                    ),
                     OutlinedButton(
                       style: largeOutlined(context),
-                      onPressed: busy ? null : () => onOtherAmount(next),
-                      child: const Text('Andere Menge'),
+                      onPressed: busy
+                          ? null
+                          : () => onLog(next, LogStatus.skipped),
+                      child: const Text('Nein'),
                     ),
-                ],
-              ),
+                    if (routine.hasAmount)
+                      OutlinedButton(
+                        style: largeOutlined(context),
+                        onPressed: busy ? null : () => onOtherAmount(next),
+                        child: const Text('Andere Menge'),
+                      ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -460,6 +500,7 @@ class _OtherRoutineTile extends StatelessWidget {
     required this.routine,
     required this.today,
     required this.next,
+    required this.onOpen,
   });
 
   final Routine routine;
@@ -467,6 +508,9 @@ class _OtherRoutineTile extends StatelessWidget {
 
   /// The next open occurrence within the loaded days, if any.
   final Occurrence? next;
+
+  /// Tap: the routine's detail.
+  final VoidCallback onOpen;
 
   String _state() {
     switch (routine.status) {
@@ -498,6 +542,8 @@ class _OtherRoutineTile extends StatelessWidget {
           style: theme.textTheme.bodyLarge,
         ),
         isThreeLine: true,
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onOpen,
       ),
     );
   }
