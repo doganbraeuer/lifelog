@@ -113,11 +113,17 @@ class FakeReminders implements Reminders {
   @override
   Future<void> openSettings() async => settingsOpened++;
 
+  /// The [Reminders.apply] `remove` of every call.
+  final removes = <Set<int>>[];
+
   @override
   Future<void> apply(
     List<PlannedReminder> plan, {
-    required bool Function(ReminderTap) stillOpen,
-  }) async => plans.add(plan);
+    required Set<int> remove,
+  }) async {
+    plans.add(plan);
+    removes.add(remove);
+  }
 
   @override
   Future<void> cancel(int id) async => cancelled.add(id);

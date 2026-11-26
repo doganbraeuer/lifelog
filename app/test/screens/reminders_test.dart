@@ -349,6 +349,56 @@ void main() {
       expect(inCard('Blutdruck messen', find.text('heute 1 von 2')), findsOne);
     });
 
+    testWidgets('pausing removes the shown reminder of a paused occurrence', (
+      tester,
+    ) async {
+      final reminders = FakeReminders();
+      final mock = fastMock();
+      await startApp(tester, mock, reminders);
+      final pressure = await idOf(mock, 'Blutdruck messen');
+      final tonight = reminderId(
+        occurrenceKey(pressure, DateTime.utc(2026, 11, 4, 19)),
+      );
+      expect(reminders.removes.last, isNot(contains(tonight)));
+
+      await openHealth(tester);
+      await tester.tap(navItem('Routinen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Blutdruck messen'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Pausieren'),
+        300,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('Pausieren'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Für eine Woche'));
+      await tester.pumpAndSettle();
+
+      expect(reminders.removes.last, contains(tonight));
+      expect(reminders.planned.where((r) => r.routineId == pressure), isEmpty);
+    });
+
+    testWidgets('deleting a routine removes its shown reminders', (
+      tester,
+    ) async {
+      final reminders = FakeReminders();
+      final mock = fastMock();
+      await startApp(tester, mock, reminders);
+      final water = await idOf(mock, 'Wasser');
+      final eleven = reminderId(
+        occurrenceKey(water, DateTime.utc(2026, 11, 4, 10)),
+      );
+      await mock.deleteRoutine(water);
+      await RoutineSyncScope.maybeOf(
+        tester.element(find.byType(Scaffold).first),
+      )!.refresh();
+      await tester.pumpAndSettle();
+      expect(reminders.removes.last, contains(eleven));
+      expect(reminders.planned.where((r) => r.routineId == water), isEmpty);
+    });
+
     testWidgets('a tap while the settings are open opens the module', (
       tester,
     ) async {

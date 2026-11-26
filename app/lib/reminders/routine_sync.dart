@@ -159,21 +159,25 @@ class RoutineSync extends ChangeNotifier {
       now: _clock(),
       isIOS: _isIOS,
     );
-    final open = {
+    int idOf(Occurrence o) => reminderId(occurrenceKey(o.routineId, o.dueAt));
+    final routineIds = {for (final r in routines) r.id};
+    // Shown reminders that must go: their occurrence is done, skipped or
+    // paused, or their routine is gone (known from the last run). A shown
+    // reminder of an open occurrence, or of an older day, stays.
+    final remove = {
       for (final o in occurrences)
-        if (o.isOpen) occurrenceKey(o.routineId, o.dueAt),
+        if (!o.isOpen) idOf(o),
+      for (final MapEntry(key: id, value: routineId) in _lastKnown.entries)
+        if (!routineIds.contains(routineId)) id,
     };
-    final known = {
-      for (final o in occurrences) occurrenceKey(o.routineId, o.dueAt),
-    };
-    await reminders.apply(
-      plan,
-      // A shown reminder stays while its occurrence is open, or when it is
-      // not among the loaded ones (an older day).
-      stillOpen: (tap) => open.contains(tap.key) || !known.contains(tap.key),
-    );
+    await reminders.apply(plan, remove: remove);
+    _lastKnown = {for (final o in occurrences) idOf(o): o.routineId};
     _lastPlan = plan;
   }
+
+  /// Reminder ID → routine of every occurrence of the last run, to remove
+  /// the shown reminders of a routine that was deleted since.
+  var _lastKnown = <int, String>{};
 
   /// Asks for the permission; if Android no longer asks, opens the
   /// settings. Plans the reminders when it is granted.
@@ -210,6 +214,7 @@ class RoutineSync extends ChangeNotifier {
   Future<void> clear() async {
     _refused.clear();
     _lastPlan = [];
+    _lastKnown = {};
     _permission = null;
     pendingTap.value = null;
     await reminders.clear();

@@ -27,13 +27,11 @@ abstract interface class Reminders {
   /// longer asks for.
   Future<void> openSettings();
 
-  /// Replaces the planned reminders by [plan]. Reminders already shown
-  /// stay while [stillOpen] says their occurrence is still open; the others
-  /// are removed.
-  Future<void> apply(
-    List<PlannedReminder> plan, {
-    required bool Function(ReminderTap) stillOpen,
-  });
+  /// Replaces the planned reminders by [plan], and removes the reminders
+  /// already shown whose ID is in [remove] (their occurrence is done,
+  /// skipped or paused, or the routine was deleted). Other shown reminders
+  /// stay.
+  Future<void> apply(List<PlannedReminder> plan, {required Set<int> remove});
 
   Future<void> cancel(int id);
 
@@ -232,19 +230,20 @@ class PluginReminders implements Reminders {
   @override
   Future<void> apply(
     List<PlannedReminder> plan, {
-    required bool Function(ReminderTap) stillOpen,
+    required Set<int> remove,
   }) async {
     await _plugin.cancelAllPendingNotifications();
-    try {
-      for (final shown in await _plugin.getActiveNotifications()) {
-        final tap = ReminderTap.fromPayload(shown.payload);
-        final id = shown.id;
-        if (tap != null && id != null && !stillOpen(tap)) {
-          await _plugin.cancel(id: id);
+    // Shown reminders are found by ID: on Android the plugin reports no
+    // payload for them (getActiveNotifications in its Java code).
+    if (remove.isNotEmpty) {
+      try {
+        for (final shown in await _plugin.getActiveNotifications()) {
+          final id = shown.id;
+          if (id != null && remove.contains(id)) await _plugin.cancel(id: id);
         }
+      } on PlatformException {
+        // Older systems cannot list shown notifications; they stay.
       }
-    } on PlatformException {
-      // Older systems cannot list shown notifications; they stay.
     }
     final now = DateTime.now().toUtc();
     for (final reminder in plan) {
