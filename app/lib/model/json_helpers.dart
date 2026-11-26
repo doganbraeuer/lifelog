@@ -101,3 +101,32 @@ double? readDoubleOrNull(Map<String, dynamic> json, String field) {
 /// Like [readTimestamp], but `null` is allowed.
 DateTime? readTimestampOrNull(Map<String, dynamic> json, String field) =>
     json[field] == null ? null : readTimestamp(json, field);
+
+/// Reads a code value such as `"daily"` into the enum value with that name.
+/// An unknown value does not match the contract: [FormatException].
+T readEnum<T extends Enum>(
+  Map<String, dynamic> json,
+  String field,
+  List<T> values,
+) {
+  final value = readString(json, field);
+  for (final candidate in values) {
+    if (candidate.name == value) return candidate;
+  }
+  throw FormatException('Field "$field" has an unknown value');
+}
+
+/// Reads a list of strings, e.g. `times`. Lists are always an array in the
+/// API, never `null`.
+List<String> readStringList(Map<String, dynamic> json, String field) {
+  final value = json[field];
+  if (value is! List) {
+    throw FormatException('Field "$field" is missing or not a list');
+  }
+  return [
+    for (final element in value)
+      element is String
+          ? element
+          : throw FormatException('Field "$field" holds a non-string'),
+  ];
+}
