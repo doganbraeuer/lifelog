@@ -57,8 +57,9 @@ class RoutineSync extends ChangeNotifier {
   /// A tap on a reminder that is not handled yet.
   final pendingTap = ValueNotifier<ReminderTap?>(null);
 
-  /// Counts logs made outside the screens, by a reminder button in the
-  /// background: the routines tab reloads when it changes.
+  /// Counts changes made outside the screens (a log by a reminder button in
+  /// the background, a new time zone): the routines tab reloads when it
+  /// changes.
   final dataChanged = ValueNotifier<int>(0);
 
   /// Modules whose shell is open, with how often (a shell registers
@@ -123,6 +124,10 @@ class RoutineSync extends ChangeNotifier {
     }
     try {
       await session.updateTimeZone(phone);
+      // Routines compute in the new zone: "today", the progress and the
+      // occurrences change. A screen that loaded while the request ran
+      // still shows the old zone, so it loads again.
+      dataChanged.value++;
     } on ApiException catch (e) {
       if (e.code == ErrorCode.invalidRequest) _refused.add(phone);
     }

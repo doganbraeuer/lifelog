@@ -1,6 +1,8 @@
 // The app sends the phone's time zone (docs/API.md 3.13): at the start of a
 // session and when it comes back to the foreground, only if it differs, and
 // a zone the backend refuses is not sent again.
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock_api_client.dart';
@@ -8,6 +10,7 @@ import 'package:lifelog/model/user.dart';
 import 'package:lifelog/session/guarded_api_client.dart';
 
 import '../helpers.dart';
+import '../screens/routines_screen_test.dart' show inCard, navItem;
 
 /// Counts `PATCH /me` with a time zone.
 class CountingApi extends GuardedApiClient {
@@ -16,9 +19,13 @@ class CountingApi extends GuardedApiClient {
 
   final sent = <String>[];
 
+  /// While set, `PATCH /me` waits for it, so that a screen loads first.
+  Completer<void>? hold;
+
   @override
-  Future<User> updateTimeZone(String timeZone) {
+  Future<User> updateTimeZone(String timeZone) async {
     sent.add(timeZone);
+    await hold?.future;
     return super.updateTimeZone(timeZone);
   }
 }
@@ -26,11 +33,17 @@ class CountingApi extends GuardedApiClient {
 Future<CountingApi> start(
   WidgetTester tester,
   MockApiClient mock,
-  FakeDeviceTimeZone phone,
-) async {
+  FakeDeviceTimeZone phone, {
+  DateTime Function()? clock,
+}) async {
   final api = CountingApi(mock);
   await tester.pumpWidget(
-    testApp(api, store: signedInStore(mock), deviceTimeZone: phone),
+    testApp(
+      api,
+      store: signedInStore(mock),
+      deviceTimeZone: phone,
+      clock: clock,
+    ),
   );
   await tester.pumpAndSettle();
   return api;
@@ -80,6 +93,36 @@ void main() {
     await backToForeground(tester);
     expect(api.sent, ['America/New_York']);
     expect(mock.userForTest('admin').timeZone, 'America/New_York');
+  });
+
+  testWidgets('travelling with the routines tab open: it loads again once '
+      'the new zone is stored', (tester) async {
+    // Found on the phone: the tab loaded while PATCH /me ran and showed the
+    // progress of the old zone's day.
+    // 23:30 in Lisbon on 4 November, already 5 November in Vienna.
+    DateTime late() => DateTime.utc(2026, 11, 4, 23, 30);
+    final mock = fastMock(signedIn: false, clock: late);
+    final phone = FakeDeviceTimeZone('Europe/Lisbon');
+    useLargeScreen(tester);
+    final api = await start(tester, mock, phone, clock: late);
+    await openHealth(tester);
+    await tester.tap(navItem('Routinen'));
+    await tester.pumpAndSettle();
+    await tester.tap(inCard('Vitamin D', find.text('Ja')));
+    await tester.pumpAndSettle();
+    expect(inCard('Vitamin D', find.text('heute 2 von 2 Stück')), findsOne);
+
+    // Back in Vienna; the tab loads before the zone is stored.
+    api.hold = Completer<void>();
+    phone.zone = 'Europe/Vienna';
+    await backToForeground(tester);
+    expect(inCard('Vitamin D', find.text('heute 2 von 2 Stück')), findsOne);
+
+    api.hold!.complete();
+    await tester.pumpAndSettle();
+    expect(api.sent, ['Europe/Lisbon', 'Europe/Vienna']);
+    // 5 November in Vienna: nothing logged yet.
+    expect(inCard('Vitamin D', find.text('heute 0 von 2 Stück')), findsOne);
   });
 
   testWidgets('a refused zone is not sent again; the app keeps working', (
