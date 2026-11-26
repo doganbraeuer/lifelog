@@ -61,8 +61,10 @@ class _ModuleShellState extends State<ModuleShell> {
     final sync = RoutineSyncScope.maybeOf(context);
     if (sync != _sync) {
       _sync?.pendingTap.removeListener(_reminderTapped);
+      _sync?.moduleClosed(widget.module.id);
       _sync = sync;
       sync?.pendingTap.addListener(_reminderTapped);
+      sync?.moduleOpened(widget.module.id);
     }
   }
 
@@ -87,6 +89,7 @@ class _ModuleShellState extends State<ModuleShell> {
   @override
   void dispose() {
     _sync?.pendingTap.removeListener(_reminderTapped);
+    _sync?.moduleClosed(widget.module.id);
     _pages.dispose();
     super.dispose();
   }

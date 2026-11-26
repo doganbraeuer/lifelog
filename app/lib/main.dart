@@ -1,3 +1,6 @@
+import 'dart:isolate';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -120,8 +123,16 @@ class _LifelogAppState extends State<LifelogApp> {
   }
 
   /// Taps on reminders go to the sync; the one that started the app too.
+  /// A reminder button that logged in the background (another isolate)
+  /// reports it through a named port, so that the screens reload.
   Future<void> _initReminders() async {
     try {
+      IsolateNameServer.removePortNameMapping(reminderPortName);
+      IsolateNameServer.registerPortWithName(
+        _backgroundLogs.sendPort,
+        reminderPortName,
+      );
+      _backgroundLogs.listen((_) => _sync.loggedInBackground());
       await widget.reminders.initialize(onTap: _sync.handleTap);
       final tap = await widget.reminders.launchTap();
       if (tap != null && mounted) _sync.handleTap(tap);
@@ -130,8 +141,12 @@ class _LifelogAppState extends State<LifelogApp> {
     }
   }
 
+  final _backgroundLogs = ReceivePort();
+
   @override
   void dispose() {
+    IsolateNameServer.removePortNameMapping(reminderPortName);
+    _backgroundLogs.close();
     _lifecycle.dispose();
     _session.removeListener(_sessionChanged);
     _session.dispose();

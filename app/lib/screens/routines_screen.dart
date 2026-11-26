@@ -53,9 +53,13 @@ class RoutinesScreenState extends State<RoutinesScreen> {
   /// Reminders and time zone; `null` outside the app (screen tests).
   RoutineSync? _sync;
 
+  /// Back in the foreground: a new day, or something logged elsewhere.
+  late final _lifecycle = AppLifecycleListener(onResume: reload);
+
   @override
   void initState() {
     super.initState();
+    _lifecycle; // create it
     reload();
   }
 
@@ -65,14 +69,20 @@ class RoutinesScreenState extends State<RoutinesScreen> {
     final sync = RoutineSyncScope.maybeOf(context);
     if (sync != _sync) {
       _sync?.pendingTap.removeListener(_handlePendingTap);
+      _sync?.dataChanged.removeListener(reload);
       _sync = sync;
       sync?.pendingTap.addListener(_handlePendingTap);
+      // A reminder button logged in the background while the app is open
+      // (pulling the notifications down does not leave the app).
+      sync?.dataChanged.addListener(reload);
     }
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _sync?.pendingTap.removeListener(_handlePendingTap);
+    _sync?.dataChanged.removeListener(reload);
     super.dispose();
   }
 

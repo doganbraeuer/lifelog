@@ -8,6 +8,7 @@ import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/model/routine.dart';
 import 'package:lifelog/platform/reminders.dart';
 import 'package:lifelog/reminders/reminder_plan.dart';
+import 'package:lifelog/reminders/routine_sync.dart';
 import 'package:lifelog/screens/occurrence_sheet.dart';
 import 'package:lifelog/screens/routines_screen.dart';
 
@@ -298,6 +299,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RoutinesScreen), findsOneWidget);
     expect(find.text('„Blutdruck messen“ ausgelassen.'), findsOneWidget);
+  });
+
+  group('found in the phone test', () {
+    Future<(MockApiClient, String)> openTab(WidgetTester tester) async {
+      final mock = fastMock();
+      await startApp(tester, mock, FakeReminders());
+      await openHealth(tester);
+      await tester.tap(navItem('Routinen'));
+      await tester.pumpAndSettle();
+      expect(inCard('Blutdruck messen', find.text('heute 0 von 2')), findsOne);
+      return (mock, await idOf(mock, 'Blutdruck messen'));
+    }
+
+    Future<void> logBehindTheBack(MockApiClient mock, String id) =>
+        mock.addRoutineLog(
+          id,
+          NewRoutineLog(
+            status: LogStatus.done,
+            source: LogSource.notification,
+            dueAt: DateTime.utc(2026, 11, 4, 7),
+          ),
+        );
+
+    testWidgets('a reminder button logged in the background: the tab '
+        'reloads', (tester) async {
+      final (mock, id) = await openTab(tester);
+      await logBehindTheBack(mock, id);
+      RoutineSyncScope.maybeOf(tester.element(find.byType(RoutinesScreen)))!
+          .loggedInBackground();
+      await tester.pumpAndSettle();
+      expect(inCard('Blutdruck messen', find.text('heute 1 von 2')), findsOne);
+    });
+
+    testWidgets('back in the foreground: the tab reloads', (tester) async {
+      final (mock, id) = await openTab(tester);
+      await logBehindTheBack(mock, id);
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pumpAndSettle();
+      expect(inCard('Blutdruck messen', find.text('heute 1 von 2')), findsOne);
+    });
+
+    testWidgets('a tap while the settings are open opens the module', (
+      tester,
+    ) async {
+      final reminders = FakeReminders();
+      final mock = fastMock();
+      await startApp(tester, mock, reminders);
+      await tester.tap(find.byTooltip('Einstellungen'));
+      await tester.pumpAndSettle();
+      reminders.onTap!(
+        ReminderTap(
+          module: 'health',
+          routineId: await idOf(mock, 'Wasser'),
+          dueAt: DateTime.utc(2026, 11, 4, 8),
+          actionId: reminderActionAmount,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(OccurrenceSheet), findsOneWidget);
+      expect(find.byType(RoutinesScreen), findsOneWidget);
+    });
   });
 
   testWidgets('a reminder of a deleted routine: a short notice', (

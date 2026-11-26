@@ -60,6 +60,36 @@ class RoutineSync extends ChangeNotifier {
   /// A tap on a reminder that is not handled yet.
   final pendingTap = ValueNotifier<ReminderTap?>(null);
 
+  /// Counts logs made outside the screens, by a reminder button in the
+  /// background: the routines tab reloads when it changes.
+  final dataChanged = ValueNotifier<int>(0);
+
+  /// Modules whose shell is open, with how often (a shell registers
+  /// itself). A tap on a reminder of an open module is handled there.
+  final _openModules = <String, int>{};
+
+  void moduleOpened(String module) =>
+      _openModules[module] = (_openModules[module] ?? 0) + 1;
+
+  void moduleClosed(String module) {
+    final count = (_openModules[module] ?? 1) - 1;
+    if (count <= 0) {
+      _openModules.remove(module);
+    } else {
+      _openModules[module] = count;
+    }
+  }
+
+  bool isModuleOpen(String module) => _openModules.containsKey(module);
+
+  /// A reminder button logged an occurrence in the background (path A),
+  /// while the app runs: the screens reload, the reminders are planned
+  /// again.
+  void loggedInBackground() {
+    dataChanged.value++;
+    refresh();
+  }
+
   /// Brings everything up to date. Errors (no network, …) are swallowed:
   /// the next refresh tries again.
   Future<void> refresh() {
@@ -188,6 +218,7 @@ class RoutineSync extends ChangeNotifier {
   @override
   void dispose() {
     pendingTap.dispose();
+    dataChanged.dispose();
     super.dispose();
   }
 }

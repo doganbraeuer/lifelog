@@ -60,6 +60,10 @@ Future<bool> logFromReminderButton(
   return true;
 }
 
+/// Name of the port through which the background tells a running app that
+/// a reminder button logged something (dart:ui IsolateNameServer).
+const reminderPortName = 'lifelog_reminder_logged';
+
 /// Entry point of the reminder buttons in the background. Top level and
 /// marked, so that the compiler keeps it for the isolate.
 @pragma('vm:entry-point')
@@ -79,6 +83,11 @@ void reminderButtonInBackground(NotificationResponse response) {
       createApi: () => HttpApiClient(baseUrl: apiBaseUrl),
       reminders: PluginReminders(),
       now: DateTime.now().toUtc(),
-    ),
+    ).then((logged) {
+      // If the app is running, its screens reload.
+      if (logged) {
+        IsolateNameServer.lookupPortByName(reminderPortName)?.send('logged');
+      }
+    }),
   );
 }

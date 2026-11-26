@@ -77,17 +77,21 @@ class _ModulesScreenState extends State<ModulesScreen>
   }
 
   /// A tap on a reminder: opens the module on the tab „Routinen“, which
-  /// then shows the occurrence. If a module is open already, that module
-  /// handles the tap itself.
+  /// then shows the occurrence. If that module is open already, it handles
+  /// the tap itself; other pages on top (e.g. the settings) are closed.
   void _reminderTapped() {
     final sync = _sync;
     final tap = sync?.pendingTap.value;
-    if (tap == null || !mounted) return;
-    if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+    if (sync == null || tap == null || !mounted) return;
+    if (sync.isModuleOpen(tap.module)) return;
     final module = ModuleCatalog.of(context).byId(tap.module);
     if (module == null || !module.active) {
-      sync!.pendingTap.value = null;
+      sync.pendingTap.value = null;
       return;
+    }
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      Navigator.of(context).popUntil((r) => r == route);
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
