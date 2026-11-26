@@ -20,6 +20,7 @@ import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
 import 'mock/mock_data.dart';
+import 'mock/mock_routines.dart';
 import 'mock/mock_time_zones.dart';
 import 'mock/mock_verification.dart';
 import 'timeline_sort.dart';
@@ -70,6 +71,13 @@ const notFoundAnswer = 'Dazu finde ich nichts in deinen Dokumenten.';
 /// `429 TOO_MANY_ATTEMPTS` with `retryAfterSeconds: 60`, measured with the
 /// mock's clock. Unlike the backend the mock does not separate entries per
 /// user: every account sees the sample data.
+///
+/// Routines (docs/API.md 3.16–3.27) follow the backend's rules: the mock
+/// expands schedules in the user's time zone (daylight saving time
+/// included), keeps logs and pauses and computes status and progress, with
+/// the backend's messages (mock/mock_routines.dart). With sample data it
+/// has three synthetic routines: „Vitamin D“, „Blutdruck messen“ and
+/// „Wasser“.
 class MockApiClient implements ApiClient {
   MockApiClient({
     bool withSampleData = true,
@@ -87,6 +95,7 @@ class MockApiClient implements ApiClient {
         _files[id] = e.bytes;
         if (e.original case final original?) _originals[id] = original;
       }
+      _routines.addSamples();
     }
   }
 
@@ -1258,59 +1267,136 @@ class MockApiClient implements ApiClient {
   // Routines (3.16–3.27)
   // ---------------------------------------------------------------------
 
-  /// Temporary until the mock computes occurrences (next commit).
-  static const _routinesMissing = ApiException(
-    httpStatus: 501,
-    code: ErrorCode.internalError,
-    message: 'Routinen gibt es im Mock noch nicht.',
+  /// Routines and logs; occurrences, status and progress computed as in
+  /// the backend (mock/mock_routines.dart).
+  late final _routines = MockRoutines(
+    clock: _clock,
+    isKnownModule: _isKnownModule,
   );
 
   @override
-  Future<List<Routine>> listRoutines({required String module}) async =>
-      throw _routinesMissing;
+  Future<List<Routine>> listRoutines({required String module}) async {
+    final user = (await _wait(delay))!;
+    return _routines.list(module, user.timeZone);
+  }
 
   @override
-  Future<Routine> createRoutine(NewRoutine routine) async =>
-      throw _routinesMissing;
+  Future<Routine> createRoutine(NewRoutine routine) =>
+      createRoutineFromJson(routine.toJson());
+
+  /// Like [createRoutine], with a raw body (`null`: not a JSON object), to
+  /// test the backend's checks with any request.
+  @visibleForTesting
+  Future<Routine> createRoutineFromJson(Map<String, dynamic>? body) async {
+    final user = (await _wait(delay))!;
+    return _routines.create(body, user.timeZone);
+  }
 
   @override
-  Future<Routine> getRoutine(String id) async => throw _routinesMissing;
+  Future<Routine> getRoutine(String id) async {
+    final user = (await _wait(delay))!;
+    return _routines.get(id, user.timeZone);
+  }
 
   @override
-  Future<Routine> updateRoutine(String id, RoutinePatch patch) async =>
-      throw _routinesMissing;
+  Future<Routine> updateRoutine(String id, RoutinePatch patch) =>
+      updateRoutineFromJson(id, patch.toJson());
+
+  /// Like [updateRoutine], with a raw body.
+  @visibleForTesting
+  Future<Routine> updateRoutineFromJson(
+    String id,
+    Map<String, dynamic>? body,
+  ) async {
+    final user = (await _wait(delay))!;
+    return _routines.update(id, body, user.timeZone);
+  }
 
   @override
-  Future<Routine> pauseRoutine(String id, {PlainDate? until}) async =>
-      throw _routinesMissing;
+  Future<Routine> pauseRoutine(String id, {PlainDate? until}) =>
+      pauseRoutineFromJson(id, {if (until != null) 'until': until.iso});
+
+  /// Like [pauseRoutine], with a raw body.
+  @visibleForTesting
+  Future<Routine> pauseRoutineFromJson(
+    String id,
+    Map<String, dynamic>? body,
+  ) async {
+    final user = (await _wait(delay))!;
+    return _routines.pause(id, body, user.timeZone);
+  }
 
   @override
-  Future<Routine> resumeRoutine(String id) async => throw _routinesMissing;
+  Future<Routine> resumeRoutine(String id) async {
+    final user = (await _wait(delay))!;
+    return _routines.resume(id, user.timeZone);
+  }
 
   @override
-  Future<void> deleteRoutine(String id) async => throw _routinesMissing;
+  Future<void> deleteRoutine(String id) async {
+    await _wait(delay);
+    _routines.delete(id);
+  }
 
   @override
   Future<OccurrenceList> listOccurrences({
     required String module,
     PlainDate? from,
     PlainDate? to,
-  }) async => throw _routinesMissing;
+  }) => listOccurrencesWithParameters({
+    'module': module,
+    if (from != null) 'from': from.iso,
+    if (to != null) 'to': to.iso,
+  });
+
+  /// Like [listOccurrences], with raw query parameters.
+  @visibleForTesting
+  Future<OccurrenceList> listOccurrencesWithParameters(
+    Map<String, String> parameters,
+  ) async {
+    final user = (await _wait(delay))!;
+    return _routines.occurrences(parameters, user.timeZone);
+  }
 
   @override
   Future<List<RoutineLog>> listRoutineLogs(
     String id, {
     PlainDate? from,
     PlainDate? to,
-  }) async => throw _routinesMissing;
+  }) => listRoutineLogsWithParameters(id, {
+    if (from != null) 'from': from.iso,
+    if (to != null) 'to': to.iso,
+  });
+
+  /// Like [listRoutineLogs], with raw query parameters.
+  @visibleForTesting
+  Future<List<RoutineLog>> listRoutineLogsWithParameters(
+    String id,
+    Map<String, String> parameters,
+  ) async {
+    final user = (await _wait(delay))!;
+    return _routines.logs(id, parameters, user.timeZone);
+  }
 
   @override
-  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log) async =>
-      throw _routinesMissing;
+  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log) =>
+      addRoutineLogFromJson(id, log.toJson());
+
+  /// Like [addRoutineLog], with a raw body, e.g. with `takenAt`.
+  @visibleForTesting
+  Future<RoutineLog> addRoutineLogFromJson(
+    String id,
+    Map<String, dynamic>? body,
+  ) async {
+    final user = (await _wait(delay))!;
+    return _routines.addLog(id, body, user.timeZone);
+  }
 
   @override
-  Future<void> deleteRoutineLog(String id, String logId) async =>
-      throw _routinesMissing;
+  Future<void> deleteRoutineLog(String id, String logId) async {
+    await _wait(delay);
+    _routines.deleteLog(id, logId);
+  }
 
   /// Creates a session for [username] without a login and returns its
   /// token, e.g. to start a test already logged in. With [consent] the user
