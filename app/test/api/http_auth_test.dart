@@ -9,11 +9,14 @@ import 'package:http/testing.dart';
 import 'package:lifelog/api/api_exception.dart';
 import 'package:lifelog/api/http_api_client.dart';
 import 'package:lifelog/model/entry_patch.dart';
+import 'package:lifelog/model/plain_date.dart';
+import 'package:lifelog/model/routine.dart';
 import 'package:lifelog/model/user.dart';
 import 'package:lifelog/session/session_store.dart';
 
 import '../helpers.dart';
 import '../model/entry_test.dart' show sample;
+import '../model/routine_test.dart' show logJson, occurrencesJson, waterJson;
 import 'http_api_client_test.dart' show jsonResponse, testBase;
 
 const dummyToken = 'dummy-token-for-tests-only';
@@ -60,6 +63,23 @@ Future<http.Response> anyEndpoint(http.Request request) async {
       'language': 'de',
       'engine': 'x',
     }),
+    ('GET', '/routines') => jsonResponse({
+      'routines': [jsonDecode(waterJson)],
+      'count': 1,
+    }),
+    ('GET', '/routines/occurrences') => jsonResponse(
+      jsonDecode(occurrencesJson) as Object,
+    ),
+    ('GET', final p) when p.endsWith('/logs') => jsonResponse({
+      'logs': [jsonDecode(logJson)],
+      'count': 1,
+    }),
+    ('POST', final p) when p.endsWith('/logs') => jsonResponse(
+      jsonDecode(logJson) as Object,
+      201,
+    ),
+    ('GET' || 'PATCH' || 'POST', final p) when p.startsWith('/routines') =>
+      jsonResponse(jsonDecode(waterJson) as Object),
     ('GET', final p) when p.endsWith('/file') => http.Response.bytes(
       [1, 2, 3],
       200,
@@ -89,7 +109,33 @@ final protectedCalls = <String, Future<Object?> Function(HttpApiClient)>{
   'changePassword': (api) =>
       api.changePassword('dummy-current-1', 'dummy-new-12345'),
   'recordConsent': (api) => api.recordConsent('2026-11-18'),
+  'updateTimeZone': (api) => api.updateTimeZone('Europe/Vienna'),
+  'listRoutines': (api) => api.listRoutines(module: 'health'),
+  'createRoutine': (api) => api.createRoutine(
+    NewRoutine(
+      module: 'health',
+      name: 'Vitamin D',
+      schedule: const RoutineSchedule.daily(interval: 1, times: ['08:00']),
+      startDate: PlainDate(2026, 11, 23),
+    ),
+  ),
+  'getRoutine': (api) => api.getRoutine(routineId),
+  'updateRoutine': (api) =>
+      api.updateRoutine(routineId, const RoutinePatch(name: 'Vitamin D3')),
+  'pauseRoutine': (api) => api.pauseRoutine(routineId),
+  'resumeRoutine': (api) => api.resumeRoutine(routineId),
+  'deleteRoutine': (api) => api.deleteRoutine(routineId),
+  'listOccurrences': (api) => api.listOccurrences(module: 'health'),
+  'listRoutineLogs': (api) => api.listRoutineLogs(routineId),
+  'addRoutineLog': (api) => api.addRoutineLog(
+    routineId,
+    const NewRoutineLog(status: LogStatus.done, source: LogSource.manual),
+  ),
+  'deleteRoutineLog': (api) => api.deleteRoutineLog(routineId, logId),
 };
+
+const routineId = '6742c0a1b2c3d4e5f6a7b8c9';
+const logId = '6742d3e4f5a6b7c8d9e0f1a2';
 
 /// The two public endpoints: never with a token.
 final publicCalls = <String, Future<Object?> Function(HttpApiClient)>{

@@ -8,6 +8,7 @@ class User {
     required this.displayName,
     required this.mustChangePassword,
     required this.consentVersion,
+    this.timeZone,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -16,6 +17,7 @@ class User {
     displayName: readString(json, 'displayName'),
     mustChangePassword: readBool(json, 'mustChangePassword'),
     consentVersion: readStringOrNull(json, 'consentVersion'),
+    timeZone: readStringOrNull(json, 'timeZone'),
   );
 
   final String id;
@@ -28,16 +30,23 @@ class User {
   /// Version of the consent text the user last agreed to; `null` if never.
   final String? consentVersion;
 
+  /// IANA name of the user's time zone, e.g. `Europe/Vienna` (3.12, since
+  /// 2026-11-23). Routines compute in it. `null` when the user comes from
+  /// the login response, which has no `timeZone` (3.13).
+  final String? timeZone;
+
   User copyWith({
     String? displayName,
     bool? mustChangePassword,
     String? consentVersion,
+    String? timeZone,
   }) => User(
     id: id,
     username: username,
     displayName: displayName ?? this.displayName,
     mustChangePassword: mustChangePassword ?? this.mustChangePassword,
     consentVersion: consentVersion ?? this.consentVersion,
+    timeZone: timeZone ?? this.timeZone,
   );
 
   @override

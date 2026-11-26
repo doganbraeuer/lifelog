@@ -5,6 +5,8 @@ import '../api/api_exception.dart';
 import '../model/answer.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
+import '../model/plain_date.dart';
+import '../model/routine.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
 import '../model/user.dart';
@@ -119,4 +121,57 @@ class GuardedApiClient implements ApiClient {
   @override
   Future<void> recordConsent(String version) =>
       _guard(() => inner.recordConsent(version));
+
+  @override
+  Future<User> updateTimeZone(String timeZone) =>
+      _guard(() => inner.updateTimeZone(timeZone));
+
+  @override
+  Future<List<Routine>> listRoutines({required String module}) =>
+      _guard(() => inner.listRoutines(module: module));
+
+  @override
+  Future<Routine> createRoutine(NewRoutine routine) =>
+      _guard(() => inner.createRoutine(routine));
+
+  @override
+  Future<Routine> getRoutine(String id) => _guard(() => inner.getRoutine(id));
+
+  @override
+  Future<Routine> updateRoutine(String id, RoutinePatch patch) =>
+      _guard(() => inner.updateRoutine(id, patch));
+
+  @override
+  Future<Routine> pauseRoutine(String id, {PlainDate? until}) =>
+      _guard(() => inner.pauseRoutine(id, until: until));
+
+  @override
+  Future<Routine> resumeRoutine(String id) =>
+      _guard(() => inner.resumeRoutine(id));
+
+  @override
+  Future<void> deleteRoutine(String id) =>
+      _guard(() => inner.deleteRoutine(id));
+
+  @override
+  Future<OccurrenceList> listOccurrences({
+    required String module,
+    PlainDate? from,
+    PlainDate? to,
+  }) => _guard(() => inner.listOccurrences(module: module, from: from, to: to));
+
+  @override
+  Future<List<RoutineLog>> listRoutineLogs(
+    String id, {
+    PlainDate? from,
+    PlainDate? to,
+  }) => _guard(() => inner.listRoutineLogs(id, from: from, to: to));
+
+  @override
+  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log) =>
+      _guard(() => inner.addRoutineLog(id, log));
+
+  @override
+  Future<void> deleteRoutineLog(String id, String logId) =>
+      _guard(() => inner.deleteRoutineLog(id, logId));
 }

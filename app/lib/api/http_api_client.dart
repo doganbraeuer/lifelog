@@ -9,6 +9,8 @@ import '../model/answer.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
+import '../model/plain_date.dart';
+import '../model/routine.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
 import '../model/user.dart';
@@ -315,11 +317,175 @@ class HttpApiClient implements ApiClient {
     );
   }
 
+  @override
+  Future<User> updateTimeZone(String timeZone) async {
+    final response = await _send(
+      () => _client.patch(
+        _uri('/me'),
+        headers: _authJsonHeaders,
+        body: jsonEncode({'timeZone': timeZone}),
+      ),
+      defaultTimeout,
+    );
+    return _read(response, User.fromJson);
+  }
+
+  // ---------------------------------------------------------------------
+  // Routines (3.16–3.27)
+  // ---------------------------------------------------------------------
+
+  @override
+  Future<List<Routine>> listRoutines({required String module}) async {
+    final uri = _uri('/routines').replace(queryParameters: {'module': module});
+    final response = await _send(
+      () => _client.get(uri, headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+    return _read(
+      response,
+      (json) => readList(json, 'routines', Routine.fromJson),
+    );
+  }
+
+  @override
+  Future<Routine> createRoutine(NewRoutine routine) =>
+      _sendRoutine('POST', '/routines', routine.toJson());
+
+  @override
+  Future<Routine> getRoutine(String id) async {
+    final response = await _send(
+      () => _client.get(_uri(_routinePath(id)), headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+    return _read(response, Routine.fromJson);
+  }
+
+  @override
+  Future<Routine> updateRoutine(String id, RoutinePatch patch) =>
+      _sendRoutine('PATCH', _routinePath(id), patch.toJson());
+
+  @override
+  Future<Routine> pauseRoutine(String id, {PlainDate? until}) =>
+      // Without `until`: paused until resumed (3.21).
+      _sendRoutine('POST', '${_routinePath(id)}/pause', {
+        if (until != null) 'until': until.iso,
+      });
+
+  @override
+  Future<Routine> resumeRoutine(String id) async {
+    // No body (3.22).
+    final response = await _send(
+      () => _client.post(
+        _uri('${_routinePath(id)}/resume'),
+        headers: _authJsonHeaders,
+      ),
+      defaultTimeout,
+    );
+    return _read(response, Routine.fromJson);
+  }
+
+  @override
+  Future<void> deleteRoutine(String id) async {
+    // 204 without a body.
+    await _send(
+      () => _client.delete(_uri(_routinePath(id)), headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+  }
+
+  @override
+  Future<OccurrenceList> listOccurrences({
+    required String module,
+    PlainDate? from,
+    PlainDate? to,
+  }) async {
+    final uri = _uri('/routines/occurrences').replace(
+      queryParameters: {
+        'module': module,
+        if (from != null) 'from': from.iso,
+        if (to != null) 'to': to.iso,
+      },
+    );
+    final response = await _send(
+      () => _client.get(uri, headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+    return _read(response, OccurrenceList.fromJson);
+  }
+
+  @override
+  Future<List<RoutineLog>> listRoutineLogs(
+    String id, {
+    PlainDate? from,
+    PlainDate? to,
+  }) async {
+    final parameters = {
+      if (from != null) 'from': from.iso,
+      if (to != null) 'to': to.iso,
+    };
+    // Without parameters no `?` at the end of the URL.
+    final path = _uri('${_routinePath(id)}/logs');
+    final uri = parameters.isEmpty
+        ? path
+        : path.replace(queryParameters: parameters);
+    final response = await _send(
+      () => _client.get(uri, headers: _authJsonHeaders),
+      defaultTimeout,
+    );
+    return _read(
+      response,
+      (json) => readList(json, 'logs', RoutineLog.fromJson),
+    );
+  }
+
+  @override
+  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log) async {
+    final response = await _send(
+      () => _client.post(
+        _uri('${_routinePath(id)}/logs'),
+        headers: _authJsonHeaders,
+        body: jsonEncode(log.toJson()),
+      ),
+      defaultTimeout,
+    );
+    return _read(response, RoutineLog.fromJson);
+  }
+
+  @override
+  Future<void> deleteRoutineLog(String id, String logId) async {
+    await _send(
+      () => _client.delete(
+        _uri('${_routinePath(id)}/logs/${Uri.encodeComponent(logId)}'),
+        headers: _authJsonHeaders,
+      ),
+      defaultTimeout,
+    );
+  }
+
+  /// POST or PATCH with a JSON body; the response is a routine.
+  Future<Routine> _sendRoutine(
+    String method,
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final uri = _uri(path);
+    final encoded = jsonEncode(body);
+    final response = await _send(
+      () => method == 'PATCH'
+          ? _client.patch(uri, headers: _authJsonHeaders, body: encoded)
+          : _client.post(uri, headers: _authJsonHeaders, body: encoded),
+      defaultTimeout,
+    );
+    return _read(response, Routine.fromJson);
+  }
+
   // ---------------------------------------------------------------------
 
   Uri _uri(String path) => Uri.parse('$_base$path');
 
   String _entryPath(String id) => '/entries/${Uri.encodeComponent(id)}';
+
+  String _routinePath(String id) => '/routines/${Uri.encodeComponent(id)}';
 
   static String _withoutTrailingSlash(String url) => url.endsWith('/')
       ? _withoutTrailingSlash(url.substring(0, url.length - 1))

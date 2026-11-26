@@ -9,6 +9,7 @@ import '../model/plain_date.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
 import '../model/json_helpers.dart';
+import '../model/routine.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
 import '../model/user.dart';
@@ -19,6 +20,7 @@ import 'api_client.dart';
 import 'api_exception.dart';
 import 'mime_type.dart';
 import 'mock/mock_data.dart';
+import 'mock/mock_time_zones.dart';
 import 'mock/mock_verification.dart';
 import 'timeline_sort.dart';
 
@@ -1149,7 +1151,7 @@ class MockApiClient implements ApiClient {
     return LoginResult(
       token: token,
       expiresAt: _clock().add(const Duration(days: 30)),
-      user: user.toUser(),
+      user: user.toUser(withTimeZone: false),
     );
   }
 
@@ -1238,6 +1240,77 @@ class MockApiClient implements ApiClient {
   }
 
   static final _controlCharacter = RegExp(r'\p{Cc}', unicode: true);
+
+  @override
+  Future<User> updateTimeZone(String timeZone) async {
+    final user = (await _wait(delay))!;
+    if (!isAcceptedTimeZone(timeZone)) {
+      throw _invalid('Unbekannte Zeitzone.', {
+        'field': 'timeZone',
+        'value': timeZone,
+      });
+    }
+    user.timeZone = timeZone;
+    return user.toUser();
+  }
+
+  // ---------------------------------------------------------------------
+  // Routines (3.16–3.27)
+  // ---------------------------------------------------------------------
+
+  /// Temporary until the mock computes occurrences (next commit).
+  static const _routinesMissing = ApiException(
+    httpStatus: 501,
+    code: ErrorCode.internalError,
+    message: 'Routinen gibt es im Mock noch nicht.',
+  );
+
+  @override
+  Future<List<Routine>> listRoutines({required String module}) async =>
+      throw _routinesMissing;
+
+  @override
+  Future<Routine> createRoutine(NewRoutine routine) async =>
+      throw _routinesMissing;
+
+  @override
+  Future<Routine> getRoutine(String id) async => throw _routinesMissing;
+
+  @override
+  Future<Routine> updateRoutine(String id, RoutinePatch patch) async =>
+      throw _routinesMissing;
+
+  @override
+  Future<Routine> pauseRoutine(String id, {PlainDate? until}) async =>
+      throw _routinesMissing;
+
+  @override
+  Future<Routine> resumeRoutine(String id) async => throw _routinesMissing;
+
+  @override
+  Future<void> deleteRoutine(String id) async => throw _routinesMissing;
+
+  @override
+  Future<OccurrenceList> listOccurrences({
+    required String module,
+    PlainDate? from,
+    PlainDate? to,
+  }) async => throw _routinesMissing;
+
+  @override
+  Future<List<RoutineLog>> listRoutineLogs(
+    String id, {
+    PlainDate? from,
+    PlainDate? to,
+  }) async => throw _routinesMissing;
+
+  @override
+  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log) async =>
+      throw _routinesMissing;
+
+  @override
+  Future<void> deleteRoutineLog(String id, String logId) async =>
+      throw _routinesMissing;
 
   /// Creates a session for [username] without a login and returns its
   /// token, e.g. to start a test already logged in. With [consent] the user
@@ -1403,11 +1476,17 @@ class _MockUser {
   bool mustChangePassword;
   String? consentVersion;
 
-  User toUser() => User(
+  /// `Europe/Vienna` until the app sets another one (3.12).
+  String timeZone = 'Europe/Vienna';
+
+  /// As `GET /me` returns it. The login response has no `timeZone` (3.13),
+  /// so [login] passes `withTimeZone: false`.
+  User toUser({bool withTimeZone = true}) => User(
     id: id,
     username: username,
     displayName: displayName,
     mustChangePassword: mustChangePassword,
     consentVersion: consentVersion,
+    timeZone: withTimeZone ? timeZone : null,
   );
 }
