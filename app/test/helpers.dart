@@ -10,6 +10,7 @@ import 'package:lifelog/api/mock/mock_files.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/main.dart';
 import 'package:lifelog/module/module_catalog.dart';
+import 'package:lifelog/platform/device_time_zone.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/platform/pdf_viewer.dart';
 import 'package:lifelog/platform/voice_recorder.dart';
@@ -50,6 +51,7 @@ LifelogApp testApp(
   ModuleCatalog? catalog,
   SessionStore? store,
   LocalData? localData,
+  DeviceTimeZone? deviceTimeZone,
 }) => LifelogApp(
   api: api,
   fileChooser: chooser ?? FakeFileChooser(),
@@ -57,7 +59,23 @@ LifelogApp testApp(
   catalog: catalog ?? ModuleCatalog.defaults(),
   sessionStore: store ?? signedInStore(api),
   localData: localData ?? FakeLocalData(),
+  deviceTimeZone: deviceTimeZone ?? FakeDeviceTimeZone(),
 );
+
+/// A phone in Vienna unless the test says otherwise.
+class FakeDeviceTimeZone implements DeviceTimeZone {
+  FakeDeviceTimeZone([this.zone = 'Europe/Vienna']);
+
+  /// What the phone reports; `null`: it does not tell.
+  String? zone;
+  var calls = 0;
+
+  @override
+  Future<String?> name() async {
+    calls++;
+    return zone;
+  }
+}
 
 /// Field „Benutzername“ on the login screen.
 Finder usernameField() => find.widgetWithText(TextField, 'Benutzername');

@@ -31,12 +31,16 @@ class ModuleShell extends StatefulWidget {
     required this.api,
     required this.fileChooser,
     required this.voiceRecorder,
+    this.onRoutinesChanged,
   });
 
   final ModuleDefinition module;
   final ApiClient api;
   final FileChooser fileChooser;
   final VoiceRecorder voiceRecorder;
+
+  /// After every change of a routine, e.g. to plan the reminders again.
+  final VoidCallback? onRoutinesChanged;
 
   @override
   State<ModuleShell> createState() => _ModuleShellState();
@@ -150,7 +154,11 @@ class _ModuleShellState extends State<ModuleShell> {
             ),
           ),
           _KeepAlivePage(
-            child: RoutinesScreen(api: widget.api, moduleId: widget.module.id),
+            child: RoutinesScreen(
+              api: widget.api,
+              moduleId: widget.module.id,
+              onChanged: widget.onRoutinesChanged,
+            ),
           ),
           _KeepAlivePage(
             child: UploadScreen(

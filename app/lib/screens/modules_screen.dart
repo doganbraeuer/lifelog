@@ -26,11 +26,15 @@ class ModulesScreen extends StatefulWidget {
     required this.api,
     required this.fileChooser,
     required this.voiceRecorder,
+    this.onRoutinesChanged,
   });
 
   final ApiClient api;
   final FileChooser fileChooser;
   final VoiceRecorder voiceRecorder;
+
+  /// After every change of a routine (passed on to the modules).
+  final VoidCallback? onRoutinesChanged;
 
   @override
   State<ModulesScreen> createState() => _ModulesScreenState();
@@ -82,6 +86,7 @@ class _ModulesScreenState extends State<ModulesScreen>
           api: widget.api,
           fileChooser: widget.fileChooser,
           voiceRecorder: widget.voiceRecorder,
+          onRoutinesChanged: widget.onRoutinesChanged,
         ),
       ),
     );

@@ -4,8 +4,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api/api_client.dart';
 import 'api/api_client_factory.dart';
 import 'module/module_catalog.dart';
+import 'platform/device_time_zone.dart';
 import 'platform/file_chooser.dart';
 import 'platform/voice_recorder.dart';
+import 'reminders/routine_sync.dart';
 import 'screens/change_password_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/login_screen.dart';
@@ -24,6 +26,7 @@ void main() {
       catalog: ModuleCatalog.defaults(),
       sessionStore: SecureSessionStore(),
       localData: PluginLocalData(),
+      deviceTimeZone: PluginDeviceTimeZone(),
     ),
   );
 }
@@ -37,6 +40,7 @@ class LifelogApp extends StatefulWidget {
     required this.catalog,
     required this.sessionStore,
     required this.localData,
+    required this.deviceTimeZone,
   });
 
   /// Every backend call goes through this client (mock or HTTP).
@@ -57,6 +61,10 @@ class LifelogApp extends StatefulWidget {
   /// Temporary files and image cache, deleted on logout. A fake in tests.
   final LocalData localData;
 
+  /// The phone's IANA time zone, sent to the backend for routines. A fake
+  /// in tests.
+  final DeviceTimeZone deviceTimeZone;
+
   @override
   State<LifelogApp> createState() => _LifelogAppState();
 }
@@ -68,16 +76,43 @@ class _LifelogAppState extends State<LifelogApp> {
     localData: widget.localData,
   );
 
+  late final _sync = RoutineSync(
+    session: _session,
+    deviceTimeZone: widget.deviceTimeZone,
+  );
+
+  /// Back in the foreground: the time zone may have changed (travel), and
+  /// the day may be a new one.
+  late final _lifecycle = AppLifecycleListener(onResume: _refreshIfReady);
+
+  var _wasReady = false;
+
   @override
   void initState() {
     super.initState();
+    _session.addListener(_sessionChanged);
+    _lifecycle; // create it
     _session.start();
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
+    _session.removeListener(_sessionChanged);
     _session.dispose();
     super.dispose();
+  }
+
+  /// At the start of every session (also after a login or the consent).
+  void _sessionChanged() {
+    final ready = _session.phase == SessionPhase.ready;
+    if (ready && !_wasReady) _sync.refresh();
+    if (!ready && _wasReady) _sync.clear();
+    _wasReady = ready;
+  }
+
+  void _refreshIfReady() {
+    if (_session.phase == SessionPhase.ready) _sync.refresh();
   }
 
   /// The screen for the current state of the session.
@@ -98,6 +133,7 @@ class _LifelogAppState extends State<LifelogApp> {
       api: _session.api,
       fileChooser: widget.fileChooser,
       voiceRecorder: widget.voiceRecorder,
+      onRoutinesChanged: _sync.refresh,
     ),
   };
 
