@@ -7,6 +7,7 @@ import 'package:lifelog/api/api_client.dart';
 import 'package:lifelog/api/mock_api_client.dart';
 import 'package:lifelog/screens/entry_screen.dart';
 import 'package:lifelog/screens/question_screen.dart';
+import 'package:lifelog/screens/routines_screen.dart';
 import 'package:lifelog/screens/upload_screen.dart';
 import 'package:lifelog/screens/timeline_screen.dart';
 
@@ -21,6 +22,7 @@ int selectedTab(WidgetTester tester) =>
 int visiblePage(WidgetTester tester) {
   final pages = [
     find.byType(TimelineScreen),
+    find.byType(RoutinesScreen),
     find.byType(UploadScreen),
     find.byType(QuestionScreen),
   ];
@@ -76,18 +78,25 @@ void main() {
       await swipe(tester, toLeft: true);
       expect((visiblePage(tester), selectedTab(tester)), (2, 2));
 
+      await swipe(tester, toLeft: true);
+      expect((visiblePage(tester), selectedTab(tester)), (3, 3));
+
       // At the end it goes no further.
       await swipe(tester, toLeft: true);
-      expect((visiblePage(tester), selectedTab(tester)), (2, 2));
+      expect((visiblePage(tester), selectedTab(tester)), (3, 3));
 
       await swipe(tester, toLeft: false);
-      expect((visiblePage(tester), selectedTab(tester)), (1, 1));
+      expect((visiblePage(tester), selectedTab(tester)), (2, 2));
     });
 
     testWidgets('tapping in the bar pages to the page', (tester) async {
       await startApp(tester, fastMock());
 
       await tester.tap(navItem('Hochladen'));
+      await tester.pumpAndSettle();
+      expect((visiblePage(tester), selectedTab(tester)), (2, 2));
+
+      await tester.tap(navItem('Routinen'));
       await tester.pumpAndSettle();
       expect((visiblePage(tester), selectedTab(tester)), (1, 1));
 
@@ -100,14 +109,14 @@ void main() {
       await startApp(tester, fastMock());
 
       await tester.tap(navItem('Fragen'));
-      // During the animation the PageView passes „Hochladen“;
-      // the bar should still show „Fragen“ throughout.
+      // During the animation the PageView passes „Routinen“ and
+      // „Hochladen“; the bar should still show „Fragen“ throughout.
       for (var i = 0; i < 25; i++) {
         await tester.pump(const Duration(milliseconds: 16));
-        expect(selectedTab(tester), 2, reason: 'Frame $i');
+        expect(selectedTab(tester), 3, reason: 'Frame $i');
       }
       await tester.pumpAndSettle();
-      expect(visiblePage(tester), 2);
+      expect(visiblePage(tester), 3);
     });
   });
 
@@ -175,7 +184,7 @@ void main() {
       await tester.tap(find.text('PDF auswählen'));
       await tester.pumpAndSettle();
 
-      await swipe(tester, toLeft: false); // to the timeline
+      await swipe(tester, toLeft: false); // to the routines
       await swipe(tester, toLeft: true); // back
 
       expect(find.text('befund.pdf'), findsOneWidget);
@@ -196,8 +205,9 @@ void main() {
       await tester.pumpAndSettle();
       await swipe(tester, toLeft: true);
       await swipe(tester, toLeft: true);
+      await swipe(tester, toLeft: true);
 
-      expect(visiblePage(tester), 2);
+      expect(visiblePage(tester), 3);
       expect(find.text('„Hämoglobin“'), findsOneWidget);
       expect(find.text('Quellen'), findsOneWidget);
     });
@@ -226,7 +236,7 @@ void main() {
     // To „Fragen“ and back: the upload keeps running.
     await tester.tap(navItem('Fragen'));
     await waitForAnimation(tester);
-    expect(visiblePage(tester), 2);
+    expect(visiblePage(tester), 3);
     await tester.tap(navItem('Hochladen'));
     await waitForAnimation(tester);
     expect(find.textContaining('bis zu einer Minute'), findsOneWidget);

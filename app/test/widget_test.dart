@@ -10,6 +10,7 @@ void main() {
 
     // "Zeitleiste" is in the app bar and in the navigation bar.
     expect(find.text('Zeitleiste'), findsNWidgets(2));
+    expect(find.text('Routinen'), findsOneWidget);
     expect(find.text('Hochladen'), findsOneWidget);
     expect(find.text('Fragen'), findsOneWidget);
   });
