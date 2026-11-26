@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../api/api_exception.dart';
+import '../model/plain_date.dart';
 import '../model/routine.dart';
 import '../platform/device_time_zone.dart';
 import '../platform/reminders.dart';
@@ -52,10 +53,6 @@ class RoutineSync extends ChangeNotifier {
   /// `null` until known.
   ReminderPermission? get permission => _permission;
   ReminderPermission? _permission;
-
-  /// The last plan, e.g. for „Nächste Erinnerung jetzt zeigen“.
-  List<PlannedReminder> get lastPlan => _lastPlan;
-  var _lastPlan = <PlannedReminder>[];
 
   /// A tap on a reminder that is not handled yet.
   final pendingTap = ValueNotifier<ReminderTap?>(null);
@@ -172,7 +169,6 @@ class RoutineSync extends ChangeNotifier {
     };
     await reminders.apply(plan, remove: remove);
     _lastKnown = {for (final o in occurrences) idOf(o): o.routineId};
-    _lastPlan = plan;
   }
 
   /// Reminder ID → routine of every occurrence of the last run, to remove
@@ -202,10 +198,30 @@ class RoutineSync extends ChangeNotifier {
   Future<void> cancelReminderOf(String routineId, DateTime dueAt) =>
       reminders.cancel(reminderId(occurrenceKey(routineId, dueAt)));
 
-  /// Shows the next planned reminder at once (debug only).
+  /// Shows the reminder of an open occurrence of today at once (debug only,
+  /// see [reminderForToday]). Loads the occurrences itself, so the day is
+  /// the user's today even after midnight. `false` if no occurrence of
+  /// today is open; an [ApiException] reaches the caller.
   Future<bool> showNextNow() async {
-    if (_lastPlan.isEmpty) return false;
-    await reminders.showNow(_lastPlan.first);
+    if (modules.isEmpty) return false;
+    final routines = <Routine>[];
+    final occurrences = <Occurrence>[];
+    late PlainDate today;
+    for (final module in modules) {
+      routines.addAll(await session.api.listRoutines(module: module));
+      final list = await session.api.listOccurrences(module: module);
+      occurrences.addAll(list.occurrences);
+      today = list.from; // without `from` in the request: the user's today
+    }
+    final reminder = reminderForToday(
+      occurrences: occurrences,
+      routines: routines,
+      today: today,
+      now: _clock(),
+      isIOS: _isIOS,
+    );
+    if (reminder == null) return false;
+    await reminders.showNow(reminder);
     return true;
   }
 
@@ -213,7 +229,6 @@ class RoutineSync extends ChangeNotifier {
   /// handled is dropped, and nothing of the previous user stays.
   Future<void> clear() async {
     _refused.clear();
-    _lastPlan = [];
     _lastKnown = {};
     _permission = null;
     pendingTap.value = null;

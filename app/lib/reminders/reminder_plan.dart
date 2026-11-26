@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../model/json_helpers.dart' show formatTimestamp;
+import '../model/plain_date.dart';
 import '../model/routine.dart';
 import '../model/routine_texts.dart';
 
@@ -142,39 +143,71 @@ List<PlannedReminder> planReminders({
   int max = maxPlannedReminders,
 }) {
   final byId = {for (final r in routines) r.id: r};
-  final candidates =
-      [
-        for (final o in occurrences)
-          if (o.isOpen && o.dueAt.isAfter(now) && byId.containsKey(o.routineId))
-            o,
-      ]..sort((a, b) {
-        final byTime = a.dueAt.compareTo(b.dueAt);
-        return byTime != 0 ? byTime : a.routineId.compareTo(b.routineId);
-      });
+  final candidates = [
+    for (final o in occurrences)
+      if (o.isOpen && o.dueAt.isAfter(now) && byId.containsKey(o.routineId)) o,
+  ]..sort(_byTimeThenRoutine);
   final used = <int>{};
   final plan = <PlannedReminder>[];
   for (final o in candidates.take(max)) {
-    final routine = byId[o.routineId]!;
     var id = reminderId(occurrenceKey(o.routineId, o.dueAt));
     while (!used.add(id)) {
       id = (id + 1) & 0x7fffffff; // collision: the next free one
     }
-    final amount = routine.amount;
-    plan.add(
-      PlannedReminder(
-        id: id,
-        dueAt: o.dueAt,
-        module: routine.module,
-        routineId: routine.id,
-        title: isIOS ? 'Lifelog: Erinnerung' : routine.name,
-        body: isIOS
-            ? 'Zeit für deine Routine · ${o.time}'
-            : amount == null
-            ? '${o.time} – erledigt?'
-            : '${o.time} · ${amountWithUnit(amount, routine.unit)} – erledigt?',
-        withAmountButton: amount != null,
-      ),
-    );
+    plan.add(_reminder(o, byId[o.routineId]!, id, isIOS));
   }
   return plan;
+}
+
+/// For „Nächste Erinnerung jetzt zeigen“ (debug builds only): the reminder
+/// of an open occurrence of [today], with the same ID and text as a planned
+/// one; `null` if no occurrence of today is open.
+///
+/// It is the next one still to come today, or, if none is left, the last
+/// overdue one. Never one of a later day: the backend refuses a log for a
+/// day after today (docs/API.md 3.26), so „Ja“ on it would fail.
+///
+/// [today] is the user's today as the server reports it (`from` of
+/// `GET /routines/occurrences`), compared with each occurrence's `date`.
+PlannedReminder? reminderForToday({
+  required List<Occurrence> occurrences,
+  required List<Routine> routines,
+  required PlainDate today,
+  required DateTime now,
+  required bool isIOS,
+}) {
+  final byId = {for (final r in routines) r.id: r};
+  final candidates = [
+    for (final o in occurrences)
+      if (o.isOpen && o.date == today && byId.containsKey(o.routineId)) o,
+  ]..sort(_byTimeThenRoutine);
+  if (candidates.isEmpty) return null;
+  final o = candidates.firstWhere(
+    (o) => o.dueAt.isAfter(now),
+    orElse: () => candidates.last,
+  );
+  final id = reminderId(occurrenceKey(o.routineId, o.dueAt));
+  return _reminder(o, byId[o.routineId]!, id, isIOS);
+}
+
+int _byTimeThenRoutine(Occurrence a, Occurrence b) {
+  final byTime = a.dueAt.compareTo(b.dueAt);
+  return byTime != 0 ? byTime : a.routineId.compareTo(b.routineId);
+}
+
+PlannedReminder _reminder(Occurrence o, Routine routine, int id, bool isIOS) {
+  final amount = routine.amount;
+  return PlannedReminder(
+    id: id,
+    dueAt: o.dueAt,
+    module: routine.module,
+    routineId: routine.id,
+    title: isIOS ? 'Lifelog: Erinnerung' : routine.name,
+    body: isIOS
+        ? 'Zeit für deine Routine · ${o.time}'
+        : amount == null
+        ? '${o.time} – erledigt?'
+        : '${o.time} · ${amountWithUnit(amount, routine.unit)} – erledigt?',
+    withAmountButton: amount != null,
+  );
 }

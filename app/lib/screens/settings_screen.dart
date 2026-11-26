@@ -106,12 +106,17 @@ class SettingsScreen extends StatelessWidget {
               title: const Text('Nächste Erinnerung jetzt zeigen'),
               subtitle: const Text('Nur in der Entwicklerversion'),
               onTap: () async {
-                final shown = await RoutineSyncScope.maybeOf(context)!
-                    .showNextNow();
-                if (!shown && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Keine Erinnerung geplant.')),
-                  );
+                final messenger = ScaffoldMessenger.of(context);
+                String? notice;
+                try {
+                  final shown = await RoutineSyncScope.maybeOf(context)!
+                      .showNextNow();
+                  if (!shown) notice = 'Heute ist kein Termin mehr offen.';
+                } on ApiException catch (e) {
+                  notice = e.message;
+                }
+                if (notice != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(notice)));
                 }
               },
             ),

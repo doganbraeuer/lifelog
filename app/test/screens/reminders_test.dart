@@ -437,13 +437,47 @@ void main() {
     expect(find.text('Diese Routine gibt es nicht mehr.'), findsOneWidget);
   });
 
-  testWidgets('debug: „Nächste Erinnerung jetzt zeigen“', (tester) async {
-    final reminders = FakeReminders();
-    await startApp(tester, fastMock(), reminders);
-    await tester.tap(find.byTooltip('Einstellungen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Nächste Erinnerung jetzt zeigen'));
-    await tester.pumpAndSettle();
-    expect(reminders.shownNow.single.title, 'Wasser');
+  group('debug: „Nächste Erinnerung jetzt zeigen“', () {
+    Future<void> tapShowNow(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('Einstellungen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nächste Erinnerung jetzt zeigen'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the next one of today', (tester) async {
+      final reminders = FakeReminders();
+      await startApp(tester, fastMock(), reminders);
+      await tapShowNow(tester);
+      final shown = reminders.shownNow.single;
+      expect(shown.title, 'Wasser');
+      expect(shown.dueAt, DateTime.utc(2026, 11, 4, 10)); // 11:00 in Vienna
+    });
+
+    testWidgets('late in the evening: an overdue one of today, not '
+        'tomorrow (a log for tomorrow gets 400)', (tester) async {
+      // 23:30 in Vienna: the last occurrences of today were at 20:00.
+      DateTime late() => DateTime.utc(2026, 11, 4, 22, 30);
+      final reminders = FakeReminders();
+      useLargeScreen(tester);
+      await tester.pumpWidget(
+        testApp(
+          fastMock(clock: late),
+          reminders: reminders,
+          clock: late,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tapShowNow(tester);
+      expect(reminders.shownNow.single.dueAt, DateTime.utc(2026, 11, 4, 19));
+    });
+
+    testWidgets('nothing open today: a notice', (tester) async {
+      final reminders = FakeReminders();
+      await startApp(tester, fastMock(withSampleData: false), reminders);
+      await tapShowNow(tester);
+      expect(reminders.shownNow, isEmpty);
+      expect(find.text('Heute ist kein Termin mehr offen.'), findsOneWidget);
+    });
   });
 }

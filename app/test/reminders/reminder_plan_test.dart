@@ -204,4 +204,92 @@ void main() {
       isEmpty,
     );
   });
+
+  group('reminderForToday (debug button)', () {
+    final today = PlainDate(2026, 11, 23);
+    final tomorrowWater = occurrence(
+      water,
+      DateTime.utc(2026, 11, 24, 7),
+      '08:00',
+    );
+
+    test('the next one still to come today, as a planned one looks', () {
+      final reminder = reminderForToday(
+        occurrences: [
+          occurrence(water, DateTime.utc(2026, 11, 23, 9), '10:00'), // overdue
+          occurrence(
+            water,
+            DateTime.utc(2026, 11, 23, 10),
+            '11:00',
+            status: OccurrenceStatus.done,
+          ),
+          occurrence(pressure, DateTime.utc(2026, 11, 23, 19), '20:00'),
+          occurrence(water, DateTime.utc(2026, 11, 23, 11), '12:00'),
+          tomorrowWater,
+        ],
+        routines: [water, pressure],
+        today: today,
+        now: now,
+        isIOS: false,
+      )!;
+      final dueAt = DateTime.utc(2026, 11, 23, 11);
+      expect(reminder.dueAt, dueAt);
+      expect(reminder.id, reminderId(occurrenceKey(water.id, dueAt)));
+      expect(reminder.title, water.name);
+      expect(reminder.body, '12:00 · 250 ml – erledigt?');
+      expect(reminder.withAmountButton, isTrue);
+    });
+
+    test('none left to come today: the last overdue one, not tomorrow', () {
+      final reminder = reminderForToday(
+        occurrences: [
+          occurrence(water, DateTime.utc(2026, 11, 23, 8), '09:00'),
+          occurrence(pressure, DateTime.utc(2026, 11, 23, 9), '10:00'),
+          occurrence(
+            water,
+            DateTime.utc(2026, 11, 23, 19),
+            '20:00',
+            status: OccurrenceStatus.paused,
+          ),
+          occurrence(
+            pressure,
+            DateTime.utc(2026, 11, 23, 19),
+            '20:00',
+            status: OccurrenceStatus.skipped,
+          ),
+          tomorrowWater,
+        ],
+        routines: [water, pressure],
+        today: today,
+        now: now,
+        isIOS: true,
+      )!;
+      expect(reminder.dueAt, DateTime.utc(2026, 11, 23, 9));
+      expect(reminder.routineId, pressure.id);
+      expect(reminder.title, 'Lifelog: Erinnerung');
+      expect(reminder.body, 'Zeit für deine Routine · 10:00');
+    });
+
+    test('nothing open today: none, even if tomorrow is open', () {
+      expect(
+        reminderForToday(
+          occurrences: [
+            occurrence(
+              water,
+              DateTime.utc(2026, 11, 23, 11),
+              '12:00',
+              status: OccurrenceStatus.done,
+            ),
+            occurrence(pressure, DateTime.utc(2026, 11, 23, 19), '20:00'),
+            tomorrowWater,
+          ],
+          routines: [water], // the blood pressure routine is unknown
+          today: today,
+          now: now,
+          isIOS: false,
+        ),
+        isNull,
+      );
+    });
+  });
 }
