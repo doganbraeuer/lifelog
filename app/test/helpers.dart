@@ -13,6 +13,8 @@ import 'package:lifelog/module/module_catalog.dart';
 import 'package:lifelog/platform/device_time_zone.dart';
 import 'package:lifelog/platform/file_chooser.dart';
 import 'package:lifelog/platform/pdf_viewer.dart';
+import 'package:lifelog/platform/reminders.dart';
+import 'package:lifelog/reminders/reminder_plan.dart';
 import 'package:lifelog/platform/voice_recorder.dart';
 import 'package:lifelog/session/local_data.dart';
 import 'package:lifelog/session/session_store.dart';
@@ -52,7 +54,10 @@ LifelogApp testApp(
   SessionStore? store,
   LocalData? localData,
   DeviceTimeZone? deviceTimeZone,
+  Reminders? reminders,
+  DateTime Function()? clock,
 }) => LifelogApp(
+  clock: clock ?? () => mockNow,
   api: api,
   fileChooser: chooser ?? FakeFileChooser(),
   voiceRecorder: recorder ?? FakeVoiceRecorder(),
@@ -60,7 +65,73 @@ LifelogApp testApp(
   sessionStore: store ?? signedInStore(api),
   localData: localData ?? FakeLocalData(),
   deviceTimeZone: deviceTimeZone ?? FakeDeviceTimeZone(),
+  reminders: reminders ?? FakeReminders(),
 );
+
+/// Remembers what the app planned instead of using the phone's
+/// notifications. [permission] is what the phone would answer.
+class FakeReminders implements Reminders {
+  FakeReminders({this.permissionAnswer = ReminderPermission.granted});
+
+  ReminderPermission permissionAnswer;
+
+  /// What a request answers; `null`: the same as [permissionAnswer], after
+  /// which [permissionAnswer] follows it.
+  ReminderPermission? requestAnswer;
+
+  void Function(ReminderTap)? onTap;
+  ReminderTap? launchedBy;
+
+  /// Every plan given to [apply], the last one at the end.
+  final plans = <List<PlannedReminder>>[];
+  final cancelled = <int>[];
+  final shownNow = <PlannedReminder>[];
+  var clears = 0;
+  var requests = 0;
+  var settingsOpened = 0;
+
+  /// The last plan, or empty.
+  List<PlannedReminder> get planned => plans.isEmpty ? const [] : plans.last;
+
+  @override
+  Future<void> initialize({required void Function(ReminderTap) onTap}) async =>
+      this.onTap = onTap;
+
+  @override
+  Future<ReminderTap?> launchTap() async => launchedBy;
+
+  @override
+  Future<ReminderPermission> permission() async => permissionAnswer;
+
+  @override
+  Future<ReminderPermission> requestPermission() async {
+    requests++;
+    if (requestAnswer case final answer?) permissionAnswer = answer;
+    return permissionAnswer;
+  }
+
+  @override
+  Future<void> openSettings() async => settingsOpened++;
+
+  @override
+  Future<void> apply(
+    List<PlannedReminder> plan, {
+    required bool Function(ReminderTap) stillOpen,
+  }) async => plans.add(plan);
+
+  @override
+  Future<void> cancel(int id) async => cancelled.add(id);
+
+  @override
+  Future<void> clear() async {
+    clears++;
+    plans.add(const []);
+  }
+
+  @override
+  Future<void> showNow(PlannedReminder reminder) async =>
+      shownNow.add(reminder);
+}
 
 /// A phone in Vienna unless the test says otherwise.
 class FakeDeviceTimeZone implements DeviceTimeZone {
@@ -293,6 +364,9 @@ Matcher throwsApiException(String code, {int? status}) => throwsA(
       .having((f) => f.httpStatus, 'httpStatus', status ?? anything),
 );
 
+/// The fixed clock of [fastMock]: Wednesday 2026-11-04, 10:30 in Vienna.
+final mockNow = DateTime.utc(2026, 11, 4, 9, 30, 0);
+
 /// Mock without artificial delay and with a fixed clock.
 ///
 /// With [signedIn] (default) the mock already uses a token of `admin`, so
@@ -309,7 +383,7 @@ MockApiClient fastMock({
     delay: Duration.zero,
     uploadDelay: Duration.zero,
     transcriptionDelay: Duration.zero,
-    clock: clock ?? () => DateTime.utc(2026, 11, 4, 9, 30, 0),
+    clock: clock ?? () => mockNow,
     catalog: catalog,
   );
   if (signedIn) mock.useToken(mock.signInForTest('admin'));

@@ -5,6 +5,9 @@ import '../api/api_exception.dart';
 import '../model/plain_date.dart';
 import '../model/routine.dart';
 import '../model/routine_texts.dart';
+import '../platform/reminders.dart';
+import '../reminders/reminder_plan.dart';
+import '../reminders/routine_sync.dart';
 import '../widgets/error_view.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
@@ -20,20 +23,15 @@ import 'routine_form_screen.dart';
 /// 3.16); this screen only shows them. "Today" is the `from` of
 /// `GET /routines/occurrences` without parameters: today in the user's
 /// time zone, from the server, not from the phone's clock.
+///
+/// Reminders: after every change the [RoutineSync] plans them again; a tap
+/// on a reminder of this module opens its occurrence here; without the
+/// permission a notice offers „Einschalten“.
 class RoutinesScreen extends StatefulWidget {
-  const RoutinesScreen({
-    super.key,
-    required this.api,
-    required this.moduleId,
-    this.onChanged,
-  });
+  const RoutinesScreen({super.key, required this.api, required this.moduleId});
 
   final ApiClient api;
   final String moduleId;
-
-  /// After every change (a log, a new routine, …), e.g. to plan the
-  /// reminders again.
-  final VoidCallback? onChanged;
 
   @override
   State<RoutinesScreen> createState() => RoutinesScreenState();
@@ -52,10 +50,30 @@ class RoutinesScreenState extends State<RoutinesScreen> {
   /// double tap cannot send twice.
   final _busy = <String>{};
 
+  /// Reminders and time zone; `null` outside the app (screen tests).
+  RoutineSync? _sync;
+
   @override
   void initState() {
     super.initState();
     reload();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final sync = RoutineSyncScope.maybeOf(context);
+    if (sync != _sync) {
+      _sync?.pendingTap.removeListener(_handlePendingTap);
+      _sync = sync;
+      sync?.pendingTap.addListener(_handlePendingTap);
+    }
+  }
+
+  @override
+  void dispose() {
+    _sync?.pendingTap.removeListener(_handlePendingTap);
+    super.dispose();
   }
 
   /// Loads routines and occurrences (today and six days). Public, so that
@@ -79,6 +97,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
         _occurrences = occurrences;
         _loading = false;
       });
+      _handlePendingTap();
     } on ApiException catch (error) {
       if (!mounted || number != _requestNumber) return;
       setState(() {
@@ -90,9 +109,123 @@ class RoutinesScreenState extends State<RoutinesScreen> {
 
   PlainDate get _today => _occurrences!.from;
 
+  /// After every change: reload, and plan the reminders again.
   void _changed() {
-    widget.onChanged?.call();
+    _sync?.refresh();
     reload();
+  }
+
+  /// A tap on a reminder of this module, once the routines are loaded. The
+  /// tap is taken from the sync, so it is handled only once.
+  void _handlePendingTap() {
+    final sync = _sync;
+    final tap = sync?.pendingTap.value;
+    if (tap == null || tap.module != widget.moduleId || _routines == null) {
+      return;
+    }
+    sync!.pendingTap.value = null;
+    _openReminder(tap);
+  }
+
+  /// The occurrence of a reminder: the sheet (a tap on the reminder or
+  /// „Andere Menge“), or logged at once („Ja“, „Nein“: they opened the app,
+  /// path B). Logs from here have `source: notification` (3.16 "Logs").
+  Future<void> _openReminder(ReminderTap tap) async {
+    final routine = _routines!.where((r) => r.id == tap.routineId).firstOrNull;
+    if (routine == null) {
+      _show('Diese Routine gibt es nicht mehr.');
+      return;
+    }
+    bool sameOccurrence(Occurrence o) =>
+        o.routineId == tap.routineId && o.dueAt.isAtSameMomentAs(tap.dueAt);
+    var occurrence = _occurrences?.occurrences
+        .where(sameOccurrence)
+        .firstOrNull;
+    if (occurrence == null) {
+      // An older day than the loaded ones (the reminder waited).
+      final day = PlainDate.fromDateTime(tap.dueAt.toLocal());
+      try {
+        final list = await widget.api.listOccurrences(
+          module: widget.moduleId,
+          from: day,
+          to: day,
+        );
+        occurrence = list.occurrences.where(sameOccurrence).firstOrNull;
+      } on ApiException catch (e) {
+        if (mounted) _show(e.message);
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (occurrence == null) {
+      _show('Diesen Termin gibt es nicht mehr.');
+      return;
+    }
+    final status = switch (tap.actionId) {
+      reminderActionDone => LogStatus.done,
+      reminderActionSkipped => LogStatus.skipped,
+      _ => null,
+    };
+    if (status != null && occurrence.isOpen) {
+      await _log(routine, occurrence, status, source: LogSource.notification);
+      return;
+    }
+    final result = await showOccurrenceSheet(
+      context,
+      api: widget.api,
+      routine: routine,
+      occurrence: occurrence,
+      today: _today,
+      source: LogSource.notification,
+      focusAmount: tap.actionId == reminderActionAmount,
+    );
+    if (result == null || !mounted) return;
+    _report(routine, result);
+    _changed();
+  }
+
+  /// „Einschalten“ on the notice: asks again, or opens the settings if
+  /// Android no longer asks.
+  Future<void> _enableReminders() async {
+    final sync = _sync;
+    if (sync == null) return;
+    final result = await sync.requestPermission(openSettings: true);
+    if (result != ReminderPermission.granted && mounted) {
+      _show(
+        'Bitte erlaube Mitteilungen unter Einstellungen › Apps › Lifelog › '
+        'Benachrichtigungen.',
+      );
+    }
+  }
+
+  /// After the first routine: why the permission is needed, then the
+  /// system's question (asking at the start without a reason makes many
+  /// people say no, and Android asks at most twice).
+  Future<void> _askForReminders() async {
+    final sync = _sync;
+    if (sync == null || sync.permission == ReminderPermission.granted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Erinnerungen'),
+        content: Text(
+          'Damit Lifelog dich an deine Routinen erinnern kann, braucht es die '
+          'Erlaubnis für Mitteilungen.',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Später'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Weiter'),
+          ),
+        ],
+      ),
+    );
+    if (go == true) await sync.requestPermission();
   }
 
   void _show(String message, {SnackBarAction? action}) {
@@ -102,12 +235,13 @@ class RoutinesScreenState extends State<RoutinesScreen> {
       ..showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
-  /// „Ja“ or „Nein“ on a card.
+  /// „Ja“ or „Nein“ on a card, or on a reminder.
   Future<void> _log(
     Routine routine,
     Occurrence occurrence,
-    LogStatus status,
-  ) async {
+    LogStatus status, {
+    LogSource source = LogSource.manual,
+  }) async {
     setState(() => _busy.add(routine.id));
     try {
       final result = await logOccurrence(
@@ -115,9 +249,11 @@ class RoutinesScreenState extends State<RoutinesScreen> {
         routineId: routine.id,
         dueAt: occurrence.dueAt,
         status: status,
-        source: LogSource.manual,
+        source: source,
       );
       if (!mounted) return;
+      // Done now (or already): its reminder must not come any more.
+      _sync?.cancelReminderOf(routine.id, occurrence.dueAt);
       _report(routine, result);
     } on ApiException catch (e) {
       if (mounted) _show(e.message);
@@ -168,7 +304,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
         api: widget.api,
         routineId: routine.id,
         moduleId: widget.moduleId,
-        onChanged: widget.onChanged,
+        onChanged: _sync?.refresh,
       ),
     );
     if (!mounted) return;
@@ -178,6 +314,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
 
   /// „Neue Routine“ (wish of 2026-11-16: a button at the bottom).
   Future<void> _newRoutine() async {
+    final first = _routines?.isEmpty ?? true;
     final created = await openPage<Routine>(
       context,
       RoutineFormScreen(
@@ -189,6 +326,7 @@ class RoutinesScreenState extends State<RoutinesScreen> {
     if (created == null || !mounted) return;
     _show('„${created.name}“ angelegt.');
     _changed();
+    if (first) await _askForReminders();
   }
 
   Future<void> _undo(Routine routine, RoutineLog log) async {
@@ -288,6 +426,42 @@ class RoutinesScreenState extends State<RoutinesScreen> {
                 trailing: TextButton(
                   onPressed: reload,
                   child: const Text('Erneut versuchen'),
+                ),
+              ),
+            ),
+          if (_sync?.permission == ReminderPermission.denied)
+            Card(
+              key: const ValueKey('reminders-off'),
+              margin: const EdgeInsets.only(bottom: 16),
+              color: theme.colorScheme.secondaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.notifications_off_outlined),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Erinnerungen sind ausgeschaltet. Du kannst '
+                            'Routinen trotzdem eintragen.',
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      style: FilledButton.styleFrom(
+                        minimumSize: largeButtonSize,
+                        textStyle: theme.textTheme.titleMedium,
+                      ),
+                      onPressed: _enableReminders,
+                      child: const Text('Einschalten'),
+                    ),
+                  ],
                 ),
               ),
             ),

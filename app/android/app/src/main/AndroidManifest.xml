@@ -6,6 +6,18 @@
          too; it is listed here so the app's own manifest shows it. The app
          asks for it at runtime before the first recording. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Reminders of routines (package flutter_local_notifications).
+         POST_NOTIFICATIONS: Android 13 and later; the plugin declares it
+         too. The app asks for it after the first routine, not at start.
+         RECEIVE_BOOT_COMPLETED: after a restart the plugin's boot receiver
+         plans the last list of reminders again (docs/API.md 3.16,
+         reminders, point 3).
+         Deliberately NO SCHEDULE_EXACT_ALARM and NO USE_EXACT_ALARM:
+         reminders are approximate (inexactAllowWhileIdle). Since Android 14
+         exact alarms are not granted by default, and USE_EXACT_ALARM is
+         only for alarm clock and calendar apps (3.16, point 5). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Bewusst KEINE CAMERA-Permission: image_picker nutzt die Kamera-App über
          einen Intent. Wäre CAMERA deklariert, müsste die App sie zur Laufzeit
          anfragen, sonst stürzt der Kamera-Aufruf ab. -->
@@ -43,6 +55,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- flutter_local_notifications: shows planned reminders, plans
+             them again after a restart or an app update, and receives the
+             buttons „Ja“, „Nein“, „Andere Menge“. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

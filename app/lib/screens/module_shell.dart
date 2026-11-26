@@ -6,6 +6,7 @@ import '../model/entry.dart';
 import '../module/module_definition.dart';
 import '../platform/file_chooser.dart';
 import '../platform/voice_recorder.dart';
+import '../reminders/routine_sync.dart';
 import '../widgets/motion.dart';
 import '../widgets/navigation.dart';
 import 'entry_screen.dart';
@@ -31,7 +32,7 @@ class ModuleShell extends StatefulWidget {
     required this.api,
     required this.fileChooser,
     required this.voiceRecorder,
-    this.onRoutinesChanged,
+    this.initialPage = ModulePage.timeline,
   });
 
   final ModuleDefinition module;
@@ -39,8 +40,8 @@ class ModuleShell extends StatefulWidget {
   final FileChooser fileChooser;
   final VoiceRecorder voiceRecorder;
 
-  /// After every change of a routine, e.g. to plan the reminders again.
-  final VoidCallback? onRoutinesChanged;
+  /// The page it opens on: [ModulePage.routines] after a tap on a reminder.
+  final ModulePage initialPage;
 
   @override
   State<ModuleShell> createState() => _ModuleShellState();
@@ -48,9 +49,30 @@ class ModuleShell extends StatefulWidget {
 
 class _ModuleShellState extends State<ModuleShell> {
   /// Page that is selected in the navigation bar.
-  var _index = 0;
+  late var _index = widget.initialPage.index;
 
-  final _pages = PageController();
+  late final _pages = PageController(initialPage: widget.initialPage.index);
+
+  RoutineSync? _sync;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final sync = RoutineSyncScope.maybeOf(context);
+    if (sync != _sync) {
+      _sync?.pendingTap.removeListener(_reminderTapped);
+      _sync = sync;
+      sync?.pendingTap.addListener(_reminderTapped);
+    }
+  }
+
+  /// A tap on a reminder of this module while it is open: to the tab
+  /// „Routinen“, which shows the occurrence.
+  void _reminderTapped() {
+    final tap = _sync?.pendingTap.value;
+    if (tap == null || tap.module != widget.module.id || !mounted) return;
+    _showPage(ModulePage.routines.index, haptics: false);
+  }
 
   /// Target while animating after a tap in the navigation bar. When jumping
   /// from page 0 to 2 the PageView also reports page 1 on the way; without
@@ -64,6 +86,7 @@ class _ModuleShellState extends State<ModuleShell> {
 
   @override
   void dispose() {
+    _sync?.pendingTap.removeListener(_reminderTapped);
     _pages.dispose();
     super.dispose();
   }
@@ -154,11 +177,7 @@ class _ModuleShellState extends State<ModuleShell> {
             ),
           ),
           _KeepAlivePage(
-            child: RoutinesScreen(
-              api: widget.api,
-              moduleId: widget.module.id,
-              onChanged: widget.onRoutinesChanged,
-            ),
+            child: RoutinesScreen(api: widget.api, moduleId: widget.module.id),
           ),
           _KeepAlivePage(
             child: UploadScreen(
