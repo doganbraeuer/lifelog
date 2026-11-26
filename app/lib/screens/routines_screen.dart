@@ -10,6 +10,7 @@ import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
 import 'occurrence_sheet.dart';
 import 'routine_actions.dart';
+import 'routine_form_screen.dart';
 
 /// Tab „Routinen“ of a module: today's occurrences with large buttons „Ja“,
 /// „Nein“ and „Andere Menge“, then the other routines with their status.
@@ -157,6 +158,21 @@ class RoutinesScreenState extends State<RoutinesScreen> {
     );
   }
 
+  /// „Neue Routine“ (wish of 2026-11-16: a button at the bottom).
+  Future<void> _newRoutine() async {
+    final created = await openPage<Routine>(
+      context,
+      RoutineFormScreen(
+        api: widget.api,
+        moduleId: widget.moduleId,
+        today: _occurrences?.from ?? PlainDate.fromDateTime(DateTime.now()),
+      ),
+    );
+    if (created == null || !mounted) return;
+    _show('„${created.name}“ angelegt.');
+    _changed();
+  }
+
   Future<void> _undo(Routine routine, RoutineLog log) async {
     try {
       await widget.api.deleteRoutineLog(routine.id, log.id);
@@ -184,6 +200,14 @@ class RoutinesScreenState extends State<RoutinesScreen> {
         ),
       ),
       body: _body(),
+      floatingActionButton: _routines == null
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: null,
+              onPressed: _newRoutine,
+              icon: const Icon(Icons.add),
+              label: const Text('Neue Routine'),
+            ),
     );
   }
 
@@ -305,7 +329,8 @@ class _EmptyRoutines extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Eine Routine erinnert dich an etwas, das du regelmäßig tun '
-              'möchtest, zum Beispiel Vitamin D jeden Morgen.',
+              'möchtest, zum Beispiel Vitamin D jeden Morgen. Tippe unten '
+              'auf „Neue Routine“.',
               style: theme.textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
