@@ -732,6 +732,7 @@ texts are German and quoted as they appear.
 | Detailseite einer Routine | routine detail screen | `RoutineDetailScreen`; „Fortschritt“, „Termine heute“, „Nächste Termine“, „Verlauf“, „Aktionen“, „Zusätzlich eintragen“ |
 | Termin eintragen (Blatt) | occurrence sheet | `OccurrenceSheet`, `showOccurrenceSheet`; „Termin: 08:00“, „Ja, erledigt“, „Nein, ausgelassen“, „Menge speichern“ |
 | Termin eintragen (Anfrage) und Ergebnis | log an occurrence, log result | `logOccurrence`, `LogResult` (`409 ROUTINE_LOG_EXISTS` = already logged, shown as information); `screens/routine_actions.dart` |
+| Meldung unten, mit „Rückgängig“ | routine snack bar | `showRoutineSnackBar`, `undoSnackBarDuration` (8 s); `screens/routine_actions.dart` |
 | Vorschläge für die Einheit | unit suggestions | `unitSuggestions` („Stück“, „ml“, „g“, „mg“, „Tropfen“); `screens/routine_form_screen.dart` |
 | größtes Intervall pro Häufigkeit | max intervals | `maxIntervals` |
 | Texte zu Routinen | routine texts | `model/routine_texts.dart`: `describeSchedule` („täglich um 08:00“), `describeRoutinePlan`, `intervalLabel` („jede Stunde“, „jeden 3. Tag“), `formatAmount` and `parseAmount` (German numbers: „1.250“, „0,5“), `amountWithUnit` („2 Stück“), `amountText` and `countText` („heute 1 von 2“), `periodDayText` („Tag 6 von 14“), `occurrenceWhen`, `weekdayDate` („Fr, 27.11.“), `weekdayLabels`, `routineStatusLabel`, `occurrenceStatusLabel` |

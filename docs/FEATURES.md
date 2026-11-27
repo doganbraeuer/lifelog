@@ -1462,8 +1462,9 @@ Wish of Prof. Pree (meeting of 2026-11-16); stage 1 of the concept
 - On the card under „Heute“: „Ja“ (done, with the target amount), „Nein“
   (skipped) or „Andere Menge“ (the occurrence opens with the amount field;
   „Menge speichern“). The snackbar „„Vitamin D“ erledigt.“ offers
-  „Rückgängig“. An occurrence that is past and still open shows „Termin um
-  08:00 – noch offen“ in red. When all are logged: „Für heute erledigt“.
+  „Rückgängig“ for 8 seconds. An occurrence that is past and still open
+  shows „Termin um 08:00 – noch offen“ in red. When all are logged: „Für
+  heute erledigt“.
 - In the reminder: „Ja“ and „Nein“ send the log without opening the app;
   the reminder disappears once it worked. „Andere Menge“, or a tap on the
   reminder itself, opens the app at the occurrence.

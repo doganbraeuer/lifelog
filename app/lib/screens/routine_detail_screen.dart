@@ -71,11 +71,8 @@ class _RoutineDetailScreenState extends State<RoutineDetailScreen> {
 
   PlainDate get _today => _occurrences!.from;
 
-  void _show(String message, {SnackBarAction? action}) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message), action: action));
-  }
+  void _show(String message, {SnackBarAction? action}) =>
+      showRoutineSnackBar(context, message, action: action);
 
   /// Runs an action, then reloads; errors show the backend's message.
   Future<void> _run(Future<void> Function() action) async {

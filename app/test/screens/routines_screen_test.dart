@@ -87,6 +87,27 @@ void main() {
     );
   });
 
+  testWidgets('the message with „Rückgängig“ goes by itself after 8 s', (
+    tester,
+  ) async {
+    // Flutter keeps a snack bar with an action until it is tapped, unless
+    // `persist: false`: it stayed over every page on the phone, and later
+    // messages waited behind it.
+    await openRoutines(tester, fastMock());
+    await tester.tap(inCard('Blutdruck messen', find.text('Ja')));
+    await tester.pumpAndSettle();
+    expect(find.text('Rückgängig'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pumpAndSettle();
+    expect(find.text('Rückgängig'), findsOneWidget, reason: 'time to undo');
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.text('Rückgängig'), findsNothing);
+    expect(find.text('„Blutdruck messen“ erledigt.'), findsNothing);
+  });
+
   testWidgets('„Nein“ skips the occurrence', (tester) async {
     final mock = fastMock();
     await openRoutines(tester, mock);

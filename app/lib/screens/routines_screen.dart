@@ -238,12 +238,8 @@ class RoutinesScreenState extends State<RoutinesScreen> {
     if (go == true) await sync.requestPermission();
   }
 
-  void _show(String message, {SnackBarAction? action}) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message), action: action));
-  }
+  void _show(String message, {SnackBarAction? action}) =>
+      showRoutineSnackBar(context, message, action: action);
 
   /// „Ja“ or „Nein“ on a card, or on a reminder.
   Future<void> _log(
