@@ -5,6 +5,7 @@ import '../api/api_exception.dart';
 import '../model/plain_date.dart';
 import '../model/routine.dart';
 import '../model/routine_texts.dart';
+import '../routines/log_occurrence.dart';
 import 'routine_actions.dart';
 
 /// One occurrence („Termin“) in a bottom sheet with large buttons: „Ja,

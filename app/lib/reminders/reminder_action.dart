@@ -11,7 +11,7 @@ import '../api/http_api_client.dart';
 import '../model/routine.dart';
 import '../module/module_catalog.dart';
 import '../platform/reminders.dart';
-import '../screens/routine_actions.dart';
+import '../routines/log_occurrence.dart';
 import '../session/session_store.dart';
 import 'reminder_plan.dart';
 import 'replan_reminders.dart';

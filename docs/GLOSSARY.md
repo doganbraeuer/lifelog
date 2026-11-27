@@ -731,7 +731,7 @@ texts are German and quoted as they appear.
 | Formular einer Routine | routine form screen | `RoutineFormScreen`; „Neue Routine“, „Routine bearbeiten“, „Speichern“ |
 | Detailseite einer Routine | routine detail screen | `RoutineDetailScreen`; „Fortschritt“, „Termine heute“, „Nächste Termine“, „Verlauf“, „Aktionen“, „Zusätzlich eintragen“ |
 | Termin eintragen (Blatt) | occurrence sheet | `OccurrenceSheet`, `showOccurrenceSheet`; „Termin: 08:00“, „Ja, erledigt“, „Nein, ausgelassen“, „Menge speichern“ |
-| Termin eintragen (Anfrage) und Ergebnis | log an occurrence, log result | `logOccurrence`, `LogResult` (`409 ROUTINE_LOG_EXISTS` = already logged, shown as information); `screens/routine_actions.dart` |
+| Termin eintragen (Anfrage) und Ergebnis | log an occurrence, log result | `logOccurrence`, `LogResult` (`409 ROUTINE_LOG_EXISTS` = already logged, shown as information); `routines/log_occurrence.dart` (no Flutter UI; used by the screens and the reminder buttons in the background) |
 | Meldung unten, mit „Rückgängig“ | routine snack bar | `showRoutineSnackBar`, `undoSnackBarDuration` (8 s); `screens/routine_actions.dart` |
 | Vorschläge für die Einheit | unit suggestions | `unitSuggestions` („Stück“, „ml“, „g“, „mg“, „Tropfen“); `screens/routine_form_screen.dart` |
 | größtes Intervall pro Häufigkeit | max intervals | `maxIntervals` |

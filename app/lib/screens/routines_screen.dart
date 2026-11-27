@@ -8,6 +8,7 @@ import '../model/routine_texts.dart';
 import '../platform/reminders.dart';
 import '../reminders/reminder_plan.dart';
 import '../reminders/routine_sync.dart';
+import '../routines/log_occurrence.dart';
 import '../widgets/error_view.dart';
 import '../widgets/mock_banner.dart';
 import '../widgets/navigation.dart';
