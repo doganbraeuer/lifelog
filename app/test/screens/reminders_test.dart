@@ -2,6 +2,8 @@
 // fake instead of the phone's notifications. The mock's clock is
 // 2026-11-04 09:30 UTC (10:30 in Vienna); sample routines „Vitamin D“
 // (done today), „Blutdruck messen“ (08:00, 20:00) and „Wasser“ (hourly).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifelog/api/mock_api_client.dart';
@@ -29,6 +31,28 @@ Future<String> idOf(MockApiClient mock, String name) async =>
     (await mock.listRoutines(module: 'health'))
         .firstWhere((r) => r.name == name)
         .id;
+
+/// Reminders whose [apply] can be held, like the plugin that plans one
+/// reminder after the other.
+class _HeldReminders extends FakeReminders {
+  Completer<void>? gate;
+
+  /// An [apply] is waiting for [gate].
+  var waiting = false;
+
+  @override
+  Future<void> apply(
+    List<PlannedReminder> plan, {
+    required Set<int> remove,
+  }) async {
+    if (gate case final gate?) {
+      waiting = true;
+      await gate.future;
+      waiting = false;
+    }
+    await super.apply(plan, remove: remove);
+  }
+}
 
 void main() {
   testWidgets('the session start plans the open occurrences ahead', (
@@ -141,6 +165,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(reminders.clears, 1);
     expect(reminders.planned, isEmpty);
+  });
+
+  testWidgets('logout while a plan is applied: no reminder stays', (
+    tester,
+  ) async {
+    final reminders = _HeldReminders();
+    await startApp(tester, fastMock(), reminders);
+    expect(reminders.planned, isNotEmpty);
+
+    // A new plan is being applied ...
+    reminders.gate = Completer<void>();
+    unawaited(
+      RoutineSyncScope.maybeOf(tester.element(find.byType(Scaffold).first))!
+          .refresh(),
+    );
+    await tester.pumpAndSettle();
+    expect(reminders.waiting, isTrue);
+
+    // ... while the user logs out.
+    await tester.tap(find.byTooltip('Einstellungen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abmelden'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Abmelden'));
+    await tester.pumpAndSettle();
+
+    reminders.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(reminders.waiting, isFalse);
+    expect(reminders.planned, isEmpty, reason: 'nothing of the old user');
+    expect(reminders.clears, 1);
   });
 
   testWidgets('an ended session (401) removes them too', (tester) async {

@@ -212,7 +212,20 @@ class RoutineSync extends ChangeNotifier {
 
   /// At the end of a session: every reminder is removed, a tap not yet
   /// handled is dropped, and nothing of the previous user stays.
+  ///
+  /// A refresh under way is waited for first: otherwise its plan could go
+  /// on after the reminders were removed, and the previous user's reminders
+  /// would stay. A run queued after it plans nothing, because the session
+  /// is no longer ready.
   Future<void> clear() async {
+    pendingTap.value = null;
+    if (_running case final running?) {
+      try {
+        await running;
+      } on Object {
+        // Its outcome no longer matters; everything is removed below.
+      }
+    }
     _refused.clear();
     _lastKnown = {};
     _permission = null;

@@ -1550,7 +1550,8 @@ Benachrichtigungen.“
     routine, after a new time zone, and after every answer to a reminder
     („Ja“, „Nein“), also in the background with the app closed. If loading
     fails (no network), the planned reminders stay as they are. Runs in
-    the app never overlap.
+    the app never overlap; logging out waits for a run under way, so that
+    it cannot plan on after the reminders were removed.
   - Reminders already shown are removed when their occurrence is no longer
     open (logged, paused) or their routine is deleted; one of an open
     occurrence stays.
