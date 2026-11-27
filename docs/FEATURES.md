@@ -1,6 +1,6 @@
 # Lifelog features
 
-Status: 2026-11-23 · prototype
+Status: 2026-11-27 · prototype
 
 This document describes what Lifelog can do today: the screens of the app
 and every function of app and platform, each with the same sections. The
@@ -58,12 +58,14 @@ quoted as they appear („Hochladen“).
 
 The app is German, built with Flutter for iOS and Android. After the
 [login](#15-login-and-account) it opens on the module overview; each module
-has the same three tabs.
+has the same four tabs.
 
 ```
 Lifelog („Bereiche“, module overview)
 └── Module, e.g. „Gesundheit“ (own color scheme)
     ├── Tab „Zeitleiste“ (timeline) ──────────┐
+    ├── Tab „Routinen“ (routines)             │
+    │     „Neue Routine“, routine detail      │
     ├── Tab „Hochladen“ (upload)              ├── Entry („Eintrag“)
     │     photo, image, PDF, text             │     ├── Original („Originaldatei“)
     │                                         │     ├── Location of a value
@@ -75,14 +77,18 @@ Lifelog („Bereiche“, module overview)
 |---|---|---|---|
 | Module overview | „Lifelog“ | App start, after login | One tile per module; inactive modules marked „Bald verfügbar“. A „Mock“ badge if the app runs without a backend. The large „Einstellungen“ icon. |
 | Timeline | „Zeitleiste“ | Tab 1 of a module | All entries of the module on a time axis, grouped by month, with sort menu and order button |
-| Upload | „Hochladen“ | Tab 2, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“ (field with a microphone to dictate); preview; progress; errors |
-| Questions | „Fragen“ | Tab 3 | Question field, answer with tappable references, sources that expand to the full text with the passage marked |
+| Routines | „Routinen“ | Tab 2 of a module | „Heute“: one card per routine due today with its progress, „Nächster Termin: 08:00“ and the buttons „Ja“, „Nein“, „Andere Menge“; „Weitere Routinen“ (paused, not started, ended, or not due today); the button „Neue Routine“ |
+| Routine form | „Neue Routine“, „Routine bearbeiten“ | „Neue Routine“, or „Bearbeiten“ in the routine detail | Name, amount, rhythm, times, period, and the plan in one sentence |
+| Routine detail | name of the routine | A card in „Routinen“ | Plan, „Fortschritt“, „Termine heute“, „Nächste Termine“, „Verlauf“ (30 days), „Aktionen“ |
+| Occurrence | „Termin: 08:00“ | „Andere Menge“, „Eintragen“ in the detail, a tap on a reminder | „Ja, erledigt“, „Nein, ausgelassen“, or an amount with „Menge speichern“ |
+| Upload | „Hochladen“ | Tab 3, or the button in the empty timeline | Buttons „Foto aufnehmen“, „Bild auswählen“, „PDF auswählen“, „Text eingeben“ (field with a microphone to dictate); preview; progress; errors |
+| Questions | „Fragen“ | Tab 4 | Question field, answer with tappable references, sources that expand to the full text with the passage marked |
 | Entry | type name, e.g. „Laborbefund“ | A row in the timeline, a source of an answer, a successful upload, a duplicate | Original preview, „Angaben“, „Erkannte Angaben“, „Volltext“; correction and delete |
 | Original | file name | „Originaldatei öffnen“ or a tap on the preview in the entry | Image (zoomable), PDF (pages), or text |
 | Location in the original | name of the field, value below | A value with the small grey icon in the entry | The PDF page or photo with the value framed, or the text with it highlighted; „Fundstelle 1 von 2“; „Ganzes Original öffnen“ |
 | Dialogs | „Typ korrigieren“, „Datum wählen“, „Quelle korrigieren“, „<Fact> korrigieren“, „Eintrag löschen?“ | Pencil and trash buttons in the entry | Correct one value, or confirm deleting |
 
-The tabs can also be switched by swiping. All three tabs stay alive while
+The tabs can also be switched by swiping. All four tabs stay alive while
 the module is open: sorting, scroll position, a chosen file, a running
 upload and the last answer are kept when switching.
 
@@ -1200,7 +1206,7 @@ App start
 │     ├── 401 ────────────────────────► „Anmelden“ + „Bitte melde dich erneut an.“
 │     ├── no network / 5xx ───────────► error with „Erneut versuchen“ (token kept)
 │     ├── mustChangePassword ─────────► „Eigenes Passwort festlegen“
-│     ├── consentVersion ≠ 2026-11-18 ► „Bevor du startest“
+│     ├── consentVersion ≠ 2026-11-26 ► „Bevor du startest“
 │     └── otherwise ──────────────────► „Lifelog“ (modules), ⚙ „Einstellungen“
 ```
 
@@ -1321,21 +1327,28 @@ new version. Read-only under „Einstellungen“ → „Hinweis zum Datenschutz�
 
 1. Read the notice (scrollable): who runs the test, where the data goes
    (our server at netcup in Germany, MongoDB Atlas in Frankfurt, Google
-   Gemini, for voice notes also the recording itself), who can see it, how
-   long it is kept, how to withdraw.
+   Gemini, for voice notes also the recording itself), what happens with
+   routines and reminders, who can see it, how long it is kept, how to
+   withdraw.
 2. „Zustimmen“ opens the app. „Nicht jetzt“ logs out.
 
 #### Behind the scenes
 
-- The text and its version (`consentVersion = "2026-11-23"`) are constants
+- The text and its version (`consentVersion = "2026-11-26"`) are constants
   in `app/lib/session/consent_text.dart`.
+- Version 2026-11-26 (until then 2026-11-23) adds [routines](#16-routines)
+  (API.md §5, 2026-11-23, point 13): routines and their logs (done,
+  skipped, amounts) are stored in MongoDB Atlas in Frankfurt and do not go
+  to Google Gemini; reminders are planned only on the phone, where a
+  reminder can show a routine's name. „Wer deine Daten sehen kann“ now
+  names documents and routines.
 - Version 2026-11-23 (until then 2026-11-18) names the places precisely: the
   server at netcup in Germany instead of "in the EU", MongoDB Atlas in
   Frankfurt, and that voice notes send the recording itself to Google
   Gemini (since PR #29 Gemini transcribes on servers without a GPU); the
-  recording is not stored. Everyone who agreed to 2026-11-18 sees the notice
-  once more after the update. The backend accepts any version
-  (API.md 3.15), so an older APK keeps working.
+  recording is not stored. With each new version everyone who agreed to an
+  older one sees the notice once more after the update. The backend accepts
+  any version (API.md 3.15), so an older APK keeps working.
 - „Zustimmen“ sends `PUT /api/v1/me/consent` with the version. The backend
   stores it with the time; `GET /me` returns `consentVersion`.
 - If the stored version differs from the app's, the notice comes again. A
@@ -1369,6 +1382,11 @@ overview.
 - „Passwort ändern“: see [own password](#152-own-password).
 - „Hinweis zum Datenschutz“: the consent text, read-only.
 - „Abmelden“ → „Abmelden?“ → „Abmelden“.
+- Only in debug builds („Nur in der Entwicklerversion“): „Nächste
+  Erinnerung jetzt zeigen“ shows the reminder of a routine at once: the
+  next open occurrence of today, or the last overdue one if none is left;
+  otherwise „Heute ist kein Termin mehr offen.“ For trying reminders out,
+  and as a fallback in a demo, since reminders are approximate.
 
 #### Behind the scenes
 
@@ -1376,9 +1394,10 @@ overview.
   shows the server's message if it still refuses.
 - Logout: `POST /api/v1/auth/logout` (errors ignored), then the app deletes
   the token, empties its temporary folder (recordings, copies of photos and
-  PDFs) and the image cache, closes every page and shows the login. The
-  MaterialApp gets a new key, so no data of the previous user stays in
-  memory.
+  PDFs) and the image cache, removes every planned and shown reminder,
+  closes every page and shows the login. The MaterialApp gets a new key, so
+  no data of the previous user stays in memory. The same happens whenever
+  a session ends (`401`, „Nicht jetzt“ on the consent notice).
 
 #### Limits
 
@@ -1400,30 +1419,81 @@ Routines are like alarm clocks for things the user wants to do regularly:
 take vitamin D every morning, measure blood pressure twice a day for two
 weeks, drink a glass of water every hour. The user marks each occurrence
 as done or skipped and sees the progress („heute 1 von 2“, „Tag 6 von
-14“, „heute 1.250 von 3.250 ml“). Wish of Prof. Pree (meeting of
-2026-11-16); stage 1 of the concept (API.md 3.16–3.27).
+14“, „heute 1.250 von 3.250 ml“). The phone reminds of each occurrence
+with a notification that has the buttons „Ja“, „Nein“ and „Andere Menge“.
+Wish of Prof. Pree (meeting of 2026-11-16); stage 1 of the concept
+(API.md 3.16–3.27).
 
 ### Where
 
-> **TODO (Dylan):** the routines view next to the timeline in module
-> `health` („Neue Routine“), the form, the occurrences of a day and the
-> reminders with „Ja“, „Nein“, „Andere Menge“.
+- Tab „Routinen“ in every module, between „Zeitleiste“ and „Hochladen“
+  (usable in `health`). The button „Neue Routine“ is at the bottom right.
+- A tap on a routine opens its detail page, titled with its name.
+- Reminders appear in the phone's notifications: the routine's name as
+  title, „08:00 · 2 Stück – erledigt?“ as text („08:00 – erledigt?“
+  without an amount).
+- Debug builds only: „Einstellungen“ → „Nächste Erinnerung jetzt zeigen“
+  ([settings](#154-settings)).
 
 ### How to use
 
-> **TODO (Dylan):** the steps in the app.
+**Create a routine**
 
-What the backend offers for it:
+1. „Neue Routine“ opens the form.
+2. „Name“, e.g. „Vitamin D“ (1 to 60 characters, unique in the module).
+3. Optional „Mit Menge“: „Menge“ per occurrence (e.g. 2 or 0,5) and
+   „Einheit“ (suggestions „Stück“, „ml“, „g“, „mg“, „Tropfen“; any unit
+   up to 20 characters).
+4. „Rhythmus“: „stündlich“ (every N hours within a „Zeitfenster“, „von
+   08:00 bis 20:00“), „täglich“ (every N days at the „Uhrzeiten“) or
+   „wöchentlich“ (on the chosen „Wochentage“ every N weeks, at the
+   „Uhrzeiten“). The buttons beside the interval change N; „Uhrzeit
+   hinzufügen“ adds a time.
+5. „Zeitraum“: „Beginn“ (default today) and „Ende“, or „Kein Ende“.
+6. The card at the bottom states the plan in one sentence. „Speichern“:
+   „„Vitamin D“ angelegt.“
+7. After the first routine the app explains why it needs notifications
+   („Damit Lifelog dich an deine Routinen erinnern kann, braucht es die
+   Erlaubnis für Mitteilungen.“, „Später“ / „Weiter“); „Weiter“ opens the
+   system dialog.
 
-- Create a routine with a name, an optional target amount per occurrence
-  (e.g. 2 Stück, 250 ml), a schedule (hourly in a window, daily every N
-  days, weekly on weekdays every N weeks), a start date and an optional end
-  date.
-- Log an occurrence as done (optionally with another amount) or skipped,
-  also afterwards with an entered time; log an extra amount without an
-  occurrence (an extra glass, a portion).
-- Pause until a day or until resumed, and resume.
-- Change the plan; delete a log or the whole routine.
+**Log an occurrence**
+
+- On the card under „Heute“: „Ja“ (done, with the target amount), „Nein“
+  (skipped) or „Andere Menge“ (the occurrence opens with the amount field;
+  „Menge speichern“). The snackbar „„Vitamin D“ erledigt.“ offers
+  „Rückgängig“. An occurrence that is past and still open shows „Termin um
+  08:00 – noch offen“ in red. When all are logged: „Für heute erledigt“.
+- In the reminder: „Ja“ and „Nein“ send the log without opening the app;
+  the reminder disappears once it worked. „Andere Menge“, or a tap on the
+  reminder itself, opens the app at the occurrence.
+- If the occurrence was logged already (e.g. on another device): „Dieser
+  Termin ist schon eingetragen.“ as information, not as an error.
+
+**Detail page** (tap on a routine)
+
+- The plan, „Menge“, „Beginn“, „Ende“; „Fortschritt“ for „heute“, „Woche“
+  and, with an end date, the day of the period („Tag 6 von 14“).
+- „Termine heute“ with „Eintragen“ or „Zurücknehmen“; „Nächste Termine“
+  (up to 3 within 7 days).
+- „Zusätzlich eintragen“ (routines with an amount): an extra amount
+  without an occurrence, e.g. an extra glass; it counts for the amount,
+  not as an occurrence.
+- „Verlauf“: the logs of the last 30 days with time, status, amount and
+  where they came from („in der App“, „über die Erinnerung“,
+  „zusätzlich, in der App“); the bin deletes one.
+- „Aktionen“: „Pausieren“ („Bis ich fortsetze“, „Für eine Woche“, „Bis zu
+  einem Datum …“) or „Fortsetzen“; „Bearbeiten“ (the form, „Routine
+  bearbeiten“); „Löschen“ („Routine löschen?“: the routine and its whole
+  history).
+
+**Reminders off**
+
+Without the permission the tab shows „Erinnerungen sind ausgeschaltet. Du
+kannst Routinen trotzdem eintragen.“ „Einschalten“ asks again; if Android
+no longer asks, it opens the app's notification settings, with the hint
+„Bitte erlaube Mitteilungen unter Einstellungen › Apps › Lifelog ›
+Benachrichtigungen.“
 
 ### Behind the scenes
 
@@ -1449,6 +1519,60 @@ What the backend offers for it:
   more; it runs to the end even if the app drops the connection.
 - No model call: routines cost no Gemini requests and have no daily limit.
 
+**In the app** (`app/lib/screens/routines_screen.dart`,
+`routine_form_screen.dart`, `routine_detail_screen.dart`,
+`occurrence_sheet.dart`; `app/lib/reminders/`):
+
+- **"Today" comes from the server:** the tab loads `GET /routines` and
+  `GET /routines/occurrences` without `from`/`to` (today and six days in
+  the user's time zone) and takes today from `from`, never from the
+  phone's clock. It reloads after every change, when the app comes back to
+  the foreground, and when pulled down. Logs from the app never send
+  `takenAt`; the server sets the time.
+- **Time zone:** at the start of a session and on every return to the
+  foreground the app compares the phone's IANA name (package
+  flutter_timezone 5.1.1) with `timeZone` from `GET /me` and sends
+  `PATCH /me` if they differ. Then the tab loads again, because today, the
+  progress and the occurrences change with the zone. A name the backend
+  refuses is not sent again in this session.
+- **Reminders** (package flutter_local_notifications 23.0.4, as API.md
+  3.16 "Reminders in the app"; `RoutineSync`, `planReminders`):
+  - From the occurrences of today and the next six days, every `open` one
+    whose `dueAt` lies ahead gets a reminder; never `done`, `skipped` or
+    `paused`. The nearest first, at most 60 (iOS keeps 64 per app).
+  - Planned with `dueAt` in UTC as it comes from the server; the phone
+    converts no time zone. Approximate (`inexactAllowWhileIdle`); the app
+    asks for no exact alarms.
+  - Planned again at the start of a session, on every return to the
+    foreground, after every log, pause, resume, change, deletion or new
+    routine, and after a new time zone. If loading fails (no network), the
+    planned reminders stay as they are. Runs never overlap.
+  - Reminders already shown are removed when their occurrence is no longer
+    open (logged, paused) or their routine is deleted; one of an open
+    occurrence stays.
+  - Each reminder has a stable ID from routine and `dueAt` (31-bit FNV-1a),
+    so the app can remove exactly that one after a log. The payload holds
+    only module, routine ID and `dueAt`, never the name.
+  - „Ja“ and „Nein“ run in a background isolate: it reads the token from
+    the secure storage and sends `POST …/logs` with `source:
+    notification`. `201`, or `409` (already logged), removes the reminder;
+    on any other outcome (no network, expired token, `5xx`) it stays, and
+    a tap on it opens the app at the occurrence, where an error is visible.
+    If the app is open, its tab reloads.
+  - After a restart the package's boot receiver plans the last list again
+    without opening the app (`RECEIVE_BOOT_COMPLETED`); the next start of
+    the app plans anew anyway.
+  - Android: channel „Erinnerungen an Routinen“ (`routine_reminders`), high
+    importance, category reminder, `visibility: private`, own icon
+    `ic_stat_lifelog`. iOS (prepared, not built): no name at all, title
+    „Lifelog: Erinnerung“, text „Zeit für deine Routine · 08:00“.
+- **Mock mode:** sample routines („Vitamin D“, „Blutdruck messen“,
+  „Wasser“); occurrences, status and progress are computed in Dart by the
+  backend's rules, checked against the cases of
+  `backend/internal/core/testdata/routine_occurrences.json`. Reminder
+  buttons always open the app there, because the mock's data lives only in
+  the app's memory.
+
 ### Limits
 
 - At most 50 routines per user, 24 occurrences per day, 100 pauses per
@@ -1457,17 +1581,56 @@ What the backend offers for it:
   log whose occurrence no longer exists only counts for the amount.
 - No categories, no statistics, no flexible goals („2× pro Woche“), no
   pauses that start in the future (API.md, section 4).
-- Reminders are approximate on Android (battery savers, no exact alarms).
+- **Reminders are approximate:** Android may deliver them later, the more
+  so the earlier they were planned. On the test phone (charging) a
+  reminder planned 4 to 5 minutes ahead came 3.3 to 3.5 minutes late,
+  about three quarters of the lead time. For reminders planned hours ahead
+  Android allows up to about an hour, and in Doze (phone idle on battery)
+  more. A demo can use „Nächste Erinnerung jetzt zeigen“.
+- **OnePlus and other phones with strict battery savers** can delay or stop
+  reminders. Swiping the app away from the recent apps kept them on the
+  test phone; a forced stop removes them until the app is opened again. If
+  reminders do not come, allow background activity for Lifelog in its
+  battery settings.
+- After a restart reminders come back only once the phone has been
+  unlocked (Android sends `BOOT_COMPLETED` then).
+- The lock screen hides a routine's name only if the phone is set to hide
+  sensitive content; the package has no `publicVersion` for a neutral text
+  (API.md 3.16, reminders, point 7). Not checked on a phone yet (see the
+  phone test below).
+- „Andere Menge“ in a reminder removes the reminder at once; if the sheet
+  is closed without saving, the occurrence stays open in the app but the
+  reminder does not come back.
+- The app cannot log afterwards with an entered time, although the backend
+  allows it (`takenAt`).
 - Stage 2, routine suggestions from uploaded documents, is still a
   proposal.
 
 ### Status
 
-**Backend done, app in progress.**
+**Done** for Android (PR D, tested on the OnePlus 8T); iOS is prepared
+(`AppDelegate.swift`, categories for the buttons) but not built yet.
 
-> **TODO (Dylan):** app (PR D): view, form, reminders, sending the time
-> zone, and the mock with the cases of
-> `backend/internal/core/testdata/routine_occurrences.json`.
+Phone test (OnePlus 8T, debug build against a local backend, 2026-11-26
+and 2026-11-27):
+
+| Step | Result |
+|---|---|
+| Consent 2026-11-26 after the update | shown, „Zustimmen“ works |
+| Permission after the first routine | own sentence, then the system dialog; without it the notice and „Einschalten“ |
+| Reminder at 21:05 | came at 21:05:27 with name, „21:05 – erledigt?“ and the buttons |
+| „Ja“ / „Nein“ in the reminder | log `201` with `source: notification`, reminder gone, app stays closed |
+| „Ja“ on an occurrence logged elsewhere | `409`, reminder gone without an error |
+| „Andere Menge“ | the app opens at the occurrence; 1 entered → „heute 1 von 2 Stück“ |
+| Pause / resume | shown and planned reminders removed / planned again (checked with `dumpsys alarm`) |
+| Time zone Lisbon and back | `PATCH /me`, reminders at the new local times, the tab reloads |
+| App swiped from the recent apps | alarms stay; the reminder came 3.5 min late |
+| Restart, app not opened | reminders back after unlocking; the reminder came 3.3 min late |
+| Notifications turned off in the phone's settings | the notice appears, „Ja“ still logs (`201`); „Einschalten“ shows the system dialog again, then the reminders are planned anew |
+| „Nächste Erinnerung jetzt zeigen“ | shows the reminder of today; with none open „Heute ist kein Termin mehr offen.“ |
+| Lock screen | the test phone's profile shows no notifications on the lock screen at all; the choice „Nur App anzeigen“ (hide content) had no effect on that guest profile, so `visibility: private` could not be checked |
+| Logout | `POST /auth/logout` `204`; 0 planned and 0 shown reminders, the package's stored list empty |
+| Backend log | no routine names, amounts or units: only method, path with IDs, status, duration |
 
 ---
 
@@ -1508,8 +1671,17 @@ Einstellungen.“
   secure storage (flutter_secure_storage: Android Keystore, iOS Keychain for
   this device only), never the password. The app allows no backup and no
   transfer to a new device. Logging out (or a session that ends) deletes the
-  token, the app's temporary files (recordings, copies of photos and PDFs)
-  and the image cache ([login and account](#15-login-and-account)).
+  token, the app's temporary files (recordings, copies of photos and PDFs),
+  the image cache and every reminder ([login and account](#15-login-and-account)).
+- **Reminders** of [routines](#16-routines) are planned only on the phone;
+  the server sends no push messages. On Android the title is the routine's
+  name, and the package keeps the planned reminders (title, text, and a
+  payload with IDs and the time, no name) in the app's private storage, so
+  that it can plan them again after a restart. On the lock screen Android
+  hides the content only if the phone is set to hide sensitive content
+  (`visibility: private`). On iOS a reminder never contains the name. The
+  consent notice (version 2026-11-26) says that a reminder can show a
+  routine's name on the phone.
 
 ### What is stored, and deleting
 
@@ -1534,7 +1706,9 @@ questions or answers, no transcripts. A dropped fact is logged by its field
 name only (`facts[2].value`). whisper-server logs only the fixed file name
 `audio.wav` and the length, never the text (checked). For routines only
 IDs, counts and the names of changed fields, never a routine's name,
-amount, unit or the time of a log (checked by a test).
+amount, unit or the time of a log (checked by a test, and in the backend
+log of the phone test on 2026-11-27). The app's reminder buttons in the
+background log nothing.
 
 ### Secrets
 
@@ -1645,8 +1819,14 @@ reports `speech` separately, without any model call.
 - Temporary errors (no connection, 500, 502, 503, unexpected response) keep
   the chosen file or text and offer „Erneut versuchen“; a typed text is
   never lost after an error.
-- All three tabs keep their state; a photo taken while Android ended the app
+- All four tabs keep their state; a photo taken while Android ended the app
   is recovered.
+- Routines: if reloading fails, the last list stays with the error and
+  „Erneut versuchen“ above it. Reminders are only replaced after the
+  occurrences have loaded, so without a network the planned ones stay. A
+  reminder button that fails in the background leaves the reminder, and a
+  tap on it opens the app at the occurrence. A log sent twice (button and
+  app, two devices) is answered with `409` and counts as done.
 - When the sort changes quickly, only the last response is shown.
 - A response that does not match the contract becomes a clear error
   (`UNEXPECTED_RESPONSE`) instead of a crash.
