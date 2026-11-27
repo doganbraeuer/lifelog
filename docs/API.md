@@ -2338,8 +2338,13 @@ The app plans reminders as local notifications on the phone, e.g. with
    `dueAt` in the future. It never reminds of `done`, `skipped` or
    `paused`.
 2. It plans again at start, when it comes back to the foreground, after
-   every log, pause, resume or change of a routine, and after a change of
-   the time zone.
+   every log, pause, resume or change of a routine, after a change of the
+   time zone, and after every answer by a reminder button („Ja“, „Nein“),
+   also in the background without opening the app. So the 7 planned days
+   move on for someone who only answers reminders. Known limit: someone
+   who neither opens the app nor answers a reminder for 7 days gets no
+   reminders after that; a later solution is a periodic background job
+   (e.g. WorkManager).
 3. **After the phone restarts**, Android has forgotten all planned
    notifications. The app plans them again: with the permission
    `RECEIVE_BOOT_COMPLETED` and the boot receiver of the notification
@@ -3340,14 +3345,16 @@ as decided.
 
 ## 5. Changes
 
-### 2026-11-27: Reminders in the app, points 5 and 7 (Dylan, Dogan reviews)
+### 2026-11-27: Reminders in the app, points 2, 5 and 7 (Dylan, Dogan reviews)
 
-The app (PR D) implements the reminders of 3.16. Two points follow what
-the platform allows; no endpoint changes.
+The app (PR D) implements the reminders of 3.16. Three points follow what
+the app and the platform do; no endpoint changes.
 
-1. **Point 5:** how late approximate reminders come: usually minutes, in
+1. **Point 2:** the app also plans anew after every answer by a reminder
+   button, in the background; known limit of the 7-day horizon.
+2. **Point 5:** how late approximate reminders come: usually minutes, in
    the worst case about an hour, more in Doze; measured on the test phone.
-2. **Point 7:** no neutral `publicVersion`, because
+3. **Point 7:** no neutral `publicVersion`, because
    flutter_local_notifications 23 has none. `visibility: private` hides
    the content on the lock screen only if the phone is set to hide
    sensitive content. The consent notice 2026-11-26 names it.

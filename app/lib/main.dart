@@ -100,10 +100,7 @@ class _LifelogAppState extends State<LifelogApp> {
     session: _session,
     deviceTimeZone: widget.deviceTimeZone,
     reminders: widget.reminders,
-    modules: [
-      for (final module in widget.catalog.modules)
-        if (module.active) module.id,
-    ],
+    modules: widget.catalog.activeIds,
     clock: widget.clock,
   );
 

@@ -94,6 +94,12 @@ class ModuleCatalog {
 
   final List<ModuleDefinition> modules;
 
+  /// The IDs of the modules that can be opened; each has its own routines.
+  List<String> get activeIds => [
+    for (final module in modules)
+      if (module.active) module.id,
+  ];
+
   /// Icon for unknown types.
   static const unknownIcon = Icons.insert_drive_file_outlined;
 

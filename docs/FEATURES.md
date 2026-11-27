@@ -1538,16 +1538,19 @@ Benachrichtigungen.“
   refuses is not sent again in this session.
 - **Reminders** (package flutter_local_notifications 23.0.4, as API.md
   3.16 "Reminders in the app"; `RoutineSync`, `planReminders`):
-  - From the occurrences of today and the next six days, every `open` one
-    whose `dueAt` lies ahead gets a reminder; never `done`, `skipped` or
-    `paused`. The nearest first, at most 60 (iOS keeps 64 per app).
+  - Planning horizon 7 days: from the occurrences of today and the next
+    six days, every `open` one whose `dueAt` lies ahead gets a reminder;
+    never `done`, `skipped` or `paused`. The nearest first, at most 60
+    (iOS keeps 64 per app).
   - Planned with `dueAt` in UTC as it comes from the server; the phone
     converts no time zone. Approximate (`inexactAllowWhileIdle`); the app
     asks for no exact alarms.
   - Planned again at the start of a session, on every return to the
     foreground, after every log, pause, resume, change, deletion or new
-    routine, and after a new time zone. If loading fails (no network), the
-    planned reminders stay as they are. Runs never overlap.
+    routine, after a new time zone, and after every answer to a reminder
+    („Ja“, „Nein“), also in the background with the app closed. If loading
+    fails (no network), the planned reminders stay as they are. Runs in
+    the app never overlap.
   - Reminders already shown are removed when their occurrence is no longer
     open (logged, paused) or their routine is deleted; one of an open
     occurrence stays.
@@ -1559,7 +1562,10 @@ Benachrichtigungen.“
     notification`. `201`, or `409` (already logged), removes the reminder;
     on any other outcome (no network, expired token, `5xx`) it stays, and
     a tap on it opens the app at the occurrence, where an error is visible.
-    If the app is open, its tab reloads.
+    After a success it plans the reminders anew with the same token
+    (`replanReminders`), so the seven days move on for someone who only
+    answers reminders; if that fails, the old plan stays. If the app is
+    open, its tab reloads and it plans once more.
   - After a restart the package's boot receiver plans the last list again
     without opening the app (`RECEIVE_BOOT_COMPLETED`); the next start of
     the app plans anew anyway.
@@ -1595,6 +1601,10 @@ Benachrichtigungen.“
   battery settings.
 - After a restart reminders come back only once the phone has been
   unlocked (Android sends `BOOT_COMPLETED` then).
+- **Planning horizon 7 days:** someone who neither opens the app nor
+  answers a reminder for 7 days gets no reminders after that. A later
+  solution is a periodic background job (e.g. WorkManager) that plans
+  anew.
 - The lock screen hides a routine's name only if the phone is set to hide
   sensitive content; the package has no `publicVersion` for a neutral text
   (API.md 3.16, reminders, point 7). Not checked on a phone yet (see the

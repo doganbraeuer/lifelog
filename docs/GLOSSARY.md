@@ -740,6 +740,7 @@ texts are German and quoted as they appear.
 | Abgleich von Zeitzone und Erinnerungen | routine sync | `RoutineSync`, `RoutineSyncScope`; `reminders/routine_sync.dart`; `refresh`, `clear`, `pendingTap` (a tap on a reminder not yet handled), `dataChanged` (the tab reloads) |
 | Erinnerungen (Schnittstelle zum Paket) | reminders | `Reminders`, `PluginReminders`, `ReminderPermission` (`granted`, `denied`); `platform/reminders.dart` |
 | Erinnerungsplan | reminder plan | `planReminders`, `PlannedReminder`, `maxPlannedReminders` (60); `reminders/reminder_plan.dart` |
+| neu planen vom Server | replan reminders | `replanReminders` (loads, plans, applies; used by `RoutineSync` and the reminder buttons in the background); `reminders/replan_reminders.dart`; `ModuleCatalog.activeIds` |
 | Erinnerung für heute (nur Debug) | reminder for today | `reminderForToday`, `RoutineSync.showNextNow`; „Nächste Erinnerung jetzt zeigen“, „Heute ist kein Termin mehr offen.“ |
 | ID und Inhalt einer Erinnerung | reminder ID, occurrence key, payload | `reminderId` (31-bit FNV-1a), `occurrenceKey` (`"<routineId>\|<dueAt>"`), `reminderPayload` (`{"m": module, "r": routineId, "d": dueAt}`, no name) |
 | Antippen einer Erinnerung oder eines Knopfs | reminder tap | `ReminderTap` |

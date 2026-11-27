@@ -8,6 +8,7 @@ import '../platform/device_time_zone.dart';
 import '../platform/reminders.dart';
 import '../session/session_controller.dart';
 import 'reminder_plan.dart';
+import 'replan_reminders.dart';
 
 /// Keeps the routines of the logged-in user in step with the phone:
 ///
@@ -142,38 +143,17 @@ class RoutineSync extends ChangeNotifier {
   }
 
   Future<void> _plan() async {
-    final routines = <Routine>[];
-    final occurrences = <Occurrence>[];
-    try {
-      for (final module in modules) {
-        routines.addAll(await session.api.listRoutines(module: module));
-        occurrences.addAll(
-          (await session.api.listOccurrences(module: module)).occurrences,
-        );
-      }
-    } on ApiException {
-      return; // keep the planned reminders
-    }
-    if (session.phase != SessionPhase.ready) return;
-    final plan = planReminders(
-      occurrences: occurrences,
-      routines: routines,
+    final known = await replanReminders(
+      api: session.api,
+      modules: modules,
+      reminders: reminders,
       now: _clock(),
       isIOS: _isIOS,
+      lastKnown: _lastKnown,
+      // A session that ended while loading plans nothing more.
+      proceed: () => session.phase == SessionPhase.ready,
     );
-    int idOf(Occurrence o) => reminderId(occurrenceKey(o.routineId, o.dueAt));
-    final routineIds = {for (final r in routines) r.id};
-    // Shown reminders that must go: their occurrence is done, skipped or
-    // paused, or their routine is gone (known from the last run). A shown
-    // reminder of an open occurrence, or of an older day, stays.
-    final remove = {
-      for (final o in occurrences)
-        if (!o.isOpen) idOf(o),
-      for (final MapEntry(key: id, value: routineId) in _lastKnown.entries)
-        if (!routineIds.contains(routineId)) id,
-    };
-    await reminders.apply(plan, remove: remove);
-    _lastKnown = {for (final o in occurrences) idOf(o): o.routineId};
+    if (known != null) _lastKnown = known;
   }
 
   /// Reminder ID → routine of every occurrence of the last run, to remove
