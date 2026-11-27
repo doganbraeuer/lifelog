@@ -1,6 +1,6 @@
 # Lifelog REST API (prototype)
 
-Status: 2026-11-23 · Version `v1` · Draft
+Status: 2026-11-27 · Version `v1` · Draft
 (Changes: see [section 5](#5-changes))
 
 **Routines, since 2026-11-23:** stage 1 is implemented in the backend:
@@ -2353,8 +2353,11 @@ The app plans reminders as local notifications on the phone, e.g. with
    question in [section 4](#open-questions-on-routines-2026-11-23)).
    Since Android 14, `SCHEDULE_EXACT_ALARM` is no longer granted by
    default, and `USE_EXACT_ALARM` is only allowed for alarm clock and
-   calendar apps. The app therefore plans inexact notifications (e.g.
-   `AndroidScheduleMode.inexactAllowWhileIdle`), which can come a few
+   calendar apps. The app therefore plans inexact notifications
+   (`AndroidScheduleMode.inexactAllowWhileIdle`). They usually come a few
+   minutes late, the later the further ahead they were planned: in the
+   worst case about an hour, and in Doze (phone idle on battery) more. On
+   the test phone a reminder planned 4 to 5 minutes ahead came 3 to 4
    minutes late. For a routine that is fine; the occurrence keeps its
    `dueAt`.
 6. A notification has three buttons:
@@ -2370,11 +2373,16 @@ The app plans reminders as local notifications on the phone, e.g. with
    removes the reminder. There is no button „Schon erledigt“. If the request
    fails otherwise (e.g. no network), the occurrence stays open and the app
    offers it again when it is opened.
-7. **Lock screen:** a notification never shows a routine name there,
-   because it is health data. Android: `visibility: private` with a
-   neutral `publicVersion` („Lifelog: Erinnerung“). iOS shows previews on
-   the lock screen depending on the user's setting, so there the name is
-   in neither title nor text („Zeit für deine Routine · 08:00“).
+7. **Lock screen:** a routine's name is health data. Android:
+   `visibility: private`. The notification package
+   (flutter_local_notifications 23) has no `publicVersion`, so there is no
+   neutral text of our own: if the phone is set to hide sensitive content
+   on the lock screen, Android shows the app's name and a placeholder of
+   the system instead of the content; otherwise the name is visible there.
+   The consent notice (version 2026-11-26) says that a reminder can show a
+   routine's name on the phone. iOS shows previews on the lock screen
+   depending on the user's setting, so there the name is in neither title
+   nor text („Zeit für deine Routine · 08:00“).
 
 ### 3.17 List routines
 
@@ -3331,6 +3339,18 @@ as decided.
 ---
 
 ## 5. Changes
+
+### 2026-11-27: Reminders in the app, points 5 and 7 (Dylan, Dogan reviews)
+
+The app (PR D) implements the reminders of 3.16. Two points follow what
+the platform allows; no endpoint changes.
+
+1. **Point 5:** how late approximate reminders come: usually minutes, in
+   the worst case about an hour, more in Doze; measured on the test phone.
+2. **Point 7:** no neutral `publicVersion`, because
+   flutter_local_notifications 23 has none. `visibility: private` hides
+   the content on the lock screen only if the phone is set to hide
+   sensitive content. The consent notice 2026-11-26 names it.
 
 ### 2026-11-23: Routines stage 1 implemented (Dylan, Dogan reviews)
 
