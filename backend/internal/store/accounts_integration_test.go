@@ -72,14 +72,25 @@ func TestIntegrationAccounts_UpdateAndList(t *testing.T) {
 	if found, err := s.SetPassword(ctx, a.ID, "$2a$04$other", false); err != nil || !found {
 		t.Fatalf("SetPassword = %v, %v", found, err)
 	}
-	if found, err := s.SetDisplayName(ctx, a.ID, "Erika"); err != nil || !found {
-		t.Fatalf("SetDisplayName = %v, %v", found, err)
+	name, zone := "Erika", "Europe/Lisbon"
+	if found, err := s.SetProfile(ctx, a.ID, &name, nil); err != nil || !found {
+		t.Fatalf("SetProfile(name) = %v, %v", found, err)
+	}
+	if got, _, _ := s.UserByID(ctx, a.ID); got.TimeZone != "" {
+		t.Errorf("time zone before it was set = %q, want empty", got.TimeZone)
+	}
+	if found, err := s.SetProfile(ctx, a.ID, nil, &zone); err != nil || !found {
+		t.Fatalf("SetProfile(zone) = %v, %v", found, err)
+	}
+	if _, err := s.SetProfile(ctx, a.ID, nil, nil); err == nil {
+		t.Error("SetProfile without a field: no error")
 	}
 	if found, err := s.SetDisabled(ctx, a.ID, true); err != nil || !found {
 		t.Fatalf("SetDisabled = %v, %v", found, err)
 	}
 	got, _, _ := s.UserByID(ctx, a.ID)
-	if got.PasswordHash != "$2a$04$other" || got.MustChangePassword || got.DisplayName != "Erika" || !got.Disabled {
+	if got.PasswordHash != "$2a$04$other" || got.MustChangePassword || got.DisplayName != "Erika" ||
+		got.TimeZone != "Europe/Lisbon" || !got.Disabled {
 		t.Errorf("after updates: %+v", got)
 	}
 

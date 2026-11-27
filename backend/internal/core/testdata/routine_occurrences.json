@@ -1,0 +1,351 @@
+{
+  "description": "Occurrences of routine schedules (docs/API.md 3.16, 3.24). Each case gives a schedule, startDate and endDate as in the API, the user's timeZone and the days from..to, and lists every occurrence whose local date lies in from..to, sorted by dueAt: dueAt in UTC, date and time in the time zone. Used by backend/internal/core/schedule_test.go; the app's mock can read the same file. The expected values were worked out by hand from the rules in API.md and the zone transitions, not taken from the implementation.",
+  "cases": [
+    {
+      "name": "hourly 08:00 to 20:00, every hour: 13 a day (API.md 3.16)",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 1, "windowStart": "08:00", "windowEnd": "20:00" },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-23",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-23T08:00:00Z", "date": "2026-11-23", "time": "09:00" },
+        { "dueAt": "2026-11-23T09:00:00Z", "date": "2026-11-23", "time": "10:00" },
+        { "dueAt": "2026-11-23T10:00:00Z", "date": "2026-11-23", "time": "11:00" },
+        { "dueAt": "2026-11-23T11:00:00Z", "date": "2026-11-23", "time": "12:00" },
+        { "dueAt": "2026-11-23T12:00:00Z", "date": "2026-11-23", "time": "13:00" },
+        { "dueAt": "2026-11-23T13:00:00Z", "date": "2026-11-23", "time": "14:00" },
+        { "dueAt": "2026-11-23T14:00:00Z", "date": "2026-11-23", "time": "15:00" },
+        { "dueAt": "2026-11-23T15:00:00Z", "date": "2026-11-23", "time": "16:00" },
+        { "dueAt": "2026-11-23T16:00:00Z", "date": "2026-11-23", "time": "17:00" },
+        { "dueAt": "2026-11-23T17:00:00Z", "date": "2026-11-23", "time": "18:00" },
+        { "dueAt": "2026-11-23T18:00:00Z", "date": "2026-11-23", "time": "19:00" },
+        { "dueAt": "2026-11-23T19:00:00Z", "date": "2026-11-23", "time": "20:00" }
+      ]
+    },
+    {
+      "name": "hourly 08:00 to 20:00, every 3 hours (API.md 3.16)",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 3, "windowStart": "08:00", "windowEnd": "20:00" },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-23",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-23T10:00:00Z", "date": "2026-11-23", "time": "11:00" },
+        { "dueAt": "2026-11-23T13:00:00Z", "date": "2026-11-23", "time": "14:00" },
+        { "dueAt": "2026-11-23T16:00:00Z", "date": "2026-11-23", "time": "17:00" },
+        { "dueAt": "2026-11-23T19:00:00Z", "date": "2026-11-23", "time": "20:00" }
+      ]
+    },
+    {
+      "name": "hourly: windowEnd is not hit",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 3, "windowStart": "08:00", "windowEnd": "19:00" },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-23",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-23T10:00:00Z", "date": "2026-11-23", "time": "11:00" },
+        { "dueAt": "2026-11-23T13:00:00Z", "date": "2026-11-23", "time": "14:00" },
+        { "dueAt": "2026-11-23T16:00:00Z", "date": "2026-11-23", "time": "17:00" }
+      ]
+    },
+    {
+      "name": "hourly: the interval counts hours, every day has occurrences",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 5, "windowStart": "08:00", "windowEnd": "20:00" },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-24",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-23T12:00:00Z", "date": "2026-11-23", "time": "13:00" },
+        { "dueAt": "2026-11-23T17:00:00Z", "date": "2026-11-23", "time": "18:00" },
+        { "dueAt": "2026-11-24T07:00:00Z", "date": "2026-11-24", "time": "08:00" },
+        { "dueAt": "2026-11-24T12:00:00Z", "date": "2026-11-24", "time": "13:00" },
+        { "dueAt": "2026-11-24T17:00:00Z", "date": "2026-11-24", "time": "18:00" }
+      ]
+    },
+    {
+      "name": "daily, every 2nd day from 2026-11-23 (API.md 3.16)",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 2, "times": ["08:00"] },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-29",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-25T07:00:00Z", "date": "2026-11-25", "time": "08:00" },
+        { "dueAt": "2026-11-27T07:00:00Z", "date": "2026-11-27", "time": "08:00" },
+        { "dueAt": "2026-11-29T07:00:00Z", "date": "2026-11-29", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "weekly, every 2nd week on Tuesday and Friday from Monday 2026-11-23 (API.md 3.16)",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "weekly", "interval": 2, "weekdays": ["tue", "fri"], "times": ["07:00"] },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-12-13",
+      "occurrences": [
+        { "dueAt": "2026-11-24T06:00:00Z", "date": "2026-11-24", "time": "07:00" },
+        { "dueAt": "2026-11-27T06:00:00Z", "date": "2026-11-27", "time": "07:00" },
+        { "dueAt": "2026-12-08T06:00:00Z", "date": "2026-12-08", "time": "07:00" },
+        { "dueAt": "2026-12-11T06:00:00Z", "date": "2026-12-11", "time": "07:00" }
+      ]
+    },
+    {
+      "name": "weekly, start on a Wednesday: Monday of week 0 is before the start",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "weekly", "interval": 1, "weekdays": ["mon", "fri"], "times": ["08:00"] },
+      "startDate": "2026-11-25", "endDate": null, "from": "2026-11-23", "to": "2026-12-06",
+      "occurrences": [
+        { "dueAt": "2026-11-27T07:00:00Z", "date": "2026-11-27", "time": "08:00" },
+        { "dueAt": "2026-11-30T07:00:00Z", "date": "2026-11-30", "time": "08:00" },
+        { "dueAt": "2026-12-04T07:00:00Z", "date": "2026-12-04", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "weekly, start on a Sunday: the Sunday is week 0, the next Monday week 1",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "weekly", "interval": 2, "weekdays": ["mon", "sun"], "times": ["08:00"] },
+      "startDate": "2026-11-29", "endDate": null, "from": "2026-11-23", "to": "2026-12-13",
+      "occurrences": [
+        { "dueAt": "2026-11-29T07:00:00Z", "date": "2026-11-29", "time": "08:00" },
+        { "dueAt": "2026-12-07T07:00:00Z", "date": "2026-12-07", "time": "08:00" },
+        { "dueAt": "2026-12-13T07:00:00Z", "date": "2026-12-13", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "endDate is inclusive, nothing before startDate",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2026-11-23", "endDate": "2026-11-25", "from": "2026-11-22", "to": "2026-11-27",
+      "occurrences": [
+        { "dueAt": "2026-11-23T07:00:00Z", "date": "2026-11-23", "time": "08:00" },
+        { "dueAt": "2026-11-24T07:00:00Z", "date": "2026-11-24", "time": "08:00" },
+        { "dueAt": "2026-11-25T07:00:00Z", "date": "2026-11-25", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "range before startDate: no occurrences",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-20", "to": "2026-11-22",
+      "occurrences": []
+    },
+    {
+      "name": "daily, every 3rd day across the turn of the year",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 3, "times": ["08:00"] },
+      "startDate": "2026-12-30", "endDate": null, "from": "2026-12-30", "to": "2027-01-05",
+      "occurrences": [
+        { "dueAt": "2026-12-30T07:00:00Z", "date": "2026-12-30", "time": "08:00" },
+        { "dueAt": "2027-01-02T07:00:00Z", "date": "2027-01-02", "time": "08:00" },
+        { "dueAt": "2027-01-05T07:00:00Z", "date": "2027-01-05", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "29 February 2028",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2028-02-28", "endDate": null, "from": "2028-02-28", "to": "2028-03-01",
+      "occurrences": [
+        { "dueAt": "2028-02-28T07:00:00Z", "date": "2028-02-28", "time": "08:00" },
+        { "dueAt": "2028-02-29T07:00:00Z", "date": "2028-02-29", "time": "08:00" },
+        { "dueAt": "2028-03-01T07:00:00Z", "date": "2028-03-01", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go forward on 2026-03-29: 02:30 moves to 03:30",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:30"] },
+      "startDate": "2026-03-28", "endDate": null, "from": "2026-03-28", "to": "2026-03-30",
+      "occurrences": [
+        { "dueAt": "2026-03-28T01:30:00Z", "date": "2026-03-28", "time": "02:30" },
+        { "dueAt": "2026-03-29T01:30:00Z", "date": "2026-03-29", "time": "03:30" },
+        { "dueAt": "2026-03-30T00:30:00Z", "date": "2026-03-30", "time": "02:30" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go forward: 02:30 and 03:30 become one occurrence",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:30", "03:30"] },
+      "startDate": "2026-03-29", "endDate": null, "from": "2026-03-29", "to": "2026-03-29",
+      "occurrences": [
+        { "dueAt": "2026-03-29T01:30:00Z", "date": "2026-03-29", "time": "03:30" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go forward: hourly 00:00 to 23:00 gives 23 occurrences",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 1, "windowStart": "00:00", "windowEnd": "23:00" },
+      "startDate": "2026-03-29", "endDate": null, "from": "2026-03-29", "to": "2026-03-29",
+      "occurrences": [
+        { "dueAt": "2026-03-28T23:00:00Z", "date": "2026-03-29", "time": "00:00" },
+        { "dueAt": "2026-03-29T00:00:00Z", "date": "2026-03-29", "time": "01:00" },
+        { "dueAt": "2026-03-29T01:00:00Z", "date": "2026-03-29", "time": "03:00" },
+        { "dueAt": "2026-03-29T02:00:00Z", "date": "2026-03-29", "time": "04:00" },
+        { "dueAt": "2026-03-29T03:00:00Z", "date": "2026-03-29", "time": "05:00" },
+        { "dueAt": "2026-03-29T04:00:00Z", "date": "2026-03-29", "time": "06:00" },
+        { "dueAt": "2026-03-29T05:00:00Z", "date": "2026-03-29", "time": "07:00" },
+        { "dueAt": "2026-03-29T06:00:00Z", "date": "2026-03-29", "time": "08:00" },
+        { "dueAt": "2026-03-29T07:00:00Z", "date": "2026-03-29", "time": "09:00" },
+        { "dueAt": "2026-03-29T08:00:00Z", "date": "2026-03-29", "time": "10:00" },
+        { "dueAt": "2026-03-29T09:00:00Z", "date": "2026-03-29", "time": "11:00" },
+        { "dueAt": "2026-03-29T10:00:00Z", "date": "2026-03-29", "time": "12:00" },
+        { "dueAt": "2026-03-29T11:00:00Z", "date": "2026-03-29", "time": "13:00" },
+        { "dueAt": "2026-03-29T12:00:00Z", "date": "2026-03-29", "time": "14:00" },
+        { "dueAt": "2026-03-29T13:00:00Z", "date": "2026-03-29", "time": "15:00" },
+        { "dueAt": "2026-03-29T14:00:00Z", "date": "2026-03-29", "time": "16:00" },
+        { "dueAt": "2026-03-29T15:00:00Z", "date": "2026-03-29", "time": "17:00" },
+        { "dueAt": "2026-03-29T16:00:00Z", "date": "2026-03-29", "time": "18:00" },
+        { "dueAt": "2026-03-29T17:00:00Z", "date": "2026-03-29", "time": "19:00" },
+        { "dueAt": "2026-03-29T18:00:00Z", "date": "2026-03-29", "time": "20:00" },
+        { "dueAt": "2026-03-29T19:00:00Z", "date": "2026-03-29", "time": "21:00" },
+        { "dueAt": "2026-03-29T20:00:00Z", "date": "2026-03-29", "time": "22:00" },
+        { "dueAt": "2026-03-29T21:00:00Z", "date": "2026-03-29", "time": "23:00" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go forward: hourly every 2 hours, 02:00 moves to 03:00",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 2, "windowStart": "00:00", "windowEnd": "06:00" },
+      "startDate": "2026-03-29", "endDate": null, "from": "2026-03-29", "to": "2026-03-29",
+      "occurrences": [
+        { "dueAt": "2026-03-28T23:00:00Z", "date": "2026-03-29", "time": "00:00" },
+        { "dueAt": "2026-03-29T01:00:00Z", "date": "2026-03-29", "time": "03:00" },
+        { "dueAt": "2026-03-29T02:00:00Z", "date": "2026-03-29", "time": "04:00" },
+        { "dueAt": "2026-03-29T04:00:00Z", "date": "2026-03-29", "time": "06:00" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go back on 2026-10-25: 02:30 takes the earlier point in time",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:30"] },
+      "startDate": "2026-10-24", "endDate": null, "from": "2026-10-24", "to": "2026-10-26",
+      "occurrences": [
+        { "dueAt": "2026-10-24T00:30:00Z", "date": "2026-10-24", "time": "02:30" },
+        { "dueAt": "2026-10-25T00:30:00Z", "date": "2026-10-25", "time": "02:30" },
+        { "dueAt": "2026-10-26T01:30:00Z", "date": "2026-10-26", "time": "02:30" }
+      ]
+    },
+    {
+      "name": "Vienna, clocks go back: hourly 00:00 to 23:00 gives 24 occurrences, not 25",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "hourly", "interval": 1, "windowStart": "00:00", "windowEnd": "23:00" },
+      "startDate": "2026-10-25", "endDate": null, "from": "2026-10-25", "to": "2026-10-25",
+      "occurrences": [
+        { "dueAt": "2026-10-24T22:00:00Z", "date": "2026-10-25", "time": "00:00" },
+        { "dueAt": "2026-10-24T23:00:00Z", "date": "2026-10-25", "time": "01:00" },
+        { "dueAt": "2026-10-25T00:00:00Z", "date": "2026-10-25", "time": "02:00" },
+        { "dueAt": "2026-10-25T02:00:00Z", "date": "2026-10-25", "time": "03:00" },
+        { "dueAt": "2026-10-25T03:00:00Z", "date": "2026-10-25", "time": "04:00" },
+        { "dueAt": "2026-10-25T04:00:00Z", "date": "2026-10-25", "time": "05:00" },
+        { "dueAt": "2026-10-25T05:00:00Z", "date": "2026-10-25", "time": "06:00" },
+        { "dueAt": "2026-10-25T06:00:00Z", "date": "2026-10-25", "time": "07:00" },
+        { "dueAt": "2026-10-25T07:00:00Z", "date": "2026-10-25", "time": "08:00" },
+        { "dueAt": "2026-10-25T08:00:00Z", "date": "2026-10-25", "time": "09:00" },
+        { "dueAt": "2026-10-25T09:00:00Z", "date": "2026-10-25", "time": "10:00" },
+        { "dueAt": "2026-10-25T10:00:00Z", "date": "2026-10-25", "time": "11:00" },
+        { "dueAt": "2026-10-25T11:00:00Z", "date": "2026-10-25", "time": "12:00" },
+        { "dueAt": "2026-10-25T12:00:00Z", "date": "2026-10-25", "time": "13:00" },
+        { "dueAt": "2026-10-25T13:00:00Z", "date": "2026-10-25", "time": "14:00" },
+        { "dueAt": "2026-10-25T14:00:00Z", "date": "2026-10-25", "time": "15:00" },
+        { "dueAt": "2026-10-25T15:00:00Z", "date": "2026-10-25", "time": "16:00" },
+        { "dueAt": "2026-10-25T16:00:00Z", "date": "2026-10-25", "time": "17:00" },
+        { "dueAt": "2026-10-25T17:00:00Z", "date": "2026-10-25", "time": "18:00" },
+        { "dueAt": "2026-10-25T18:00:00Z", "date": "2026-10-25", "time": "19:00" },
+        { "dueAt": "2026-10-25T19:00:00Z", "date": "2026-10-25", "time": "20:00" },
+        { "dueAt": "2026-10-25T20:00:00Z", "date": "2026-10-25", "time": "21:00" },
+        { "dueAt": "2026-10-25T21:00:00Z", "date": "2026-10-25", "time": "22:00" },
+        { "dueAt": "2026-10-25T22:00:00Z", "date": "2026-10-25", "time": "23:00" }
+      ]
+    },
+    {
+      "name": "New York, clocks go forward on 2026-03-08",
+      "timeZone": "America/New_York",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:30"] },
+      "startDate": "2026-03-08", "endDate": null, "from": "2026-03-08", "to": "2026-03-08",
+      "occurrences": [
+        { "dueAt": "2026-03-08T07:30:00Z", "date": "2026-03-08", "time": "03:30" }
+      ]
+    },
+    {
+      "name": "New York, clocks go back on 2026-11-01: the earlier 01:30",
+      "timeZone": "America/New_York",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["01:30"] },
+      "startDate": "2026-11-01", "endDate": null, "from": "2026-11-01", "to": "2026-11-01",
+      "occurrences": [
+        { "dueAt": "2026-11-01T05:30:00Z", "date": "2026-11-01", "time": "01:30" }
+      ]
+    },
+    {
+      "name": "Lord Howe Island, clocks go forward by 30 minutes on 2026-10-04",
+      "timeZone": "Australia/Lord_Howe",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:15"] },
+      "startDate": "2026-10-04", "endDate": null, "from": "2026-10-04", "to": "2026-10-04",
+      "occurrences": [
+        { "dueAt": "2026-10-03T15:45:00Z", "date": "2026-10-04", "time": "02:45" }
+      ]
+    },
+    {
+      "name": "Lord Howe Island, clocks go back by 30 minutes on 2026-04-05: the earlier 01:45",
+      "timeZone": "Australia/Lord_Howe",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["01:45"] },
+      "startDate": "2026-04-05", "endDate": null, "from": "2026-04-05", "to": "2026-04-05",
+      "occurrences": [
+        { "dueAt": "2026-04-04T14:45:00Z", "date": "2026-04-05", "time": "01:45" }
+      ]
+    },
+    {
+      "name": "Santiago, clocks go forward at midnight on 2026-09-06: 00:30 moves to 01:30",
+      "timeZone": "America/Santiago",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["00:30"] },
+      "startDate": "2026-09-01", "endDate": null, "from": "2026-09-05", "to": "2026-09-07",
+      "occurrences": [
+        { "dueAt": "2026-09-05T04:30:00Z", "date": "2026-09-05", "time": "00:30" },
+        { "dueAt": "2026-09-06T04:30:00Z", "date": "2026-09-06", "time": "01:30" },
+        { "dueAt": "2026-09-07T03:30:00Z", "date": "2026-09-07", "time": "00:30" }
+      ]
+    },
+    {
+      "name": "Santiago, clocks go back at midnight: 23:30 on 2026-04-04 exists twice, the earlier counts",
+      "timeZone": "America/Santiago",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["23:30"] },
+      "startDate": "2026-04-01", "endDate": null, "from": "2026-04-04", "to": "2026-04-05",
+      "occurrences": [
+        { "dueAt": "2026-04-05T02:30:00Z", "date": "2026-04-04", "time": "23:30" },
+        { "dueAt": "2026-04-06T03:30:00Z", "date": "2026-04-05", "time": "23:30" }
+      ]
+    },
+    {
+      "name": "Samoa skipped 2011-12-30: 08:00 of that day moves by 24 hours and meets 08:00 of the next day",
+      "timeZone": "Pacific/Apia",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2011-12-28", "endDate": null, "from": "2011-12-29", "to": "2011-12-31",
+      "occurrences": [
+        { "dueAt": "2011-12-29T18:00:00Z", "date": "2011-12-29", "time": "08:00" },
+        { "dueAt": "2011-12-30T18:00:00Z", "date": "2011-12-31", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "Vienna in 2090: the recurring rule of the zone also applies far ahead",
+      "timeZone": "Europe/Vienna",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["02:30"] },
+      "startDate": "2090-03-26", "endDate": null, "from": "2090-03-26", "to": "2090-03-26",
+      "occurrences": [
+        { "dueAt": "2090-03-26T01:30:00Z", "date": "2090-03-26", "time": "03:30" }
+      ]
+    },
+    {
+      "name": "UTC",
+      "timeZone": "UTC",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-23",
+      "occurrences": [
+        { "dueAt": "2026-11-23T08:00:00Z", "date": "2026-11-23", "time": "08:00" }
+      ]
+    },
+    {
+      "name": "after a change of the time zone to Lisbon: 08:00 there, a different dueAt than in Vienna",
+      "timeZone": "Europe/Lisbon",
+      "schedule": { "frequency": "daily", "interval": 1, "times": ["08:00"] },
+      "startDate": "2026-11-23", "endDate": null, "from": "2026-11-23", "to": "2026-11-23",
+      "occurrences": [
+        { "dueAt": "2026-11-23T08:00:00Z", "date": "2026-11-23", "time": "08:00" }
+      ]
+    }
+  ]
+}

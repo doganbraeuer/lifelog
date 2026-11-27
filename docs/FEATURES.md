@@ -1,6 +1,6 @@
 # Lifelog features
 
-Status: 2026-11-18 · prototype
+Status: 2026-11-23 · prototype
 
 This document describes what Lifelog can do today: the screens of the app
 and every function of app and platform, each with the same sections. The
@@ -47,6 +47,7 @@ quoted as they appear („Hochladen“).
   13. [Delete](#13-delete)
   14. [Questions with sources](#14-questions-with-sources)
   15. [Login and account](#15-login-and-account)
+  16. [Routines](#16-routines)
 - [Privacy](#privacy)
 - [Reliability](#reliability)
 - [Measurements](#measurements)
@@ -1391,6 +1392,85 @@ overview.
 
 ---
 
+## 16. Routines
+
+### What it does
+
+Routines are like alarm clocks for things the user wants to do regularly:
+take vitamin D every morning, measure blood pressure twice a day for two
+weeks, drink a glass of water every hour. The user marks each occurrence
+as done or skipped and sees the progress („heute 1 von 2“, „Tag 6 von
+14“, „heute 1.250 von 3.250 ml“). Wish of Prof. Pree (meeting of
+2026-11-16); stage 1 of the concept (API.md 3.16–3.27).
+
+### Where
+
+> **TODO (Dylan):** the routines view next to the timeline in module
+> `health` („Neue Routine“), the form, the occurrences of a day and the
+> reminders with „Ja“, „Nein“, „Andere Menge“.
+
+### How to use
+
+> **TODO (Dylan):** the steps in the app.
+
+What the backend offers for it:
+
+- Create a routine with a name, an optional target amount per occurrence
+  (e.g. 2 Stück, 250 ml), a schedule (hourly in a window, daily every N
+  days, weekly on weekdays every N weeks), a start date and an optional end
+  date.
+- Log an occurrence as done (optionally with another amount) or skipped,
+  also afterwards with an entered time; log an extra amount without an
+  occurrence (an extra glass, a portion).
+- Pause until a day or until resumed, and resume.
+- Change the plan; delete a log or the whole routine.
+
+### Behind the scenes
+
+- Endpoints: `GET/POST /api/v1/routines`, `GET/PATCH/DELETE
+  /api/v1/routines/{id}`, `POST …/pause`, `POST …/resume`,
+  `GET /api/v1/routines/occurrences`, `GET/POST …/logs`,
+  `DELETE …/logs/{logId}` (API.md 3.17–3.27).
+- **The backend computes** occurrences, status and progress, so app and
+  backend never disagree about an occurrence; the app shows them and plans
+  local reminders from `GET /routines/occurrences`. No push messages from
+  the server.
+- **Time zone:** every wall-clock time and date counts in the user's time
+  zone (`timeZone` on the account, `PATCH /me`, default Europe/Vienna). The
+  app sends the phone's zone. Daylight saving time: a time that does not
+  exist moves forward by the gap (02:30 → 03:30), a time that exists twice
+  takes the earlier one. Points in time are UTC and come from the server
+  clock.
+- **One log per occurrence**, secured by a unique index, so a reminder
+  button sent twice cannot create two logs (`409 ROUTINE_LOG_EXISTS` with
+  the existing log). After a change of the time zone a log stays with its
+  occurrence: the same local date and time.
+- **Deleting a routine:** its logs, the routine last, then the logs once
+  more; it runs to the end even if the app drops the connection.
+- No model call: routines cost no Gemini requests and have no daily limit.
+
+### Limits
+
+- At most 50 routines per user, 24 occurrences per day, 100 pauses per
+  routine, 100 logs per routine and day; dates from 2000 to 2099.
+- A change of the schedule also applies to past days (no plan versions); a
+  log whose occurrence no longer exists only counts for the amount.
+- No categories, no statistics, no flexible goals („2× pro Woche“), no
+  pauses that start in the future (API.md, section 4).
+- Reminders are approximate on Android (battery savers, no exact alarms).
+- Stage 2, routine suggestions from uploaded documents, is still a
+  proposal.
+
+### Status
+
+**Backend done, app in progress.**
+
+> **TODO (Dylan):** app (PR D): view, form, reminders, sending the time
+> zone, and the mock with the cases of
+> `backend/internal/core/testdata/routine_occurrences.json`.
+
+---
+
 ## Privacy
 
 Lifelog is meant for health documents, so privacy rules apply to every
@@ -1440,13 +1520,21 @@ keep the originally recognized value inside the entry; it is deleted with
 it. Every one of them belongs to the user who uploaded it; other users never
 see it (API.md, section 1 "Per-user data").
 
+[Routines](#16-routines) (`routines`) and their logs (`routineLogs`) are
+health data too and stored per user in the same way. They stay in Atlas
+and go to no model in stage 1. Deleting a routine deletes its logs.
+Deleting an account (`cmd/users delete`) deletes routines and logs as well
+and checks that nothing of the account is left.
+
 ### Logs
 
 The backend logs method, path, status, duration, sizes, counts and error
 kinds, **never values or text**: no fact values, no full text, no
 questions or answers, no transcripts. A dropped fact is logged by its field
 name only (`facts[2].value`). whisper-server logs only the fixed file name
-`audio.wav` and the length, never the text (checked).
+`audio.wav` and the length, never the text (checked). For routines only
+IDs, counts and the names of changed fields, never a routine's name,
+amount, unit or the time of a log (checked by a test).
 
 ### Secrets
 

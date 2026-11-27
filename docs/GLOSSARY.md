@@ -5,8 +5,9 @@ every German name used so far to its English replacement, so that the
 backend (Dogan) and the app (Dylan) use the same names. docs/API.md is the
 contract; this glossary only lists names.
 
-Names marked "proposed" (routines, 2026-11-23) are a proposal that is not
-agreed with Dogan yet; see [Routines (proposed)](#routines-proposed-2026-11-23).
+Names marked "proposed" (routine suggestions, stage 2, 2026-11-23) are a
+proposal that is not built yet; the routine names of stage 1 are binding
+since 2026-11-23. See [Routines](#routines-2026-11-23).
 
 ## Conventions
 
@@ -78,11 +79,11 @@ Base path stays `/api/v1`.
 | – | `POST /auth/login`, `POST /auth/logout` (since 2026-11-18, see "Accounts and login") |
 | – | `GET /me`, `PATCH /me`, `POST /me/password` (since 2026-11-18) |
 | – | `PUT /me/consent` (since 2026-11-18) |
-| – | `GET /routines`, `POST /routines`, `GET /routines/{id}`, `PATCH /routines/{id}`, `DELETE /routines/{id}` (proposed 2026-11-23, see "Routines") |
-| – | `POST /routines/{id}/pause`, `POST /routines/{id}/resume` (proposed) |
-| – | `GET /routines/occurrences` (proposed) |
-| – | `GET /routines/{id}/logs`, `POST /routines/{id}/logs`, `DELETE /routines/{id}/logs/{logId}` (proposed) |
-| – | `POST /entries/{id}/routine-suggestions/{suggestionId}/confirm`, `DELETE /entries/{id}/routine-suggestions/{suggestionId}` (proposed) |
+| – | `GET /routines`, `POST /routines`, `GET /routines/{id}`, `PATCH /routines/{id}`, `DELETE /routines/{id}` (since 2026-11-23, see "Routines") |
+| – | `POST /routines/{id}/pause`, `POST /routines/{id}/resume` (since 2026-11-23) |
+| – | `GET /routines/occurrences` (since 2026-11-23) |
+| – | `GET /routines/{id}/logs`, `POST /routines/{id}/logs`, `DELETE /routines/{id}/logs/{logId}` (since 2026-11-23) |
+| – | `POST /entries/{id}/routine-suggestions/{suggestionId}/confirm`, `DELETE /entries/{id}/routine-suggestions/{suggestionId}` (proposed, stage 2) |
 
 ### Upload (multipart form fields)
 
@@ -121,7 +122,7 @@ The stored file name for a text import stays `text.txt`.
 | `korrekturen` | `corrections` |
 | `korrekturen[].feld` / `erkannt` / `korrigiert` / `zeitpunkt` | `corrections[].field` / `recognized` / `corrected` / `correctedAt` |
 | – | `documentDateSource`: `document`, `import` (since 2026-11-23; full entry and short form; BSON field of the same name, missing in older entries = `document`) |
-| – | `routineSuggestions` (proposed 2026-11-23, see "Routines") |
+| – | `routineSuggestions` (proposed, stage 2, 2026-11-23, see "Routines") |
 
 List response: `eintraege` → `entries`, `anzahl` → `count`.
 
@@ -170,11 +171,11 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | `details.maxZeichen` | `details.maxChars` |
 | – | `details.maxSeconds` (since 2026-11-12, for `AUDIO_TOO_LONG`) |
 | – | `details.retryAfterSeconds` (since 2026-11-18, for `TOO_MANY_ATTEMPTS`; same value as the header `Retry-After`) |
-| – | `details.limit` (since 2026-11-18, for `LIMIT_REACHED`: `uploads`, `questions`, `transcriptions`; proposed 2026-11-23 also for `ROUTINE_LIMIT_REACHED`: `routines`, `pauses`, `logs`) |
-| – | `details.max` (proposed 2026-11-23, for `ROUTINE_LIMIT_REACHED`: the maximum) |
-| – | `details.routineId` (proposed, for `ROUTINE_NAME_TAKEN`) |
-| – | `details.logId` (proposed, for `ROUTINE_LOG_EXISTS`) |
-| – | `details.suggestionId` (proposed, for `ROUTINE_SUGGESTION_NOT_FOUND`) |
+| – | `details.limit` (since 2026-11-18, for `LIMIT_REACHED`: `uploads`, `questions`, `transcriptions`; since 2026-11-23 also for `ROUTINE_LIMIT_REACHED`: `routines`, `pauses`, `logs`) |
+| – | `details.max` (since 2026-11-23, for `ROUTINE_LIMIT_REACHED`: the maximum) |
+| – | `details.routineId` (since 2026-11-23, for `ROUTINE_NAME_TAKEN`) |
+| – | `details.logId` (since 2026-11-23, for `ROUTINE_LOG_EXISTS`) |
+| – | `details.suggestionId` (proposed, stage 2, for `ROUTINE_SUGGESTION_NOT_FOUND`) |
 
 ### Error codes
 
@@ -205,12 +206,12 @@ The PATCH body uses the same keys as the entry JSON (`type`,
 | 403 | – | `PASSWORD_CHANGE_REQUIRED` (since 2026-11-18) |
 | 429 | – | `TOO_MANY_ATTEMPTS` (since 2026-11-18) |
 | 429 | – | `LIMIT_REACHED` (since 2026-11-18) |
-| 404 | – | `ROUTINE_NOT_FOUND` (proposed 2026-11-23) |
-| 404 | – | `ROUTINE_LOG_NOT_FOUND` (proposed) |
-| 404 | – | `ROUTINE_SUGGESTION_NOT_FOUND` (proposed) |
-| 409 | – | `ROUTINE_LOG_EXISTS` (proposed) |
-| 409 | – | `ROUTINE_NAME_TAKEN` (proposed) |
-| 409 | – | `ROUTINE_LIMIT_REACHED` (proposed) |
+| 404 | – | `ROUTINE_NOT_FOUND` (since 2026-11-23) |
+| 404 | – | `ROUTINE_LOG_NOT_FOUND` (since 2026-11-23) |
+| 404 | – | `ROUTINE_SUGGESTION_NOT_FOUND` (proposed, stage 2) |
+| 409 | – | `ROUTINE_LOG_EXISTS` (since 2026-11-23) |
+| 409 | – | `ROUTINE_NAME_TAKEN` (since 2026-11-23) |
+| 409 | – | `ROUTINE_LIMIT_REACHED` (since 2026-11-23) |
 
 ### App-only error codes
 
@@ -299,10 +300,10 @@ Every place where the app talks to the backend:
 | – | field `userId` (owner, ObjectId) on `entries`, `chunks`, `ocr`, and `metadata.userId` on `originals.files` (since 2026-11-18, see "Accounts and login") |
 | – | index `user_module` on `entries` `(userId, module)`, `user_entry` on `chunks` `(userId, entryId)`, `userId` on `ocr`, `metadata_userId` on `originals.files` |
 | – | collection `usage` (daily limits): `userId`, `day`, `kind`, `count`, `expiresAt`; index `usage_unique` on `(userId, day, kind)`, TTL index `expires_at_ttl` on `expiresAt` |
-| – | collections `routines` and `routineLogs` (proposed 2026-11-23, fields see "Routines") |
-| – | `routines`: index `user_module` on `(userId, module)`; unique index `user_module_name_unique` on `(userId, module, nameKey)` (`nameKey`: the name in lower case, for the uniqueness check) (proposed) |
-| – | `routineLogs`: unique index `routine_due_unique` on `(userId, routineId, dueLocal)`, partial (only logs with an occurrence; `dueLocal`: local date and time of the occurrence in the log's `timeZone`, e.g. `2026-11-23T08:00`); index `user_routine_taken` on `(userId, routineId, takenAt)`; index `user_entry` on `(userId, entryId)` (deleting an entry) (proposed) |
-| – | field `timeZone` on `users` (proposed; missing = `Europe/Vienna`) |
+| – | collections `routines` and `routineLogs` (since 2026-11-23, fields see "Routines") |
+| – | `routines`: index `user_module` on `(userId, module)`; unique index `user_module_name_unique` on `(userId, module, nameKey)` (`nameKey`: the name in lower case, for the uniqueness check) (since 2026-11-23) |
+| – | `routineLogs`: unique index `routine_due_unique` on `(userId, routineId, dueLocal)`, partial `{dueLocal: {$type: "string"}}` (only logs with an occurrence; a log without one has no `dueLocal` at all; `dueLocal`: local date and time of the occurrence in the log's `timeZone`, e.g. `2026-11-23T08:00`); index `user_routine_taken` on `(userId, routineId, takenAt)` (since 2026-11-23); index `user_entry` on `(userId, entryId)` (deleting an entry; proposed, comes with stage 2) |
+| – | field `timeZone` on `users` (since 2026-11-23; missing = `Europe/Vienna`) |
 
 ## Environment variables
 
@@ -650,18 +651,19 @@ texts are German and quoted as they appear.
 | Testkonten des Mocks | mock accounts | `tester01` / `MockApiClient.mockStartPassword`, `admin` / `MockApiClient.mockAdminPassword` |
 | Auslöser Tageslimit im Mock | limit trigger | `limitreached` in file name, text, question or recording name |
 
-## Routines (proposed, 2026-11-23)
+## Routines (2026-11-23)
 
-**Proposed, not agreed with Dogan yet** (docs/API.md 3.16–3.29, section 2
-"Routine suggestions", `timeZone` in 3.12/3.13). These names become binding
-once the proposal is agreed. A routine is like an alarm clock for something
-done regularly; its occurrences are reminded locally by the app, and logs
-record what was done.
+docs/API.md 3.16–3.29, section 2 "Routine suggestions", `timeZone` in
+3.12/3.13. A routine is like an alarm clock for something done regularly;
+its occurrences are reminded locally by the app, and logs record what was
+done.
 
-Two stages: stage 2 (later) are the routine suggestions: `routineSuggestions`,
-`quote`, `timeStated`, `takenDate`, `takenTime`, the routine key, confirm and
-reject, `ROUTINE_SUGGESTION_NOT_FOUND`, `details.suggestionId`, `source: entry`.
-Everything else below is stage 1.
+Two stages. **Stage 1 is binding since 2026-11-23** (implemented in the
+backend). **Stage 2 is proposed** (not built): the routine suggestions:
+`routineSuggestions`, `quote`, `timeStated`, `takenDate`, `takenTime`, the
+routine key, confirm and reject, `ROUTINE_SUGGESTION_NOT_FOUND`,
+`details.suggestionId`, `source: entry`, the index `user_entry`. Everything
+else below is stage 1.
 
 | German | English | Go / Dart type, field | Display text in the app |
 |---|---|---|---|
@@ -715,3 +717,4 @@ Everything else below is stage 1.
 | error codes | `ROUTINE_NOT_FOUND`, `ROUTINE_LOG_NOT_FOUND`, `ROUTINE_SUGGESTION_NOT_FOUND`, `ROUTINE_LOG_EXISTS`, `ROUTINE_NAME_TAKEN`, `ROUTINE_LIMIT_REACHED` |
 | `details` keys | `routineId`, `logId`, `suggestionId`, `max`; `limit`: `routines`, `pauses`, `logs` |
 | app packages (suggested) | `flutter_local_notifications` (reminders), `flutter_timezone` (IANA name of the phone; `DateTime.timeZoneName` only gives abbreviations) |
+| backend, internal only | `core.Date` (plain date, days since 1970-01-01), `core.ClockTime` (minutes after midnight), `core.RoutineView` (routine with status and progress), `core.ParameterError` (`INVALID_PARAMETER`), `core.CheckTimeZone`, `core.UserTimeZone`, `core.DayStart`; `service.Routines`; test package `internal/routinetest`; test cases `backend/internal/core/testdata/routine_occurrences.json` |

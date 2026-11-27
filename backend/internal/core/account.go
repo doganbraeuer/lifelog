@@ -36,6 +36,17 @@ type User struct {
 	// (PUT /me/consent comes in a later PR). nil = no consent recorded.
 	ConsentVersion *string
 	ConsentAt      *time.Time
+	// TimeZone is the IANA name of the user's time zone (API.md 3.12),
+	// checked by CheckTimeZone. "" = never set; counts as DefaultTimeZone
+	// (UserTimeZone).
+	TimeZone string
+}
+
+// ProfileChange is the content of PATCH /me (API.md 3.13). nil = the field
+// is not in the request and stays unchanged.
+type ProfileChange struct {
+	DisplayName *string
+	TimeZone    *string
 }
 
 // Session is one login on one device (collection sessions). Only the hash
@@ -109,6 +120,10 @@ var (
 	ErrUsernameTaken      = errors.New("username already exists")
 	ErrInvalidUsername    = errors.New("username must have 3 to 32 characters, only a-z and 0-9")
 	ErrInvalidDisplayName = errors.New("display name must have 1 to 50 characters without control characters")
+
+	// ErrEmptyProfileChange: PATCH /me names neither displayName nor
+	// timeZone (400 INVALID_REQUEST).
+	ErrEmptyProfileChange = errors.New("profile change names no field")
 )
 
 // PasswordProblem says why a new password is rejected.

@@ -46,11 +46,13 @@ type meJSON struct {
 	DisplayName        string  `json:"displayName"`
 	MustChangePassword bool    `json:"mustChangePassword"`
 	ConsentVersion     *string `json:"consentVersion"` // null until the consent is recorded
+	TimeZone           string  `json:"timeZone"`       // always present; Europe/Vienna until set
 }
 
 func meToJSON(u core.User) meJSON {
+	zone, _ := core.UserTimeZone(u)
 	return meJSON{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName,
-		MustChangePassword: u.MustChangePassword, ConsentVersion: u.ConsentVersion}
+		MustChangePassword: u.MustChangePassword, ConsentVersion: u.ConsentVersion, TimeZone: zone}
 }
 
 type passwordRequest struct {
@@ -151,11 +153,14 @@ func meHandler() http.HandlerFunc {
 	}
 }
 
-// updateMeHandler answers PATCH /api/v1/me (API.md 3.13). Only displayName
-// can be changed.
+// updateMeHandler answers PATCH /api/v1/me (API.md 3.13): displayName
+// and/or timeZone.
 //
 // The body is read as raw JSON (as in correct.go), so that an unknown field
-// can be named in details.field and null is told apart from a string.
+// can be named in details.field and null is told apart from a string. A
+// field that is present but not a string (also null) is passed on as "":
+// both rules refuse an empty value, so the service reports it in its fixed
+// order (display name, then time zone) and nothing is stored.
 func updateMeHandler(a Accounts) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := auth.UserFrom(r.Context())
@@ -171,24 +176,37 @@ func updateMeHandler(a Accounts) http.HandlerFunc {
 			return
 		}
 		for _, name := range sortedKeys(fields) {
-			if name != "displayName" {
+			if name != "displayName" && name != "timeZone" {
 				writeError(w, http.StatusBadRequest, CodeInvalidRequest,
 					"Unbekanntes Feld: "+name+".", map[string]any{"field": name})
 				return
 			}
 		}
-		displayName, isString := asString(fields["displayName"])
-		if !isString {
-			writeInvalidDisplayName(w)
-			return
+		var change core.ProfileChange
+		if raw, ok := fields["displayName"]; ok {
+			s, _ := asString(raw) // "" if not a string
+			change.DisplayName = &s
+		}
+		if raw, ok := fields["timeZone"]; ok {
+			s, _ := asString(raw)
+			change.TimeZone = &s
 		}
 
-		updated, err := a.UpdateDisplayName(r.Context(), user, displayName)
+		updated, err := a.UpdateMe(r.Context(), user, change)
 		switch {
 		case err == nil:
 			writeJSON(w, http.StatusOK, meToJSON(updated))
+		case errors.Is(err, core.ErrEmptyProfileChange):
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest,
+				"Bitte einen Anzeigenamen oder eine Zeitzone schicken.", nil)
 		case errors.Is(err, core.ErrInvalidDisplayName):
 			writeInvalidDisplayName(w)
+		case errors.Is(err, core.ErrInvalidTimeZone):
+			details := map[string]any{"field": "timeZone"}
+			if v := asValue(fields["timeZone"]); v != nil {
+				details["value"] = v
+			}
+			writeError(w, http.StatusBadRequest, CodeInvalidRequest, "Unbekannte Zeitzone.", details)
 		case errors.Is(err, core.ErrUnauthorized):
 			writeUnauthorized(w)
 		case errors.Is(err, context.Canceled):

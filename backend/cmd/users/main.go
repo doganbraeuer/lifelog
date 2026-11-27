@@ -12,9 +12,9 @@
 //	go run ./cmd/users delete --username tester01
 //	go run ./cmd/users assign-orphans --username admin2
 //
-// delete removes the account with its sessions and all its data (entries,
-// chunks, OCR words, originals, usage counters) and checks that nothing is
-// left. assign-orphans gives data from before 2026-11-18, which has no
+// delete removes the account with its sessions and all its data (routines
+// and their logs, entries, chunks, OCR words, originals, usage counters)
+// and checks that nothing is left. assign-orphans gives data from before 2026-11-18, which has no
 // owner yet, to one account.
 //
 // Role user gets a generated start password (12 characters) and must change
@@ -659,9 +659,9 @@ func cmdDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Then all data of the account: chunks, OCR words, originals, entries,
-	// usage counters. If this fails, the account stays, and running delete
-	// again cleans up the rest.
+	// Then all data of the account: routine logs, routines, chunks, OCR
+	// words, originals, entries, usage counters. If this fails, the account
+	// stays, and running delete again cleans up the rest.
 	deleted, err := s.db.DeleteUserData(s.ctx, u.ID)
 	if err != nil {
 		return fmt.Errorf("deleting the data of %s stopped (run delete again): %w", username, err)
@@ -677,7 +677,8 @@ func cmdDelete(args []string) error {
 		return err
 	}
 	fmt.Printf("User %s deleted with %d session(s) (database %q).\n", username, ended, s.database)
-	fmt.Printf("Deleted data: %d entries, %d chunks, %d OCR documents, %d originals, %d usage counters; remaining: 0.\n",
-		deleted.Entries, deleted.Chunks, deleted.OCR, deleted.Files, deleted.Usage)
+	fmt.Printf("Deleted data: %d entries, %d chunks, %d OCR documents, %d originals, %d usage counters, "+
+		"%d routines, %d routine logs; remaining: 0.\n",
+		deleted.Entries, deleted.Chunks, deleted.OCR, deleted.Files, deleted.Usage, deleted.Routines, deleted.RoutineLogs)
 	return s.audit(core.AuditDelete, username)
 }

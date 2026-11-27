@@ -109,6 +109,7 @@ func run() error {
 			Deleter:   service.NewDeleter(db),
 
 			Transcriber: transcriber,
+			Routines:    service.NewRoutines(db, store.NewID, time.Now),
 
 			Accounts:       accounts,
 			Usage:          usage,

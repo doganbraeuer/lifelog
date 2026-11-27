@@ -117,7 +117,8 @@ go run ./cmd/users assign-orphans --username admin2     # give data without an o
 Every action writes an entry to the collection `auditLog`: time, action,
 target username and operator (operating system user and computer name),
 never passwords. `delete` removes the account with its sessions and all
-its data: entries, chunks, OCR words, original files and daily counters.
+its data: routines and their logs, entries, chunks, OCR words, original
+files and daily counters.
 It then counts what is left and only deletes the account itself if
 nothing is; it prints the numbers and "remaining: 0".
 

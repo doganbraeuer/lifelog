@@ -12,17 +12,20 @@ import (
 	"lifelog/backend/internal/core"
 )
 
-// Every function that reads, changes or deletes entries, chunks, OCR words
-// or originals refuses a missing or invalid owner with core.ErrNoUser,
+// Every function that reads, changes or deletes entries, chunks, OCR words,
+// originals, routines or routine logs refuses a missing or invalid owner
+// with core.ErrNoUser,
 // before it touches the database: the Store here has no connection at all,
 // so a function that forgot the check would panic instead of passing.
 //
-// A new store function for entry data belongs in this list.
+// A new store function for user data belongs in this list.
 func TestOwnerRequiredEverywhere(t *testing.T) {
 	s := &Store{} // no collections: any database access panics
 	ctx := context.Background()
 	id := "6727a1f3c2b4e5d6f7a8b9c0"
 	entry := core.Entry{ID: id, File: core.File{ID: id}}
+	routine := core.Routine{ID: id, Name: "x", Schedule: core.Schedule{Frequency: core.FrequencyDaily, Interval: 1}}
+	routineLog := core.RoutineLog{ID: id, RoutineID: id}
 	calls := map[string]func(userID string) error{
 		"ListSummaries": func(u string) error { _, err := s.ListSummaries(ctx, u, "health"); return err },
 		"CountEntries":  func(u string) error { _, err := s.CountEntries(ctx, u); return err },
@@ -59,6 +62,35 @@ func TestOwnerRequiredEverywhere(t *testing.T) {
 			_, err := s.IncrementUsage(ctx, u, "2026-11-18", core.LimitQuestions, 5, time.Now())
 			return err
 		},
+
+		// Routines and their logs (routines.go).
+		"CreateRoutine":   func(u string) error { return s.CreateRoutine(ctx, u, routine) },
+		"ListRoutines":    func(u string) error { _, err := s.ListRoutines(ctx, u, "health"); return err },
+		"GetRoutine":      func(u string) error { _, _, err := s.GetRoutine(ctx, u, id); return err },
+		"CountRoutines":   func(u string) error { _, err := s.CountRoutines(ctx, u); return err },
+		"RoutineIDByName": func(u string) error { _, _, err := s.RoutineIDByName(ctx, u, "health", "x"); return err },
+		"UpdateRoutine": func(u string) error {
+			_, err := s.UpdateRoutine(ctx, u, routine, []string{"name"})
+			return err
+		},
+		"SetPauses":        func(u string) error { _, err := s.SetPauses(ctx, u, id, nil, nil); return err },
+		"DeleteRoutine":    func(u string) error { _, err := s.DeleteRoutine(ctx, u, id); return err },
+		"CreateRoutineLog": func(u string) error { return s.CreateRoutineLog(ctx, u, routineLog) },
+		"RoutineLogIDByDue": func(u string) error {
+			_, _, err := s.RoutineLogIDByDue(ctx, u, id, "2026-11-23T08:00")
+			return err
+		},
+		"CountRoutineLogsTaken": func(u string) error {
+			_, err := s.CountRoutineLogsTaken(ctx, u, id, time.Now(), time.Now())
+			return err
+		},
+		"RoutineLogs": func(u string) error { _, err := s.RoutineLogs(ctx, u, id, time.Now(), time.Now()); return err },
+		"RoutineLogsInRange": func(u string) error {
+			_, err := s.RoutineLogsInRange(ctx, u, []string{id}, 0, 1, time.Now(), time.Now())
+			return err
+		},
+		"DeleteRoutineLog":  func(u string) error { _, err := s.DeleteRoutineLog(ctx, u, id, id); return err },
+		"DeleteRoutineLogs": func(u string) error { _, err := s.DeleteRoutineLogs(ctx, u, id); return err },
 	}
 	for name, call := range calls {
 		for _, userID := range []string{"", "nope", "000000000000000000000000"} {

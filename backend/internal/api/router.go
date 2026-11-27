@@ -18,6 +18,8 @@ type Dependencies struct {
 	// Transcriber: nil means speech recognition is switched off
 	// (SPEECH_ENGINE=none); /status then says "off".
 	Transcriber Transcriber
+	// Routines serves the routine endpoints (API.md 3.17–3.27).
+	Routines Routines
 
 	// Accounts checks every token and serves login and /me. Required:
 	// NewRouter refuses to build a router without it.
@@ -56,6 +58,20 @@ func routes(deps Dependencies) []route {
 		{"PATCH /api/v1/me", updateMeHandler(deps.Accounts)},
 		{"POST /api/v1/me/password", changePasswordHandler(deps)},
 		{"PUT /api/v1/me/consent", consentHandler(deps.Accounts)},
+
+		// Routines (API.md 3.17–3.27). The fixed path /routines/occurrences
+		// takes precedence over /routines/{id}.
+		{"GET /api/v1/routines", listRoutinesHandler(deps.Routines)},
+		{"POST /api/v1/routines", createRoutineHandler(deps.Routines)},
+		{"GET /api/v1/routines/occurrences", occurrencesHandler(deps.Routines)},
+		{"GET /api/v1/routines/{id}", routineHandler(deps.Routines)},
+		{"PATCH /api/v1/routines/{id}", updateRoutineHandler(deps.Routines)},
+		{"DELETE /api/v1/routines/{id}", deleteRoutineHandler(deps.Routines)},
+		{"POST /api/v1/routines/{id}/pause", pauseRoutineHandler(deps.Routines)},
+		{"POST /api/v1/routines/{id}/resume", resumeRoutineHandler(deps.Routines)},
+		{"GET /api/v1/routines/{id}/logs", routineLogsHandler(deps.Routines)},
+		{"POST /api/v1/routines/{id}/logs", addRoutineLogHandler(deps.Routines)},
+		{"DELETE /api/v1/routines/{id}/logs/{logId}", deleteRoutineLogHandler(deps.Routines)},
 	}
 }
 
