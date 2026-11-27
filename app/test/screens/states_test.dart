@@ -71,6 +71,9 @@ void main() {
 
       await tester.pump(Durations.extralong4);
       await tester.pumpAndSettle();
+      // The routine sync of the session start (reminders) loads in the
+      // background with the same delay; let it finish.
+      await tester.pump(const Duration(seconds: 5));
     });
   });
 

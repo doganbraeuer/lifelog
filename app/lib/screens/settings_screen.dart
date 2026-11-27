@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../api/api_exception.dart';
+import '../reminders/routine_sync.dart';
 import '../session/session_controller.dart';
 import 'change_password_screen.dart';
 import 'consent_screen.dart';
@@ -96,6 +98,28 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
+          // Debug builds only: a reminder at once instead of waiting for
+          // the approximate one (for trying it out and the demonstration).
+          if (kDebugMode && RoutineSyncScope.maybeOf(context) != null)
+            ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: const Text('Nächste Erinnerung jetzt zeigen'),
+              subtitle: const Text('Nur in der Entwicklerversion'),
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                String? notice;
+                try {
+                  final shown = await RoutineSyncScope.maybeOf(context)!
+                      .showNextNow();
+                  if (!shown) notice = 'Heute ist kein Termin mehr offen.';
+                } on ApiException catch (e) {
+                  notice = e.message;
+                }
+                if (notice != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(notice)));
+                }
+              },
+            ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout),

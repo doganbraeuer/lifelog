@@ -6,19 +6,25 @@ import '../model/entry.dart';
 import '../module/module_definition.dart';
 import '../platform/file_chooser.dart';
 import '../platform/voice_recorder.dart';
+import '../reminders/routine_sync.dart';
 import '../widgets/motion.dart';
 import '../widgets/navigation.dart';
 import 'entry_screen.dart';
 import 'question_screen.dart';
+import 'routines_screen.dart';
 import 'upload_screen.dart';
 import 'timeline_screen.dart';
 
+/// The pages of a module, in the order of the navigation bar.
+enum ModulePage { timeline, routines, upload, questions }
+
 /// Shell of a module with the navigation bar at the bottom (timeline,
-/// upload, questions). All modules use this shell; the „Bereiche“ screen
-/// sets the color scheme when opening it.
+/// routines, upload, questions). All modules use this shell; the „Bereiche“
+/// screen sets the color scheme when opening it.
 ///
-/// The three pages sit in a `PageView` (swipe or navigation bar) and stay
-/// alive, so that their state is kept.
+/// The four pages sit in a `PageView` (swipe or navigation bar) and stay
+/// alive, so that their state is kept. Routines are a view of their own
+/// next to the timeline (docs/API.md 3.16).
 class ModuleShell extends StatefulWidget {
   const ModuleShell({
     super.key,
@@ -26,6 +32,7 @@ class ModuleShell extends StatefulWidget {
     required this.api,
     required this.fileChooser,
     required this.voiceRecorder,
+    this.initialPage = ModulePage.timeline,
   });
 
   final ModuleDefinition module;
@@ -33,15 +40,41 @@ class ModuleShell extends StatefulWidget {
   final FileChooser fileChooser;
   final VoiceRecorder voiceRecorder;
 
+  /// The page it opens on: [ModulePage.routines] after a tap on a reminder.
+  final ModulePage initialPage;
+
   @override
   State<ModuleShell> createState() => _ModuleShellState();
 }
 
 class _ModuleShellState extends State<ModuleShell> {
   /// Page that is selected in the navigation bar.
-  var _index = 0;
+  late var _index = widget.initialPage.index;
 
-  final _pages = PageController();
+  late final _pages = PageController(initialPage: widget.initialPage.index);
+
+  RoutineSync? _sync;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final sync = RoutineSyncScope.maybeOf(context);
+    if (sync != _sync) {
+      _sync?.pendingTap.removeListener(_reminderTapped);
+      _sync?.moduleClosed(widget.module.id);
+      _sync = sync;
+      sync?.pendingTap.addListener(_reminderTapped);
+      sync?.moduleOpened(widget.module.id);
+    }
+  }
+
+  /// A tap on a reminder of this module while it is open: to the tab
+  /// „Routinen“, which shows the occurrence.
+  void _reminderTapped() {
+    final tap = _sync?.pendingTap.value;
+    if (tap == null || tap.module != widget.module.id || !mounted) return;
+    _showPage(ModulePage.routines.index, haptics: false);
+  }
 
   /// Target while animating after a tap in the navigation bar. When jumping
   /// from page 0 to 2 the PageView also reports page 1 on the way; without
@@ -55,6 +88,8 @@ class _ModuleShellState extends State<ModuleShell> {
 
   @override
   void dispose() {
+    _sync?.pendingTap.removeListener(_reminderTapped);
+    _sync?.moduleClosed(widget.module.id);
     _pages.dispose();
     super.dispose();
   }
@@ -104,7 +139,7 @@ class _ModuleShellState extends State<ModuleShell> {
   /// (back) leads from the entry into the (reloaded) timeline.
   void _openEntry(String entryId, {bool review = false}) {
     _dropFocus();
-    _showPage(0, haptics: false);
+    _showPage(ModulePage.timeline.index, haptics: false);
     _timeline.currentState?.openEntry(entryId, review: review);
   }
 
@@ -134,14 +169,18 @@ class _ModuleShellState extends State<ModuleShell> {
       body: PageView(
         controller: _pages,
         onPageChanged: _pageChanged,
+        // In the order of ModulePage.
         children: [
           _KeepAlivePage(
             child: TimelineScreen(
               key: _timeline,
               api: widget.api,
               moduleId: widget.module.id,
-              onUpload: () => _showPage(1),
+              onUpload: () => _showPage(ModulePage.upload.index),
             ),
+          ),
+          _KeepAlivePage(
+            child: RoutinesScreen(api: widget.api, moduleId: widget.module.id),
           ),
           _KeepAlivePage(
             child: UploadScreen(
@@ -170,6 +209,11 @@ class _ModuleShellState extends State<ModuleShell> {
             icon: Icon(Icons.timeline_outlined),
             selectedIcon: Icon(Icons.timeline),
             label: 'Zeitleiste',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.alarm_outlined),
+            selectedIcon: Icon(Icons.alarm),
+            label: 'Routinen',
           ),
           NavigationDestination(
             icon: Icon(Icons.upload_file_outlined),

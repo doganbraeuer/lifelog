@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import '../model/answer.dart';
 import '../model/entry.dart';
 import '../model/entry_patch.dart';
+import '../model/plain_date.dart';
+import '../model/routine.dart';
 import '../model/server_status.dart';
 import '../model/transcript.dart';
 import '../model/user.dart';
@@ -119,6 +121,66 @@ abstract interface class ApiClient {
   /// `PUT /me/consent`: record that the user agreed to the consent text
   /// with this version.
   Future<void> recordConsent(String version);
+
+  /// `PATCH /me` with `timeZone`: the IANA name of the phone's time zone
+  /// (3.13). Routines compute in it; points in time stay UTC.
+  Future<User> updateTimeZone(String timeZone);
+
+  // -----------------------------------------------------------------------
+  // Routines (docs/API.md 3.16–3.27)
+  //
+  // The backend expands the schedules, keeps the logs and computes status
+  // and progress; the app shows them and plans local reminders from the
+  // occurrences. No routine endpoint calls a model.
+  // -----------------------------------------------------------------------
+
+  /// `GET /routines`: all routines of the module in every status, sorted by
+  /// `createdAt`, then `id`.
+  Future<List<Routine>> listRoutines({required String module});
+
+  /// `POST /routines`: create a routine.
+  Future<Routine> createRoutine(NewRoutine routine);
+
+  /// `GET /routines/{id}`.
+  Future<Routine> getRoutine(String id);
+
+  /// `PATCH /routines/{id}`: only the fields in [patch] change.
+  Future<Routine> updateRoutine(String id, RoutinePatch patch);
+
+  /// `POST /routines/{id}/pause`: paused from today until [until]
+  /// (inclusive), or until resumed if [until] is `null`.
+  Future<Routine> pauseRoutine(String id, {PlainDate? until});
+
+  /// `POST /routines/{id}/resume`: today's occurrences are due again.
+  Future<Routine> resumeRoutine(String id);
+
+  /// `DELETE /routines/{id}`: the routine with all its logs.
+  Future<void> deleteRoutine(String id);
+
+  /// `GET /routines/occurrences`: the occurrences of all routines of the
+  /// module on the days [from] to [to]. Without [from] the backend takes
+  /// today in the user's time zone, without [to] six days later.
+  Future<OccurrenceList> listOccurrences({
+    required String module,
+    PlainDate? from,
+    PlainDate? to,
+  });
+
+  /// `GET /routines/{id}/logs`: newest first. Without [to] the backend
+  /// takes today, without [from] 29 days before [to].
+  Future<List<RoutineLog>> listRoutineLogs(
+    String id, {
+    PlainDate? from,
+    PlainDate? to,
+  });
+
+  /// `POST /routines/{id}/logs`: done or skipped, for an occurrence or
+  /// without one. A second log for the same occurrence fails with
+  /// `409 ROUTINE_LOG_EXISTS`.
+  Future<RoutineLog> addRoutineLog(String id, NewRoutineLog log);
+
+  /// `DELETE /routines/{id}/logs/{logId}`: the occurrence is open again.
+  Future<void> deleteRoutineLog(String id, String logId);
 
   /// Releases resources (e.g. the HTTP connection).
   void close();

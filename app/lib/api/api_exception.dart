@@ -47,6 +47,23 @@ abstract final class ErrorCode {
   /// A daily limit is reached (`details.limit`).
   static const limitReached = 'LIMIT_REACHED';
 
+  // Routines (3.16–3.27):
+  /// No routine with this ID, or it belongs to another user.
+  static const routineNotFound = 'ROUTINE_NOT_FOUND';
+
+  /// No log with this ID in this routine.
+  static const routineLogNotFound = 'ROUTINE_LOG_NOT_FOUND';
+
+  /// The occurrence already has a log (`details.logId`). The app treats it
+  /// as "already done", not as an error.
+  static const routineLogExists = 'ROUTINE_LOG_EXISTS';
+
+  /// The user already has a routine with this name (`details.routineId`).
+  static const routineNameTaken = 'ROUTINE_NAME_TAKEN';
+
+  /// Too many routines, pauses or logs (`details.limit`, `details.max`).
+  static const routineLimitReached = 'ROUTINE_LIMIT_REACHED';
+
   // Only in the app, never sent by the backend:
   /// No connection or timeout.
   static const networkError = 'NETWORK_ERROR';

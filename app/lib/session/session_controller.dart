@@ -180,6 +180,12 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// `PATCH /me` with `timeZone` (3.13): the phone's time zone.
+  Future<void> updateTimeZone(String timeZone) async {
+    _user = await api.updateTimeZone(timeZone);
+    notifyListeners();
+  }
+
   /// „Abmelden“ (also „Nicht jetzt“ on the consent notice): ends the token
   /// on the server (errors ignored), then deletes everything local.
   Future<void> logout() async {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The reminders refer to their icon only by name ("ic_stat_lifelog" in
+     lib/platform/reminders.dart). Without this, shrinking the resources of
+     a release build would remove it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_lifelog" />

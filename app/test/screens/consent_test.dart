@@ -51,12 +51,12 @@ void main() {
     expect(mock.userForTest('admin').consentVersion, isNull);
   });
 
-  testWidgets('version 2026-11-23: who agreed to 2026-11-18 agrees again', (
+  testWidgets('version 2026-11-26: who agreed to 2026-11-23 agrees again', (
     tester,
   ) async {
-    expect(consentVersion, '2026-11-23');
+    expect(consentVersion, '2026-11-26');
     final mock = fastMock(signedIn: false);
-    mock.setConsentVersion('admin', '2026-11-18');
+    mock.setConsentVersion('admin', '2026-11-23');
     await startSignedOut(tester, mock);
     await logIn(tester, 'admin', MockApiClient.mockAdminPassword);
 
@@ -64,11 +64,12 @@ void main() {
     expect(find.text(consentTitle), findsOneWidget);
     expect(find.text('Gesundheit'), findsNothing);
     expect(find.textContaining('netcup in Deutschland'), findsOneWidget);
+    expect(find.textContaining('Routinen und Erinnerungen'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Zustimmen'));
     await tester.pumpAndSettle();
 
-    expect(mock.userForTest('admin').consentVersion, '2026-11-23');
+    expect(mock.userForTest('admin').consentVersion, '2026-11-26');
     expect(find.text('Gesundheit'), findsOneWidget);
   });
 

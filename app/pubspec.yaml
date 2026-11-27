@@ -47,6 +47,9 @@ dependencies:
   record: 7.2.0
   path_provider: ^2.1.6
   flutter_secure_storage: 11.2.0
+  timezone: 0.11.2
+  flutter_timezone: 5.1.1
+  flutter_local_notifications: 23.0.4
 
 dev_dependencies:
   flutter_test:

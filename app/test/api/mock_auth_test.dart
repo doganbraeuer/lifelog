@@ -140,6 +140,61 @@ void main() {
     }
   });
 
+  group('time zone (3.12, 3.13)', () {
+    test('Europe/Vienna until changed; the login response has none', () async {
+      final mock = fastMock(signedIn: false);
+      final result = await mock.login('admin', admin);
+      expect(result.user.timeZone, isNull);
+      expect((await mock.me()).timeZone, 'Europe/Vienna');
+    });
+
+    test('accepted names are stored exactly as sent', () async {
+      final mock = fastMock();
+      for (final name in [
+        'Europe/Lisbon',
+        'UTC',
+        'Etc/UTC',
+        'America/Argentina/Buenos_Aires',
+        'Asia/Calcutta',
+        'America/Port-au-Prince',
+      ]) {
+        expect((await mock.updateTimeZone(name)).timeZone, name);
+        expect((await mock.me()).timeZone, name);
+      }
+    });
+
+    test('refused names: 400 with field and value, nothing stored', () async {
+      final mock = fastMock();
+      for (final name in [
+        'CET',
+        'EST5EDT',
+        'Japan',
+        'US/Eastern',
+        'GMT',
+        'Etc/GMT+1',
+        '+01:00',
+        '',
+        'Local',
+        'posix/Europe/Vienna',
+        'europe/vienna',
+        'Europe/Atlantis',
+        'Europe/${'A' * 60}',
+      ]) {
+        final error = await mock
+            .updateTimeZone(name)
+            .then<ApiException?>(
+              (_) => null,
+              onError: (Object e) => e as ApiException,
+            );
+        expect(error?.code, ErrorCode.invalidRequest, reason: name);
+        expect(error!.httpStatus, 400);
+        expect(error.message, 'Unbekannte Zeitzone.');
+        expect(error.details, {'field': 'timeZone', 'value': name});
+      }
+      expect((await mock.me()).timeZone, 'Europe/Vienna');
+    });
+  });
+
   test('consent: stored, shown by me', () async {
     final mock = fastMock();
     mock.setConsentVersion('admin', null);

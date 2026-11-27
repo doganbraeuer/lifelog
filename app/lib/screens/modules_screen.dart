@@ -5,6 +5,7 @@ import '../module/module_definition.dart';
 import '../module/module_catalog.dart';
 import '../platform/file_chooser.dart';
 import '../platform/voice_recorder.dart';
+import '../reminders/routine_sync.dart';
 import '../widgets/motion.dart';
 import '../widgets/container_transform.dart';
 import '../widgets/mock_banner.dart';
@@ -45,9 +46,19 @@ class _ModulesScreenState extends State<ModulesScreen>
   );
   var _started = false;
 
+  RoutineSync? _sync;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final sync = RoutineSyncScope.maybeOf(context);
+    if (sync != _sync) {
+      _sync?.pendingTap.removeListener(_reminderTapped);
+      _sync = sync;
+      sync?.pendingTap.addListener(_reminderTapped);
+      // A tap that started the app waits already.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reminderTapped());
+    }
     // Only on the first build; when coming back the state is kept.
     if (_started) return;
     _started = true;
@@ -60,8 +71,42 @@ class _ModulesScreenState extends State<ModulesScreen>
 
   @override
   void dispose() {
+    _sync?.pendingTap.removeListener(_reminderTapped);
     _fadeIn.dispose();
     super.dispose();
+  }
+
+  /// A tap on a reminder: opens the module on the tab „Routinen“, which
+  /// then shows the occurrence. If that module is open already, it handles
+  /// the tap itself; other pages on top (e.g. the settings) are closed.
+  void _reminderTapped() {
+    final sync = _sync;
+    final tap = sync?.pendingTap.value;
+    if (sync == null || tap == null || !mounted) return;
+    if (sync.isModuleOpen(tap.module)) return;
+    final module = ModuleCatalog.of(context).byId(tap.module);
+    if (module == null || !module.active) {
+      sync.pendingTap.value = null;
+      return;
+    }
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      Navigator.of(context).popUntil((r) => r == route);
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Theme(
+          data: moduleTheme(module),
+          child: ModuleShell(
+            module: module,
+            api: widget.api,
+            fileChooser: widget.fileChooser,
+            voiceRecorder: widget.voiceRecorder,
+            initialPage: ModulePage.routines,
+          ),
+        ),
+      ),
+    );
   }
 
   /// Active tile: container transform from the tile to the module (on iOS

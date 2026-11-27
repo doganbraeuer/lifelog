@@ -26,12 +26,18 @@ if (hasReleaseKey) {
 
 android {
     namespace = "at.ac.plus.lifelog"
-    compileSdk = flutter.compileSdkVersion
+    // 37 instead of Flutter's default (36): required by
+    // flutter_local_notifications 23 (reminders). Only the SDK the app is
+    // compiled against; targetSdk and minSdk stay Flutter's defaults.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications (reminders) uses java.time APIs that
+        // older Android versions only get through desugaring.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -79,4 +85,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Version from the README of flutter_local_notifications 23.0.4.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

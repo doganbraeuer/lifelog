@@ -640,7 +640,7 @@ texts are German and quoted as they appear.
 | Anmelden (Bildschirm) | login screen | `LoginScreen`; „Anmelden“ |
 | Eigenes Passwort festlegen / Passwort ändern | change password screen | `ChangePasswordScreen(mandatory: …)` |
 | Einwilligung, Hinweis zum Datenschutz | consent screen | `ConsentScreen(readOnly: …)`; „Bevor du startest“, „Zustimmen“, „Nicht jetzt“ |
-| Text und Version der Einwilligung | consent text, consent version | `consentTitle`, `consentParagraphs`, `consentVersion` (`"2026-11-18"`); `session/consent_text.dart` |
+| Text und Version der Einwilligung | consent text, consent version | `consentTitle`, `consentParagraphs`, `consentVersion` (`"2026-11-26"`, with routines; before `"2026-11-23"`, `"2026-11-18"`); `session/consent_text.dart` |
 | Einstellungen | settings screen | `SettingsScreen`; „Einstellungen“, `settingsIconSize` (36) |
 | Passwortfeld mit Augen-Symbol | password field | `PasswordField`; `widgets/password_field.dart` |
 | Passwortregeln der App | password rules | `checkNewPassword`, `minPasswordLength` (10), `maxPasswordBytes` (72); `session/password_rules.dart` |
@@ -716,5 +716,38 @@ else below is stage 1.
 | query parameters | `module`, `from`, `to` |
 | error codes | `ROUTINE_NOT_FOUND`, `ROUTINE_LOG_NOT_FOUND`, `ROUTINE_SUGGESTION_NOT_FOUND`, `ROUTINE_LOG_EXISTS`, `ROUTINE_NAME_TAKEN`, `ROUTINE_LIMIT_REACHED` |
 | `details` keys | `routineId`, `logId`, `suggestionId`, `max`; `limit`: `routines`, `pauses`, `logs` |
-| app packages (suggested) | `flutter_local_notifications` (reminders), `flutter_timezone` (IANA name of the phone; `DateTime.timeZoneName` only gives abbreviations) |
+| app packages | `flutter_local_notifications` 23.0.4 (reminders), `flutter_timezone` 5.1.1 (IANA name of the phone; `DateTime.timeZoneName` only gives abbreviations), `timezone` 0.11.2 (zone database for the mock and for planning in UTC) |
 | backend, internal only | `core.Date` (plain date, days since 1970-01-01), `core.ClockTime` (minutes after midnight), `core.RoutineView` (routine with status and progress), `core.ParameterError` (`INVALID_PARAMETER`), `core.CheckTimeZone`, `core.UserTimeZone`, `core.DayStart`; `service.Routines`; test package `internal/routinetest`; test cases `backend/internal/core/testdata/routine_occurrences.json` |
+
+### App (routines)
+
+Added 2026-11-27. Names in the app (`app/lib/`), all app-internal. Display
+texts are German and quoted as they appear.
+
+| German | English | Dart type / file |
+|---|---|---|
+| Reiter einer Modul-Shell | module page | `ModulePage` (`timeline`, `routines`, `upload`, `questions`); `screens/module_shell.dart` |
+| Reiter „Routinen“ | routines screen | `RoutinesScreen`; „Routinen“, „Heute“, „Weitere Routinen“, „Neue Routine“, „Noch keine Routinen“ |
+| Formular einer Routine | routine form screen | `RoutineFormScreen`; „Neue Routine“, „Routine bearbeiten“, „Speichern“ |
+| Detailseite einer Routine | routine detail screen | `RoutineDetailScreen`; „Fortschritt“, „Termine heute“, „Nächste Termine“, „Verlauf“, „Aktionen“, „Zusätzlich eintragen“ |
+| Termin eintragen (Blatt) | occurrence sheet | `OccurrenceSheet`, `showOccurrenceSheet`; „Termin: 08:00“, „Ja, erledigt“, „Nein, ausgelassen“, „Menge speichern“ |
+| Termin eintragen (Anfrage) und Ergebnis | log an occurrence, log result | `logOccurrence`, `LogResult` (`409 ROUTINE_LOG_EXISTS` = already logged, shown as information); `routines/log_occurrence.dart` (no Flutter UI; used by the screens and the reminder buttons in the background) |
+| Meldung unten, mit „Rückgängig“ | routine snack bar | `showRoutineSnackBar`, `undoSnackBarDuration` (8 s); `screens/routine_actions.dart` |
+| Vorschläge für die Einheit | unit suggestions | `unitSuggestions` („Stück“, „ml“, „g“, „mg“, „Tropfen“); `screens/routine_form_screen.dart` |
+| größtes Intervall pro Häufigkeit | max intervals | `maxIntervals` |
+| Texte zu Routinen | routine texts | `model/routine_texts.dart`: `describeSchedule` („täglich um 08:00“), `describeRoutinePlan`, `intervalLabel` („jede Stunde“, „jeden 3. Tag“), `formatAmount` and `parseAmount` (German numbers: „1.250“, „0,5“), `amountWithUnit` („2 Stück“), `amountText` and `countText` („heute 1 von 2“), `periodDayText` („Tag 6 von 14“), `occurrenceWhen`, `weekdayDate` („Fr, 27.11.“), `weekdayLabels`, `routineStatusLabel`, `occurrenceStatusLabel` |
+| Zeitzone des Handys | device time zone | `DeviceTimeZone`, `PluginDeviceTimeZone` (flutter_timezone); `platform/device_time_zone.dart`; `SessionController.updateTimeZone` |
+| Abgleich von Zeitzone und Erinnerungen | routine sync | `RoutineSync`, `RoutineSyncScope`; `reminders/routine_sync.dart`; `refresh`, `clear`, `pendingTap` (a tap on a reminder not yet handled), `dataChanged` (the tab reloads) |
+| Erinnerungen (Schnittstelle zum Paket) | reminders | `Reminders`, `PluginReminders`, `ReminderPermission` (`granted`, `denied`); `platform/reminders.dart` |
+| Erinnerungsplan | reminder plan | `planReminders`, `PlannedReminder`, `maxPlannedReminders` (60); `reminders/reminder_plan.dart` |
+| neu planen vom Server | replan reminders | `replanReminders` (loads, plans, applies; used by `RoutineSync` and the reminder buttons in the background); `reminders/replan_reminders.dart`; `ModuleCatalog.activeIds` |
+| Erinnerung für heute (nur Debug) | reminder for today | `reminderForToday`, `RoutineSync.showNextNow`; „Nächste Erinnerung jetzt zeigen“, „Heute ist kein Termin mehr offen.“ |
+| ID und Inhalt einer Erinnerung | reminder ID, occurrence key, payload | `reminderId` (31-bit FNV-1a), `occurrenceKey` (`"<routineId>\|<dueAt>"`), `reminderPayload` (`{"m": module, "r": routineId, "d": dueAt}`, no name) |
+| Antippen einer Erinnerung oder eines Knopfs | reminder tap | `ReminderTap` |
+| Knöpfe der Erinnerung | reminder actions | `reminderActionDone` (`done`, „Ja“), `reminderActionSkipped` (`skipped`, „Nein“), `reminderActionAmount` (`amount`, „Andere Menge“) |
+| Knöpfe im Hintergrund | reminder button in the background | `reminderButtonInBackground` (entry point of the isolate), `logFromReminderButton`, `reminderPortName` (`lifelog_reminder_logged`); `reminders/reminder_action.dart` |
+| Kanal der Erinnerungen (Android) | notification channel | `routine_reminders`, „Erinnerungen an Routinen“; icon `ic_stat_lifelog` |
+| Kategorien der Knöpfe (iOS) | notification categories | `routine_reminder` („Ja“, „Nein“), `routine_reminder_amount` (also „Andere Menge“) |
+| Hinweis ohne Erlaubnis | reminders off notice | „Erinnerungen sind ausgeschaltet. Du kannst Routinen trotzdem eintragen.“, „Einschalten“ |
+| Frage nach der Erlaubnis | permission question | „Erinnerungen“, „Damit Lifelog dich an deine Routinen erinnern kann, braucht es die Erlaubnis für Mitteilungen.“, „Später“, „Weiter“ |
+| Routinen im Mock | mock routines | `MockRoutines`, `expandSchedule`, `addSamples` („Vitamin D“, „Blutdruck messen“, „Wasser“); `api/mock/mock_routines.dart`; `ensureTimeZones`, `isAcceptedTimeZone`, `locationOrNull`; `api/mock/mock_time_zones.dart` |
